@@ -747,12 +747,19 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
-  const auto& best_result = absl::c_min_element(
-      profile_results,
-      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-               tensorflow::proto_utils::FromDurationProto(rhs.run_time());
-      });
+  auto best_result = profile_results.begin();
+  if (!RequireCudnnDeterminism() && !instr->parent()
+                                         ->parent()
+                                         ->config()
+                                         .debug_options()
+                                         .xla_gpu_deterministic_ops()) {
+    best_result = absl::c_min_element(
+        profile_results,
+        [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+        });
+  }
 
   if (best_result != profile_results.end()) {
     return *best_result;

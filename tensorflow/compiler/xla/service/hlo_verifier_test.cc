@@ -1124,6 +1124,82 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
               HasSubstr("Target 2 appears more than once"));
 }
 
+TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaSourceOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{5,2}, {1,2}, {2,0}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Source 5"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaTargetOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,1}, {1,2}, {2,7}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Target 7"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionSourceOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{5,2}, {1,2}, {2,0}}, channel_id=1
+  }
+  )";
+  HloModuleConfig config;
+  config.set_num_partitions(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Source 5"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionTargetOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,2}, {1,7}, {2,0}}, channel_id=1
+  }
+  )";
+  HloModuleConfig config;
+  config.set_num_partitions(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Target 7"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
 TEST_F(HloVerifierTest, FusionShapeVerifier) {
   const char* const kModuleStr = R"(
   HloModule test

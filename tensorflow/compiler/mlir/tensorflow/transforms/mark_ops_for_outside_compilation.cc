@@ -78,7 +78,25 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
       OperationName(TF::ConcatOffsetOp::getOperationName(), context),
       OperationName(TF::EmptyOp::getOperationName(), context),
       OperationName(TF::ListDiffOp::getOperationName(), context),
+      OperationName(TF::RankOp::getOperationName(), context),
       OperationName(TF::RangeOp::getOperationName(), context),
+      OperationName(TF::ShapeOp::getOperationName(), context),
+      OperationName(TF::ShapeNOp::getOperationName(), context),
+      OperationName(TF::SizeOp::getOperationName(), context),
+  };
+
+  supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
+}
+
+// Adds the list of ops that are supported through dynamic padder using op by op
+// fallback to the TF2XLA bridge.
+// TODO(b/168036682): Remove this once ops are supported using dynamic padder
+// on MLIR bridge.
+void AddSupportedOpsUsingDynamicPadder(
+    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+  llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::WhereOp::getOperationName(), context),
+      OperationName(TF::UniqueOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -349,7 +367,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
@@ -366,6 +384,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
       });
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
+  AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 

@@ -238,6 +238,24 @@ void ValidateParams(
   ValidateGemmParams(params);
 }
 
+// Test if the Gemm is degenerate in some way, e.g. nonsensical dimenions.
+template <typename LhsScalar, typename RhsScalar, typename DstScalar>
+bool IsValidGemm(const MatrixParams<LhsScalar>& lhs_params,
+                 const MatrixParams<RhsScalar>& rhs_params,
+                 const MatrixParams<DstScalar>& dst_params) {
+  bool valid = true;
+  valid &= lhs_params.rows >= 1;
+  valid &= lhs_params.cols >= 1;
+  valid &= rhs_params.rows >= 1;
+  valid &= rhs_params.cols >= 1;
+  valid &= dst_params.rows >= 1;
+  valid &= dst_params.cols >= 1;
+  valid &= lhs_params.cols == rhs_params.rows;
+  valid &= rhs_params.cols == dst_params.cols;
+  valid &= lhs_params.rows == lhs_params.rows;
+  return valid;
+}
+
 }  // namespace cpu_backend_gemm
 
 }  // namespace tflite

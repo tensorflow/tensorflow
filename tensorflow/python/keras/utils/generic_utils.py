@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python utilities required by Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import binascii
 import codecs
@@ -27,10 +24,11 @@ import sys
 import threading
 import time
 import types as python_types
+import warnings
 import weakref
 
 import numpy as np
-import six
+
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import nest
@@ -460,6 +458,12 @@ def get_registered_object(name, custom_objects=None, module_objects=None):
   return None
 
 
+# pylint: disable=g-bad-exception-name
+class CustomMaskWarning(Warning):
+  pass
+# pylint: enable=g-bad-exception-name
+
+
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   """Serialize a Keras object into a JSON-compatible representation.
@@ -479,6 +483,20 @@ def serialize_keras_object(instance):
   if instance is None:
     return None
 
+  # pylint: disable=protected-access
+  #
+  # For v1 layers, checking supports_masking is not enough. We have to also
+  # check whether compute_mask has been overridden.
+  supports_masking = (getattr(instance, 'supports_masking', False)
+                      or (hasattr(instance, 'compute_mask')
+                          and not is_default(instance.compute_mask)))
+  if supports_masking and is_default(instance.get_config):
+    warnings.warn('Custom mask layers require a config and must override '
+                  'get_config. When loading, the custom mask layer must be '
+                  'passed to the custom_objects argument.',
+                  category=CustomMaskWarning)
+  # pylint: enable=protected-access
+
   if hasattr(instance, 'get_config'):
     name = get_registered_name(instance.__class__)
     try:
@@ -490,7 +508,7 @@ def serialize_keras_object(instance):
       raise e
     serialization_config = {}
     for key, item in config.items():
-      if isinstance(item, six.string_types):
+      if isinstance(item, str):
         serialization_config[key] = item
         continue
 
@@ -554,14 +572,20 @@ def class_and_config_for_serialized_keras_object(
 
   deserialized_objects = {}
   for key, item in cls_config.items():
-    if isinstance(item, dict) and '__passive_serialization__' in item:
+    if key == 'name':
+      # Assume that the value of 'name' is a string that should not be
+      # deserialized as a function. This avoids the corner case where
+      # cls_config['name'] has an identical name to a custom function and
+      # gets converted into that function.
+      deserialized_objects[key] = item
+    elif isinstance(item, dict) and '__passive_serialization__' in item:
       deserialized_objects[key] = deserialize_keras_object(
           item,
           module_objects=module_objects,
           custom_objects=custom_objects,
           printable_module_name='config_item')
     # TODO(momernick): Should this also have 'module_objects'?
-    elif (isinstance(item, six.string_types) and
+    elif (isinstance(item, str) and
           tf_inspect.isfunction(get_registered_object(item, custom_objects))):
       # Handle custom functions here. When saving functions, we only save the
       # function's name as a string. If we find a matching string in the custom
@@ -585,21 +609,46 @@ def deserialize_keras_object(identifier,
                              printable_module_name='object'):
   """Turns the serialized form of a Keras object back into an actual object.
 
-  Calls to `deserialize_keras_object` while underneath the
+  This function is for mid-level library implementers rather than end users.
+
+  Importantly, this utility requires you to provide the dict of `module_objects`
+  to use for looking up the object config; this is not populated by default.
+  If you need a deserialization utility that has preexisting knowledge of
+  built-in Keras objects, use e.g. `keras.layers.deserialize(config)`,
+  `keras.metrics.deserialize(config)`, etc.
+
+  Calling `deserialize_keras_object` while underneath the
   `SharedObjectLoadingScope` context manager will cause any already-seen shared
   objects to be returned as-is rather than creating a new object.
 
   Args:
     identifier: the serialized form of the object.
-    module_objects: A dictionary of custom objects to look the name up in.
-      Generally, module_objects is provided by midlevel library implementers.
+    module_objects: A dictionary of built-in objects to look the name up in.
+      Generally, `module_objects` is provided by midlevel library implementers.
     custom_objects: A dictionary of custom objects to look the name up in.
-      Generally, custom_objects is provided by the user.
+      Generally, `custom_objects` is provided by the end user.
     printable_module_name: A human-readable string representing the type of the
       object. Printed in case of exception.
 
   Returns:
     The deserialized object.
+
+  Example:
+
+  A mid-level library implementer might want to implement a utility for
+  retrieving an object from its config, as such:
+
+  ```python
+  def deserialize(config, custom_objects=None):
+     return deserialize_keras_object(
+       identifier,
+       module_objects=globals(),
+       custom_objects=custom_objects,
+       name="MyObjectType",
+     )
+  ```
+
+  This is how e.g. `keras.layers.deserialize()` is implemented.
   """
   if identifier is None:
     return None
@@ -643,7 +692,7 @@ def deserialize_keras_object(identifier,
 
     return deserialized_obj
 
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     object_name = identifier
     if custom_objects and object_name in custom_objects:
       obj = custom_objects.get(object_name)

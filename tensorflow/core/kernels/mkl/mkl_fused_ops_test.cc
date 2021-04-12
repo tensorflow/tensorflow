@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -888,11 +888,7 @@ TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTestNchw) { this->Run("NCHW"); }
 REGISTER_TYPED_TEST_SUITE_P(FusedPadConvOpTest, PaddingConvTest,
                             PaddingConvTestNchw);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 using FusedPadConvDataTypes = ::testing::Types<float, bfloat16>;
-#else
-using FusedPadConvDataTypes = ::testing::Types<float>;
-#endif
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
 
 class FilterCacheTest : public OpsTestBase {
@@ -1215,7 +1211,7 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
 // This test is flaky for --config=mkl_threadpool (The supposedly cached op
 // sometimes took longer than even 0.9 * original_time.)
 // TODO(intel-tf): Re-enable the test for --config=mkl_threadpool.
-#ifndef ENABLE_MKLDNN_THREADPOOL
+#ifdef ENABLE_ONEDNN_OPENMP
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
 // used for subsequent runs
@@ -1318,7 +1314,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
     test::ExpectTensorNear<float>(expected, output_new, 1e-5);
   }
 }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // ENABLE_ONEDNN_OPENMP
 
 class BiasCacheTest : public OpsTestBase {
  public:
@@ -1693,4 +1689,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklPadWithFusedConv2DOpTest,
                                MklPadWithFusedConv2DDataTypes);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

@@ -593,9 +593,15 @@ def _neg(x, name=None):
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
-  Intended for use in gradient code which might deal with `IndexedSlices`
-  objects, which are easy to multiply by a scalar but more expensive to
-  multiply with arbitrary tensors.
+  This is a special case of `tf.math.multiply`, where the first value must be a
+  `scalar`. Unlike the general form of `tf.math.multiply`, this is operation is
+  guaranteed to be efficient for `tf.IndexedSlices`.
+
+  >>> x = tf.reshape(tf.range(30, dtype=tf.float32), [10, 3])
+  >>> with tf.GradientTape() as g:
+  ...   g.watch(x)
+  ...   y = tf.gather(x, [1, 2])  # IndexedSlices
+  ...   z = tf.math.scalar_mul(10.0, y)
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
@@ -619,6 +625,31 @@ def scalar_mul(scalar, x, name=None):
       return gen_math_ops.mul(scalar, x, name)
   else:
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
+
+
+@tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.add_dispatch_support
+def softplus(features, name=None):
+  """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
+
+  `softplus` is a smooth approximation of `relu`. Like `relu`, `softplus` always
+  takes on positive values.
+
+  <img style="width:100%" src="https://www.tensorflow.org/images/softplus.png">
+
+  Example:
+
+  >>> import tensorflow as tf
+  >>> tf.math.softplus(tf.range(0, 2, dtype=tf.float32)).numpy()
+  array([0.6931472, 1.3132616], dtype=float32)
+
+  Args:
+    features: `Tensor`
+    name: Optional: name to associate with this operation.
+  Returns:
+    `Tensor`
+  """
+  return gen_nn_ops.softplus(features, name)
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
@@ -1409,7 +1440,14 @@ def div(x, y, name=None):
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
-  """Computes a safe divide which returns 0 if the y is zero.
+  """Computes a safe divide which returns 0 if `y` (denominator) is zero.
+
+  For example:
+
+  >>> tf.constant(3.0) / 0.0
+  <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+  >>> tf.math.divide_no_nan(3.0, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -3267,6 +3305,7 @@ def matmul(a,
            adjoint_b=False,
            a_is_sparse=False,
            b_is_sparse=False,
+           output_type=None,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
@@ -3360,6 +3399,9 @@ def matmul(a,
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
+    output_type: The output datatype if needed. Defaults to None in which case
+      the output_type is the same as input type. Currently only works when input
+      tensors are type int8 and output_type can be int32.
     name: Name for the operation (optional).
 
   Returns:
@@ -3376,7 +3418,10 @@ def matmul(a,
   Raises:
     ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
       `adjoint_b` are both set to `True`.
+    TypeError: If output_type is specified but the types of `a`, `b` and
+      `output_type` is not int8, int8 and int32.
   """
+
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
       raise ValueError("Only one of transpose_a and adjoint_a can be True.")
@@ -3400,6 +3445,13 @@ def matmul(a,
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
 
+    # TODO(b/178749687): remove this boolean and all related branches once the
+    # bridges are ready.
+    # batch_matmul_v3 is for when input type is different from output type.
+    use_batch_matmul_v3 = False
+    if output_type and (output_type != a.dtype or output_type != b.dtype):
+      use_batch_matmul_v3 = True
+
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
@@ -3410,8 +3462,12 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul_v2(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      if use_batch_matmul_v3:
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.batch_mat_mul_v2(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3428,9 +3484,11 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
+    if (((a.dtype == dtypes.bfloat16 and b.dtype != dtypes.int8) or
+         (b.dtype == dtypes.bfloat16 and a.dtype != dtypes.int8)) and
         a.dtype != b.dtype):
-      # matmul currently doesn't handle mixed-precision inputs.
+      # matmul currently doesn't handle mixed-precision inputs other than
+      # fp16 * int8 which is supported in BatchMatMulV3.
       use_sparse_matmul = True
     if use_sparse_matmul:
       ret = sparse_matmul(
@@ -3448,8 +3506,14 @@ def matmul(a,
         ret = cast(ret, dtypes.bfloat16)
       return ret
     else:
-      return gen_math_ops.mat_mul(
-          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+      if use_batch_matmul_v3:
+        adjoint_a = adjoint_a or transpose_a
+        adjoint_b = adjoint_b or transpose_b
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.mat_mul(
+            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
 @tf_export("linalg.matvec")
@@ -3585,6 +3649,7 @@ def _calc_mat_mul_flops(graph, node):
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
 @ops.RegisterStatistics("BatchMatMulV2", "flops")
+@ops.RegisterStatistics("BatchMatMulV3", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
@@ -4169,7 +4234,7 @@ def reduced_shape(input_shape, axes):
       ],  # [1, 2]
       [
           input_shape,  # [2, 3, 5, 7]
-          array_ops.fill(axes_shape, 1)
+          array_ops.ones(axes_shape, dtype=dtypes.int32)
       ])  # [1, 1]
 
 
@@ -4598,17 +4663,11 @@ def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
-  from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
-  The lists `a_axes` and `b_axes` specify those pairs of axes along which to
-  contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
-  as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
-  `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors. Additionally
-  outer product is supported by passing `axes=0`.
+  from `a` and `b` over the indices specified by `axes`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
-  Example 1: When `a` and `b` are matrices (order 2), the case `axes = 1`
+  Example 1: When `a` and `b` are matrices (order 2), the case `axes=1`
   is equivalent to matrix multiplication.
 
   Example 2: When `a` and `b` are matrices (order 2), the case

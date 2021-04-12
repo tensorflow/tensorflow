@@ -5,7 +5,7 @@ load(
     "py_test",
 )
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 package(
     default_visibility = [
@@ -13,7 +13,7 @@ package(
     ],
 )
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 py_library(
     name = "compat_checker",

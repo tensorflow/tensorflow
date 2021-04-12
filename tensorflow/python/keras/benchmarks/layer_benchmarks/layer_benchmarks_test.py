@@ -20,12 +20,11 @@ from __future__ import print_function
 
 import functools
 import numpy as np
-import six
 
 import tensorflow as tf
 from tensorflow.python.keras.benchmarks import benchmark_util
 from tensorflow.python.keras.benchmarks.layer_benchmarks import layer_benchmarks_test_base
-from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 
 
 def _get_metadata(name):
@@ -36,7 +35,7 @@ def _get_metadata(name):
 
 
 def _get_layer_args(layer_cls, layer_args):
-  # To make benchmark parameters be compatible with GPU platform.
+  # To make benchmark parameters compatible with GPU platform.
   if layer_cls is tf.keras.layers.Bidirectional:
     return {"layer": tf.keras.layers.LSTM(1)}
   return layer_args
@@ -202,9 +201,9 @@ POOLING_LAYERS = [
 ]
 
 
-class KerasLayerBenchmarks(six.with_metaclass(
-    benchmark.ParameterizedBenchmark,
-    layer_benchmarks_test_base.LayerBenchmarksBase)):
+class KerasLayerBenchmarks(  # pylint: disable=undefined-variable
+    layer_benchmarks_test_base.LayerBenchmarksBase,
+    metaclass=benchmark.ParameterizedBenchmark):
 
   # The parameter of each layer benchmark is a tuple, and the first one is
   # the benchmark name. It must follow the convention of

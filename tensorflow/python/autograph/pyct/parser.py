@@ -37,6 +37,9 @@ from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(b/184832933): Use ast in 3.9+.
+
+
 PY2_PREAMBLE = textwrap.dedent("""
 from __future__ import division
 from __future__ import print_function
@@ -386,7 +389,9 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     codes.append('# coding=utf-8')
   for n in node:
     if isinstance(n, gast.AST):
-      n = gast.gast_to_ast(n)
-    codes.append(astunparse.unparse(n).strip())
+      ast_n = gast.gast_to_ast(n)
+    else:
+      ast_n = n
+    codes.append(astunparse.unparse(ast_n).strip())
 
   return '\n'.join(codes)

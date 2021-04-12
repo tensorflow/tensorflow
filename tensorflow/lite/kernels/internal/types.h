@@ -952,6 +952,7 @@ struct FullyConnectedParams {
 
 struct GatherParams {
   int16_t axis;
+  int16_t batch_dims;
 };
 
 struct L2NormalizationParams {
@@ -1018,9 +1019,9 @@ struct PackParams {
 
 struct PadParams {
   int8_t left_padding_count;
-  int32_t left_padding[4];
+  int32_t left_padding[5];
   int8_t right_padding_count;
-  int32_t right_padding[4];
+  int32_t right_padding[5];
   ResizingCategory resizing_category;
 };
 

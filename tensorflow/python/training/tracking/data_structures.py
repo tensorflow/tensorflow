@@ -37,6 +37,8 @@ from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import layer_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
+
 
 module = lazy_loader.LazyLoader(
     "module", globals(), "tensorflow.python.module.module")
@@ -83,8 +85,23 @@ def _should_wrap_tuple(t):
   return False
 
 
+@tf_export("__internal__.tracking.wrap", v1=[])
 def wrap_or_unwrap(value):
-  """Wraps basic data structures, unwraps NoDependency objects."""
+  """Wraps input value into trackable data structures.
+
+  This is mostly useful for containers like list, dict, etc, which could contain
+  trackable objects in it. Wrapped data structure will be tracked when
+  associated with a `tf.Module`, so that save model/checkpoint can properly
+  track the dependency.
+
+  It will also unwrap NoDependency objects.
+
+  Args:
+    value: the input object to be wrapped.
+
+  Returns:
+    Wrapped trackable data structure.
+  """
   # pylint: disable=unidiomatic-typecheck
   # Exact type checking to avoid mucking up custom logic in list/dict
   # subclasses, e.g. collections.Counter.
@@ -106,6 +123,7 @@ def wrap_or_unwrap(value):
   # pylint: enable=unidiomatic-typecheck
 
 
+@tf_export("__internal__.tracking.sticky_attribute_assignment", v1=[])
 def sticky_attribute_assignment(trackable, name, value):
   """Adds dependencies, generally called from __setattr__.
 
@@ -152,6 +170,7 @@ class _UntrackableError(ValueError):
              "Trackable.") % (self._value,))
 
 
+@tf_export("__internal__.tracking.TrackableDataStructure", v1=[])
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 
@@ -1053,6 +1072,11 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     return super(_TupleWrapper, self)._checkpoint_dependencies
 
   def __getattribute__(self, name):
+    if name != "__wrapped__" and hasattr(self.__wrapped__, name):
+      # Prefer attributes on the wrapped object when they conflict with
+      # attributes on the wrapper object.
+      return getattr(self.__wrapped__, name)
+
     if (hasattr(type(self), name)
         and isinstance(getattr(type(self), name), property)):
       # Bypass ObjectProxy for properties. Whether this workaround is necessary

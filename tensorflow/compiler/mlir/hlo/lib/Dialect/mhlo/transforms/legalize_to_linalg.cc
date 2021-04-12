@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -93,13 +94,23 @@ Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
 }
 
 SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
-                                          Value tensor) {
+                                          Value tensor,
+                                          Value shape_tensor = nullptr) {
   auto tensor_type = tensor.getType().dyn_cast<RankedTensorType>();
   if (!tensor_type) return {};
   SmallVector<Value, 2> dyn_sizes;
   for (auto& en : llvm::enumerate(tensor_type.getShape())) {
     if (en.value() != ShapedType::kDynamicSize) continue;
-    dyn_sizes.push_back(b.create<DimOp>(loc, tensor, en.index()));
+    // If a shape tensor is present extract from there.
+    if (shape_tensor) {
+      Value extract = b.create<tensor::ExtractOp>(
+          loc, shape_tensor,
+          ValueRange{b.create<ConstantIndexOp>(loc, en.index())});
+      dyn_sizes.push_back(
+          b.create<IndexCastOp>(loc, b.getIndexType(), extract));
+    } else {
+      dyn_sizes.push_back(b.create<memref::DimOp>(loc, tensor, en.index()));
+    }
   }
   return dyn_sizes;
 }
@@ -139,6 +150,77 @@ AffineMap GetTransposeMapForReduction(MLIRContext* context, int rank,
 
   auto map = AffineMap::getPermutationMap(permutation, context);
   return inversePermutation(map);
+}
+
+/// Returns true if the given `attr` is a splat of the given `value`.
+bool isSplatValue(DenseIntElementsAttr attr, uint64_t value) {
+  return attr.isSplat() && attr.getSplatValue<uint64_t>() == value;
+}
+
+/// Returns true if the given `dimensionNumbers` from a mhlo.convolution op
+/// follows a canonical form:
+///
+/// * Input dimensions have order: (batch_count, spatial_dims,
+///   input_channel_count).
+/// * Filter dimensions have order: (spatial_dims, input_channel_count,
+///   output_channel_count).
+/// * Output dimensions have order: (batch_count, spatial_dims,
+///   output_channel_count).
+template <typename DimensionNumbersTy>
+static bool HasCanonicalDimensionNumbers(
+    const DimensionNumbersTy& dimension_numbers) {
+  const int input_spatial_rank =
+      llvm::size(dimension_numbers.input_spatial_dimensions());
+  // The dimensions for input should follow the order of
+  // batch_count, spatial_dims..., input_feature_count.
+  if (dimension_numbers.input_batch_dimension().getInt() != 0 ||
+      dimension_numbers.input_feature_dimension().getInt() !=
+          (input_spatial_rank + 1)) {
+    return false;
+  }
+
+  const int kernel_spatial_rank =
+      llvm::size(dimension_numbers.kernel_spatial_dimensions());
+  // The dimensions for filter should follow the order of
+  // spatial_dims..., input_feature_count, num_output_feature_count.
+  if (dimension_numbers.kernel_input_feature_dimension().getInt() !=
+          kernel_spatial_rank ||
+      dimension_numbers.kernel_output_feature_dimension().getInt() !=
+          (kernel_spatial_rank + 1)) {
+    return false;
+  }
+
+  const int output_spatial_rank =
+      llvm::size(dimension_numbers.output_spatial_dimensions());
+  // The dimensions for output should follow the order of
+  // batch_count, spatial_dims.., output_feature_count.
+  if (dimension_numbers.output_batch_dimension().getInt() != 0 ||
+      dimension_numbers.output_feature_dimension().getInt() !=
+          (output_spatial_rank + 1)) {
+    return false;
+  }
+
+  if (input_spatial_rank != output_spatial_rank ||
+      input_spatial_rank != kernel_spatial_rank) {
+    return false;
+  }
+
+  auto input_spatial_dim = dimension_numbers.input_spatial_dimensions().begin();
+  auto kernel_spatial_dim =
+      dimension_numbers.kernel_spatial_dimensions().begin();
+  auto output_spatial_dim =
+      dimension_numbers.output_spatial_dimensions().begin();
+  // Check spatial dims are ordered correctly.
+  for (int i = 0; i < input_spatial_rank; ++i) {
+    const int dim = i + 1;
+    if ((*input_spatial_dim++).getZExtValue() != dim ||
+        (*output_spatial_dim++).getZExtValue() != dim ||
+        (*kernel_spatial_dim++).getZExtValue() != i) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 template <typename OpTy, bool isLHLO = true>
@@ -243,13 +325,13 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     }
 
     // Create two loads from the input.
-    auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
-    auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
+    auto lhs = rewriter.create<memref::LoadOp>(loc, lhlo_op.lhs());
+    auto rhs = rewriter.create<memref::LoadOp>(loc, lhlo_op.rhs());
     // TODO(ravishankarm) : Move this method out of lmhlo namespace.
     Value op_result = lmhlo::HloOpToStdScalarOp::map<LhloOp>(
         lhlo_op, arg_type.getElementType(), llvm::ArrayRef<Value>{lhs, rhs},
         &rewriter);
-    rewriter.create<StoreOp>(loc, op_result, lhlo_op.out());
+    rewriter.create<memref::StoreOp>(loc, op_result, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return success();
   }
@@ -264,61 +346,10 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
  public:
   using OpConversionPattern<lmhlo::ConvOp>::OpConversionPattern;
 
-  //  This code has been adapted from IREE's
-  //  (https://github.com/google/iree/) mhlo -> linalg conversion.
   LogicalResult matchAndRewrite(
       lmhlo::ConvOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    // Check validity of dimension information.
-    if (const mhlo::ConvDimensionNumbers& dimension_numbers =
-            op.dimension_numbers()) {
-      const int input_spatial_rank =
-          llvm::size(dimension_numbers.input_spatial_dimensions());
-      // The dimensions for input should follow the order of
-      // batch_count, spatial_dims..., input_feature_count.
-      if (dimension_numbers.input_batch_dimension().getInt() != 0 ||
-          dimension_numbers.input_feature_dimension().getInt() !=
-              (input_spatial_rank + 1))
-        return failure();
-
-      const int kernel_spatial_rank =
-          llvm::size(dimension_numbers.kernel_spatial_dimensions());
-      // The dimensions for filter should follow the order of
-      // spatial_dims..., input_feature_count, num_output_feature_count.
-      if (dimension_numbers.kernel_input_feature_dimension().getInt() !=
-              kernel_spatial_rank ||
-          dimension_numbers.kernel_output_feature_dimension().getInt() !=
-              (kernel_spatial_rank + 1))
-        return failure();
-
-      const int output_spatial_rank =
-          llvm::size(dimension_numbers.output_spatial_dimensions());
-      // The dimensions for output should follow the order of
-      // batch_count, spatial_dims.., output_feature_count.
-      if (dimension_numbers.output_batch_dimension().getInt() != 0 ||
-          dimension_numbers.output_feature_dimension().getInt() !=
-              (output_spatial_rank + 1))
-        return failure();
-
-      if (input_spatial_rank != output_spatial_rank ||
-          input_spatial_rank != kernel_spatial_rank)
-        return failure();
-
-      auto input_spatial_dim =
-          dimension_numbers.input_spatial_dimensions().begin();
-      auto kernel_spatial_dim =
-          dimension_numbers.kernel_spatial_dimensions().begin();
-      auto output_spatial_dim =
-          dimension_numbers.output_spatial_dimensions().begin();
-      // Check if spatial dims are ordered correctly.
-      for (int i = 0; i < input_spatial_rank; ++i) {
-        const int dim = i + 1;
-        if ((*input_spatial_dim++).getZExtValue() != dim ||
-            (*output_spatial_dim++).getZExtValue() != dim ||
-            (*kernel_spatial_dim++).getZExtValue() != i)
-          return failure();
-      }
-    }
+    if (!HasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
 
     // TODO: LHS dilation for deconvolution not supported yet.
     // TODO(jurahul): Window reversal is not supported yet.
@@ -422,7 +453,7 @@ class BroadcastConverter
     unsigned num_prepended_dims = llvm::size(broadcast_op.broadcast_sizes());
     SmallVector<AffineExpr, 4> input_dim_exprs;
     input_dim_exprs.reserve(input_rank);
-    for (int i = 0; i < input_rank; ++i) {
+    for (unsigned i = 0; i < input_rank; ++i) {
       input_dim_exprs.push_back(b->getAffineDimExpr(num_prepended_dims + i));
     }
 
@@ -488,37 +519,58 @@ class HloDynamicBroadcastInDimConverter
   LogicalResult matchAndRewrite(
       mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    // Convert only if the producer is an HLO constant. Ideally the pattern
-    // (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be converted
-    // to an Tensor-dialect op similar to TF ConstantLikeOp.
-    if (!op.operand().getDefiningOp<mhlo::ConstOp>()) return failure();
+    // If the input has a static shape we know exactly when the broadcast must
+    // expand (the dimension is 1, which also trivially expands to 1) or will
+    // never expand (the dimension is not 1). This means we can lower the
+    // broadcast just as we would lower a fully static broadcast and go directly
+    // to linalg.generic. This also covers the important case of broadcasting a
+    // scalar.
+
+    // Ideally the pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`)
+    // should be converted to an Tensor-dialect op similar to TF ConstantLikeOp.
 
     mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
     Value operand = adaptor.operand();
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!operand_type || operand_type.getRank() != 0) return failure();
+    if (!operand_type || !operand_type.hasStaticShape()) return failure();
 
     Value shape = adaptor.output_dimensions();
     auto shape_type = shape.getType().cast<RankedTensorType>();
     int64_t result_rank = shape_type.getDimSize(0);
 
-    SmallVector<Value, 2> dyn_dims;
-    Location loc = op.getLoc();
-    for (int i = 0; i < result_rank; ++i) {
-      Value index = rewriter.create<ConstantIndexOp>(loc, i);
-      dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
-    }
     auto result_type = op.getType().dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
+    SmallVector<Value, 2> dyn_dims;
+    Location loc = op.getLoc();
+    for (int i = 0; i < result_rank; ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
+      Value index = rewriter.create<ConstantIndexOp>(loc, i);
+      dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
+    }
+
     int64_t nloops = result_type.getRank();
+    auto operand_shape = operand_type.getShape();
+    SmallVector<AffineExpr, 4> dim_exprs;
+    dim_exprs.reserve(nloops);
+
+    if (op.broadcast_dimensions()) {
+      for (const auto& broadcast_dim :
+           enumerate(op.broadcast_dimensions().getIntValues())) {
+        int64_t size = broadcast_dim.value().getSExtValue();
+        bool expansion_needed = operand_shape[broadcast_dim.index()] == 1;
+        dim_exprs.push_back(expansion_needed ? rewriter.getAffineConstantExpr(0)
+                                             : rewriter.getAffineDimExpr(size));
+      }
+    }
+
     Value init = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_dims, result_type.getShape(), result_type.getElementType());
     Operation* generic = rewriter.create<linalg::GenericOp>(
         loc, TypeRange{init.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{init},
         llvm::makeArrayRef(
-            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, {},
+            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dim_exprs,
                             rewriter.getContext()),
              rewriter.getMultiDimIdentityMap(nloops)}),
         GetNParallelLoopsAttrs(nloops),
@@ -558,8 +610,8 @@ class LhloBroadcastInDimConverter
         operand_type.getDimSize(0) <
             result_type.getDimSize(broadcast_dims.front())) {
       Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
-      Value val =
-          rewriter.create<LoadOp>(loc, operand, llvm::makeArrayRef({zero}));
+      Value val = rewriter.create<memref::LoadOp>(loc, operand,
+                                                  llvm::makeArrayRef({zero}));
       rewriter.create<linalg::GenericOp>(
           loc, /*inputs=*/ValueRange{},
           /*outputBuffers=*/ValueRange{operand_adaptor.output()},
@@ -775,7 +827,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
       }
       curr_dst_dim++;
     }
-    if (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size())
+    // Rank 0 can always use the direct lowering.
+    if (!src_shape.empty() && !dst_shape.empty() &&
+        (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size()))
       is_collapsing_source = false;
 
     // Otherwise, we need to first reduce all source dimensions into one and
@@ -849,17 +903,20 @@ class IotaConverter : public OpConversionPattern<OpTy> {
     unsigned nloops = result_shaped_type.getRank();
 
     Location loc = iota_op.getLoc();
-    auto dyn_sizes = isLHLO
-                         ? SmallVector<Value, 2>()
-                         : ExtractDynamicSizes(rewriter, loc,
-                                               GetResultValue<isLHLO>(iota_op));
+    // If this is a dynamic iota, the first argument will be a shape tensor.
+    Value shape_tensor = args.size() > (isLHLO ? 1 : 0) ? args[0] : nullptr;
+    auto dyn_sizes =
+        isLHLO
+            ? SmallVector<Value, 2>()
+            : ExtractDynamicSizes(
+                  rewriter, loc, GetResultValue<isLHLO>(iota_op), shape_tensor);
     auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
         loc,
         /*resultTensorTypes=*/
         isLHLO ? ArrayRef<Type>{} : ArrayRef<Type>{result_shaped_type},
         /*inputs=*/ValueRange{},
         /*outputBuffers=*/
-        isLHLO ? ValueRange{args}
+        isLHLO ? ValueRange{args.back()}
                : ValueRange{GetInitTensor(rewriter, loc, result_shaped_type,
                                           dyn_sizes)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
@@ -934,7 +991,8 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     }
 
     // First fill the output buffer with the init value.
-    Value init_value = rewriter.create<LoadOp>(loc, adaptor.init_values()[0]);
+    Value init_value =
+        rewriter.create<memref::LoadOp>(loc, adaptor.init_values()[0]);
     rewriter.create<linalg::FillOp>(loc, adaptor.out()[0], init_value);
 
     DenseIntElementsAttr dimensions_attr = reduce_op.dimensions();
@@ -974,9 +1032,9 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       // expects scalar SSA values. Add some allocs around the original op to
       // make it compatible.
       auto arg_type = block->getArgument(0).getType().cast<MemRefType>();
-      Value alloc_a = rewriter.create<AllocaOp>(loc, arg_type);
-      Value alloc_b = rewriter.create<AllocaOp>(loc, arg_type);
-      Value alloc_res = rewriter.create<AllocaOp>(loc, arg_type);
+      Value alloc_a = rewriter.create<memref::AllocaOp>(loc, arg_type);
+      Value alloc_b = rewriter.create<memref::AllocaOp>(loc, arg_type);
+      Value alloc_res = rewriter.create<memref::AllocaOp>(loc, arg_type);
 
       // Now turn the existing signature
       //   (memref<X>, memref<X>, memref<X>) -> ()
@@ -993,13 +1051,15 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
       // Store the arguments into the newly allocated buffers.
       rewriter.setInsertionPointAfter(alloc_res.getDefiningOp());
-      rewriter.create<StoreOp>(loc, entry_block->getArgument(0), alloc_a);
-      rewriter.create<StoreOp>(loc, entry_block->getArgument(1), alloc_b);
+      rewriter.create<memref::StoreOp>(loc, entry_block->getArgument(0),
+                                       alloc_a);
+      rewriter.create<memref::StoreOp>(loc, entry_block->getArgument(1),
+                                       alloc_b);
       rewriter.replaceOp(entry_block->getTerminator(), {});
 
       // Load & yield the result.
       rewriter.setInsertionPointToEnd(entry_block);
-      auto load_res = rewriter.create<LoadOp>(loc, alloc_res);
+      auto load_res = rewriter.create<memref::LoadOp>(loc, alloc_res);
       rewriter.create<linalg::YieldOp>(loc, ValueRange{load_res});
     }
 
@@ -1062,8 +1122,8 @@ class SliceConverter : public OpConversionPattern<OpTy> {
           slice_op.strides().template getValue<int64_t>(i)));
     }
     if (isLHLO) {
-      auto linalg_op =
-          rewriter.create<SubViewOp>(loc, args[0], offsets, sizes, strides);
+      auto linalg_op = rewriter.create<memref::SubViewOp>(loc, args[0], offsets,
+                                                          sizes, strides);
       rewriter.create<linalg::CopyOp>(loc, linalg_op, args[1]);
       rewriter.eraseOp(slice_op);
     } else {
@@ -1112,14 +1172,14 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
   switch (type) {
     case DotOperationType::kMatrixMatrix: {
       if (lhs.getType().cast<ShapedType>().isDynamicDim(0))
-        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+        dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
       if (rhs.getType().cast<ShapedType>().isDynamicDim(1))
-        dyn_shape.push_back(b.create<DimOp>(loc, rhs, 1));
+        dyn_shape.push_back(b.create<memref::DimOp>(loc, rhs, 1));
       break;
     }
     case DotOperationType::kMatrixVector: {
       if (lhs.getType().cast<ShapedType>().isDynamicDim(0))
-        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+        dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
       break;
     }
     case DotOperationType::kVectorDot:
@@ -1131,8 +1191,7 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
   return dyn_shape;
 }
 
-template <typename InputElType, int input_bit_width, typename OutputElType,
-          int output_bit_width, DotOperationType op_type, typename LinalgOp>
+template <DotOperationType op_type, typename LinalgOp>
 class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
@@ -1142,28 +1201,13 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
     if (!VerifyHloOpBufferOrTensorSemantics</*isLHLO=*/false>(op)) {
       return failure();
     }
+    if (GetDotOperationType(op) != op_type) return failure();
 
     mhlo::DotOp::Adaptor adaptor(args);
 
-    auto lhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    auto rhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    if (lhs_el_type != rhs_el_type || !lhs_el_type.isa<InputElType>() ||
-        lhs_el_type.getIntOrFloatBitWidth() != input_bit_width) {
-      return failure();
-    }
-
+    Location loc = op.getLoc();
     auto output_type = op.getType().cast<ShapedType>();
     auto output_el_type = output_type.getElementType();
-    if (!output_el_type.isa<OutputElType>() ||
-        output_el_type.getIntOrFloatBitWidth() != output_bit_width) {
-      return failure();
-    }
-
-    if (GetDotOperationType(op) != op_type) return failure();
-
-    Location loc = op.getLoc();
     auto zero_attr = rewriter.getZeroAttr(output_el_type);
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
     SmallVector<Value, 2> dyn_shape = GetDotOpInitTensorDynSizes(
@@ -1182,16 +1226,14 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
     OpBuilder& b, Location loc, Value lhs, Value rhs, ShapedType result_type) {
   SmallVector<Value, 8> dyn_shape;
   if (result_type.isDynamicDim(0))
-    dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+    dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
   if (result_type.isDynamicDim(1))
-    dyn_shape.push_back(b.create<DimOp>(loc, lhs, 1));
+    dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 1));
   if (result_type.isDynamicDim(2))
-    dyn_shape.push_back(b.create<DimOp>(loc, rhs, 2));
+    dyn_shape.push_back(b.create<memref::DimOp>(loc, rhs, 2));
   return dyn_shape;
 }
 
-template <typename InputElType, int input_bit_width, typename OutputElType,
-          int output_bit_width, typename LinalgOp>
 class DotGeneralOpOnTensorsConversion
     : public OpConversionPattern<mhlo::DotGeneralOp> {
  public:
@@ -1230,23 +1272,10 @@ class DotGeneralOpOnTensorsConversion
     }
 
     mhlo::DotGeneralOp::Adaptor adaptor(args);
-    auto lhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    auto rhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    if (lhs_el_type != rhs_el_type || !lhs_el_type.isa<InputElType>() ||
-        lhs_el_type.getIntOrFloatBitWidth() != input_bit_width) {
-      return failure();
-    }
-
-    auto output_type = op.getType().cast<ShapedType>();
-    auto output_el_type = output_type.getElementType();
-    if (!output_el_type.isa<OutputElType>() ||
-        output_el_type.getIntOrFloatBitWidth() != output_bit_width) {
-      return failure();
-    }
 
     Location loc = op.getLoc();
+    auto output_type = op.getType().cast<ShapedType>();
+    auto output_el_type = output_type.getElementType();
     SmallVector<Value, 8> dyn_shape = GetDotGeneralOpInitTensorDynSizes(
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), output_type);
     auto zero_attr = rewriter.getZeroAttr(output_el_type);
@@ -1254,7 +1283,7 @@ class DotGeneralOpOnTensorsConversion
     auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
     Value zero_tensor =
         rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
-    Operation* linalg_op = rewriter.create<LinalgOp>(
+    Operation* linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{op.getType()},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
         /*outputBuffers=*/ValueRange{zero_tensor});
@@ -1301,7 +1330,7 @@ SmallVector<Value, 8> GetReduceOpInitTensorDynSizes(
   for (int i = 0, j = 0; i < rank; ++i) {
     if (s.count(i)) continue;
     if (!result_type.isDynamicDim(j++)) continue;
-    dyn_shape.push_back(b.create<DimOp>(loc, arg, i));
+    dyn_shape.push_back(b.create<memref::DimOp>(loc, arg, i));
   }
 
   return dyn_shape;
@@ -1397,6 +1426,483 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+/// Converts mhlo.pad operation to linalg.pad_tensor op.
+struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
+  using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::PadOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    mhlo::PadOp::Adaptor adaptor(args);
+    if (llvm::any_of(
+            op.interior_padding().getValues<APInt>(),
+            [](const APInt& int_val) { return int_val.getZExtValue() != 0; })) {
+      return rewriter.notifyMatchFailure(op, "expected no interior padding");
+    }
+
+    auto loc = op.getLoc();
+    Value padding_val =
+        rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
+
+    const auto& edge_padding_low = op.edge_padding_low();
+    const auto& edge_padding_high = op.edge_padding_high();
+    SmallVector<OpFoldResult, 4> low, high;
+    for (auto it : llvm::zip(edge_padding_low, edge_padding_high)) {
+      low.push_back(rewriter.createOrFold<ConstantIndexOp>(
+          loc, std::get<0>(it).getZExtValue()));
+      high.push_back(rewriter.createOrFold<ConstantIndexOp>(
+          loc, std::get<1>(it).getZExtValue()));
+    }
+    Type result_type = op.getResult().getType();
+    auto pad_tensor_op = linalg::PadTensorOp::createPadScalarOp(
+        result_type, adaptor.operand(), padding_val, low, high, loc, rewriter);
+    rewriter.replaceOp(op, pad_tensor_op.getResult());
+    return success();
+  }
+};
+
+/// Converts mhlo.conv operation to linalg named op. This only covers normal
+/// convolution cases. The op must have canonical dimension numbers. Depthwise
+/// convolution and pointwise convolution are not handled in the conversion.
+struct NormalConvOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::ConvOp> {
+  using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    if (!HasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
+    if (op.feature_group_count() != 1u) return failure();
+
+    mhlo::ConvOp::Adaptor adaptor(args);
+    Location loc = op.getLoc();
+    Value input = adaptor.lhs();
+    Value filter = adaptor.rhs();
+    auto result_type = op.getResult().getType().cast<ShapedType>();
+    int64_t rank = result_type.getRank();
+
+    // Check if padding is zero.
+    DenseIntElementsAttr padding = op.paddingAttr();
+    if (padding && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op, "expected no padding");
+    }
+
+    // The output shape is N spatial_dims F.
+    SmallVector<Value, 8> dyn_sizes;
+    if (result_type.isDynamicDim(0)) {
+      dyn_sizes.push_back(rewriter.create<memref::DimOp>(loc, input, 0));
+    }
+    for (int64_t i = 1, e = rank - 1; i < e; ++i) {
+      if (result_type.isDynamicDim(i)) {
+        return rewriter.notifyMatchFailure(
+            op, "expected output spatial dims to be static shapes");
+      }
+    }
+    if (result_type.isDynamicDim(rank - 1)) {
+      dyn_sizes.push_back(
+          rewriter.create<memref::DimOp>(loc, filter, rank - 1));
+    }
+    Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
+    auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
+    Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+    Value zero_tensor =
+        rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+    linalg::LinalgOp res;
+    Attribute strides = op.window_stridesAttr();
+    // TODO(ataei): Only support dilated kernel right now. We need to consider
+    // input dilation for deconvolution cases.
+    Attribute dilations = op.rhs_dilationAttr();
+    switch (rank) {
+      case 3: {
+        res = rewriter.create<linalg::ConvInputNWCFilterWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      case 4: {
+        res = rewriter.create<linalg::ConvInputNHWCFilterHWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      case 5: {
+        res = rewriter.create<linalg::ConvInputNDHWCFilterDHWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      default:
+        return rewriter.notifyMatchFailure(op, "expected 1/2/3D conv op");
+    }
+    rewriter.replaceOp(op, res.getOperation()->getResults());
+    return success();
+  }
+};
+
+/// Converts mhlo.convolution operation to
+/// linalg.depthwise_conv_2d_input_nhwc_filter_hwcf op or
+/// depthwise_conv_2d_input_nhwc_filter_hwc op.
+struct DepthwiseConvOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::ConvOp> {
+  using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    if (op.batch_group_count() != 1) return failure();
+
+    if (op.padding() && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op,
+                                         "non-zero padding unsupported yet");
+    }
+
+    if ((op.lhs_dilation() && !isSplatValue(*op.lhs_dilation(), 1)) ||
+        (op.rhs_dilation() && !isSplatValue(*op.rhs_dilation(), 1))) {
+      return rewriter.notifyMatchFailure(op,
+                                         "non-one dialation unsupported yet");
+    }
+
+    if (const mhlo::ConvDimensionNumbers& dimension_numbers =
+            op.dimension_numbers()) {
+      // Make sure that this is 2-D convolution.
+      const auto spatial_rank =
+          llvm::size(dimension_numbers.input_spatial_dimensions());
+      if (spatial_rank != 2) {
+        return rewriter.notifyMatchFailure(op,
+                                           "only support 2-D cases for now");
+      }
+
+      // Make sure that this is depthwise convolution.
+      int64_t input_feature_dim =
+          dimension_numbers.input_feature_dimension().getInt();
+      int64_t input_feature_count =
+          op.lhs().getType().cast<ShapedType>().getDimSize(input_feature_dim);
+      if (op.feature_group_count() != input_feature_count) {
+        return rewriter.notifyMatchFailure(op, "not depth-wise convolution");
+      }
+
+      // Make sure that this convolution has a canonical form.
+      if (!HasCanonicalDimensionNumbers(dimension_numbers)) {
+        return rewriter.notifyMatchFailure(op, "does not have canonical form");
+      }
+    }
+
+    DenseIntElementsAttr window_strides;
+    if (op.window_strides()) {
+      window_strides = op.window_strides().getValue();
+    } else {
+      window_strides = rewriter.getI64VectorAttr({1, 1});
+    }
+
+    mhlo::ConvOp::Adaptor adaptor(args);
+    Location loc = op.getLoc();
+    Value input = adaptor.lhs();
+    Value filter = adaptor.rhs();
+    auto result_type = op.getResult().getType().cast<RankedTensorType>();
+    if (!result_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op,
+                                         "expected output has static shapes");
+    }
+
+    auto filter_dims =
+        llvm::to_vector<4>(op.rhs().getType().cast<ShapedType>().getShape());
+
+    auto get_indices_vector = [](int start, int end) {
+      return llvm::to_vector<2>(llvm::seq<int64_t>(start, end));
+    };
+
+    if (filter_dims[2] * filter_dims[3] != op.feature_group_count()) {
+      // For cases where channel multiplier != 1
+      auto output_dims = result_type.getShape();
+      auto channel_multiplier = filter_dims[3];
+      SmallVector<int64_t> reshaped_output_dims;
+      reshaped_output_dims.assign(output_dims.begin(), output_dims.end());
+      reshaped_output_dims.push_back(channel_multiplier);
+      reshaped_output_dims[3] /= channel_multiplier;
+
+      Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+          loc, reshaped_output_dims, result_type.getElementType());
+      auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
+      Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+      Value zero_tensor =
+          rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+
+      auto reshaped_output_type = RankedTensorType::get(
+          reshaped_output_dims, result_type.getElementType());
+      auto conv = rewriter.create<linalg::DepthwiseConvInputNHWCFilterHWCFOp>(
+          op.getLoc(), reshaped_output_type, ValueRange{input, filter},
+          ValueRange{zero_tensor}, window_strides);
+
+      // Create a Linalg reshape op that converts the output from 5 dimensions
+      // into 4 dimensions (by collapsing the last two dimensions). This is
+      // needed because linalg.depthwise_conv_2d_input_nhwc_filter_hwcf returns
+      // 5 dimensions for the output.
+      SmallVector<linalg::ReassociationIndices, 4> collapsed_dim_list = {
+          get_indices_vector(0, 1), get_indices_vector(1, 2),
+          get_indices_vector(2, 3), get_indices_vector(3, 5)};
+      rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
+          op, result_type, conv.getResult(0), collapsed_dim_list);
+    } else {
+      // For cases where channel multiplier == 1
+      Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+          loc, result_type.getShape(), result_type.getElementType());
+      auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
+      Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+      Value zero_tensor =
+          rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+
+      // Create a Linalg reshape op that converts the filter from 4 dimensions
+      // into 3 dimensions (by droping the unit dimension). This is needed
+      // because linalg.depthwise_conv_2d_input_nhwc_filter_hwc expects 3
+      // dimensions for the filter.
+
+      filter_dims[2] = static_cast<int64_t>(op.feature_group_count());
+      filter_dims.pop_back();
+
+      RankedTensorType filter_shape =
+          RankedTensorType::get(filter_dims, op.getType().getElementType());
+
+      SmallVector<linalg::ReassociationIndices, 4> collapsed_dim_list = {
+          get_indices_vector(0, 1), get_indices_vector(1, 2),
+          get_indices_vector(2, 4)};
+
+      Value reshaped_filter = rewriter.create<linalg::TensorReshapeOp>(
+          loc, filter_shape, filter, collapsed_dim_list);
+
+      rewriter.replaceOpWithNewOp<linalg::DepthwiseConvInputNHWCFilterHWCOp>(
+          op, result_type, ValueRange{input, reshaped_filter},
+          ValueRange{zero_tensor}, window_strides);
+    }
+
+    return success();
+  }
+};
+
+struct ReduceWindowOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::ReduceWindowOp> {
+  using OpConversionPattern<mhlo::ReduceWindowOp>::OpConversionPattern;
+
+  /// mhlo.reduce_window is mapped to a linalg.pooling operation. The type of
+  /// the pooling is determined based on the body of the reduce window
+  /// operation. This class enumerates the different variants.
+  enum class PoolingType {
+    kInvalid,
+    kMin,
+    kMax,
+    kAdd,
+  };
+
+  static PoolingType getPoolingType(mhlo::ReduceWindowOp reduce_op,
+                                    int result_index) {
+    if (Operation* op = reduce_op.getReductionOp(result_index)) {
+      if (isa<mhlo::MinOp>(*op)) return PoolingType::kMin;
+      if (isa<mhlo::MaxOp>(*op)) return PoolingType::kMax;
+      if (isa<mhlo::AddOp>(*op)) return PoolingType::kAdd;
+    }
+    return PoolingType::kInvalid;
+  }
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceWindowOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    auto loc = op.getLoc();
+    int rank = op.getResultTypes()[0].cast<ShapedType>().getRank();
+    if (rank != 4) {
+      return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
+    }
+
+    if (op.padding() && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op, "require paddings are all zero");
+    }
+
+    SmallVector<int64_t, 2> shapes;
+    shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
+    shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
+
+    if (op.window_strides() &&
+        (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
+         op.window_strides().getValue().getValue<int64_t>(3) != 1)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected window_strides to be [1,x,y,1]");
+    }
+    if (op.window_dimensions() &&
+        (op.window_dimensions().getValue<int64_t>(0) != 1 ||
+         op.window_dimensions().getValue<int64_t>(3) != 1)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected window_dimensions to be [1,x,y,1]");
+    }
+
+    Attribute strides;
+    if (op.window_stridesAttr()) {
+      strides = rewriter.getI64VectorAttr(
+          {op.window_strides().getValue().getValue<int64_t>(1),
+           op.window_strides().getValue().getValue<int64_t>(2)});
+    } else {
+      strides = rewriter.getI64VectorAttr({1, 1});
+    }
+    Attribute dilations;
+    if (op.window_dilations()) {
+      dilations = rewriter.getI64VectorAttr(
+          {op.window_dilations().getValue().getValue<int64_t>(1),
+           op.window_dilations().getValue().getValue<int64_t>(2)});
+    } else {
+      dilations = rewriter.getI64VectorAttr({1, 1});
+    }
+
+    SmallVector<Value> pooling_ops;
+
+    ArrayRef<Value> inputs = args.take_front(op.inputs().size());
+    ArrayRef<Value> init_values = args.drop_front(op.inputs().size());
+    for (auto it : llvm::zip(op.getResults(), inputs, init_values)) {
+      OpResult result = std::get<0>(it);
+      Value input = std::get<1>(it);
+      Value init_value = std::get<2>(it);
+      auto result_type = result.getType().cast<ShapedType>();
+      if (!input.getType().cast<ShapedType>().getElementType().isF32()) {
+        return rewriter.notifyMatchFailure(op,
+                                           "expected element type to be f32");
+      }
+
+      // Create a fake window dimension.
+      auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
+          loc, shapes, result_type.getElementType());
+      Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+          loc, result_type.getShape(), result_type.getElementType());
+      init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
+      Value filled_init_tensor =
+          rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+              .getResult(0);
+      auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
+        return cast<linalg::LinalgOp>(
+            rewriter
+                .create<std::remove_pointer_t<decltype(type_ptr)>>(
+                    loc, ArrayRef<Type>{result_type},
+                    ValueRange{args[0], fake_window_dims.getResult()},
+                    filled_init_tensor, dilations, strides)
+                .getOperation());
+      };
+      linalg::LinalgOp pooling_op;
+      PoolingType pooling_type = getPoolingType(op, result.getResultNumber());
+      switch (pooling_type) {
+        case PoolingType::kMin: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kMax: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kAdd: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kInvalid:
+          return rewriter.notifyMatchFailure(op, "unknown reduction operation");
+      }
+      pooling_ops.push_back(pooling_op->getResult(0));
+    }
+    rewriter.replaceOp(op, pooling_ops);
+    return success();
+  }
+};
+
+/// Converts xla-hlo.torch_index_select op to a linalg.indexed_generic op.
+struct TorchIndexSelectOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
+  using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::TorchIndexSelectOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    mhlo::TorchIndexSelectOp::Adaptor adaptor(args);
+    int axis = static_cast<int>(op.dim());
+    int batch = static_cast<int>(op.batch_dims());
+    auto index_shaped_type = adaptor.index().getType().cast<ShapedType>();
+    int num_indices = static_cast<int>(index_shaped_type.getRank());
+    auto input_shaped_type = adaptor.input().getType().cast<ShapedType>();
+    if (axis < 0) axis += static_cast<int>(input_shaped_type.getRank());
+    if (batch < 0) batch += num_indices;
+
+    Location loc = op.getLoc();
+    auto result_type = op.getResult().getType().cast<ShapedType>();
+    int rank = static_cast<int>(result_type.getRank());
+
+    SmallVector<AffineMap, 2> indexing_maps;
+    SmallVector<AffineExpr, 4> exprs;
+    for (int i = 0; i < batch; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(i));
+    }
+    for (int i = 0, e = num_indices - batch; i < e; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(axis + i));
+    }
+    indexing_maps.emplace_back(
+        AffineMap::get(rank, /*symbolCount=*/0, exprs, rewriter.getContext()));
+    indexing_maps.emplace_back(rewriter.getMultiDimIdentityMap(rank));
+
+    // The output shape is
+    //   `params[:axis] + indices[batch_dims:] + params[axis + 1:]`
+    SmallVector<Value, 4> dyn_sizes;
+    for (int i = 0; i < rank; ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
+      if (i < axis) {
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.input(), i));
+      } else if (i < (axis + num_indices - batch)) {
+        int idx = i - axis + batch;
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.index(), idx));
+      } else {
+        int idx = i - (axis + num_indices - batch) + axis + 1;
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.input(), idx));
+      }
+    }
+    Value init_op = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
+    auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
+        loc, /*resultTensors=*/ArrayRef<Type>{result_type},
+        /*inputs=*/adaptor.index(),
+        /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank));
+
+    SmallVector<Type, 4> body_arg_types;
+    SmallVector<Value, 2> linalg_op_args = {adaptor.index()};
+    // Add a block to the region.
+    auto* region = &linalg_op.region();
+    auto* block = rewriter.createBlock(region, region->end());
+    body_arg_types.append(rank, rewriter.getIndexType());
+    for (auto block_args : linalg_op_args) {
+      body_arg_types.push_back(
+          block_args.getType().cast<ShapedType>().getElementType());
+    }
+    block->addArguments(body_arg_types);
+    block->addArguments(result_type.getElementType());
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToEnd(block);
+
+    SmallVector<Value, 4> indices;
+    Value casted_value = rewriter.create<IndexCastOp>(
+        loc, block->getArgument(rank), rewriter.getIndexType());
+    for (int i = 0; i < axis; ++i) {
+      indices.push_back(block->getArgument(i));
+    }
+    indices.push_back(casted_value);
+    for (int i = axis + num_indices - batch; i < rank; ++i) {
+      indices.push_back(block->getArgument(i));
+    }
+
+    Value res =
+        rewriter.create<tensor::ExtractOp>(loc, adaptor.input(), indices);
+    rewriter.create<linalg::YieldOp>(loc, res);
+
+    rewriter.replaceOp(op, linalg_op.getResults());
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -1477,15 +1983,17 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect, math::MathDialect>();
+    registry
+        .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
-                           math::MathDialect, StandardOpsDialect,
-                           AffineDialect>();
+                           math::MathDialect, memref::MemRefDialect,
+                           StandardOpsDialect, AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1498,16 +2006,20 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect, math::MathDialect>();
+    registry
+        .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
                            math::MathDialect, StandardOpsDialect,
                            tensor::TensorDialect, scf::SCFDialect>();
+
+    // TODO: DimOp shouldn't be in MemRefDialect
+    target.addLegalOp<memref::DimOp>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1529,10 +2041,12 @@ namespace mhlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
+  // clang-format off
   patterns->insert<
       BroadcastConverter<mhlo::BroadcastOp, false>,
       ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
+      IotaConverter<mhlo::DynamicIotaOp, false>,
       PointwiseToLinalgConverter<mhlo::AbsOp, false>,
       PointwiseToLinalgConverter<mhlo::AddOp, false>,
       PointwiseToLinalgConverter<mhlo::AndOp, false>,
@@ -1577,53 +2091,24 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
       TransposeConverter<mhlo::TransposeOp, false>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI32I32I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI32I32I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI32I32I32Op>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kMatrixMatrix,
+      DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
                                linalg::MatmulOp>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kMatrixVector,
+      DotOpOnTensorsConversion<DotOperationType::kMatrixVector,
                                linalg::MatvecOp>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kVectorDot, linalg::DotOp>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                                      linalg::BatchMatmulI8I8I32Op>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                                      linalg::BatchMatmulI16I16I32Op>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                                      linalg::BatchMatmulI32I32I32Op>,
-      DotGeneralOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                                      linalg::BatchMatmulOp>,
-      ReduceOnTensorsConversion>(context);
+      DotOpOnTensorsConversion<DotOperationType::kVectorDot, linalg::DotOp>,
+      DotGeneralOpOnTensorsConversion,
+      NormalConvOpOnTensorsConversion,
+      DepthwiseConvOpOnTensorsConversion,
+      ReduceOnTensorsConversion,
+      ReduceWindowOpOnTensorsConversion,
+      TorchIndexSelectOpOnTensorsConversion,
+      PadOpOnTensorsConversion>(context);
+  // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                    ReduceRegionXLAOpConversion<mhlo::MinOp>,
                    ReduceRegionXLAOpConversion<mhlo::MaxOp>,
+                   ReduceRegionXLAOpConversion<mhlo::AndOp>,
+                   ReduceRegionXLAOpConversion<mhlo::OrOp>,
                    ReduceRegionReturnOpConversion>(context);
 }
 

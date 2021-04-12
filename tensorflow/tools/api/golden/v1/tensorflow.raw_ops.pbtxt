@@ -369,6 +369,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'adj_x\', \'adj_y\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "BatchMatMulV3"
+    argspec: "args=[\'x\', \'y\', \'Tout\', \'adj_x\', \'adj_y\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "BatchMatrixBandPart"
     argspec: "args=[\'input\', \'num_lower\', \'num_upper\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -787,10 +791,6 @@ tf_module {
   member_method {
     name: "CombinedNonMaxSuppression"
     argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
-  }
-  member_method {
-    name: "CompareAndBitpack"
-    argspec: "args=[\'input\', \'threshold\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Complex"
@@ -1641,6 +1641,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "FinalizeDataset"
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'has_captured_ref\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "Fingerprint"
     argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1775,6 +1779,10 @@ tf_module {
   member_method {
     name: "GeneratorDataset"
     argspec: "args=[\'init_func_other_args\', \'next_func_other_args\', \'finalize_func_other_args\', \'init_func\', \'next_func\', \'finalize_func\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GetOptions"
+    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "GetSessionHandle"
@@ -2717,6 +2725,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "OptionsDataset"
+    argspec: "args=[\'input_dataset\', \'serialized_options\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "OrderedMapClear"
     argspec: "args=[\'dtypes\', \'capacity\', \'memory_limit\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'\', \'\', \'None\'], "
   }
@@ -2798,7 +2810,7 @@ tf_module {
   }
   member_method {
     name: "ParallelBatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'default\', \'None\'], "
   }
   member_method {
     name: "ParallelConcat"

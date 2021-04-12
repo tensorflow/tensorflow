@@ -289,6 +289,19 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
+  let summary = "Marks device cluster inputs-output pairs that read/write to the same variable as aliases";
+
+  let description = [{
+This pass analyzes the inputs and outputs to device cluster and marks those
+input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
+and write to the same resource. This aliasing information can then be propagated
+to XLA compiler for input/output buffer space optimizations.
+  }];
+
+  let constructor = "TFDevice::CreateMarkInputOutputAliasesPass()";
+}
+
 def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
   let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
 
@@ -718,14 +731,21 @@ def ClusterOpsByPolicyPass : FunctionPass<"cluster-ops-by-policy"> {
 This pass clusters ops according to the policy specified by the pass options.
 Clustered ops are moved to a tf_device::clusterOp region.
 
-The only currently supported option is 'oplist=<list of ops>'. This option
-specifies the names of the ops that should be clustered if they form
-a single use def-use chain, that is, the next op in the list uses the result
-of the previous op and is the only user of that result. The ops should
-be located in the same block, be assigned to the same device and have no
-side effects.
+First you need to specify the 'oplist=<list of ops>' option. This option
+specifies the names of the ops that should be clustered together. Then you need
+to specify the algorithm for forming a cluster with a `mode=<algorithm>` option:
 
-For example, running this pass with option oplist="tf.Cast, tf.Add" on:
+1. `use-def` (default): cluster ops together if they form a single use def-use
+   chain, that is, the next op in the list uses the result of the previous op
+   and is the only user of that result.
+2. `union-find`: cluster ops together that are connected to each other with
+   potentially different use def chains using union-find algorithm.
+
+For both algorithms the ops should be located in the same block, be assigned to
+the same device and have no side effects.
+
+For example, running this pass with options:
+  "oplist=tf.Cast,tf.Add algorithm=use-def"
 
 ```mlir
 func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
@@ -749,15 +769,104 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
   return %1 : tensor<i32>
 }
 ```
+
+Running with `union-find` algorithm allows to cluster together operations that
+do not form a single use-def chain:
+  "oplist=tf.Add,tf.Sub algorithm=union-find"
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %1 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Sub:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %2 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%1, %2) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
   }];
 
   let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
 
   let options = [
+   Option<"policy_name", "policy-name", "std::string", /*default=*/"",
+          "Adds a policy string attribute to all extracted clusters. This "
+          "attribute allows to distinguish clusters formed by different "
+          "policies or maybe other clustering algorithms.">,
+   Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
+          "Do not form clusters smaller of the given size.">,
+   Option<"algorithm", "algorithm", "std::string", /*default=*/"\"use-def\"",
+          "Clustering algorithm type: `use-def` or `union-find`">,
    ListOption<"oplist", "oplist", "std::string",
                "Cluster listed ops when they form a single use def-use chain, "
                "such that each op's single user is the next op in the list.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
+
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
+def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
+  let summary = "Verify module is suitable for export back to TF Graph";
+  let description = [{
+    Verifies whether all functions in module are of single tf_executor.graph and
+    each tf_executor.island in tf_executor.graph only has a single op.
+  }];
+
+  let constructor = "TF::CreateVerifySuitableForExportPass()";
+}
+
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+  let summary = "Prepare TPU computation to be legal for export to TensorFlow";
+  let description = [{
+    Prepares TPU computation module attached to _TPUCompileMlir op for
+    TensorFlow graph export by making transformation such as replacing or
+    removing MLIR or XLA specific attributes that are not legal in TensorFlow
+    graph.
+  }];
+
+  let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}
+
+def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
+
+  let description = [{
+This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+the same device attribute.
+
+For example, the following:
+
+```mlir
+func @single_op_launch() {
+  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+  return %a
+}
+```
+
+will be transformed into:
+
+```mlir
+func @single_op_launch() {
+  %1 = tf_device.launch() ( {
+    %a = "tf.opA"() : () -> tensor<i1>
+    tf_device.return %a
+  }) {device = "CPU:0"} : () -> tensor<i1>
+  return %1
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
+}

@@ -27,6 +27,8 @@ TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
+TfLiteRegistration* Register_RANDOM_UNIFORM();
+TfLiteRegistration* Register_RANDOM_UNIFORM_INT();
 
 }  // namespace custom
 }  // namespace ops

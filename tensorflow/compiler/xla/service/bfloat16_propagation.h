@@ -72,6 +72,10 @@ class BFloat16Propagation : public HloModulePass {
   // (precision reductions were added).
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Returns whether we should avoid changing the precision of inst regardless
+  // of the producers and users.
+  virtual bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst);
+
  private:
   // ***************************
   // Function called and state produced by the forward analysis pass (from

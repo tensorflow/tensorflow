@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -255,6 +256,38 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   int n_profiles = 1;
 #endif
   return n_input / n_profiles;
+}
+
+string ProfileStrategyToName(const ProfileStrategy strategy) {
+  switch (strategy) {
+    case ProfileStrategy::kRange:
+      return "Range";
+    case ProfileStrategy::kOptimal:
+      return "Optimal";
+    case ProfileStrategy::kRangeOptimal:
+      return "Range+Optimal";
+    case ProfileStrategy::kImplicitBatchModeCompatible:
+      return "ImplicitBatchModeCompatible";
+  }
+  return "Unknown";
+}
+
+Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
+  string name_lowercase(name);
+  std::transform(name.begin(), name.end(), name_lowercase.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  if (name_lowercase == "range") {
+    *strategy = ProfileStrategy::kRange;
+  } else if (name_lowercase == "optimal") {
+    *strategy = ProfileStrategy::kOptimal;
+  } else if (name_lowercase == "range+optimal") {
+    *strategy = ProfileStrategy::kRangeOptimal;
+  } else if (name_lowercase == "implicitbatchmodecompatible") {
+    *strategy = ProfileStrategy::kImplicitBatchModeCompatible;
+  } else {
+    return errors::InvalidArgument("Invalid profile strategy: ", name);
+  }
+  return Status::OK();
 }
 
 #endif

@@ -854,7 +854,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
-      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:

@@ -163,6 +163,7 @@ void AllocateAndParseFlags() {
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
+  ops_flags->tf_xla_async_compilation = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -216,6 +217,10 @@ void AllocateAndParseFlags() {
 
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),
+       Flag("tf_xla_async_compilation", &ops_flags->tf_xla_async_compilation,
+            "When lazy compilation is enabled, asynchronous compilation starts "
+            "the cluster compilation in the background, and the fallback path "
+            "is executed until the compilation has finished."),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",
@@ -242,7 +247,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        (mlir_bridge_safe_mode)
+            ? ConfigProto::Experimental::
+                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
+            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         (mlir_bridge_safe_mode)
@@ -290,6 +298,37 @@ GetIntroduceFloatingPointJitterPassFlags() {
 MlirCommonFlags* GetMlirCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return mlir_flags;
+}
+
+ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
+    absl::optional<const ConfigProto> config_proto) {
+  // TF1 graphs that do not override Sessions's ConfigProto and TF2 graphs
+  // can enable/disable the graph via tf_mlir_enable_mlir_bridge.
+  auto tf_mlir_enable_mlir_bridge =
+      GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+  if (tf_mlir_enable_mlir_bridge !=
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED) {
+    return tf_mlir_enable_mlir_bridge;
+  }
+
+  // If a ConfigProto was not passed in, we can assume the caller is
+  // checking if TF2 graph should have the bridge enabled / disabled. In that
+  // case, we have already checked tf_mlir_enable_mlir_bridge so it is safe to
+  // return UNSPECIFIED here.
+  if (!config_proto.has_value()) {
+    return ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+  }
+
+  // TF1 graphs that do override Session's ConfigProto and set
+  // ConfigProto's enable_mlir_bridge or mlir_bridge_rollout fields will not
+  // update tf_mlir_enable_mlir_bridge so check their values.
+
+  // ConfigProto's enable_mlir_bridge defaults to false so only respect it
+  // when it is true.
+  if (config_proto.value().experimental().enable_mlir_bridge()) {
+    return ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  }
+  return config_proto.value().experimental().mlir_bridge_rollout();
 }
 
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {

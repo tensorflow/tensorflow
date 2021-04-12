@@ -1,0 +1,8 @@
+path: "tensorflow.types.experimental.Callable"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+}

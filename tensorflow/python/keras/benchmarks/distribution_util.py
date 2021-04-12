@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Util for running models in a distribution setting.
+"""Utils for running models in a distribution setting.
 
 Mostly from
-https://github.com/tensorflow/models/blob/master/official/
-utils/misc/distribution_utils.py.
+https://github.com/tensorflow/models/blob/master/official/utils/misc/distribution_utils.py.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
 
 import json
+import os
 
 import tensorflow as tf
 

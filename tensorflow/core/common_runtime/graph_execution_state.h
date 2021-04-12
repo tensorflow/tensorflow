@@ -139,7 +139,9 @@ class GraphExecutionState {
 
   // Optimize the graph with the node set specified in `options`.
   Status OptimizeGraph(
-      const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+      const BuildGraphOptions& options, const Graph& graph,
+      const FunctionLibraryDefinition* flib_def,
+      std::unique_ptr<Graph>* optimized_graph,
       std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
 
   // The graph returned by BuildGraph may contain only the pruned

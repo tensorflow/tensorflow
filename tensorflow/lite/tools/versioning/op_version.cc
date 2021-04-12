@@ -177,6 +177,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER:
+      if (op_sig.options.gather.batch_dims != 0) {
+        return 5;
+      }
+
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 4;
       }
@@ -390,10 +394,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.options.strided_slice.ellipsis_mask != 0 ||
+          op_sig.options.strided_slice.new_axis_mask != 0) {
+        return 6;
+      }
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 5;
       }
-      if (op_sig.options.single_input_op.num_dims > 4) {
+      if (op_sig.options.strided_slice.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
@@ -589,11 +597,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
-    case BuiltinOperator_PAD:
-    case BuiltinOperator_PADV2:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
@@ -653,6 +672,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     default:
       return 1;
   }
+  // Prevent lint error about this function being too long.
+  // NOLINTNEXTLINE
 }
 
 TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
@@ -665,7 +686,7 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
   if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
     return subgraph->tensors()->Get(idx)->type();
   }
-  LOG(ERROR) << "Can't access tenor " << idx;
+  LOG(ERROR) << "Can't access tensor " << idx;
   return kTensorTypeNone;
 }
 
@@ -810,8 +831,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.conv_2d.is_per_channel_quantized = true;
       }
     } break;
-    // TODO(b/150176627): Add tests for GetOpSignature.
-    case BuiltinOperator_STRIDED_SLICE:
+    case BuiltinOperator_STRIDED_SLICE: {
+      auto strided_slice_option = op->builtin_options_as_StridedSliceOptions();
+      if (strided_slice_option) {
+        op_sig.options.strided_slice.ellipsis_mask =
+            strided_slice_option->ellipsis_mask();
+        op_sig.options.strided_slice.new_axis_mask =
+            strided_slice_option->new_axis_mask();
+      }
+      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
+    } break;
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -832,6 +863,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       auto batch_matmul_option = op->builtin_options_as_BatchMatMulOptions();
       op_sig.options.input_quantization.asymmetric_quantize_inputs =
           batch_matmul_option->asymmetric_quantize_inputs();
+    } break;
+
+    case BuiltinOperator_GATHER: {
+      auto gather_option = op->builtin_options_as_GatherOptions();
+      op_sig.options.gather.batch_dims = gather_option->batch_dims();
     } break;
 
     default:
@@ -865,6 +901,12 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        // Skip updating op version if the current node uses lower version.
+        // TODO(b/184366869): Populate multiple versions of operator once MLIR
+        // quantizer is ready.
+        if (op_ver <= op_code->version()) {
+          continue;
+        }
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
                      << EnumNameBuiltinOperator(builtin_code) << " to version "

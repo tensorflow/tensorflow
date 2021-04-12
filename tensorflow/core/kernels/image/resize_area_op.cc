@@ -144,17 +144,17 @@ class ResizeAreaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
     // The op always did the correct thing with regard to pixel centers, so we
     // always pass false here for half_pixel_centers since ImageResizerState
     // enforces that if align_corners_ is true, half_pixel_centers must be
     // false.
     ImageResizerState st(align_corners_, /*unused half_pixel_centers=*/false);
-    st.ValidateAndCreateOutput(context, input);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input_data(
+        context->input(0).tensor<T, 4>());
 
     // Precompute values used when iterating over x coordinates within a row.
     // Note that it may be useful to cache x_interps for a given

@@ -37,8 +37,8 @@ class UnaryOpsTest : public UnaryOpsTestBase {
 
 // TODO(b/179242253): Re-enable buffer reuse.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
+    Abs, DT_HALF, DT_HALF, DT_HALF, DT_HALF,
+    test::NearZeroAndExtremeInput<Eigen::half>(), Eigen::numext::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -67,23 +67,83 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
-/// Test `tf.Sqrt`.
+/// Test `tf.Ceil`.
+GENERATE_DEFAULT_TEST(Ceil, DT_HALF, DT_HALF, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Ceil, DT_DOUBLE, DT_DOUBLE, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
 
-// Forwards to Eigen, necessary since Eigen passes by `const T&` but existing
-// Test class expects passing by value.  Eigen::numext::sqrt works properly for
-// Eigen::half and Eigen::bfloat16, which do not have a std::sqrt
-// implementation.
+/// Test `tf.Cos`.
+GENERATE_DEFAULT_TEST(Cos, DT_HALF, DT_HALF, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_FLOAT, DT_FLOAT, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Floor`.
+GENERATE_DEFAULT_TEST(Floor, DT_HALF, DT_HALF, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Floor, DT_FLOAT, DT_FLOAT, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Floor, DT_DOUBLE, DT_DOUBLE, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Rsqrt`.
+GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Sin`.
+GENERATE_DEFAULT_TEST(Sin, DT_HALF, DT_HALF, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_FLOAT, DT_FLOAT, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Sqrt`.
+GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Square`.
 template <typename T>
-T baseline_sqrt(T x) {
-  using Eigen::numext::sqrt;
-  return sqrt(x);
+T baseline_square(T a) {
+  return a * a;
 }
 
-GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, baseline_sqrt,
+GENERATE_DEFAULT_TEST(Square, DT_HALF, DT_HALF, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
-GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, baseline_sqrt,
+GENERATE_DEFAULT_TEST(Square, DT_FLOAT, DT_FLOAT, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
-GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, baseline_sqrt,
+GENERATE_DEFAULT_TEST(Square, DT_DOUBLE, DT_DOUBLE, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(
+    Square, DT_INT32, DT_INT32, baseline_square,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Square, DT_INT64, DT_INT64, baseline_square,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_COMPLEX64, DT_COMPLEX64, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Square, DT_COMPLEX128, DT_COMPLEX128, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Tan`.
+GENERATE_DEFAULT_TEST(Tan, DT_HALF, DT_HALF, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, Eigen::numext::tan,
                       test::OpsTestConfig().NoBufferReuse())
 
 }  // namespace

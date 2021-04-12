@@ -45,19 +45,23 @@ def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,
       str(exported_names).encode('utf-8'), show_debug_info)
 
 
-def experimental_convert_saved_model_v1_to_mlir_lite(saved_model_path, tags,
+def experimental_convert_saved_model_v1_to_mlir_lite(saved_model_path,
+                                                     exported_names, tags,
                                                      upgrade_legacy,
                                                      show_debug_info):
   return ExperimentalConvertSavedModelV1ToMlirLite(
       str(saved_model_path).encode('utf-8'),
+      str(exported_names).encode('utf-8'),
       str(tags).encode('utf-8'), upgrade_legacy, show_debug_info)
 
 
-def experimental_convert_saved_model_v1_to_mlir(saved_model_path, tags,
+def experimental_convert_saved_model_v1_to_mlir(saved_model_path,
+                                                exported_names, tags,
                                                 lift_variables, upgrade_legacy,
                                                 show_debug_info):
   return ExperimentalConvertSavedModelV1ToMlir(
       str(saved_model_path).encode('utf-8'),
+      str(exported_names).encode('utf-8'),
       str(tags).encode('utf-8'), lift_variables, upgrade_legacy,
       show_debug_info)
 

@@ -260,4 +260,17 @@ StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
   return parameters_to_donate;
 }
 
+int DefaultThreadPoolSize() {
+  // Google's CI system exposes an environment variable NPROC that describes
+  // a CPU reservation for tests.
+  // TODO(phawkins): expose a better thought-out set of knobs to control
+  // parallelism.
+  const char* nproc_str = std::getenv("NPROC");
+  int nproc = 0;
+  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
+    return std::max(0, nproc);
+  }
+  return tensorflow::port::MaxParallelism();
+}
+
 }  // namespace xla

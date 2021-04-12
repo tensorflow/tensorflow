@@ -9,7 +9,7 @@ load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_libr
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -452,7 +452,6 @@ alias(
 cc_library(
     name = "tensorflowlite_native",
     srcs = ["libtensorflowlite_jni.so"],
-    visibility = ["//visibility:private"],
 )
 
 cc_library(

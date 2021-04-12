@@ -6,7 +6,7 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites"
 
 package(
     default_visibility = ["//tensorflow/compiler/xla/client:friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -457,6 +457,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
@@ -466,18 +467,15 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    disabled_backends = [
-        "cpu",
-        "gpu",
-    ],
     real_hardware_only = True,
-    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":arithmetic",
         ":constants",
+        ":math",
         ":matrix",
         ":self_adjoint_eig",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:literal",

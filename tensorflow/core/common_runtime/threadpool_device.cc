@@ -12,6 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL) && defined(_OPENMP)
+#ifndef DNNL_AARCH64_USE_ACL
+// Using LLVM's OpenMP header
+#include "external/llvm_openmp/include/omp.h"
+/* Added EIGEN_DONT_PARALLELIZE to avoid duplicating omp.h, please refer to
+this link https://eigen.tuxfamily.org/dox/TopicMultiThreading.html for more
+info. It does not have any negative impact on performance. */
+#define EIGEN_DONT_PARALLELIZE
+#else
+#include "omp.h"  // NOLINT
+#endif
+#endif  // ENABLE_ONEDNN_OPENMP && ENABLE_MKL &&_OPENMP
+
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
 #include "absl/base/call_once.h"
@@ -33,12 +47,9 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#endif
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 
@@ -50,22 +61,33 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
-#if !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
   // Early return when MKL is disabled
-  if (DisableMKL()) return;
+  if (!IsMKLEnabled()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
-  static absl::once_flag omp_setting_flag;
+  static absl::once_flag num_threads_setting_flag;
   if (user_omp_threads == nullptr) {
     // OMP_NUM_THREADS controls MKL's intra-op parallelization
     // Default to available physical cores
     const int mkl_intra_op = port::NumSchedulableCPUs();
     const int ht = port::NumHyperthreadsPerCore();
-    absl::call_once(omp_setting_flag, omp_set_num_threads,
+    absl::call_once(num_threads_setting_flag, omp_set_num_threads,
                     (mkl_intra_op + ht - 1) / ht);
   }
+
+#ifndef DNNL_AARCH64_USE_ACL
+  const char* user_kmp_blocktime = getenv("KMP_BLOCKTIME");
+  static absl::once_flag blocktime_setting_flag;
+  if (user_kmp_blocktime == nullptr) {
+    // Sets the time, in milliseconds, that a thread should wait,
+    // after completing the execution of a parallel region, before sleeping.
+    absl::call_once(blocktime_setting_flag, kmp_set_blocktime, 1);
+  }
+#endif
+
 #endif  // _OPENMP
-#endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
 }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
@@ -126,10 +148,8 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-#ifdef ENABLE_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsMKLEnabled() ? 200 : 50),
                        MklCPUAllocatorFactory);
-#endif  // ENABLE_MKL
 
 }  // namespace
 #endif  // INTEL_MKL

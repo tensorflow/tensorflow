@@ -52,12 +52,14 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 class NotEncodableError(Exception):
   """Error raised when a coder cannot encode an object."""
 
 
+@tf_export("__internal__.saved_model.StructureCoder", v1=[])
 class StructureCoder(object):
   """Encoder and decoder for nested structures into protos."""
 

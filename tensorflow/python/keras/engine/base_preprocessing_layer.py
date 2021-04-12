@@ -13,15 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the base ProcessingLayer and a subclass that uses Combiners."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import collections
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -29,10 +25,11 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -47,9 +44,20 @@ keras_kpl_gauge = monitoring.BoolGauge(
 
 
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
-@six.add_metaclass(abc.ABCMeta)
-class PreprocessingLayer(Layer):
-  """Base class for PreprocessingLayers.
+class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
+  """Base class for Preprocessing Layers.
+
+  **Don't use this class directly: it's an abstract base class!** You may
+  be looking for one of the many built-in
+  [preprocessing layers](https://keras.io/guides/preprocessing_layers/)
+  instead.
+
+  Preprocessing layers are layers whose state gets computed before model
+  training starts. They do not get updated during training.
+  Most preprocessing layers implement an `adapt()` method for state computation.
+
+  The `PreprocessingLayer` class is the base class you would subclass to
+  implement your own preprocessing layers.
 
   Attributes:
     stateful: Whether the layer contains state that needs to be adapted via
@@ -209,6 +217,8 @@ class PreprocessingLayer(Layer):
           throw if 'reset_state' is set to False.
     """
     _disallow_inside_tf_function('adapt')
+    if not version_utils.should_use_v2():
+      raise RuntimeError('`adapt` is only supported in tensorflow v2.')  # pylint: disable=g-doc-exception
     if not self.stateful:
       return
     if not self.streaming and self._is_adapted and not reset_state:
@@ -291,6 +301,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def reset_state(self):
     self._adapt_accumulator = None
 
+  @trackable.no_automatic_dependency_tracking
   def update_state(self, data):
     if self._adapt_accumulator is None:
       self._adapt_accumulator = self._get_accumulator()
@@ -404,12 +415,12 @@ def convert_to_list(values, sparse_default_value=None):
     # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
     # you can't call to_list() on it without evaluating it first. However,
     # because we don't yet fully support composite tensors across Keras,
-    # K.get_value() won't evaluate the tensor.
+    # backend.get_value() won't evaluate the tensor.
     # TODO(momernick): Get Keras to recognize composite tensors as Tensors
-    # and then replace this with a call to K.get_value.
+    # and then replace this with a call to backend.get_value.
     if (isinstance(values, ragged_tensor.RaggedTensor) and
         not context.executing_eagerly()):
-      values = K.get_session(values).run(values)
+      values = backend.get_session(values).run(values)
     values = values.to_list()
 
   if isinstance(values,
@@ -421,10 +432,10 @@ def convert_to_list(values, sparse_default_value=None):
         sparse_default_value = -1
     dense_tensor = sparse_ops.sparse_tensor_to_dense(
         values, default_value=sparse_default_value)
-    values = K.get_value(dense_tensor)
+    values = backend.get_value(dense_tensor)
 
   if isinstance(values, ops.Tensor):
-    values = K.get_value(values)
+    values = backend.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.
   # In either case, we want to force it into a standard python list.

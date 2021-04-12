@@ -65,7 +65,7 @@ void CompareNumericalAndManualGradients(
 Status MatMulModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::MatMul(ctx, inputs, outputs, "MatMul",
+  return ops::MatMul(ctx, inputs[0], inputs[1], outputs, "MatMul",
                      /*transpose_a=*/false,
                      /*transpose_b=*/false);
 }
@@ -73,7 +73,7 @@ Status MatMulModel(AbstractContext* ctx,
 Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Mul(ctx, inputs, outputs, "Mul");
+  return ops::Mul(ctx, inputs[0], inputs[1], outputs, "Mul");
 }
 
 // TODO(vnvo2409): Add more tests from `python/ops/gradient_checker_v2_test.py`.
@@ -87,8 +87,11 @@ class GradientCheckerTest
   void SetUp() override {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
-    Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+
+    {
+      Status s = StatusFromTF_Status(status.get());
+      CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    }
 
     {
       AbstractContext* ctx_raw = nullptr;
@@ -117,8 +120,8 @@ TEST_P(GradientCheckerTest, TestMatMul) {
   AbstractTensorHandlePtr A;
   {
     AbstractTensorHandle* A_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), A_vals, A_dims, 2, &A_raw);
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx_.get(), A_vals,
+                                                         A_dims, 2, &A_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     A.reset(A_raw);
   }
@@ -127,8 +130,8 @@ TEST_P(GradientCheckerTest, TestMatMul) {
   AbstractTensorHandlePtr B;
   {
     AbstractTensorHandle* B_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), B_vals, B_dims, 2, &B_raw);
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx_.get(), B_vals,
+                                                         B_dims, 2, &B_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     B.reset(B_raw);
   }
@@ -143,7 +146,8 @@ TEST_P(GradientCheckerTest, TestMul) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx_.get(), 2.0f, &x_raw);
+    Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx_.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -151,7 +155,8 @@ TEST_P(GradientCheckerTest, TestMul) {
   AbstractTensorHandlePtr y;
   {
     AbstractTensorHandle* y_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx_.get(), 7.0f, &y_raw);
+    Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx_.get(), 7.0f, &y_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     y.reset(y_raw);
   }

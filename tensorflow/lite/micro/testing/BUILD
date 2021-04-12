@@ -1,6 +1,6 @@
 package(
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -13,8 +13,6 @@ package_group(
     packages = ["//tensorflow/lite/experimental/microfrontend/..."],
 )
 
-exports_files(["test_linux_binary.sh"])
-
 cc_library(
     name = "micro_test",
     hdrs = [
@@ -23,7 +21,6 @@ cc_library(
     visibility = [
         ":micro",
         ":microfrontend",
-        "//learning/brain/contrib/micro/tflite:__pkg__",
     ],
     deps = [
         "//tensorflow/lite/c:common",

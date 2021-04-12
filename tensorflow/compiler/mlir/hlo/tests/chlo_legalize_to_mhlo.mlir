@@ -9,6 +9,8 @@ func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   return %result : tensor<bf16>
 }
 
+// ----
+
 // CHECK-LABEL: @asinh_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
@@ -18,6 +20,8 @@ func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
   return %result : tensor<f16>
 }
 
+// ----
+
 // CHECK-LABEL: @asinh_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
@@ -26,6 +30,8 @@ func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
   %result = "chlo.asinh"(%arg) : (tensor<f32>) -> tensor<f32>
   return %result : tensor<f32>
 }
+
+// ----
 
 // CHECK-LABEL: @asinh_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
@@ -75,6 +81,8 @@ func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   return %result : tensor<f64>
 }
 
+// ----
+
 // Lower statically shaped `constant_like` to constant.
 // CHECK-LABEL: @constant_like_static_shape
 func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
@@ -84,6 +92,8 @@ func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
       : (tensor<1x2xi64>) -> tensor<1x2xf32>
   return %result : tensor<1x2xf32>
 }
+
+// ----
 
 // Lower dynamically shaped `constant_like` to broadcasted constant.
 // CHECK-LABEL: constant_like_dynamic_shape
@@ -99,6 +109,8 @@ func @constant_like_dynamic_shape(%arg : tensor<?x?xi64>) -> tensor<?x?xf32> {
   return %result : tensor<?x?xf32>
 }
 
+// ----
+
 // CHECK-LABEL: func @conj
 func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
   // CHECK-SAME: ([[INPUT:%.*]]: tensor
@@ -109,6 +121,8 @@ func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
   %1 = "chlo.conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
   return %1 : tensor<3xcomplex<f32>>
 }
+
+// ----
 
 // CHECK-LABEL: @erf_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
@@ -277,6 +291,8 @@ func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   return %1 : tensor<f64>
 }
 
+// ----
+
 // CHECK-LABEL: @erf_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
@@ -329,6 +345,8 @@ func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// ----
+
 // CHECK-LABEL: @erf_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
@@ -338,6 +356,8 @@ func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
   %1 = "chlo.erf"(%arg) : (tensor<f16>) -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// ----
 
 // CHECK-LABEL: @acosh
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
@@ -366,6 +386,8 @@ func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// ----
 
 // CHECK-LABEL: @erfc_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
@@ -534,6 +556,8 @@ func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   return %1 : tensor<f64>
 }
 
+// ----
+
 // CHECK-LABEL: @erfc_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
@@ -643,6 +667,8 @@ func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// ----
+
 // CHECK-LABEL: @erfc_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
@@ -652,6 +678,8 @@ func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
   %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// ----
 
 // CHECK-LABEL: @is_inf_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
@@ -664,6 +692,8 @@ func @is_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   return %1 : tensor<i1>
 }
 
+// ----
+
 // CHECK-LABEL: @is_pos_inf_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
@@ -674,6 +704,8 @@ func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   return %1 : tensor<i1>
 }
 
+// ----
+
 // CHECK-LABEL: @is_neg_inf_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
@@ -683,6 +715,8 @@ func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   %1 = chlo.is_neg_inf %arg : tensor<f32> -> tensor<i1>
   return %1 : tensor<i1>
 }
+
+// ----
 
 // CHECK-LABEL: @lgamma_f64
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f64>)
@@ -775,6 +809,8 @@ func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   return %1 : tensor<f64>
 }
 
+// ----
+
 // CHECK-LABEL: @lgamma_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
@@ -866,6 +902,8 @@ func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// ----
+
 // CHECK-LABEL: @lgamma_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
@@ -875,6 +913,8 @@ func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   %1 = chlo.lgamma %arg : tensor<f16> -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// ----
 
 // CHECK-LABEL: @digamma_f64
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f64>)
@@ -986,6 +1026,8 @@ func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   return %1 : tensor<f64>
 }
 
+// ----
+
 // CHECK-LABEL: @digamma_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
@@ -1096,6 +1138,8 @@ func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// ----
+
 // CHECK-LABEL: @digamma_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
@@ -1106,186 +1150,194 @@ func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   return %1 : tensor<f16>
 }
 
-// CHECK-LABEL:   func @zeta_f16(
-// CHECK-SAME:                   %[[VAL_0:.*]]: tensor<f16>,
-// CHECK-SAME:                   %[[VAL_1:.*]]: tensor<f16>) -> tensor<f16> {
+// ----
+
+// CHECK-LABEL: @zeta_f16
+// CHECK-SAME:  (%[[X:.*]]: tensor<f16>, %[[Q:.*]]: tensor<f16>) -> tensor<f16>
 func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
-  // CHECK: %[[VAL_2:.*]] = "mhlo.convert"(%[[VAL_0]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[VAL_3:.*]] = "mhlo.convert"(%[[VAL_1]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[VAL_4:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_5:.*]] = "mhlo.negate"(%[[VAL_2]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_6:.*]] = mhlo.power %[[VAL_3]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_7:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_8:.*]] = mhlo.add %[[VAL_3]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_9:.*]] = mhlo.power %[[VAL_8]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_10:.*]] = mhlo.add %[[VAL_6]], %[[VAL_9]] : tensor<f32>
-  // CHECK: %[[VAL_11:.*]] = mhlo.add %[[VAL_8]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_12:.*]] = mhlo.power %[[VAL_11]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_13:.*]] = mhlo.add %[[VAL_10]], %[[VAL_12]] : tensor<f32>
-  // CHECK: %[[VAL_14:.*]] = mhlo.add %[[VAL_11]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_15:.*]] = mhlo.power %[[VAL_14]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_16:.*]] = mhlo.add %[[VAL_13]], %[[VAL_15]] : tensor<f32>
-  // CHECK: %[[VAL_17:.*]] = mhlo.add %[[VAL_14]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_18:.*]] = mhlo.power %[[VAL_17]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_19:.*]] = mhlo.add %[[VAL_16]], %[[VAL_18]] : tensor<f32>
-  // CHECK: %[[VAL_20:.*]] = mhlo.add %[[VAL_17]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_21:.*]] = mhlo.power %[[VAL_20]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_22:.*]] = mhlo.add %[[VAL_19]], %[[VAL_21]] : tensor<f32>
-  // CHECK: %[[VAL_23:.*]] = mhlo.add %[[VAL_20]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_24:.*]] = mhlo.power %[[VAL_23]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_25:.*]] = mhlo.add %[[VAL_22]], %[[VAL_24]] : tensor<f32>
-  // CHECK: %[[VAL_26:.*]] = mhlo.add %[[VAL_23]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_27:.*]] = mhlo.power %[[VAL_26]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_28:.*]] = mhlo.add %[[VAL_25]], %[[VAL_27]] : tensor<f32>
-  // CHECK: %[[VAL_29:.*]] = mhlo.add %[[VAL_26]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_30:.*]] = mhlo.power %[[VAL_29]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_31:.*]] = mhlo.add %[[VAL_28]], %[[VAL_30]] : tensor<f32>
-  // CHECK: %[[VAL_32:.*]] = mhlo.add %[[VAL_29]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_33:.*]] = mhlo.power %[[VAL_32]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_34:.*]] = mhlo.add %[[VAL_31]], %[[VAL_33]] : tensor<f32>
-  // CHECK: %[[VAL_35:.*]] = mhlo.add %[[VAL_32]], %[[VAL_7]] : tensor<f32>
-  // CHECK: %[[VAL_36:.*]] = mhlo.power %[[VAL_35]], %[[VAL_5]] : tensor<f32>
-  // CHECK: %[[VAL_37:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_38:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_37]] : tensor<f32>
-  // CHECK: %[[VAL_39:.*]] = mhlo.multiply %[[VAL_36]], %[[VAL_35]] : tensor<f32>
-  // CHECK: %[[VAL_40:.*]] = mhlo.divide %[[VAL_39]], %[[VAL_38]] : tensor<f32>
-  // CHECK: %[[VAL_41:.*]] = mhlo.add %[[VAL_34]], %[[VAL_40]] : tensor<f32>
-  // CHECK: %[[VAL_42:.*]] = mhlo.multiply %[[VAL_35]], %[[VAL_35]] : tensor<f32>
-  // CHECK: %[[VAL_43:.*]] = mhlo.divide %[[VAL_7]], %[[VAL_42]] : tensor<f32>
-  // CHECK: %[[VAL_44:.*]] = mhlo.constant dense<2.200000e+01> : tensor<f32>
-  // CHECK: %[[VAL_45:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_44]] : tensor<f32>
-  // CHECK: %[[VAL_46:.*]] = mhlo.constant dense<2.100000e+01> : tensor<f32>
-  // CHECK: %[[VAL_47:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_46]] : tensor<f32>
-  // CHECK: %[[VAL_48:.*]] = mhlo.multiply %[[VAL_45]], %[[VAL_47]] : tensor<f32>
-  // CHECK: %[[VAL_49:.*]] = mhlo.constant dense<-1.39544646E-19> : tensor<f32>
-  // CHECK: %[[VAL_50:.*]] = mhlo.add %[[VAL_4]], %[[VAL_49]] : tensor<f32>
-  // CHECK: %[[VAL_51:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_50]] : tensor<f32>
-  // CHECK: %[[VAL_52:.*]] = mhlo.multiply %[[VAL_48]], %[[VAL_51]] : tensor<f32>
-  // CHECK: %[[VAL_53:.*]] = mhlo.constant dense<2.000000e+01> : tensor<f32>
-  // CHECK: %[[VAL_54:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_53]] : tensor<f32>
-  // CHECK: %[[VAL_55:.*]] = mhlo.constant dense<1.900000e+01> : tensor<f32>
-  // CHECK: %[[VAL_56:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_55]] : tensor<f32>
-  // CHECK: %[[VAL_57:.*]] = mhlo.multiply %[[VAL_54]], %[[VAL_56]] : tensor<f32>
-  // CHECK: %[[VAL_58:.*]] = mhlo.constant dense<5.50900303E-18> : tensor<f32>
-  // CHECK: %[[VAL_59:.*]] = mhlo.add %[[VAL_52]], %[[VAL_58]] : tensor<f32>
-  // CHECK: %[[VAL_60:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_59]] : tensor<f32>
-  // CHECK: %[[VAL_61:.*]] = mhlo.multiply %[[VAL_57]], %[[VAL_60]] : tensor<f32>
-  // CHECK: %[[VAL_62:.*]] = mhlo.constant dense<1.800000e+01> : tensor<f32>
-  // CHECK: %[[VAL_63:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_62]] : tensor<f32>
-  // CHECK: %[[VAL_64:.*]] = mhlo.constant dense<1.700000e+01> : tensor<f32>
-  // CHECK: %[[VAL_65:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_64]] : tensor<f32>
-  // CHECK: %[[VAL_66:.*]] = mhlo.multiply %[[VAL_63]], %[[VAL_65]] : tensor<f32>
-  // CHECK: %[[VAL_67:.*]] = mhlo.constant dense<-2.17486866E-16> : tensor<f32>
-  // CHECK: %[[VAL_68:.*]] = mhlo.add %[[VAL_61]], %[[VAL_67]] : tensor<f32>
-  // CHECK: %[[VAL_69:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_68]] : tensor<f32>
-  // CHECK: %[[VAL_70:.*]] = mhlo.multiply %[[VAL_66]], %[[VAL_69]] : tensor<f32>
-  // CHECK: %[[VAL_71:.*]] = mhlo.constant dense<1.600000e+01> : tensor<f32>
-  // CHECK: %[[VAL_72:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_71]] : tensor<f32>
-  // CHECK: %[[VAL_73:.*]] = mhlo.constant dense<1.500000e+01> : tensor<f32>
-  // CHECK: %[[VAL_74:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_73]] : tensor<f32>
-  // CHECK: %[[VAL_75:.*]] = mhlo.multiply %[[VAL_72]], %[[VAL_74]] : tensor<f32>
-  // CHECK: %[[VAL_76:.*]] = mhlo.constant dense<8.58606213E-15> : tensor<f32>
-  // CHECK: %[[VAL_77:.*]] = mhlo.add %[[VAL_70]], %[[VAL_76]] : tensor<f32>
-  // CHECK: %[[VAL_78:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_77]] : tensor<f32>
-  // CHECK: %[[VAL_79:.*]] = mhlo.multiply %[[VAL_75]], %[[VAL_78]] : tensor<f32>
-  // CHECK: %[[VAL_80:.*]] = mhlo.constant dense<1.400000e+01> : tensor<f32>
-  // CHECK: %[[VAL_81:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_80]] : tensor<f32>
-  // CHECK: %[[VAL_82:.*]] = mhlo.constant dense<1.300000e+01> : tensor<f32>
-  // CHECK: %[[VAL_83:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_82]] : tensor<f32>
-  // CHECK: %[[VAL_84:.*]] = mhlo.multiply %[[VAL_81]], %[[VAL_83]] : tensor<f32>
-  // CHECK: %[[VAL_85:.*]] = mhlo.constant dense<-3.3896803E-13> : tensor<f32>
-  // CHECK: %[[VAL_86:.*]] = mhlo.add %[[VAL_79]], %[[VAL_85]] : tensor<f32>
-  // CHECK: %[[VAL_87:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_86]] : tensor<f32>
-  // CHECK: %[[VAL_88:.*]] = mhlo.multiply %[[VAL_84]], %[[VAL_87]] : tensor<f32>
-  // CHECK: %[[VAL_89:.*]] = mhlo.constant dense<1.200000e+01> : tensor<f32>
-  // CHECK: %[[VAL_90:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_89]] : tensor<f32>
-  // CHECK: %[[VAL_91:.*]] = mhlo.constant dense<1.100000e+01> : tensor<f32>
-  // CHECK: %[[VAL_92:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_91]] : tensor<f32>
-  // CHECK: %[[VAL_93:.*]] = mhlo.multiply %[[VAL_90]], %[[VAL_92]] : tensor<f32>
-  // CHECK: %[[VAL_94:.*]] = mhlo.constant dense<1.33825364E-11> : tensor<f32>
-  // CHECK: %[[VAL_95:.*]] = mhlo.add %[[VAL_88]], %[[VAL_94]] : tensor<f32>
-  // CHECK: %[[VAL_96:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_95]] : tensor<f32>
-  // CHECK: %[[VAL_97:.*]] = mhlo.multiply %[[VAL_93]], %[[VAL_96]] : tensor<f32>
-  // CHECK: %[[VAL_98:.*]] = mhlo.constant dense<1.000000e+01> : tensor<f32>
-  // CHECK: %[[VAL_99:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_98]] : tensor<f32>
-  // CHECK: %[[VAL_100:.*]] = mhlo.constant dense<9.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_101:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_100]] : tensor<f32>
-  // CHECK: %[[VAL_102:.*]] = mhlo.multiply %[[VAL_99]], %[[VAL_101]] : tensor<f32>
-  // CHECK: %[[VAL_103:.*]] = mhlo.constant dense<-5.28419031E-10> : tensor<f32>
-  // CHECK: %[[VAL_104:.*]] = mhlo.add %[[VAL_97]], %[[VAL_103]] : tensor<f32>
-  // CHECK: %[[VAL_105:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_104]] : tensor<f32>
-  // CHECK: %[[VAL_106:.*]] = mhlo.multiply %[[VAL_102]], %[[VAL_105]] : tensor<f32>
-  // CHECK: %[[VAL_107:.*]] = mhlo.constant dense<8.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_108:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_107]] : tensor<f32>
-  // CHECK: %[[VAL_109:.*]] = mhlo.constant dense<7.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_110:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_109]] : tensor<f32>
-  // CHECK: %[[VAL_111:.*]] = mhlo.multiply %[[VAL_108]], %[[VAL_110]] : tensor<f32>
-  // CHECK: %[[VAL_112:.*]] = mhlo.constant dense<2.08767563E-8> : tensor<f32>
-  // CHECK: %[[VAL_113:.*]] = mhlo.add %[[VAL_106]], %[[VAL_112]] : tensor<f32>
-  // CHECK: %[[VAL_114:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_113]] : tensor<f32>
-  // CHECK: %[[VAL_115:.*]] = mhlo.multiply %[[VAL_111]], %[[VAL_114]] : tensor<f32>
-  // CHECK: %[[VAL_116:.*]] = mhlo.constant dense<6.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_117:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_116]] : tensor<f32>
-  // CHECK: %[[VAL_118:.*]] = mhlo.constant dense<5.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_119:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_118]] : tensor<f32>
-  // CHECK: %[[VAL_120:.*]] = mhlo.multiply %[[VAL_117]], %[[VAL_119]] : tensor<f32>
-  // CHECK: %[[VAL_121:.*]] = mhlo.constant dense<-8.26719599E-7> : tensor<f32>
-  // CHECK: %[[VAL_122:.*]] = mhlo.add %[[VAL_115]], %[[VAL_121]] : tensor<f32>
-  // CHECK: %[[VAL_123:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_122]] : tensor<f32>
-  // CHECK: %[[VAL_124:.*]] = mhlo.multiply %[[VAL_120]], %[[VAL_123]] : tensor<f32>
-  // CHECK: %[[VAL_125:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_126:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_125]] : tensor<f32>
-  // CHECK: %[[VAL_127:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_128:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_127]] : tensor<f32>
-  // CHECK: %[[VAL_129:.*]] = mhlo.multiply %[[VAL_126]], %[[VAL_128]] : tensor<f32>
-  // CHECK: %[[VAL_130:.*]] = mhlo.constant dense<3.30687835E-5> : tensor<f32>
-  // CHECK: %[[VAL_131:.*]] = mhlo.add %[[VAL_124]], %[[VAL_130]] : tensor<f32>
-  // CHECK: %[[VAL_132:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_131]] : tensor<f32>
-  // CHECK: %[[VAL_133:.*]] = mhlo.multiply %[[VAL_129]], %[[VAL_132]] : tensor<f32>
-  // CHECK: %[[VAL_134:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_135:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_134]] : tensor<f32>
-  // CHECK: %[[VAL_136:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_137:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_136]] : tensor<f32>
-  // CHECK: %[[VAL_138:.*]] = mhlo.multiply %[[VAL_135]], %[[VAL_137]] : tensor<f32>
-  // CHECK: %[[VAL_139:.*]] = mhlo.constant dense<-0.00138888892> : tensor<f32>
-  // CHECK: %[[VAL_140:.*]] = mhlo.add %[[VAL_133]], %[[VAL_139]] : tensor<f32>
-  // CHECK: %[[VAL_141:.*]] = mhlo.multiply %[[VAL_43]], %[[VAL_140]] : tensor<f32>
-  // CHECK: %[[VAL_142:.*]] = mhlo.multiply %[[VAL_138]], %[[VAL_141]] : tensor<f32>
-  // CHECK: %[[VAL_143:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK: %[[VAL_144:.*]] = mhlo.divide %[[VAL_2]], %[[VAL_35]] : tensor<f32>
-  // CHECK: %[[VAL_145:.*]] = mhlo.constant dense<0.0833333358> : tensor<f32>
-  // CHECK: %[[VAL_146:.*]] = mhlo.add %[[VAL_145]], %[[VAL_142]] : tensor<f32>
-  // CHECK: %[[VAL_147:.*]] = mhlo.multiply %[[VAL_144]], %[[VAL_146]] : tensor<f32>
-  // CHECK: %[[VAL_148:.*]] = mhlo.add %[[VAL_143]], %[[VAL_147]] : tensor<f32>
-  // CHECK: %[[VAL_149:.*]] = mhlo.multiply %[[VAL_36]], %[[VAL_148]] : tensor<f32>
-  // CHECK: %[[VAL_150:.*]] = mhlo.add %[[VAL_41]], %[[VAL_149]] : tensor<f32>
-  // CHECK: %[[VAL_151:.*]] = "mhlo.abs"(%[[VAL_36]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_152:.*]] = "mhlo.abs"(%[[VAL_34]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_153:.*]] = mhlo.constant dense<1.401300e-45> : tensor<f32>
-  // CHECK: %[[VAL_154:.*]] = mhlo.multiply %[[VAL_152]], %[[VAL_153]] : tensor<f32>
-  // CHECK: %[[VAL_155:.*]] = "mhlo.compare"(%[[VAL_151]], %[[VAL_154]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_156:.*]] = "mhlo.select"(%[[VAL_155]], %[[VAL_34]], %[[VAL_150]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_157:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
-  // CHECK: %[[VAL_158:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_37]]) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_159:.*]] = "mhlo.select"(%[[VAL_158]], %[[VAL_157]], %[[VAL_156]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_160:.*]] = mhlo.constant dense<0x7FC00000> : tensor<f32>
-  // CHECK: %[[VAL_161:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_37]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_162:.*]] = "mhlo.select"(%[[VAL_161]], %[[VAL_160]], %[[VAL_159]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_163:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[VAL_164:.*]] = "mhlo.compare"(%[[VAL_3]], %[[VAL_163]]) {comparison_direction = "LE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_165:.*]] = "mhlo.floor"(%[[VAL_2]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_166:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_165]]) {comparison_direction = "NE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_167:.*]] = mhlo.and %[[VAL_164]], %[[VAL_166]] : tensor<i1>
-  // CHECK: %[[VAL_169:.*]] = "mhlo.floor"(%[[VAL_3]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_170:.*]] = "mhlo.compare"(%[[VAL_3]], %[[VAL_169]]) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[VAL_171:.*]] = mhlo.and %[[VAL_164]], %[[VAL_170]] : tensor<i1>
-  // CHECK: %[[VAL_172:.*]] = "mhlo.select"(%[[VAL_171]], %[[VAL_157]], %[[VAL_162]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_173:.*]] = "mhlo.select"(%[[VAL_167]], %[[VAL_160]], %[[VAL_172]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[VAL_174:.*]] = "mhlo.convert"(%[[VAL_173]]) : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[VAL_174]] : tensor<f16>
+  // CHECK: %[[TMP_0:.*]] = "mhlo.convert"(%[[X]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[TMP_1:.*]] = "mhlo.convert"(%[[Q]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[TMP_3:.*]] = "mhlo.negate"(%[[TMP_0]])
+  // CHECK: %[[TMP_4:.*]] = mhlo.power %[[TMP_1]], %[[TMP_3]]
+  // CHECK: %[[TMP_5:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]]
+  // CHECK: %[[TMP_7:.*]] = mhlo.power %[[TMP_6]], %[[TMP_3]]
+  // CHECK: %[[TMP_8:.*]] = mhlo.add %[[TMP_4]], %[[TMP_7]]
+  // CHECK: %[[TMP_9:.*]] = mhlo.add %[[TMP_6]], %[[TMP_5]]
+  // CHECK: %[[TMP_10:.*]] = mhlo.power %[[TMP_9]], %[[TMP_3]]
+  // CHECK: %[[TMP_11:.*]] = mhlo.add %[[TMP_8]], %[[TMP_10]]
+  // CHECK: %[[TMP_12:.*]] = mhlo.add %[[TMP_9]], %[[TMP_5]]
+  // CHECK: %[[TMP_13:.*]] = mhlo.power %[[TMP_12]], %[[TMP_3]]
+  // CHECK: %[[TMP_14:.*]] = mhlo.add %[[TMP_11]], %[[TMP_13]]
+  // CHECK: %[[TMP_15:.*]] = mhlo.add %[[TMP_12]], %[[TMP_5]]
+  // CHECK: %[[TMP_16:.*]] = mhlo.power %[[TMP_15]], %[[TMP_3]]
+  // CHECK: %[[TMP_17:.*]] = mhlo.add %[[TMP_14]], %[[TMP_16]]
+  // CHECK: %[[TMP_18:.*]] = mhlo.add %[[TMP_15]], %[[TMP_5]]
+  // CHECK: %[[TMP_19:.*]] = mhlo.power %[[TMP_18]], %[[TMP_3]]
+  // CHECK: %[[TMP_20:.*]] = mhlo.add %[[TMP_17]], %[[TMP_19]]
+  // CHECK: %[[TMP_21:.*]] = mhlo.add %[[TMP_18]], %[[TMP_5]]
+  // CHECK: %[[TMP_22:.*]] = mhlo.power %[[TMP_21]], %[[TMP_3]]
+  // CHECK: %[[TMP_23:.*]] = mhlo.add %[[TMP_20]], %[[TMP_22]]
+  // CHECK: %[[TMP_24:.*]] = mhlo.add %[[TMP_21]], %[[TMP_5]]
+  // CHECK: %[[TMP_25:.*]] = mhlo.power %[[TMP_24]], %[[TMP_3]]
+  // CHECK: %[[TMP_26:.*]] = mhlo.add %[[TMP_23]], %[[TMP_25]]
+  // CHECK: %[[TMP_27:.*]] = mhlo.add %[[TMP_24]], %[[TMP_5]]
+  // CHECK: %[[TMP_28:.*]] = mhlo.power %[[TMP_27]], %[[TMP_3]]
+  // CHECK: %[[TMP_29:.*]] = mhlo.add %[[TMP_26]], %[[TMP_28]]
+  // CHECK: %[[TMP_30:.*]] = mhlo.add %[[TMP_27]], %[[TMP_5]]
+  // CHECK: %[[TMP_31:.*]] = mhlo.power %[[TMP_30]], %[[TMP_3]]
+  // CHECK: %[[TMP_32:.*]] = mhlo.add %[[TMP_29]], %[[TMP_31]]
+  // CHECK: %[[TMP_33:.*]] = mhlo.add %[[TMP_30]], %[[TMP_5]]
+  // CHECK: %[[TMP_34:.*]] = mhlo.power %[[TMP_33]], %[[TMP_3]]
+  // CHECK: %[[TMP_35:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_36:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_35]]
+  // CHECK: %[[TMP_37:.*]] = mhlo.multiply %[[TMP_34]], %[[TMP_33]]
+  // CHECK: %[[TMP_38:.*]] = mhlo.divide %[[TMP_37]], %[[TMP_36]]
+  // CHECK: %[[TMP_39:.*]] = mhlo.add %[[TMP_32]], %[[TMP_38]]
+  // CHECK: %[[TMP_40:.*]] = mhlo.multiply %[[TMP_33]], %[[TMP_33]]
+  // CHECK: %[[TMP_41:.*]] = mhlo.divide %[[TMP_5]], %[[TMP_40]]
+  // CHECK: %[[TMP_42:.*]] = mhlo.constant dense<2.200000e+01>
+  // CHECK: %[[TMP_43:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_42]]
+  // CHECK: %[[TMP_44:.*]] = mhlo.constant dense<2.100000e+01>
+  // CHECK: %[[TMP_45:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_44]]
+  // CHECK: %[[TMP_46:.*]] = mhlo.multiply %[[TMP_43]], %[[TMP_45]]
+  // CHECK: %[[TMP_47:.*]] = mhlo.constant dense<-1.39544646E-19>
+  // CHECK: %[[TMP_48:.*]] = mhlo.add %[[TMP_2]], %[[TMP_47]]
+  // CHECK: %[[TMP_49:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_48]]
+  // CHECK: %[[TMP_50:.*]] = mhlo.multiply %[[TMP_46]], %[[TMP_49]]
+  // CHECK: %[[TMP_51:.*]] = mhlo.constant dense<2.000000e+01>
+  // CHECK: %[[TMP_52:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_51]]
+  // CHECK: %[[TMP_53:.*]] = mhlo.constant dense<1.900000e+01>
+  // CHECK: %[[TMP_54:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_53]]
+  // CHECK: %[[TMP_55:.*]] = mhlo.multiply %[[TMP_52]], %[[TMP_54]]
+  // CHECK: %[[TMP_56:.*]] = mhlo.constant dense<5.50900303E-18>
+  // CHECK: %[[TMP_57:.*]] = mhlo.add %[[TMP_50]], %[[TMP_56]]
+  // CHECK: %[[TMP_58:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_57]]
+  // CHECK: %[[TMP_59:.*]] = mhlo.multiply %[[TMP_55]], %[[TMP_58]]
+  // CHECK: %[[TMP_60:.*]] = mhlo.constant dense<1.800000e+01>
+  // CHECK: %[[TMP_61:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_60]]
+  // CHECK: %[[TMP_62:.*]] = mhlo.constant dense<1.700000e+01>
+  // CHECK: %[[TMP_63:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_62]]
+  // CHECK: %[[TMP_64:.*]] = mhlo.multiply %[[TMP_61]], %[[TMP_63]]
+  // CHECK: %[[TMP_65:.*]] = mhlo.constant dense<-2.17486866E-16>
+  // CHECK: %[[TMP_66:.*]] = mhlo.add %[[TMP_59]], %[[TMP_65]]
+  // CHECK: %[[TMP_67:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_66]]
+  // CHECK: %[[TMP_68:.*]] = mhlo.multiply %[[TMP_64]], %[[TMP_67]]
+  // CHECK: %[[TMP_69:.*]] = mhlo.constant dense<1.600000e+01>
+  // CHECK: %[[TMP_70:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_69]]
+  // CHECK: %[[TMP_71:.*]] = mhlo.constant dense<1.500000e+01>
+  // CHECK: %[[TMP_72:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_71]]
+  // CHECK: %[[TMP_73:.*]] = mhlo.multiply %[[TMP_70]], %[[TMP_72]]
+  // CHECK: %[[TMP_74:.*]] = mhlo.constant dense<8.58606213E-15>
+  // CHECK: %[[TMP_75:.*]] = mhlo.add %[[TMP_68]], %[[TMP_74]]
+  // CHECK: %[[TMP_76:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_75]]
+  // CHECK: %[[TMP_77:.*]] = mhlo.multiply %[[TMP_73]], %[[TMP_76]]
+  // CHECK: %[[TMP_78:.*]] = mhlo.constant dense<1.400000e+01>
+  // CHECK: %[[TMP_79:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_78]]
+  // CHECK: %[[TMP_80:.*]] = mhlo.constant dense<1.300000e+01>
+  // CHECK: %[[TMP_81:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_80]]
+  // CHECK: %[[TMP_82:.*]] = mhlo.multiply %[[TMP_79]], %[[TMP_81]]
+  // CHECK: %[[TMP_83:.*]] = mhlo.constant dense<-3.3896803E-13>
+  // CHECK: %[[TMP_84:.*]] = mhlo.add %[[TMP_77]], %[[TMP_83]]
+  // CHECK: %[[TMP_85:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_84]]
+  // CHECK: %[[TMP_86:.*]] = mhlo.multiply %[[TMP_82]], %[[TMP_85]]
+  // CHECK: %[[TMP_87:.*]] = mhlo.constant dense<1.200000e+01>
+  // CHECK: %[[TMP_88:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_87]]
+  // CHECK: %[[TMP_89:.*]] = mhlo.constant dense<1.100000e+01>
+  // CHECK: %[[TMP_90:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_89]]
+  // CHECK: %[[TMP_91:.*]] = mhlo.multiply %[[TMP_88]], %[[TMP_90]]
+  // CHECK: %[[TMP_92:.*]] = mhlo.constant dense<1.33825364E-11>
+  // CHECK: %[[TMP_93:.*]] = mhlo.add %[[TMP_86]], %[[TMP_92]]
+  // CHECK: %[[TMP_94:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_93]]
+  // CHECK: %[[TMP_95:.*]] = mhlo.multiply %[[TMP_91]], %[[TMP_94]]
+  // CHECK: %[[TMP_96:.*]] = mhlo.constant dense<1.000000e+01>
+  // CHECK: %[[TMP_97:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_96]]
+  // CHECK: %[[TMP_98:.*]] = mhlo.constant dense<9.000000e+00>
+  // CHECK: %[[TMP_99:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_98]]
+  // CHECK: %[[TMP_100:.*]] = mhlo.multiply %[[TMP_97]], %[[TMP_99]]
+  // CHECK: %[[TMP_101:.*]] = mhlo.constant dense<-5.28419031E-10>
+  // CHECK: %[[TMP_102:.*]] = mhlo.add %[[TMP_95]], %[[TMP_101]]
+  // CHECK: %[[TMP_103:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_102]]
+  // CHECK: %[[TMP_104:.*]] = mhlo.multiply %[[TMP_100]], %[[TMP_103]]
+  // CHECK: %[[TMP_105:.*]] = mhlo.constant dense<8.000000e+00>
+  // CHECK: %[[TMP_106:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_105]]
+  // CHECK: %[[TMP_107:.*]] = mhlo.constant dense<7.000000e+00>
+  // CHECK: %[[TMP_108:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_107]]
+  // CHECK: %[[TMP_109:.*]] = mhlo.multiply %[[TMP_106]], %[[TMP_108]]
+  // CHECK: %[[TMP_110:.*]] = mhlo.constant dense<2.08767563E-8>
+  // CHECK: %[[TMP_111:.*]] = mhlo.add %[[TMP_104]], %[[TMP_110]]
+  // CHECK: %[[TMP_112:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_111]]
+  // CHECK: %[[TMP_113:.*]] = mhlo.multiply %[[TMP_109]], %[[TMP_112]]
+  // CHECK: %[[TMP_114:.*]] = mhlo.constant dense<6.000000e+00>
+  // CHECK: %[[TMP_115:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_114]]
+  // CHECK: %[[TMP_116:.*]] = mhlo.constant dense<5.000000e+00>
+  // CHECK: %[[TMP_117:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_116]]
+  // CHECK: %[[TMP_118:.*]] = mhlo.multiply %[[TMP_115]], %[[TMP_117]]
+  // CHECK: %[[TMP_119:.*]] = mhlo.constant dense<-8.26719599E-7>
+  // CHECK: %[[TMP_120:.*]] = mhlo.add %[[TMP_113]], %[[TMP_119]]
+  // CHECK: %[[TMP_121:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_120]]
+  // CHECK: %[[TMP_122:.*]] = mhlo.multiply %[[TMP_118]], %[[TMP_121]]
+  // CHECK: %[[TMP_123:.*]] = mhlo.constant dense<4.000000e+00>
+  // CHECK: %[[TMP_124:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_123]]
+  // CHECK: %[[TMP_125:.*]] = mhlo.constant dense<3.000000e+00>
+  // CHECK: %[[TMP_126:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_125]]
+  // CHECK: %[[TMP_127:.*]] = mhlo.multiply %[[TMP_124]], %[[TMP_126]]
+  // CHECK: %[[TMP_128:.*]] = mhlo.constant dense<3.30687835E-5>
+  // CHECK: %[[TMP_129:.*]] = mhlo.add %[[TMP_122]], %[[TMP_128]]
+  // CHECK: %[[TMP_130:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_129]]
+  // CHECK: %[[TMP_131:.*]] = mhlo.multiply %[[TMP_127]], %[[TMP_130]]
+  // CHECK: %[[TMP_132:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_133:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_132]]
+  // CHECK: %[[TMP_134:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_135:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_134]]
+  // CHECK: %[[TMP_136:.*]] = mhlo.multiply %[[TMP_133]], %[[TMP_135]]
+  // CHECK: %[[TMP_137:.*]] = mhlo.constant dense<-0.00138888892>
+  // CHECK: %[[TMP_138:.*]] = mhlo.add %[[TMP_131]], %[[TMP_137]]
+  // CHECK: %[[TMP_139:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_138]]
+  // CHECK: %[[TMP_140:.*]] = mhlo.multiply %[[TMP_136]], %[[TMP_139]]
+  // CHECK: %[[TMP_141:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK: %[[TMP_142:.*]] = mhlo.divide %[[TMP_0]], %[[TMP_33]]
+  // CHECK: %[[TMP_143:.*]] = mhlo.constant dense<0.0833333358>
+  // CHECK: %[[TMP_144:.*]] = mhlo.add %[[TMP_143]], %[[TMP_140]]
+  // CHECK: %[[TMP_145:.*]] = mhlo.multiply %[[TMP_142]], %[[TMP_144]]
+  // CHECK: %[[TMP_146:.*]] = mhlo.add %[[TMP_141]], %[[TMP_145]]
+  // CHECK: %[[TMP_147:.*]] = mhlo.multiply %[[TMP_34]], %[[TMP_146]]
+  // CHECK: %[[TMP_148:.*]] = mhlo.add %[[TMP_39]], %[[TMP_147]]
+  // CHECK: %[[TMP_149:.*]] = "mhlo.abs"(%[[TMP_34]])
+  // CHECK: %[[TMP_150:.*]] = "mhlo.abs"(%[[TMP_32]])
+  // CHECK: %[[TMP_151:.*]] = mhlo.constant dense<1.401300e-45>
+  // CHECK: %[[TMP_152:.*]] = mhlo.multiply %[[TMP_150]], %[[TMP_151]]
+  // CHECK: %[[TMP_153:.*]] = "mhlo.compare"(%[[TMP_149]], %[[TMP_152]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_154:.*]] = "mhlo.select"(%[[TMP_153]], %[[TMP_32]], %[[TMP_148]])
+  // CHECK: %[[TMP_155:.*]] = mhlo.constant dense<0x7FC00000>
+  // CHECK: %[[TMP_156:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_35]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_157:.*]] = "mhlo.select"(%[[TMP_156]], %[[TMP_155]], %[[TMP_154]])
+  // CHECK: %[[TMP_158:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_2]]) {comparison_direction = "LE"}
+  // CHECK: %[[TMP_159:.*]] = "mhlo.floor"(%[[TMP_0]])
+  // CHECK: %[[TMP_160:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_159]]) {comparison_direction = "NE"}
+  // CHECK: %[[TMP_161:.*]] = mhlo.and %[[TMP_158]], %[[TMP_160]] : tensor<i1>
+  // CHECK: %[[TMP_162:.*]] = "mhlo.select"(%[[TMP_161]], %[[TMP_155]], %[[TMP_157]])
+  // CHECK: %[[TMP_163:.*]] = mhlo.constant dense<0x7F800000>
+  // CHECK: %[[TMP_164:.*]] = "mhlo.floor"(%[[TMP_1]])
+  // CHECK: %[[TMP_165:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_164]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_166:.*]] = mhlo.and %[[TMP_158]], %[[TMP_165]] : tensor<i1>
+  // CHECK: %[[TMP_167:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_168:.*]] = "mhlo.floor"(%[[TMP_0]])
+  // CHECK: %[[TMP_169:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_168]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_170:.*]] = mhlo.remainder %[[TMP_0]], %[[TMP_167]]
+  // CHECK: %[[TMP_171:.*]] = "mhlo.compare"(%[[TMP_170]], %[[TMP_2]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_172:.*]] = mhlo.and %[[TMP_169]], %[[TMP_171]] : tensor<i1>
+  // CHECK: %[[TMP_173:.*]] = "mhlo.select"(%[[TMP_172]], %[[TMP_163]], %[[TMP_155]])
+  // CHECK: %[[TMP_174:.*]] = "mhlo.select"(%[[TMP_166]], %[[TMP_173]], %[[TMP_162]])
+  // CHECK: %[[TMP_175:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_5]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_176:.*]] = "mhlo.select"(%[[TMP_175]], %[[TMP_163]], %[[TMP_174]])
+  // CHECK: %[[TMP_177:.*]] = "mhlo.convert"(%[[TMP_176]]) : (tensor<f32>) -> tensor<f16>
   %0 = chlo.zeta %arg0, %arg1 : tensor<f16>, tensor<f16> -> tensor<f16>
   return %0 : tensor<f16>
 }
+
+// ----
 
 // CHECK: @polygamma_f32
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>)
@@ -1533,139 +1585,146 @@ func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
   // CHECK: %[[TMP_241:.*]] = "mhlo.compare"(%[[TMP_237]], %[[TMP_240]]) {comparison_direction = "LT"}
   // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
-  // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7F800000>
-  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FC00000>
+  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "LT"}
   // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
-  // CHECK: %[[TMP_246:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_247:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_248:.*]] = "mhlo.select"(%[[TMP_247]], %[[TMP_246]], %[[TMP_245]])
-  // CHECK: %[[TMP_249:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_250:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_249]]) {comparison_direction = "LE"}
-  // CHECK: %[[TMP_251:.*]] = "mhlo.floor"(%[[TMP_5]])
-  // CHECK: %[[TMP_252:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_251]]) {comparison_direction = "NE"}
-  // CHECK: %[[TMP_253:.*]] = mhlo.and %[[TMP_250]], %[[TMP_252]]
-  // CHECK: %[[TMP_254:.*]] = "mhlo.floor"(%[[ARG1]])
-  // CHECK: %[[TMP_255:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_254]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_256:.*]] = mhlo.and %[[TMP_250]], %[[TMP_255]]
-  // CHECK: %[[TMP_257:.*]] = "mhlo.select"(%[[TMP_256]], %[[TMP_243]], %[[TMP_248]])
-  // CHECK: %[[TMP_258:.*]] = "mhlo.select"(%[[TMP_253]], %[[TMP_246]], %[[TMP_257]])
-  // CHECK: %[[TMP_259:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
-  // CHECK: %[[TMP_260:.*]] = mhlo.multiply %[[TMP_259]], %[[TMP_258]]
-  // CHECK: %[[TMP_261:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_262:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_261]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_263:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_264:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_263]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_265:.*]] = "mhlo.negate"(%[[ARG1]])
-  // CHECK: %[[TMP_266:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_267:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_266]]
-  // CHECK: %[[TMP_268:.*]] = "mhlo.select"(%[[TMP_264]], %[[TMP_265]], %[[TMP_267]])
-  // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_270:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_271:.*]] = mhlo.constant dense<676.520386>
+  // CHECK: %[[TMP_246:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_90]]) {comparison_direction = "LE"}
+  // CHECK: %[[TMP_247:.*]] = "mhlo.floor"(%[[TMP_5]])
+  // CHECK: %[[TMP_248:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_247]]) {comparison_direction = "NE"}
+  // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
+  // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
+  // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7F800000>
+  // CHECK: %[[TMP_252:.*]] = "mhlo.floor"(%[[ARG1]])
+  // CHECK: %[[TMP_253:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_252]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_254:.*]] = mhlo.and %[[TMP_246]], %[[TMP_253]]
+  // CHECK: %[[TMP_255:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_256:.*]] = "mhlo.floor"(%[[TMP_5]])
+  // CHECK: %[[TMP_257:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_256]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
+  // CHECK: %[[TMP_259:.*]] = "mhlo.compare"(%[[TMP_258]], %[[TMP_90]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
+  // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
+  // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
+  // CHECK: %[[TMP_263:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_93]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
+  // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
+  // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
+  // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[TMP_268:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK: %[[TMP_270:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_271:.*]] = "mhlo.negate"(%[[ARG1]])
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_273:.*]] = mhlo.add %[[TMP_268]], %[[TMP_272]]
-  // CHECK: %[[TMP_274:.*]] = mhlo.multiply %[[TMP_273]], %[[TMP_273]]
-  // CHECK: %[[TMP_275:.*]] = mhlo.divide %[[TMP_271]], %[[TMP_274]]
-  // CHECK: %[[TMP_276:.*]] = mhlo.subtract %[[TMP_269]], %[[TMP_275]]
-  // CHECK: %[[TMP_277:.*]] = mhlo.divide %[[TMP_271]], %[[TMP_273]]
-  // CHECK: %[[TMP_278:.*]] = mhlo.add %[[TMP_270]], %[[TMP_277]]
-  // CHECK: %[[TMP_279:.*]] = mhlo.constant dense<-1259.13916>
-  // CHECK: %[[TMP_280:.*]] = mhlo.constant dense<2.000000e+00>
-  // CHECK: %[[TMP_281:.*]] = mhlo.add %[[TMP_268]], %[[TMP_280]]
-  // CHECK: %[[TMP_282:.*]] = mhlo.multiply %[[TMP_281]], %[[TMP_281]]
-  // CHECK: %[[TMP_283:.*]] = mhlo.divide %[[TMP_279]], %[[TMP_282]]
-  // CHECK: %[[TMP_284:.*]] = mhlo.subtract %[[TMP_276]], %[[TMP_283]]
-  // CHECK: %[[TMP_285:.*]] = mhlo.divide %[[TMP_279]], %[[TMP_281]]
-  // CHECK: %[[TMP_286:.*]] = mhlo.add %[[TMP_278]], %[[TMP_285]]
-  // CHECK: %[[TMP_287:.*]] = mhlo.constant dense<771.323425>
-  // CHECK: %[[TMP_288:.*]] = mhlo.constant dense<3.000000e+00>
-  // CHECK: %[[TMP_289:.*]] = mhlo.add %[[TMP_268]], %[[TMP_288]]
-  // CHECK: %[[TMP_290:.*]] = mhlo.multiply %[[TMP_289]], %[[TMP_289]]
-  // CHECK: %[[TMP_291:.*]] = mhlo.divide %[[TMP_287]], %[[TMP_290]]
-  // CHECK: %[[TMP_292:.*]] = mhlo.subtract %[[TMP_284]], %[[TMP_291]]
-  // CHECK: %[[TMP_293:.*]] = mhlo.divide %[[TMP_287]], %[[TMP_289]]
-  // CHECK: %[[TMP_294:.*]] = mhlo.add %[[TMP_286]], %[[TMP_293]]
-  // CHECK: %[[TMP_295:.*]] = mhlo.constant dense<-176.615036>
-  // CHECK: %[[TMP_296:.*]] = mhlo.constant dense<4.000000e+00>
-  // CHECK: %[[TMP_297:.*]] = mhlo.add %[[TMP_268]], %[[TMP_296]]
-  // CHECK: %[[TMP_298:.*]] = mhlo.multiply %[[TMP_297]], %[[TMP_297]]
-  // CHECK: %[[TMP_299:.*]] = mhlo.divide %[[TMP_295]], %[[TMP_298]]
-  // CHECK: %[[TMP_300:.*]] = mhlo.subtract %[[TMP_292]], %[[TMP_299]]
-  // CHECK: %[[TMP_301:.*]] = mhlo.divide %[[TMP_295]], %[[TMP_297]]
-  // CHECK: %[[TMP_302:.*]] = mhlo.add %[[TMP_294]], %[[TMP_301]]
-  // CHECK: %[[TMP_303:.*]] = mhlo.constant dense<12.5073433>
-  // CHECK: %[[TMP_304:.*]] = mhlo.constant dense<5.000000e+00>
-  // CHECK: %[[TMP_305:.*]] = mhlo.add %[[TMP_268]], %[[TMP_304]]
-  // CHECK: %[[TMP_306:.*]] = mhlo.multiply %[[TMP_305]], %[[TMP_305]]
-  // CHECK: %[[TMP_307:.*]] = mhlo.divide %[[TMP_303]], %[[TMP_306]]
-  // CHECK: %[[TMP_308:.*]] = mhlo.subtract %[[TMP_300]], %[[TMP_307]]
-  // CHECK: %[[TMP_309:.*]] = mhlo.divide %[[TMP_303]], %[[TMP_305]]
-  // CHECK: %[[TMP_310:.*]] = mhlo.add %[[TMP_302]], %[[TMP_309]]
-  // CHECK: %[[TMP_311:.*]] = mhlo.constant dense<-0.138571098>
-  // CHECK: %[[TMP_312:.*]] = mhlo.constant dense<6.000000e+00>
-  // CHECK: %[[TMP_313:.*]] = mhlo.add %[[TMP_268]], %[[TMP_312]]
-  // CHECK: %[[TMP_314:.*]] = mhlo.multiply %[[TMP_313]], %[[TMP_313]]
-  // CHECK: %[[TMP_315:.*]] = mhlo.divide %[[TMP_311]], %[[TMP_314]]
-  // CHECK: %[[TMP_316:.*]] = mhlo.subtract %[[TMP_308]], %[[TMP_315]]
-  // CHECK: %[[TMP_317:.*]] = mhlo.divide %[[TMP_311]], %[[TMP_313]]
-  // CHECK: %[[TMP_318:.*]] = mhlo.add %[[TMP_310]], %[[TMP_317]]
-  // CHECK: %[[TMP_319:.*]] = mhlo.constant dense<9.98436917E-6>
-  // CHECK: %[[TMP_320:.*]] = mhlo.constant dense<7.000000e+00>
-  // CHECK: %[[TMP_321:.*]] = mhlo.add %[[TMP_268]], %[[TMP_320]]
-  // CHECK: %[[TMP_322:.*]] = mhlo.multiply %[[TMP_321]], %[[TMP_321]]
-  // CHECK: %[[TMP_323:.*]] = mhlo.divide %[[TMP_319]], %[[TMP_322]]
-  // CHECK: %[[TMP_324:.*]] = mhlo.subtract %[[TMP_316]], %[[TMP_323]]
-  // CHECK: %[[TMP_325:.*]] = mhlo.divide %[[TMP_319]], %[[TMP_321]]
-  // CHECK: %[[TMP_326:.*]] = mhlo.add %[[TMP_318]], %[[TMP_325]]
-  // CHECK: %[[TMP_327:.*]] = mhlo.constant dense<1.50563267E-7>
-  // CHECK: %[[TMP_328:.*]] = mhlo.constant dense<8.000000e+00>
-  // CHECK: %[[TMP_329:.*]] = mhlo.add %[[TMP_268]], %[[TMP_328]]
-  // CHECK: %[[TMP_330:.*]] = mhlo.multiply %[[TMP_329]], %[[TMP_329]]
-  // CHECK: %[[TMP_331:.*]] = mhlo.divide %[[TMP_327]], %[[TMP_330]]
-  // CHECK: %[[TMP_332:.*]] = mhlo.subtract %[[TMP_324]], %[[TMP_331]]
-  // CHECK: %[[TMP_333:.*]] = mhlo.divide %[[TMP_327]], %[[TMP_329]]
-  // CHECK: %[[TMP_334:.*]] = mhlo.add %[[TMP_326]], %[[TMP_333]]
-  // CHECK: %[[TMP_335:.*]] = mhlo.constant dense<7.500000e+00>
-  // CHECK: %[[TMP_336:.*]] = mhlo.add %[[TMP_335]], %[[TMP_268]]
-  // CHECK: %[[TMP_337:.*]] = mhlo.constant dense<2.01490307>
-  // CHECK: %[[TMP_338:.*]] = mhlo.divide %[[TMP_268]], %[[TMP_335]]
-  // CHECK: %[[TMP_339:.*]] = "mhlo.log_plus_one"(%[[TMP_338]])
-  // CHECK: %[[TMP_340:.*]] = mhlo.add %[[TMP_337]], %[[TMP_339]]
-  // CHECK: %[[TMP_341:.*]] = mhlo.divide %[[TMP_332]], %[[TMP_334]]
-  // CHECK: %[[TMP_342:.*]] = mhlo.constant dense<7.000000e+00>
-  // CHECK: %[[TMP_343:.*]] = mhlo.divide %[[TMP_342]], %[[TMP_336]]
-  // CHECK: %[[TMP_344:.*]] = mhlo.add %[[TMP_340]], %[[TMP_341]]
-  // CHECK: %[[TMP_345:.*]] = mhlo.subtract %[[TMP_344]], %[[TMP_343]]
-  // CHECK: %[[TMP_346:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_347:.*]] = mhlo.add %[[ARG1]], %[[TMP_346]]
-  // CHECK: %[[TMP_348:.*]] = "mhlo.floor"(%[[TMP_347]])
-  // CHECK: %[[TMP_349:.*]] = "mhlo.abs"(%[[TMP_348]])
-  // CHECK: %[[TMP_350:.*]] = mhlo.add %[[ARG1]], %[[TMP_349]]
-  // CHECK: %[[TMP_351:.*]] = mhlo.constant dense<3.14159274>
-  // CHECK: %[[TMP_352:.*]] = mhlo.multiply %[[TMP_351]], %[[TMP_350]]
-  // CHECK: %[[TMP_353:.*]] = "mhlo.cosine"(%[[TMP_352]])
-  // CHECK: %[[TMP_354:.*]] = "mhlo.sine"(%[[TMP_352]])
-  // CHECK: %[[TMP_355:.*]] = mhlo.multiply %[[TMP_351]], %[[TMP_353]]
-  // CHECK: %[[TMP_356:.*]] = mhlo.divide %[[TMP_355]], %[[TMP_354]]
-  // CHECK: %[[TMP_357:.*]] = mhlo.subtract %[[TMP_345]], %[[TMP_356]]
-  // CHECK: %[[TMP_358:.*]] = "mhlo.select"(%[[TMP_264]], %[[TMP_357]], %[[TMP_345]])
-  // CHECK: %[[TMP_359:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {comparison_direction = "LE"}
-  // CHECK: %[[TMP_360:.*]] = "mhlo.floor"(%[[ARG1]])
-  // CHECK: %[[TMP_361:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_360]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_362:.*]] = mhlo.and %[[TMP_359]], %[[TMP_361]]
-  // CHECK: %[[TMP_363:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_362]], %[[TMP_363]], %[[TMP_358]])
-  // CHECK: %[[TMP_365:.*]] = "mhlo.select"(%[[TMP_262]], %[[TMP_364]], %[[TMP_260]])
-  // CHECK: %[[TMP_366:.*]] = "mhlo.floor"(%[[ARG0]])
-  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_366]]) {comparison_direction = "NE"}
-  // CHECK: %[[TMP_368:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_261]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_369:.*]] = mhlo.or %[[TMP_367]], %[[TMP_368]]
-  // CHECK: %[[TMP_370:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_369]], %[[TMP_370]], %[[TMP_365]])
-  // CHECK: return %[[TMP_371]]
+  // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
+  // CHECK: %[[TMP_274:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_271]], %[[TMP_273]])
+  // CHECK: %[[TMP_275:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[TMP_276:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_277:.*]] = mhlo.constant dense<676.520386>
+  // CHECK: %[[TMP_278:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_279:.*]] = mhlo.add %[[TMP_274]], %[[TMP_278]]
+  // CHECK: %[[TMP_280:.*]] = mhlo.multiply %[[TMP_279]], %[[TMP_279]]
+  // CHECK: %[[TMP_281:.*]] = mhlo.divide %[[TMP_277]], %[[TMP_280]]
+  // CHECK: %[[TMP_282:.*]] = mhlo.subtract %[[TMP_275]], %[[TMP_281]]
+  // CHECK: %[[TMP_283:.*]] = mhlo.divide %[[TMP_277]], %[[TMP_279]]
+  // CHECK: %[[TMP_284:.*]] = mhlo.add %[[TMP_276]], %[[TMP_283]]
+  // CHECK: %[[TMP_285:.*]] = mhlo.constant dense<-1259.13916>
+  // CHECK: %[[TMP_286:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_287:.*]] = mhlo.add %[[TMP_274]], %[[TMP_286]]
+  // CHECK: %[[TMP_288:.*]] = mhlo.multiply %[[TMP_287]], %[[TMP_287]]
+  // CHECK: %[[TMP_289:.*]] = mhlo.divide %[[TMP_285]], %[[TMP_288]]
+  // CHECK: %[[TMP_290:.*]] = mhlo.subtract %[[TMP_282]], %[[TMP_289]]
+  // CHECK: %[[TMP_291:.*]] = mhlo.divide %[[TMP_285]], %[[TMP_287]]
+  // CHECK: %[[TMP_292:.*]] = mhlo.add %[[TMP_284]], %[[TMP_291]]
+  // CHECK: %[[TMP_293:.*]] = mhlo.constant dense<771.323425>
+  // CHECK: %[[TMP_294:.*]] = mhlo.constant dense<3.000000e+00>
+  // CHECK: %[[TMP_295:.*]] = mhlo.add %[[TMP_274]], %[[TMP_294]]
+  // CHECK: %[[TMP_296:.*]] = mhlo.multiply %[[TMP_295]], %[[TMP_295]]
+  // CHECK: %[[TMP_297:.*]] = mhlo.divide %[[TMP_293]], %[[TMP_296]]
+  // CHECK: %[[TMP_298:.*]] = mhlo.subtract %[[TMP_290]], %[[TMP_297]]
+  // CHECK: %[[TMP_299:.*]] = mhlo.divide %[[TMP_293]], %[[TMP_295]]
+  // CHECK: %[[TMP_300:.*]] = mhlo.add %[[TMP_292]], %[[TMP_299]]
+  // CHECK: %[[TMP_301:.*]] = mhlo.constant dense<-176.615036>
+  // CHECK: %[[TMP_302:.*]] = mhlo.constant dense<4.000000e+00>
+  // CHECK: %[[TMP_303:.*]] = mhlo.add %[[TMP_274]], %[[TMP_302]]
+  // CHECK: %[[TMP_304:.*]] = mhlo.multiply %[[TMP_303]], %[[TMP_303]]
+  // CHECK: %[[TMP_305:.*]] = mhlo.divide %[[TMP_301]], %[[TMP_304]]
+  // CHECK: %[[TMP_306:.*]] = mhlo.subtract %[[TMP_298]], %[[TMP_305]]
+  // CHECK: %[[TMP_307:.*]] = mhlo.divide %[[TMP_301]], %[[TMP_303]]
+  // CHECK: %[[TMP_308:.*]] = mhlo.add %[[TMP_300]], %[[TMP_307]]
+  // CHECK: %[[TMP_309:.*]] = mhlo.constant dense<12.5073433>
+  // CHECK: %[[TMP_310:.*]] = mhlo.constant dense<5.000000e+00>
+  // CHECK: %[[TMP_311:.*]] = mhlo.add %[[TMP_274]], %[[TMP_310]]
+  // CHECK: %[[TMP_312:.*]] = mhlo.multiply %[[TMP_311]], %[[TMP_311]]
+  // CHECK: %[[TMP_313:.*]] = mhlo.divide %[[TMP_309]], %[[TMP_312]]
+  // CHECK: %[[TMP_314:.*]] = mhlo.subtract %[[TMP_306]], %[[TMP_313]]
+  // CHECK: %[[TMP_315:.*]] = mhlo.divide %[[TMP_309]], %[[TMP_311]]
+  // CHECK: %[[TMP_316:.*]] = mhlo.add %[[TMP_308]], %[[TMP_315]]
+  // CHECK: %[[TMP_317:.*]] = mhlo.constant dense<-0.138571098>
+  // CHECK: %[[TMP_318:.*]] = mhlo.constant dense<6.000000e+00>
+  // CHECK: %[[TMP_319:.*]] = mhlo.add %[[TMP_274]], %[[TMP_318]]
+  // CHECK: %[[TMP_320:.*]] = mhlo.multiply %[[TMP_319]], %[[TMP_319]]
+  // CHECK: %[[TMP_321:.*]] = mhlo.divide %[[TMP_317]], %[[TMP_320]]
+  // CHECK: %[[TMP_322:.*]] = mhlo.subtract %[[TMP_314]], %[[TMP_321]]
+  // CHECK: %[[TMP_323:.*]] = mhlo.divide %[[TMP_317]], %[[TMP_319]]
+  // CHECK: %[[TMP_324:.*]] = mhlo.add %[[TMP_316]], %[[TMP_323]]
+  // CHECK: %[[TMP_325:.*]] = mhlo.constant dense<9.98436917E-6>
+  // CHECK: %[[TMP_326:.*]] = mhlo.constant dense<7.000000e+00>
+  // CHECK: %[[TMP_327:.*]] = mhlo.add %[[TMP_274]], %[[TMP_326]]
+  // CHECK: %[[TMP_328:.*]] = mhlo.multiply %[[TMP_327]], %[[TMP_327]]
+  // CHECK: %[[TMP_329:.*]] = mhlo.divide %[[TMP_325]], %[[TMP_328]]
+  // CHECK: %[[TMP_330:.*]] = mhlo.subtract %[[TMP_322]], %[[TMP_329]]
+  // CHECK: %[[TMP_331:.*]] = mhlo.divide %[[TMP_325]], %[[TMP_327]]
+  // CHECK: %[[TMP_332:.*]] = mhlo.add %[[TMP_324]], %[[TMP_331]]
+  // CHECK: %[[TMP_333:.*]] = mhlo.constant dense<1.50563267E-7>
+  // CHECK: %[[TMP_334:.*]] = mhlo.constant dense<8.000000e+00>
+  // CHECK: %[[TMP_335:.*]] = mhlo.add %[[TMP_274]], %[[TMP_334]]
+  // CHECK: %[[TMP_336:.*]] = mhlo.multiply %[[TMP_335]], %[[TMP_335]]
+  // CHECK: %[[TMP_337:.*]] = mhlo.divide %[[TMP_333]], %[[TMP_336]]
+  // CHECK: %[[TMP_338:.*]] = mhlo.subtract %[[TMP_330]], %[[TMP_337]]
+  // CHECK: %[[TMP_339:.*]] = mhlo.divide %[[TMP_333]], %[[TMP_335]]
+  // CHECK: %[[TMP_340:.*]] = mhlo.add %[[TMP_332]], %[[TMP_339]]
+  // CHECK: %[[TMP_341:.*]] = mhlo.constant dense<7.500000e+00>
+  // CHECK: %[[TMP_342:.*]] = mhlo.add %[[TMP_341]], %[[TMP_274]]
+  // CHECK: %[[TMP_343:.*]] = mhlo.constant dense<2.01490307>
+  // CHECK: %[[TMP_344:.*]] = mhlo.divide %[[TMP_274]], %[[TMP_341]]
+  // CHECK: %[[TMP_345:.*]] = "mhlo.log_plus_one"(%[[TMP_344]])
+  // CHECK: %[[TMP_346:.*]] = mhlo.add %[[TMP_343]], %[[TMP_345]]
+  // CHECK: %[[TMP_347:.*]] = mhlo.divide %[[TMP_338]], %[[TMP_340]]
+  // CHECK: %[[TMP_348:.*]] = mhlo.constant dense<7.000000e+00>
+  // CHECK: %[[TMP_349:.*]] = mhlo.divide %[[TMP_348]], %[[TMP_342]]
+  // CHECK: %[[TMP_350:.*]] = mhlo.add %[[TMP_346]], %[[TMP_347]]
+  // CHECK: %[[TMP_351:.*]] = mhlo.subtract %[[TMP_350]], %[[TMP_349]]
+  // CHECK: %[[TMP_352:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK: %[[TMP_353:.*]] = mhlo.add %[[ARG1]], %[[TMP_352]]
+  // CHECK: %[[TMP_354:.*]] = "mhlo.floor"(%[[TMP_353]])
+  // CHECK: %[[TMP_355:.*]] = "mhlo.abs"(%[[TMP_354]])
+  // CHECK: %[[TMP_356:.*]] = mhlo.add %[[ARG1]], %[[TMP_355]]
+  // CHECK: %[[TMP_357:.*]] = mhlo.constant dense<3.14159274>
+  // CHECK: %[[TMP_358:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_356]]
+  // CHECK: %[[TMP_359:.*]] = "mhlo.cosine"(%[[TMP_358]])
+  // CHECK: %[[TMP_360:.*]] = "mhlo.sine"(%[[TMP_358]])
+  // CHECK: %[[TMP_361:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_359]]
+  // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
+  // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
+  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
+  // CHECK: %[[TMP_365:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_275]]) {comparison_direction = "LE"}
+  // CHECK: %[[TMP_366:.*]] = "mhlo.floor"(%[[ARG1]])
+  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_366]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
+  // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FC00000>
+  // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
+  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
+  // CHECK: %[[TMP_372:.*]] = "mhlo.floor"(%[[ARG0]])
+  // CHECK: %[[TMP_373:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_372]]) {comparison_direction = "NE"}
+  // CHECK: %[[TMP_374:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
+  // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FC00000>
+  // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
   %1 = chlo.polygamma %lhs, %rhs : tensor<f32>, tensor<f32> -> tensor<f32>
   return %1 : tensor<f32>
 }
+
+// ----
 
 // CHECK: @polygamma_f64
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f64>, %[[ARG1:.*]]: tensor<f64>)
@@ -1913,145 +1972,152 @@ func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
   // CHECK: %[[TMP_241:.*]] = "mhlo.compare"(%[[TMP_237]], %[[TMP_240]]) {comparison_direction = "LT"}
   // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
-  // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FF0000000000000>
-  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FF8000000000000>
+  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "LT"}
   // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
-  // CHECK: %[[TMP_246:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_247:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_248:.*]] = "mhlo.select"(%[[TMP_247]], %[[TMP_246]], %[[TMP_245]])
-  // CHECK: %[[TMP_249:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_250:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_249]]) {comparison_direction = "LE"}
-  // CHECK: %[[TMP_251:.*]] = "mhlo.floor"(%[[TMP_5]])
-  // CHECK: %[[TMP_252:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_251]]) {comparison_direction = "NE"}
-  // CHECK: %[[TMP_253:.*]] = mhlo.and %[[TMP_250]], %[[TMP_252]]
-  // CHECK: %[[TMP_254:.*]] = "mhlo.floor"(%[[ARG1]])
-  // CHECK: %[[TMP_255:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_254]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_256:.*]] = mhlo.and %[[TMP_250]], %[[TMP_255]]
-  // CHECK: %[[TMP_257:.*]] = "mhlo.select"(%[[TMP_256]], %[[TMP_243]], %[[TMP_248]])
-  // CHECK: %[[TMP_258:.*]] = "mhlo.select"(%[[TMP_253]], %[[TMP_246]], %[[TMP_257]])
-  // CHECK: %[[TMP_259:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
-  // CHECK: %[[TMP_260:.*]] = mhlo.multiply %[[TMP_259]], %[[TMP_258]]
-  // CHECK: %[[TMP_261:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_262:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_261]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_263:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_264:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_263]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_265:.*]] = "mhlo.negate"(%[[ARG1]])
-  // CHECK: %[[TMP_266:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_267:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_266]]
-  // CHECK: %[[TMP_268:.*]] = "mhlo.select"(%[[TMP_264]], %[[TMP_265]], %[[TMP_267]])
-  // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_270:.*]] = mhlo.constant dense<0.99999999999980993>
-  // CHECK: %[[TMP_271:.*]] = mhlo.constant dense<676.5203681218851>
+  // CHECK: %[[TMP_246:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_90]]) {comparison_direction = "LE"}
+  // CHECK: %[[TMP_247:.*]] = "mhlo.floor"(%[[TMP_5]])
+  // CHECK: %[[TMP_248:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_247]]) {comparison_direction = "NE"}
+  // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
+  // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
+  // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7FF0000000000000>
+  // CHECK: %[[TMP_252:.*]] = "mhlo.floor"(%[[ARG1]])
+  // CHECK: %[[TMP_253:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_252]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_254:.*]] = mhlo.and %[[TMP_246]], %[[TMP_253]]
+  // CHECK: %[[TMP_255:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_256:.*]] = "mhlo.floor"(%[[TMP_5]])
+  // CHECK: %[[TMP_257:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_256]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
+  // CHECK: %[[TMP_259:.*]] = "mhlo.compare"(%[[TMP_258]], %[[TMP_90]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
+  // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
+  // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
+  // CHECK: %[[TMP_263:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_93]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
+  // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
+  // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
+  // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[TMP_268:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK: %[[TMP_270:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_271:.*]] = "mhlo.negate"(%[[ARG1]])
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_273:.*]] = mhlo.add %[[TMP_268]], %[[TMP_272]]
-  // CHECK: %[[TMP_274:.*]] = mhlo.multiply %[[TMP_273]], %[[TMP_273]]
-  // CHECK: %[[TMP_275:.*]] = mhlo.divide %[[TMP_271]], %[[TMP_274]]
-  // CHECK: %[[TMP_276:.*]] = mhlo.subtract %[[TMP_269]], %[[TMP_275]]
-  // CHECK: %[[TMP_277:.*]] = mhlo.divide %[[TMP_271]], %[[TMP_273]]
-  // CHECK: %[[TMP_278:.*]] = mhlo.add %[[TMP_270]], %[[TMP_277]]
-  // CHECK: %[[TMP_279:.*]] = mhlo.constant dense<-1259.1392167224028>
-  // CHECK: %[[TMP_280:.*]] = mhlo.constant dense<2.000000e+00>
-  // CHECK: %[[TMP_281:.*]] = mhlo.add %[[TMP_268]], %[[TMP_280]]
-  // CHECK: %[[TMP_282:.*]] = mhlo.multiply %[[TMP_281]], %[[TMP_281]]
-  // CHECK: %[[TMP_283:.*]] = mhlo.divide %[[TMP_279]], %[[TMP_282]]
-  // CHECK: %[[TMP_284:.*]] = mhlo.subtract %[[TMP_276]], %[[TMP_283]]
-  // CHECK: %[[TMP_285:.*]] = mhlo.divide %[[TMP_279]], %[[TMP_281]]
-  // CHECK: %[[TMP_286:.*]] = mhlo.add %[[TMP_278]], %[[TMP_285]]
-  // CHECK: %[[TMP_287:.*]] = mhlo.constant dense<771.32342877765313>
-  // CHECK: %[[TMP_288:.*]] = mhlo.constant dense<3.000000e+00>
-  // CHECK: %[[TMP_289:.*]] = mhlo.add %[[TMP_268]], %[[TMP_288]]
-  // CHECK: %[[TMP_290:.*]] = mhlo.multiply %[[TMP_289]], %[[TMP_289]]
-  // CHECK: %[[TMP_291:.*]] = mhlo.divide %[[TMP_287]], %[[TMP_290]]
-  // CHECK: %[[TMP_292:.*]] = mhlo.subtract %[[TMP_284]], %[[TMP_291]]
-  // CHECK: %[[TMP_293:.*]] = mhlo.divide %[[TMP_287]], %[[TMP_289]]
-  // CHECK: %[[TMP_294:.*]] = mhlo.add %[[TMP_286]], %[[TMP_293]]
-  // CHECK: %[[TMP_295:.*]] = mhlo.constant dense<-176.61502916214059>
-  // CHECK: %[[TMP_296:.*]] = mhlo.constant dense<4.000000e+00>
-  // CHECK: %[[TMP_297:.*]] = mhlo.add %[[TMP_268]], %[[TMP_296]]
-  // CHECK: %[[TMP_298:.*]] = mhlo.multiply %[[TMP_297]], %[[TMP_297]]
-  // CHECK: %[[TMP_299:.*]] = mhlo.divide %[[TMP_295]], %[[TMP_298]]
-  // CHECK: %[[TMP_300:.*]] = mhlo.subtract %[[TMP_292]], %[[TMP_299]]
-  // CHECK: %[[TMP_301:.*]] = mhlo.divide %[[TMP_295]], %[[TMP_297]]
-  // CHECK: %[[TMP_302:.*]] = mhlo.add %[[TMP_294]], %[[TMP_301]]
-  // CHECK: %[[TMP_303:.*]] = mhlo.constant dense<12.507343278686905>
-  // CHECK: %[[TMP_304:.*]] = mhlo.constant dense<5.000000e+00>
-  // CHECK: %[[TMP_305:.*]] = mhlo.add %[[TMP_268]], %[[TMP_304]]
-  // CHECK: %[[TMP_306:.*]] = mhlo.multiply %[[TMP_305]], %[[TMP_305]]
-  // CHECK: %[[TMP_307:.*]] = mhlo.divide %[[TMP_303]], %[[TMP_306]]
-  // CHECK: %[[TMP_308:.*]] = mhlo.subtract %[[TMP_300]], %[[TMP_307]]
-  // CHECK: %[[TMP_309:.*]] = mhlo.divide %[[TMP_303]], %[[TMP_305]]
-  // CHECK: %[[TMP_310:.*]] = mhlo.add %[[TMP_302]], %[[TMP_309]]
-  // CHECK: %[[TMP_311:.*]] = mhlo.constant dense<-0.13857109526572012>
-  // CHECK: %[[TMP_312:.*]] = mhlo.constant dense<6.000000e+00>
-  // CHECK: %[[TMP_313:.*]] = mhlo.add %[[TMP_268]], %[[TMP_312]]
-  // CHECK: %[[TMP_314:.*]] = mhlo.multiply %[[TMP_313]], %[[TMP_313]]
-  // CHECK: %[[TMP_315:.*]] = mhlo.divide %[[TMP_311]], %[[TMP_314]]
-  // CHECK: %[[TMP_316:.*]] = mhlo.subtract %[[TMP_308]], %[[TMP_315]]
-  // CHECK: %[[TMP_317:.*]] = mhlo.divide %[[TMP_311]], %[[TMP_313]]
-  // CHECK: %[[TMP_318:.*]] = mhlo.add %[[TMP_310]], %[[TMP_317]]
-  // CHECK: %[[TMP_319:.*]] = mhlo.constant dense<9.9843695780195716E-6>
-  // CHECK: %[[TMP_320:.*]] = mhlo.constant dense<7.000000e+00>
-  // CHECK: %[[TMP_321:.*]] = mhlo.add %[[TMP_268]], %[[TMP_320]]
-  // CHECK: %[[TMP_322:.*]] = mhlo.multiply %[[TMP_321]], %[[TMP_321]]
-  // CHECK: %[[TMP_323:.*]] = mhlo.divide %[[TMP_319]], %[[TMP_322]]
-  // CHECK: %[[TMP_324:.*]] = mhlo.subtract %[[TMP_316]], %[[TMP_323]]
-  // CHECK: %[[TMP_325:.*]] = mhlo.divide %[[TMP_319]], %[[TMP_321]]
-  // CHECK: %[[TMP_326:.*]] = mhlo.add %[[TMP_318]], %[[TMP_325]]
-  // CHECK: %[[TMP_327:.*]] = mhlo.constant dense<1.5056327351493116E-7>
-  // CHECK: %[[TMP_328:.*]] = mhlo.constant dense<8.000000e+00>
-  // CHECK: %[[TMP_329:.*]] = mhlo.add %[[TMP_268]], %[[TMP_328]]
-  // CHECK: %[[TMP_330:.*]] = mhlo.multiply %[[TMP_329]], %[[TMP_329]]
-  // CHECK: %[[TMP_331:.*]] = mhlo.divide %[[TMP_327]], %[[TMP_330]]
-  // CHECK: %[[TMP_332:.*]] = mhlo.subtract %[[TMP_324]], %[[TMP_331]]
-  // CHECK: %[[TMP_333:.*]] = mhlo.divide %[[TMP_327]], %[[TMP_329]]
-  // CHECK: %[[TMP_334:.*]] = mhlo.add %[[TMP_326]], %[[TMP_333]]
-  // CHECK: %[[TMP_335:.*]] = mhlo.constant dense<7.500000e+00>
-  // CHECK: %[[TMP_336:.*]] = mhlo.add %[[TMP_335]], %[[TMP_268]]
-  // CHECK: %[[TMP_337:.*]] = mhlo.constant dense<2.0149030205422647>
-  // CHECK: %[[TMP_338:.*]] = mhlo.divide %[[TMP_268]], %[[TMP_335]]
-  // CHECK: %[[TMP_339:.*]] = "mhlo.log_plus_one"(%[[TMP_338]])
-  // CHECK: %[[TMP_340:.*]] = mhlo.add %[[TMP_337]], %[[TMP_339]]
-  // CHECK: %[[TMP_341:.*]] = mhlo.divide %[[TMP_332]], %[[TMP_334]]
-  // CHECK: %[[TMP_342:.*]] = mhlo.constant dense<7.000000e+00>
-  // CHECK: %[[TMP_343:.*]] = mhlo.divide %[[TMP_342]], %[[TMP_336]]
-  // CHECK: %[[TMP_344:.*]] = mhlo.add %[[TMP_340]], %[[TMP_341]]
-  // CHECK: %[[TMP_345:.*]] = mhlo.subtract %[[TMP_344]], %[[TMP_343]]
-  // CHECK: %[[TMP_346:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_347:.*]] = mhlo.add %[[ARG1]], %[[TMP_346]]
-  // CHECK: %[[TMP_348:.*]] = "mhlo.floor"(%[[TMP_347]])
-  // CHECK: %[[TMP_349:.*]] = "mhlo.abs"(%[[TMP_348]])
-  // CHECK: %[[TMP_350:.*]] = mhlo.add %[[ARG1]], %[[TMP_349]]
-  // CHECK: %[[TMP_351:.*]] = mhlo.constant dense<3.1415926535897931>
-  // CHECK: %[[TMP_352:.*]] = mhlo.multiply %[[TMP_351]], %[[TMP_350]]
-  // CHECK: %[[TMP_353:.*]] = "mhlo.cosine"(%[[TMP_352]])
-  // CHECK: %[[TMP_354:.*]] = "mhlo.sine"(%[[TMP_352]])
-  // CHECK: %[[TMP_355:.*]] = mhlo.multiply %[[TMP_351]], %[[TMP_353]]
-  // CHECK: %[[TMP_356:.*]] = mhlo.divide %[[TMP_355]], %[[TMP_354]]
-  // CHECK: %[[TMP_357:.*]] = mhlo.subtract %[[TMP_345]], %[[TMP_356]]
-  // CHECK: %[[TMP_358:.*]] = "mhlo.select"(%[[TMP_264]], %[[TMP_357]], %[[TMP_345]])
-  // CHECK: %[[TMP_359:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {comparison_direction = "LE"}
-  // CHECK: %[[TMP_360:.*]] = "mhlo.floor"(%[[ARG1]])
-  // CHECK: %[[TMP_361:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_360]]) {comparison_direction = "EQ"}
-  // CHECK: %[[TMP_362:.*]] = mhlo.and %[[TMP_359]], %[[TMP_361]]
-  // CHECK: %[[TMP_363:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_362]], %[[TMP_363]], %[[TMP_358]])
-  // CHECK: %[[TMP_365:.*]] = "mhlo.select"(%[[TMP_262]], %[[TMP_364]], %[[TMP_260]])
-  // CHECK: %[[TMP_366:.*]] = "mhlo.floor"(%[[ARG0]])
-  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_366]]) {comparison_direction = "NE"}
-  // CHECK: %[[TMP_368:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_261]]) {comparison_direction = "LT"}
-  // CHECK: %[[TMP_369:.*]] = mhlo.or %[[TMP_367]], %[[TMP_368]]
-  // CHECK: %[[TMP_370:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_369]], %[[TMP_370]], %[[TMP_365]])
-  // CHECK: return %[[TMP_371]]
+  // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
+  // CHECK: %[[TMP_274:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_271]], %[[TMP_273]])
+  // CHECK: %[[TMP_275:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[TMP_276:.*]] = mhlo.constant dense<0.99999999999980993>
+  // CHECK: %[[TMP_277:.*]] = mhlo.constant dense<676.5203681218851>
+  // CHECK: %[[TMP_278:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[TMP_279:.*]] = mhlo.add %[[TMP_274]], %[[TMP_278]]
+  // CHECK: %[[TMP_280:.*]] = mhlo.multiply %[[TMP_279]], %[[TMP_279]]
+  // CHECK: %[[TMP_281:.*]] = mhlo.divide %[[TMP_277]], %[[TMP_280]]
+  // CHECK: %[[TMP_282:.*]] = mhlo.subtract %[[TMP_275]], %[[TMP_281]]
+  // CHECK: %[[TMP_283:.*]] = mhlo.divide %[[TMP_277]], %[[TMP_279]]
+  // CHECK: %[[TMP_284:.*]] = mhlo.add %[[TMP_276]], %[[TMP_283]]
+  // CHECK: %[[TMP_285:.*]] = mhlo.constant dense<-1259.1392167224028>
+  // CHECK: %[[TMP_286:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[TMP_287:.*]] = mhlo.add %[[TMP_274]], %[[TMP_286]]
+  // CHECK: %[[TMP_288:.*]] = mhlo.multiply %[[TMP_287]], %[[TMP_287]]
+  // CHECK: %[[TMP_289:.*]] = mhlo.divide %[[TMP_285]], %[[TMP_288]]
+  // CHECK: %[[TMP_290:.*]] = mhlo.subtract %[[TMP_282]], %[[TMP_289]]
+  // CHECK: %[[TMP_291:.*]] = mhlo.divide %[[TMP_285]], %[[TMP_287]]
+  // CHECK: %[[TMP_292:.*]] = mhlo.add %[[TMP_284]], %[[TMP_291]]
+  // CHECK: %[[TMP_293:.*]] = mhlo.constant dense<771.32342877765313>
+  // CHECK: %[[TMP_294:.*]] = mhlo.constant dense<3.000000e+00>
+  // CHECK: %[[TMP_295:.*]] = mhlo.add %[[TMP_274]], %[[TMP_294]]
+  // CHECK: %[[TMP_296:.*]] = mhlo.multiply %[[TMP_295]], %[[TMP_295]]
+  // CHECK: %[[TMP_297:.*]] = mhlo.divide %[[TMP_293]], %[[TMP_296]]
+  // CHECK: %[[TMP_298:.*]] = mhlo.subtract %[[TMP_290]], %[[TMP_297]]
+  // CHECK: %[[TMP_299:.*]] = mhlo.divide %[[TMP_293]], %[[TMP_295]]
+  // CHECK: %[[TMP_300:.*]] = mhlo.add %[[TMP_292]], %[[TMP_299]]
+  // CHECK: %[[TMP_301:.*]] = mhlo.constant dense<-176.61502916214059>
+  // CHECK: %[[TMP_302:.*]] = mhlo.constant dense<4.000000e+00>
+  // CHECK: %[[TMP_303:.*]] = mhlo.add %[[TMP_274]], %[[TMP_302]]
+  // CHECK: %[[TMP_304:.*]] = mhlo.multiply %[[TMP_303]], %[[TMP_303]]
+  // CHECK: %[[TMP_305:.*]] = mhlo.divide %[[TMP_301]], %[[TMP_304]]
+  // CHECK: %[[TMP_306:.*]] = mhlo.subtract %[[TMP_298]], %[[TMP_305]]
+  // CHECK: %[[TMP_307:.*]] = mhlo.divide %[[TMP_301]], %[[TMP_303]]
+  // CHECK: %[[TMP_308:.*]] = mhlo.add %[[TMP_300]], %[[TMP_307]]
+  // CHECK: %[[TMP_309:.*]] = mhlo.constant dense<12.507343278686905>
+  // CHECK: %[[TMP_310:.*]] = mhlo.constant dense<5.000000e+00>
+  // CHECK: %[[TMP_311:.*]] = mhlo.add %[[TMP_274]], %[[TMP_310]]
+  // CHECK: %[[TMP_312:.*]] = mhlo.multiply %[[TMP_311]], %[[TMP_311]]
+  // CHECK: %[[TMP_313:.*]] = mhlo.divide %[[TMP_309]], %[[TMP_312]]
+  // CHECK: %[[TMP_314:.*]] = mhlo.subtract %[[TMP_306]], %[[TMP_313]]
+  // CHECK: %[[TMP_315:.*]] = mhlo.divide %[[TMP_309]], %[[TMP_311]]
+  // CHECK: %[[TMP_316:.*]] = mhlo.add %[[TMP_308]], %[[TMP_315]]
+  // CHECK: %[[TMP_317:.*]] = mhlo.constant dense<-0.13857109526572012>
+  // CHECK: %[[TMP_318:.*]] = mhlo.constant dense<6.000000e+00>
+  // CHECK: %[[TMP_319:.*]] = mhlo.add %[[TMP_274]], %[[TMP_318]]
+  // CHECK: %[[TMP_320:.*]] = mhlo.multiply %[[TMP_319]], %[[TMP_319]]
+  // CHECK: %[[TMP_321:.*]] = mhlo.divide %[[TMP_317]], %[[TMP_320]]
+  // CHECK: %[[TMP_322:.*]] = mhlo.subtract %[[TMP_314]], %[[TMP_321]]
+  // CHECK: %[[TMP_323:.*]] = mhlo.divide %[[TMP_317]], %[[TMP_319]]
+  // CHECK: %[[TMP_324:.*]] = mhlo.add %[[TMP_316]], %[[TMP_323]]
+  // CHECK: %[[TMP_325:.*]] = mhlo.constant dense<9.9843695780195716E-6>
+  // CHECK: %[[TMP_326:.*]] = mhlo.constant dense<7.000000e+00>
+  // CHECK: %[[TMP_327:.*]] = mhlo.add %[[TMP_274]], %[[TMP_326]]
+  // CHECK: %[[TMP_328:.*]] = mhlo.multiply %[[TMP_327]], %[[TMP_327]]
+  // CHECK: %[[TMP_329:.*]] = mhlo.divide %[[TMP_325]], %[[TMP_328]]
+  // CHECK: %[[TMP_330:.*]] = mhlo.subtract %[[TMP_322]], %[[TMP_329]]
+  // CHECK: %[[TMP_331:.*]] = mhlo.divide %[[TMP_325]], %[[TMP_327]]
+  // CHECK: %[[TMP_332:.*]] = mhlo.add %[[TMP_324]], %[[TMP_331]]
+  // CHECK: %[[TMP_333:.*]] = mhlo.constant dense<1.5056327351493116E-7>
+  // CHECK: %[[TMP_334:.*]] = mhlo.constant dense<8.000000e+00>
+  // CHECK: %[[TMP_335:.*]] = mhlo.add %[[TMP_274]], %[[TMP_334]]
+  // CHECK: %[[TMP_336:.*]] = mhlo.multiply %[[TMP_335]], %[[TMP_335]]
+  // CHECK: %[[TMP_337:.*]] = mhlo.divide %[[TMP_333]], %[[TMP_336]]
+  // CHECK: %[[TMP_338:.*]] = mhlo.subtract %[[TMP_330]], %[[TMP_337]]
+  // CHECK: %[[TMP_339:.*]] = mhlo.divide %[[TMP_333]], %[[TMP_335]]
+  // CHECK: %[[TMP_340:.*]] = mhlo.add %[[TMP_332]], %[[TMP_339]]
+  // CHECK: %[[TMP_341:.*]] = mhlo.constant dense<7.500000e+00>
+  // CHECK: %[[TMP_342:.*]] = mhlo.add %[[TMP_341]], %[[TMP_274]]
+  // CHECK: %[[TMP_343:.*]] = mhlo.constant dense<2.0149030205422647>
+  // CHECK: %[[TMP_344:.*]] = mhlo.divide %[[TMP_274]], %[[TMP_341]]
+  // CHECK: %[[TMP_345:.*]] = "mhlo.log_plus_one"(%[[TMP_344]])
+  // CHECK: %[[TMP_346:.*]] = mhlo.add %[[TMP_343]], %[[TMP_345]]
+  // CHECK: %[[TMP_347:.*]] = mhlo.divide %[[TMP_338]], %[[TMP_340]]
+  // CHECK: %[[TMP_348:.*]] = mhlo.constant dense<7.000000e+00>
+  // CHECK: %[[TMP_349:.*]] = mhlo.divide %[[TMP_348]], %[[TMP_342]]
+  // CHECK: %[[TMP_350:.*]] = mhlo.add %[[TMP_346]], %[[TMP_347]]
+  // CHECK: %[[TMP_351:.*]] = mhlo.subtract %[[TMP_350]], %[[TMP_349]]
+  // CHECK: %[[TMP_352:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK: %[[TMP_353:.*]] = mhlo.add %[[ARG1]], %[[TMP_352]]
+  // CHECK: %[[TMP_354:.*]] = "mhlo.floor"(%[[TMP_353]])
+  // CHECK: %[[TMP_355:.*]] = "mhlo.abs"(%[[TMP_354]])
+  // CHECK: %[[TMP_356:.*]] = mhlo.add %[[ARG1]], %[[TMP_355]]
+  // CHECK: %[[TMP_357:.*]] = mhlo.constant dense<3.1415926535897931>
+  // CHECK: %[[TMP_358:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_356]]
+  // CHECK: %[[TMP_359:.*]] = "mhlo.cosine"(%[[TMP_358]])
+  // CHECK: %[[TMP_360:.*]] = "mhlo.sine"(%[[TMP_358]])
+  // CHECK: %[[TMP_361:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_359]]
+  // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
+  // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
+  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
+  // CHECK: %[[TMP_365:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_275]]) {comparison_direction = "LE"}
+  // CHECK: %[[TMP_366:.*]] = "mhlo.floor"(%[[ARG1]])
+  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_366]]) {comparison_direction = "EQ"}
+  // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
+  // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FF8000000000000>
+  // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
+  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
+  // CHECK: %[[TMP_372:.*]] = "mhlo.floor"(%[[ARG0]])
+  // CHECK: %[[TMP_373:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_372]]) {comparison_direction = "NE"}
+  // CHECK: %[[TMP_374:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {comparison_direction = "LT"}
+  // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
+  // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FF8000000000000>
+  // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
   %1 = chlo.polygamma %lhs, %rhs : tensor<f64>, tensor<f64> -> tensor<f64>
   return %1 : tensor<f64>
 }
 
+// ----
+
 // CHECK-LABEL: @polygamma_f16
-// CHECK-SAME: (%[[LHS:.*]]: tensor<f16>, %[[RHS:.*]]: tensor<f16>)
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>, %[[ARG1:.*]]: tensor<f16>)
 func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> {
-  // CHECK: "mhlo.convert"(%[[LHS]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: "mhlo.convert"(%[[RHS]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: "mhlo.convert"(%[[ARG0]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: "mhlo.convert"(%[[ARG1]]) : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.polygamma %lhs, %rhs : tensor<f16>, tensor<f16> -> tensor<f16>

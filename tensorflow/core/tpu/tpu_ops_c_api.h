@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -35,6 +36,11 @@ typedef struct XLA_TpuProgram XLA_TpuProgram;
 
 // Enum for choosing sharding/unsharding program from a `XLA_TpuProgram` obj.
 enum TpuProgramShardingType { kInvalid = 0, kMain, kSharding, kUnsharding };
+
+struct TpuProgramFingerprint {
+  const char* bytes;
+  size_t size;
+};
 
 struct TpuExecutableSerializedProto {
   const char* bytes;
@@ -83,6 +89,24 @@ struct CompilationCacheKeyResult {
 };
 
 typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
+
+typedef struct TfTpu_OrdinalSelector TfTpuOrdinalSelector;
+
+struct TpuPartitionedCall_Params {
+  bool input_shape_opt;
+  bool group_tensors_for_packing;
+  int32_t minimum_input_tensors_packing;
+  int32_t minimum_output_tensors_packing;
+
+  // Whether to attempt to automatically shard inputs by adding an
+  // XlaSharding op after each input.
+  bool enable_auto_xla_input_sharding;
+
+  // The dimension of each input to shard if
+  // enable_auto_xla_input_sharding is set to true. Negative numbers are
+  // allowed and refers to dimensions starting from the end.
+  int32_t auto_xla_input_sharding_dim;
+};
 
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
 // `count` number of TPU programs ready for execution.
@@ -150,6 +174,23 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 // Returns a pointer to an opaque mesh data structure used internally.
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Create(
+    TfTpuOrdinalSelector** ordinal_selector, int num_cores_per_replica);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Destroy(
+    TfTpuOrdinalSelector* ordinal_selector);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
+    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64_t> key,
+    int64_t* req_id, int64_t* ordinal);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
+    TfTpuOrdinalSelector* ordinal_selector, int32_t device_ordinal,
+    int64_t req_id);
+
+TFTPU_CAPI_EXPORT void TfTpu_GetTpuPartitionedCallParams(
+    TpuPartitionedCall_Params* params);
 
 typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   int32_t struct_size;
@@ -383,6 +424,12 @@ TFTPU_CAPI_EXPORT void TpuProgram_DeserializeFromGetTpuProgramResponseProto(
     TpuSerializedProto get_tpu_program_response, XLA_TpuProgram* tpu_program,
     TF_Status* status);
 
+TFTPU_CAPI_EXPORT TpuProgramFingerprint
+TpuProgram_GetFingerprint(const XLA_TpuProgram* tpu_program);
+
+TFTPU_CAPI_EXPORT void TpuProgram_DestroyFingerprint(
+    TpuProgramFingerprint fingerprint);
+
 // Checks if whether a TPU compilation is enabled.
 TFTPU_CAPI_EXPORT bool TpuCompile_IsTpuCompilationEnabled();
 
@@ -483,6 +530,8 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeTpuExecutable);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeCompilerMetadata);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DeserializeFromGetTpuProgramResponseProto);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetFingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DestroyFingerprint);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
@@ -500,6 +549,12 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CompactionSupported);
 
   TFTPU_ADD_FN_IN_STRUCT(TfTpu_InitializeTpuModelServer);
+
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_GetOrdinal);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_DequeueFromCoreSelector);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpu_GetTpuPartitionedCallParams);
 };
 
 }  // extern "C"

@@ -5,10 +5,8 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "compiler",

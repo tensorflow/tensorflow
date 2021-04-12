@@ -264,11 +264,15 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         grpc::ClientContext ctx;
         grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
         if (!s.ok()) {
-          return grpc_util::WrapError("Failed to get dispatcher version", s);
+          return grpc_util::WrapError(
+              absl::StrCat("Failed to get dispatcher version from dispatcher "
+                           "running at ",
+                           address_),
+              s);
         }
         return Status::OK();
       },
-      "checking service version",
+      "check service version",
       /*deadline_micros=*/kint64max));
   if (resp.version() != kDataServiceVersion) {
     return errors::FailedPrecondition(

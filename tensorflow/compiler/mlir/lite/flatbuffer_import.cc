@@ -1192,11 +1192,11 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
     auto cond = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.cond(), cond);
-    while_op.removeAttr("cond");
+    while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.body(), body);
-    while_op.removeAttr("body");
+    while_op->removeAttr("body");
   });
 }
 }  // namespace

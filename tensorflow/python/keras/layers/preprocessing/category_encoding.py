@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras CategoryEncoding preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -25,7 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
@@ -35,13 +32,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
-TFIDF = "tf-idf"
 INT = "int"
 BINARY = "binary"
 COUNT = "count"
-
-# The inverse-document-frequency weights
-_IDF_NAME = "idf"
 
 
 @keras_export("keras.layers.experimental.preprocessing.CategoryEncoding")
@@ -86,10 +79,10 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
       error will be thrown.
     output_mode: Specification for the output of the layer.
       Defaults to "binary". Values can
-      be "binary", "count" or "tf-idf", configuring the layer as follows:
-        "binary": Outputs a single int array per batch, of either vocab_size or
-          num_tokens size, containing 1s in all elements where the token mapped
-          to that index exists at least once in the batch item.
+      be "binary" or "count", configuring the layer as follows:
+        "binary": Outputs a single int array per batch, of num_tokens size,
+          containing 1s in all elements where the token mapped to that index
+          exists at least once in the batch item.
         "count": As "binary", but the int array contains a count of the number
           of times the token at that index appeared in the batch item.
     sparse: Boolean. If true, returns a `SparseTensor` instead of a dense
@@ -99,7 +92,7 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
     inputs: A 2D tensor `(samples, timesteps)`.
     count_weights: A 2D tensor in the same shape as `inputs` indicating the
       weight for each sample value when summing up in `count` mode. Not used in
-      `binary` or `tfidf` mode.
+      `binary` mode.
   """
 
   def __init__(self,
@@ -140,12 +133,11 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = K.floatx() if self.output_mode == TFIDF else dtypes.int64
     if self.sparse:
       return sparse_tensor.SparseTensorSpec(
-          shape=output_shape, dtype=output_dtype)
+          shape=output_shape, dtype=dtypes.int64)
     else:
-      return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
+      return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)
 
   def get_config(self):
     config = {
@@ -163,8 +155,8 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
       inputs = array_ops.expand_dims(inputs, 1)
 
     if count_weights is not None and self.output_mode != COUNT:
-      raise ValueError("count_weights is not used in `output_mode='tf-idf'`, "
-                       "or `output_mode='binary'`. Please pass a single input.")
+      raise ValueError("count_weights is not used in `output_mode='binary'`. "
+                       "Please pass a single input.")
 
     out_depth = self.num_tokens
     binary_output = (self.output_mode == BINARY)
@@ -198,7 +190,7 @@ def sparse_bincount(inputs, out_depth, binary_output, count_weights=None):
       maxlength=out_depth,
       axis=-1,
       binary_output=binary_output)
-  result = math_ops.cast(result, K.floatx())
+  result = math_ops.cast(result, backend.floatx())
   batch_size = array_ops.shape(result)[0]
   result = sparse_tensor.SparseTensor(
       indices=result.indices,
@@ -214,7 +206,7 @@ def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
       weights=count_weights,
       minlength=out_depth,
       maxlength=out_depth,
-      dtype=K.floatx(),
+      dtype=backend.floatx(),
       axis=-1,
       binary_output=binary_output)
   batch_size = inputs.shape.as_list()[0]

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
+#include "tensorflow/lite/delegates/flex/subgraph_resource.h"
 
 namespace tflite {
 namespace flex {
@@ -35,7 +37,11 @@ class DelegateData {
   // This must be called at least once before execution. After preparation
   // succeeds, redundant calls will be ignored (even if the session_options
   // differ).
-  tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options);
+  // When `main_subgraph` parameter is provided, this function will register
+  // FunctionDefs associated with each of the subgraphs attached to the
+  // `main_subgraph`.
+  tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options,
+                             Subgraph* main_subgraph = nullptr);
 
   // The EagerContext that is required for execution of Flex Ops.
   // Note: The context is lazily created after the first call to |Prepare()|.

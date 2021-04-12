@@ -30,7 +30,7 @@ func @batch_norm_training_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf3
 
 // CHECK-LABEL: func @conv_forward
 func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %output: memref<1x1x7x7xf16>) {
-  %scratch = alloc() : memref<32xi8>
+  %scratch = memref.alloc() : memref<32xi8>
   // This defined a 2D convolution over a 8x8 single channel input using a 2x2
   // filter and with an output of 7x7xf16. The 1x1x8x8 is (N, C, H, W)
   "lmhlo_gpu.conv_forward"(%input, %filter, %output, %scratch)
@@ -61,7 +61,7 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
 
 // CHECK-LABEL: func @conv_backfilter
 func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64xf64>, %output: memref<54x54x16x64xf64>) {
-  %scratch = alloc() : memref<23328xui8>
+  %scratch = memref.alloc() : memref<23328xui8>
   "lmhlo_gpu.conv_backwardfilter"(%input, %filter, %output, %scratch)
     { backend_config = {algorithm = 1 : i64,
                         operand_0_layout = [3,2,1,0],
@@ -91,7 +91,7 @@ func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64x
 
 // CHECK-LABEL: func @conv_backinput
 func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf64>, %output : memref<4x3x16x16xf64>) {
-  %scratch = alloc() : memref<32xui8>
+  %scratch = memref.alloc() : memref<32xui8>
   "lmhlo_gpu.conv_backwardinput"(%input, %filter, %output, %scratch)
     { backend_config = {algorithm = 1 : i64,
                         operand_0_layout = [3,2,1,0],
@@ -122,7 +122,7 @@ func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf6
 
 // CHECK-LABEL: func @conv_fused
 func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>, %bias : memref<32xf16>, %output : memref<1x32x9x9xf16>) {
-  %scratch = alloc() : memref<32xui8>
+  %scratch = memref.alloc() : memref<32xui8>
   "lmhlo_gpu.conv_forward_fused"(%input, %filter, %bias, %output, %scratch)
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
@@ -153,7 +153,7 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
 
 // CHECK-LABEL: func @conv_fused_side_input
 func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>, %bias : memref<32xf16>, %side_input:  memref<32xf16>, %output : memref<1x32x9x9xf16>) {
-  %scratch = alloc() : memref<0xui8>
+  %scratch = memref.alloc() : memref<0xui8>
   "lmhlo_gpu.conv_forward_fused_with_side_input"(%input, %filter, %bias, %side_input, %output, %scratch)
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
@@ -218,8 +218,8 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
 
 // CHECK-LABEL: func @cholesky
 func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
-  %scratch = alloc() : memref<32xi8>
-  %info = alloc() : memref<32xi32>
+  %scratch = memref.alloc() : memref<32xi8>
+  %info = memref.alloc() : memref<32xi32>
   "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_lower = true }
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
   return

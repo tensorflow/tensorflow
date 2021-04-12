@@ -632,7 +632,7 @@ def _pack_sequence_as(structure, flat_sequence, expand_composites,
     if final_index < len(flat_sequence):
       raise IndexError
   except IndexError:
-    flat_structure = flatten(structure)
+    flat_structure = flatten(structure, expand_composites=expand_composites)
     if len(flat_structure) != len(flat_sequence):
       raise ValueError(
           "Could not pack sequence. Structure had %d elements, but "

@@ -598,6 +598,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(test_fn(test_var), 3.0)
     async_executor.wait()
 
+    with context.executor_scope(async_executor):
+      test_var = variables.Variable(2.)
+      result = test_fn(test_var)
+      context.async_wait()
+      self.assertAllEqual(result, 3.0)
+
   @test_util.run_gpu_only
   def testNumpyForceCPU(self):
     cpu = constant_op.constant([[1., 2.], [3., 4.]])

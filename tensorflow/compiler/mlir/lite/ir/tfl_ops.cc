@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
@@ -786,6 +787,33 @@ static LogicalResult Verify(CustomOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CustomTfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CustomTfOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange ranges,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  CustomTfOpAdaptor op(operands, attr, ranges);
+
+  if (op.getRegions().empty()) return success();
+  auto *real_op = &op.body().front().front();
+  if (llvm::isa<TF::FakeQuantWithMinMaxArgsOp, TF::FakeQuantWithMinMaxVarsOp,
+                TF::FakeQuantWithMinMaxVarsPerChannelOp>(real_op)) {
+    Value input = *operands.begin();
+    inferredReturnTypes.assign({input.getType()});
+  }
+  return success();
+}
+
+bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.empty()) return true;
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
@@ -1045,7 +1073,7 @@ LogicalResult Conv2DOp::inferReturnTypes(
   return success();
 }
 
-bool Conv2DOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;
@@ -1067,7 +1095,8 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 static void BuildGatherOp(OpBuilder *builder, OperationState &result,
-                          Value params, Value indices, IntegerAttr axis) {
+                          Value params, Value indices, IntegerAttr axis,
+                          IntegerAttr batch_dims) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
 
@@ -1075,7 +1104,7 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
         *builder, result, UnrankedTensorType::get(params_type.getElementType()),
-        params, indices, axis);
+        params, indices, axis, batch_dims);
 
   int64_t params_rank = params_type.getRank();
   int64_t indices_rank = indices_type.getRank();
@@ -1096,7 +1125,29 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
     emitError(result.location, "params must be at least rank axis + 1");
   }
 
-  if (indices_rank == 0) {
+  int64_t batch_dims_i = batch_dims.getInt();
+  if (batch_dims_i < 0) {
+    batch_dims_i += indices_rank;
+  }
+
+  if (batch_dims_i > axis_i) {
+    emitError(result.location,
+              "axis should be bigger than or equal to batch_dims");
+  }
+  if (batch_dims_i >= params_rank || batch_dims_i > indices_rank) {
+    emitError(result.location,
+              "batch_dims must be smaller than params' rank and smaller than "
+              "or equal to indices'rank");
+  }
+  for (int i = 0; i < batch_dims_i; ++i) {
+    if (indices_type.getShape()[i] != params_type.getShape()[i]) {
+      emitError(result.location,
+                "batch dimensions of params must be equal to batch dimensions "
+                "of indices");
+    }
+  }
+
+  if ((indices_rank == 0) || (indices_rank == batch_dims_i)) {
     // Scalar indices (output is rank(params) - 1).
     // Erase shape[axis]
     shape.erase(shape.begin() + axis_i);
@@ -1107,21 +1158,21 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
               std::end(indices_type.getShape()), std::begin(shape) + axis_i);
   } else {
     // Higher rank indices (output is rank(params) + rank(indices) - 1).
-    shape.resize(params_rank + indices_rank - 1);
+    shape.resize(params_rank + indices_rank - 1 - batch_dims_i);
     // Copy params.shape[axis + 1: ] into shape[axis + indices_rank:]
     std::copy(std::begin(params_type.getShape()) + axis_i + 1,
               std::end(params_type.getShape()),
-              std::begin(shape) + axis_i + indices_rank);
+              std::begin(shape) + axis_i + indices_rank - batch_dims_i);
 
     // Copy indices.shape into params.shape[axis]
-    std::copy(std::begin(indices_type.getShape()),
+    std::copy(std::begin(indices_type.getShape()) + batch_dims_i,
               std::end(indices_type.getShape()), std::begin(shape) + axis_i);
   }
 
   TFL::GatherOp::build(
       *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
-      indices, axis);
+      indices, axis, batch_dims);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1917,7 +1968,7 @@ LogicalResult UnpackOp::inferReturnTypes(
   return success();
 }
 
-bool UnpackOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool UnpackOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto pair : llvm::zip(lhs, rhs)) {
     if (failed(
@@ -2210,6 +2261,70 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
       "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
 }
 
+LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
+    MLIRContext *, Optional<Location>, ValueRange operands, DictionaryAttr attr,
+    RegionRange, SmallVectorImpl<Type> &inferredReturnTypes) {
+  Value input = operands[0];
+  auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+
+  Value output_state = operands[18];
+  auto output_state_type =
+      output_state.getType().dyn_cast_or_null<RankedTensorType>();
+
+  if (input_type && input_type.hasRank() && input_type.getRank() != 3) {
+    return failure();
+  }
+
+  if (output_state_type && output_state_type.hasRank() &&
+      output_state_type.getRank() != 2) {
+    return failure();
+  }
+
+  if (!input_type || !input_type.hasRank() || !output_state_type ||
+      !output_state_type.hasRank()) {
+    // We cannot infer the output shape since we don't know the input shape or
+    // the output state shape. We will set the output shape as unranked.
+    Type result_type;
+    result_type = UnrankedTensorType::get(
+        input.getType().cast<ShapedType>().getElementType());
+    inferredReturnTypes.assign({result_type});
+    return success();
+  }
+
+  // Default to non-time_major.
+  bool time_majored = attr.getNamed("time_major").hasValue()
+                          ? attr.getNamed("time_major")
+                                .getValue()
+                                .second.cast<BoolAttr>()
+                                .getValue()
+                          : false;
+
+  int batch =
+      time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);
+  int time = time_majored ? input_type.getDimSize(0) : input_type.getDimSize(1);
+  int n_output = output_state_type.getDimSize(1);
+
+  // Build the output shape.
+  SmallVector<int64_t, 3> output_shape;
+  if (time_majored) {
+    output_shape = {time, batch, n_output};
+  } else {
+    output_shape = {batch, time, n_output};
+  }
+  auto result_type =
+      mlir::RankedTensorType::get(output_shape, input_type.getElementType());
+
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool UnidirectionalSequenceLSTMOp::isCompatibleReturnTypes(TypeRange lhs,
+                                                           TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // BidirectionalSequenceLSTMOp
 //===----------------------------------------------------------------------===//
@@ -2412,10 +2527,33 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
-
   // Return the held attribute value.
   return value();
 }
+
+
+namespace {
+struct FoldPseudoConstOp
+    : public OpRewritePattern<ConstOp> {
+  using OpRewritePattern<ConstOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstOp const_op,
+                                PatternRewriter &rewriter) const override {
+    if (!ConstantOp::isBuildableWith(const_op.value(), const_op.getType()))
+      return failure();
+    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+    return success();
+  }
+};
+
+}  // namespace
+
+void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<FoldPseudoConstOp>(context);
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // CastOp
@@ -2629,6 +2767,31 @@ static LogicalResult Verify(TransposeConvOp op) {
                                         expected_output_type, output_type));
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(StridedSliceOp op) {
+  auto ranked_input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return success();
+  int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  uint32_t ellipsis_mask = op.ellipsis_mask();
+  uint32_t new_axis_mask = op.new_axis_mask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  if (num_input_dims + num_added_axis > 5) return failure();
   return success();
 }
 

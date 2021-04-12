@@ -93,6 +93,10 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
   for (auto* user : destination.getOperation()->getUsers()) {
     if (!source_ops.contains(user)) dependencies.push_back(user);
   }
+  for (auto* successor : side_effect_analysis.DirectControlSuccessors(
+           destination.getOperation())) {
+    if (!source_ops.contains(successor)) dependencies.push_back(successor);
+  }
   for (Operation& op : destination.then_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
       if (!source_ops.contains(successor)) dependencies.push_back(successor);

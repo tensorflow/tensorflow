@@ -31,9 +31,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -133,6 +136,15 @@ static LogicalResult Verify(AllReduceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CollectivePermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CollectivePermuteOp op) {
+  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+      op, op.source_target_pairs());
+}
+
+//===----------------------------------------------------------------------===//
 // ConstOp.
 //===----------------------------------------------------------------------===//
 
@@ -146,13 +158,13 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   LogicalResult matchAndRewrite(ConstOp op,
                                 PatternRewriter& rewriter) const override {
     Value memref = op.output();
-    if (!memref.getDefiningOp<AllocOp>()) {
+    if (!memref.getDefiningOp<memref::AllocOp>()) {
       return failure();
     }
 
     // Check that all uses of the memref are either DeallocOps or this op.
     for (Operation* user : memref.getUsers())
-      if (user != op && !isa<DeallocOp>(user)) return failure();
+      if (user != op && !isa<memref::DeallocOp>(user)) return failure();
 
     rewriter.eraseOp(op);
     return success();
@@ -211,6 +223,72 @@ static LogicalResult Verify(CustomCallOp op) {
                               mapping.results_to_target_results(), "results")))
       return failure();
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+// Removes `lmhlo.copy` inside ReduceOp body.
+//
+// TODO(b/183920887): Remove this pattern as soon as bufferization is fixed.
+struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
+  using OpRewritePattern<ReduceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReduceOp reduce,
+                                PatternRewriter& rewriter) const override {
+    // Find the only `lmhlo.copy` in the body of `reduce`.
+    CopyOp the_only_copy;
+    for (auto& op : reduce.body().front()) {
+      if (auto copy = dyn_cast<lmhlo::CopyOp>(op)) {
+        if (the_only_copy == nullptr) {
+          the_only_copy = copy;
+        } else {
+          the_only_copy = nullptr;
+          break;
+        }
+      }
+    }
+    if (!the_only_copy) return failure();
+
+    auto new_reduce = rewriter.cloneWithoutRegions(reduce);
+    Block* new_block =
+        rewriter.createBlock(&new_reduce.body(), new_reduce.body().end(),
+                             reduce.body().front().getArgumentTypes());
+
+    mlir::BlockAndValueMapping bvm;
+    for (auto item : llvm::zip(reduce.body().front().getArguments(),
+                               new_block->getArguments())) {
+      bvm.map(std::get<0>(item), std::get<1>(item));
+    }
+    bvm.map(the_only_copy.operand(), bvm.lookup(the_only_copy.output()));
+
+    rewriter.setInsertionPointToStart(new_block);
+    for (auto& op : reduce.body().front()) {
+      if (llvm::isa<lmhlo::CopyOp>(op) || llvm::isa<memref::DeallocOp>(op) ||
+          llvm::isa<memref::AllocOp>(op))
+        continue;
+      rewriter.clone(op, bvm);
+    }
+    rewriter.eraseOp(reduce);
+    return success();
+  }
+};
+
+void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<RemoveCopyInReduceBody>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceWindowOp.
+//===----------------------------------------------------------------------===//
+
+// For reduce-window, all `inputs` need to have compatible shapes.
+static LogicalResult Verify(ReduceWindowOp op) {
+  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+    return op.emitOpError() << "requires same shape for all operands";
   return success();
 }
 

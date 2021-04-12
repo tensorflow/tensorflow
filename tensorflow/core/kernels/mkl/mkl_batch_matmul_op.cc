@@ -144,7 +144,8 @@ class BatchMatMulMkl : public OpKernel {
             *params, false /* value for do_not_cache */);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
     matmul_prim->Execute(lhs.flat<Scalar>().data(), rhs.flat<Scalar>().data(),
                          out->flat<Scalar>().data(), cpu_stream);
   }
@@ -152,7 +153,7 @@ class BatchMatMulMkl : public OpKernel {
  private:
   bool adj_x_;
   bool adj_y_;
-  BatchMatMulV2Op<CPUDevice, Scalar> eigen_batch_mm_v2_;
+  BatchMatMulV2Op<CPUDevice, Scalar, Scalar, Scalar> eigen_batch_mm_v2_;
 
   using dims = dnnl::memory::dims;
 
@@ -241,12 +242,12 @@ class BatchMatMulMkl : public OpKernel {
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           BatchMatMulMkl<CPUDevice, TYPE, true>)
-#ifdef ENABLE_MKL
+#ifdef INTEL_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
-#endif  // ENABLE_MKL
+#endif  // INTEL_MKL
 
 }  // end namespace tensorflow
 #endif

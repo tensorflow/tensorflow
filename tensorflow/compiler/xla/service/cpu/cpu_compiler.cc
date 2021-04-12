@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
+#include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -111,6 +112,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -288,6 +290,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                             /*allow_mixed_precision=*/false);
 
   pipeline.AddPass<OperandUpcaster>();
+  pipeline.AddPass<ResultCaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -305,6 +308,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
+  pipeline.AddPass<EighExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();
@@ -661,7 +665,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
-  TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,
                   &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 

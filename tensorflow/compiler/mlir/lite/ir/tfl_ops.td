@@ -428,7 +428,7 @@ def ComparisonOpSameElementTypeConstraint :
 //===----------------------------------------------------------------------===//
 
 def TFL_BroadcastableBinaryBuilder :
-  OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs),
+  OpBuilder<(ins "Value":$lhs, "Value":$rhs),
   [{
     auto resultType =
       OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType());
@@ -439,7 +439,7 @@ def TFL_BroadcastableBinaryBuilder :
   }]>;
 
 def TFL_FusedBroadcastableBinaryBuilder :
-  OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+  OpBuilder<(ins "Value":$lhs, "Value":$rhs,
     "StringAttr":$fusedActivationFunction),
   [{
     buildFusedBroadcastableBinOp(
@@ -447,7 +447,7 @@ def TFL_FusedBroadcastableBinaryBuilder :
   }]>;
 
 def TFL_ComparisonBinaryBuilder :
-  OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs),
+  OpBuilder<(ins "Value":$lhs, "Value":$rhs),
   [{
     buildComparisonBinOp(&$_builder, $_state, lhs, rhs);
   }]>;
@@ -521,8 +521,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -593,6 +592,35 @@ def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [
     NoQuantizableResult]> {
   let summary = [{
 Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$input,
+    TFL_I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TFL_BoolTensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
+def TFL_ReduceAllOp : TFL_Op<"reduce_all", [
+    NoSideEffect,
+    NoQuantizableResult]> {
+  let summary = [{
+Computes the "logical and" of elements across dimensions of a tensor.
   }];
 
   let description = [{
@@ -816,9 +844,10 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value),
+    OpBuilder<(ins "Attribute":$value),
     [{
       $_state.addAttribute("value", value);
       $_state.addTypes(value.getType());
@@ -843,7 +872,7 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
   let results = (outs AnyTensor:$output);
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value, "SparsityParameterAttr":$s_param,
+    OpBuilder<(ins "Attribute":$value, "SparsityParameterAttr":$s_param,
       "Attribute":$compressed_data),
     [{
       $_state.addTypes(value.getType());
@@ -881,7 +910,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
 
     // Returns whether the return types are compatible.
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
 }
 
@@ -1011,9 +1040,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    PredOpTrait<"x and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-   PredOpTrait<"y and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
+       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1059,13 +1086,14 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
-    I32Attr:$axis
+    I32Attr:$axis,
+    DefaultValuedAttr<I32Attr, "0">:$batch_dims
   );
 
   let builders =
   [
-    OpBuilderDAG<(ins "Value":$params, "Value":$indices, "IntegerAttr":$axis),
-    [{ BuildGatherOp(&$_builder, $_state, params, indices, axis); }]>
+    OpBuilder<(ins "Value":$params, "Value":$indices, "IntegerAttr":$axis, "IntegerAttr":$batch_dims),
+    [{ BuildGatherOp(&$_builder, $_state, params, indices, axis, batch_dims); }]>
   ];
 
   let results = (outs
@@ -1401,7 +1429,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 
   let builders =
   [
-    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs),
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs),
     [{
         buildComparisonBinOp(&$_builder, $_state, lhs, rhs);
       }]>
@@ -1903,7 +1931,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [
-    OpBuilderDAG<(ins "Value":$input),
+    OpBuilder<(ins "Value":$input),
     [{
       $_state.addOperands({input});
       $_state.addTypes(input.getType());
@@ -2556,7 +2584,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [
-    OpBuilderDAG<(ins "Value":$input),
+    OpBuilder<(ins "Value":$input),
     [{
       $_state.addOperands({input});
       $_state.addTypes(input.getType());
@@ -2584,7 +2612,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [
-    OpBuilderDAG<(ins "Value":$input),
+    OpBuilder<(ins "Value":$input),
     [{
       $_state.addOperands({input});
       $_state.addTypes(input.getType());
@@ -2612,7 +2640,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [
-    OpBuilderDAG<(ins "Value":$input),
+    OpBuilder<(ins "Value":$input),
     [{
       $_state.addOperands({input});
       $_state.addTypes(input.getType());
@@ -2774,7 +2802,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
   SameOperandsAndResultsScale,
-  PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+  PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Select operator";
@@ -2797,7 +2825,7 @@ def TFL_SelectOp : TFL_Op<"select", [
 
   // TODO(jpienaar): autogenerate this.
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$x, "Value":$y),
+    OpBuilder<(ins "Value":$condition, "Value":$x, "Value":$y),
     [{
     auto resultType = x.getType();
     $_state.addOperands({condition, x, y});
@@ -2810,8 +2838,9 @@ def TFL_SelectOp : TFL_Op<"select", [
 def TFL_SelectV2Op : TFL_Op<"select_v2", [
     ResultsBroadcastableShape,
     NoSideEffect,
+    SameOperandsAndResultsScale,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
-    PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+    PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "SelectV2 operator";
@@ -2833,7 +2862,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
     TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$cond, "Value":$x, "Value":$y),
+    OpBuilder<(ins "Value":$cond, "Value":$x, "Value":$y),
     [{
     BuildSelectV2Op(&$_builder, $_state, cond, x, y);
   }]>];
@@ -3010,7 +3039,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [
-    OpBuilderDAG<(ins "Value":$input),
+    OpBuilder<(ins "Value":$input),
     [{
       $_state.addOperands({input});
       $_state.addTypes(input.getType());
@@ -3084,7 +3113,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
     TFL_I32Tensor:$indices);
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$k),
+    OpBuilder<(ins "Value":$input, "Value":$k),
     [{ BuildTopKOp(&$_builder, $_state, input, k); }]>];
 
   let hasOptions = 1;
@@ -3153,7 +3182,7 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   );
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
 
   let hasOptions = 1;
@@ -3462,14 +3491,17 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
 
     I32Attr:$begin_mask,
     I32Attr:$end_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$ellipsis_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$new_axis_mask,
+    I32Attr:$ellipsis_mask,
+    I32Attr:$new_axis_mask,
     I32Attr:$shrink_axis_mask
   );
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
+
+  // TFLite kernel only supports up to 5D input including added axis.
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -3629,7 +3661,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
   let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
-    OpBuilderDAG<(ins "TypeAttr":$qtype, "Attribute":$value),
+    OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value),
     [{
       $_state.addAttribute("qtype", qtype);
       $_state.addAttribute("value", value);
@@ -3658,7 +3690,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
   let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
-    OpBuilderDAG<(ins "TypeAttr":$qtype, "Attribute":$value,
+    OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value,
       "SparsityParameterAttr":$s_param, "Attribute":$compressed_data),
     [{
       $_state.addTypes(qtype.getValue());
@@ -3959,7 +3991,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
            TFL_OperandHasRank<15, 1>,          // output_gate_bias
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
            TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
-           TFL_StatefulOp]> {
+           TFL_StatefulOp,
+           DeclareOpInterfaceMethods<InferTypeOpInterface>
+          ]> {
   let summary = "Unidirectional sequence lstm operator";
 
   let description = [{
@@ -4043,6 +4077,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {18, 19}; }
+
+    // Compatiable return types check
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
 }
 
@@ -4494,7 +4531,9 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   // TODO(karimnosseir): Revisit if this needs updating.
   NoSideEffect,
   NoQuantizableResult,
-  SingleBlockImplicitTerminator<"YieldOp">]> {
+  IsolatedFromAbove,
+  SingleBlockImplicitTerminator<"YieldOp">,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Wrapper Op for TF custom ops.";
 
   let description = [{
@@ -4512,6 +4551,11 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [
@@ -4565,7 +4609,7 @@ subsequent operation and then be optimized away, however.)
   );
 }
 
-def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect, NoQuantizableResult]> {
   let summary = "2D real-valued fast Fourier transform.";
 
   let description = [{
@@ -4630,6 +4674,7 @@ Read variable data identified by 'resource_id'.
 
 def TFL_Conv3DOp : TFL_Op<"conv_3d", [
     NoSideEffect,
+    NoQuantizableResult,
     AccumulatorUniformScale<2, 0, 1>,
     TFL_OperandHasRank<0, 5>,
     TFL_OperandHasRank<1, 5>,

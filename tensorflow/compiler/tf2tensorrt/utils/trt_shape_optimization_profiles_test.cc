@@ -31,13 +31,18 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-std::vector<TensorShape> DimVecToShapeVec(std::vector<nvinfer1::Dims3> dimvec) {
+std::vector<TensorShape> DimVecToShapeVec(
+    std::vector<nvinfer1::Dims3> dimvec,
+    bool expand_with_empty_shape_values = false) {
   std::vector<TensorShape> shapevec(dimvec.size());
   for (int i = 0; i < dimvec.size(); i++) {
     TensorShape shape;
     TF_CHECK_OK(
         TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims, &shape));
     shapevec[i] = shape;
+  }
+  if (expand_with_empty_shape_values) {
+    shapevec.resize(2 * dimvec.size());  // Append empty shape values
   }
   return shapevec;
 }
@@ -112,7 +117,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
 #endif
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-  std::vector<ExecutionContext> exec_context_;
+  std::vector<ExecutionContext> exec_contexts_;
   // The order is important: exec_context_ must be destroyed first, and logger
   // at last.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -141,11 +146,10 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
       builder_->buildCudaEngine(*network_));
 #endif
   EXPECT_NE(nullptr, engine);
-  TF_CHECK_OK(
-      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
-  // A single execution context should be created for a graph with static input
-  ASSERT_EQ(exec_context_.size(), 1);
-  EXPECT_NE(nullptr, exec_context_[0]);
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
+  // A single execution context should be created for a graph with static input.
+  ASSERT_EQ(exec_contexts_.size(), 1);
+  EXPECT_NE(nullptr, exec_contexts_[0]);
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
@@ -158,7 +162,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   nvinfer1::Dims3 dims(-1, -1, 10);
   DefineNetwork(network_.get(), dims);
 
-  TrtShapeOptimizationProfile profile(ProfileStrategy::kOptimal);
+  TrtShapeOptimizationProfile profile;
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
       {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
       {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},
@@ -167,12 +171,12 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   // Simulate a profile collection phase.
   for (auto dim_vec : input_profiles) {
-    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
+    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec, true);
     profile.AddShape(shape_vec);
   }
   std::vector<PartialTensorShape> input_partial_shapes;
   TF_CHECK_OK(GetNetworkInputShapes(network_.get(), &input_partial_shapes));
-  profile.InitProfiles(input_partial_shapes);
+  profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
 
   // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
@@ -181,18 +185,21 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  TF_CHECK_OK(
-      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
 
   // Each profile has an associated execution context.
-  EXPECT_EQ(exec_context_.size(), input_profiles.size());
+  EXPECT_EQ(exec_contexts_.size(), input_profiles.size());
+
+  profile.SetShapeTensorMask(network_.get());
+
+  EXPECT_EQ(profile.HasShapeTensor(), false);
 
   // Check if the profiles are assigned correctly.
   for (auto dimvec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
     int idx = profile.GetProfileNumber(shape_vec);
-    int prof_idx =
-        exec_context_[idx].GetIExecutionContext()->getOptimizationProfile();
+    ASSERT_GE(idx, 0);
+    int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
 
     for (int j = 0; j < dimvec.size(); j++) {

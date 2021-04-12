@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -43,10 +44,11 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
                                 Block* lhlo_block, OpBuilder* b) {
   SmallVector<Value, 2> arg_bufs;
   for (auto arg_type : lhlo_block->getArgumentTypes()) {
-    arg_bufs.push_back(b->create<AllocOp>(loc, arg_type.cast<MemRefType>()));
+    arg_bufs.push_back(
+        b->create<memref::AllocOp>(loc, arg_type.cast<MemRefType>()));
   }
   for (auto operand : llvm::enumerate(operands)) {
-    b->create<StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
+    b->create<memref::StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
   BlockAndValueMapping mapping;
@@ -55,7 +57,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
     auto clone = b->clone(nested, mapping);
     mapping.map(nested.getResults(), clone->getResults());
   }
-  return b->create<LoadOp>(loc, arg_bufs.back());
+  return b->create<memref::LoadOp>(loc, arg_bufs.back());
 }
 
 // Converts a block with LHLO ops and with signature:
@@ -78,7 +80,8 @@ void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
 Value GetStaticOrDynamicDim(mlir::Location loc, Value shaped_value,
                             size_t dim_index, int64_t dim, OpBuilder* b) {
   return dim == ShapedType::kDynamicSize
-             ? b->create<DimOp>(loc, shaped_value, dim_index).getResult()
+             ? b->create<memref::DimOp>(loc, shaped_value, dim_index)
+                   .getResult()
              : b->create<ConstantIndexOp>(loc, dim);
 }
 
@@ -90,8 +93,8 @@ struct MappedIvs {
 };
 
 template <typename OpTy>
-MappedIvs MapWindowIvsToInput(OpTy op, ValueRange ivs, ValueRange window_ivs,
-                              OpBuilder* b) {
+MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
+                              ValueRange window_ivs, OpBuilder* b) {
   MappedIvs mapped_ivs;
 
   if (!op.window_strides().hasValue()) {
@@ -105,7 +108,6 @@ MappedIvs MapWindowIvsToInput(OpTy op, ValueRange ivs, ValueRange window_ivs,
   auto padding = op.padding().getValue();
 
   auto loc = op.getLoc();
-  auto operand = op.operand();
   auto operand_shape = operand.getType().template cast<MemRefType>().getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
@@ -193,7 +195,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   LogicalResult matchAndRewrite(
       lmhlo::ReduceOp reduce_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
-    // TODO(b/137624192) Implement variadic reduce.
+    // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_op.out().size() != 1) return failure();
 
     scf::ReduceOp scf_reduce_op =
@@ -249,8 +251,8 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       (is_reducing_dim ? reduce_step : parallel_step).push_back(step);
     }
     // Load initial value from memref<element_type>.
-    SmallVector<Value, 1> init_value = {
-        rewriter->create<LoadOp>(loc, *reduce_op.init_values().begin())};
+    SmallVector<Value, 1> init_value = {rewriter->create<memref::LoadOp>(
+        loc, *reduce_op.init_values().begin())};
     // Outer ParallelOp is not needed if it is a reduction across all dims.
     scf::ParallelOp outer;
     if (!parallel_lower.empty()) {
@@ -272,7 +274,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       out_indices.push_back(rewriter->create<ConstantIndexOp>(loc, 0));
     }
 
-    rewriter->create<StoreOp>(loc, reduction_result, out, out_indices);
+    rewriter->create<memref::StoreOp>(loc, reduction_result, out, out_indices);
 
     // Load the element to reduce.
     SmallVector<Value, 2> indices;
@@ -290,7 +292,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     }
 
     rewriter->setInsertionPointToStart(inner.getBody());
-    Value elem = rewriter->create<mlir::LoadOp>(
+    Value elem = rewriter->create<mlir::memref::LoadOp>(
         loc, *reduce_op.operands().begin(), indices);
     return rewriter->create<scf::ReduceOp>(loc, elem);
   }
@@ -309,7 +311,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 //       value = input[I]
 //     else
 //       value = neutral_value
-//     accumulator = reduction_operator(output[O], value)
+//     accumulator = reduction_operator(accumulator, value)
 //   output[O] = accumulator
 //
 // Converts `lmhlo.ReduceWindowOp` into two scf::ParallelOp and a
@@ -364,6 +366,9 @@ class ReduceWindowOpConverter
   LogicalResult matchAndRewrite(
       lmhlo::ReduceWindowOp reduce_window_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
+    // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
+    if (reduce_window_op.out().size() != 1) return failure();
+
     scf::ParallelOp output_loop, window_loop;
     std::tie(output_loop, window_loop) =
         CreateParallelLoopsToTraverseOutputAndWindow(reduce_window_op,
@@ -384,14 +389,14 @@ class ReduceWindowOpConverter
       lmhlo::ReduceWindowOp reduce_window_op,
       ConversionPatternRewriter* rewriter) const {
     auto loc = reduce_window_op.getLoc();
-    Value init_value =
-        rewriter->create<LoadOp>(loc, reduce_window_op.init_value());
+    Value init_value = rewriter->create<memref::LoadOp>(
+        loc, reduce_window_op.init_values()[0]);
 
     Value zero = rewriter->create<ConstantIndexOp>(loc, 0);
     Value one = rewriter->create<ConstantIndexOp>(loc, 1);
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
-    Value output = reduce_window_op.out();
+    Value output = reduce_window_op.out()[0];
     auto output_loop = MakeLoopOverShape(loc, output, rewriter);
 
     // Create a nested loop that traverses the window.
@@ -408,7 +413,8 @@ class ReduceWindowOpConverter
 
     Value reduction_result = *window_loop.getResults().begin();
     auto output_ivs = output_loop.getInductionVars();
-    rewriter->create<StoreOp>(loc, reduction_result, output, output_ivs);
+    rewriter->create<memref::StoreOp>(loc, reduction_result, output,
+                                      output_ivs);
     return std::make_pair(output_loop, window_loop);
   }
 
@@ -425,22 +431,22 @@ class ReduceWindowOpConverter
           "`window_dilations` attributes yet. The attributes will be ignored.");
     }
 
-    Value operand = reduce_window_op.operand();
-    auto operand_type = operand.getType().cast<MemRefType>();
+    Value input = reduce_window_op.inputs()[0];
+    auto input_type = input.getType().cast<MemRefType>();
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
-    MappedIvs mapped_ivs =
-        MapWindowIvsToInput(reduce_window_op, output_loop.getInductionVars(),
-                            window_loop.getInductionVars(), rewriter);
+    MappedIvs mapped_ivs = MapWindowIvsToInput(
+        reduce_window_op, input, output_loop.getInductionVars(),
+        window_loop.getInductionVars(), rewriter);
 
     auto elem_or_init = rewriter->create<scf::IfOp>(
-        loc, operand_type.getElementType(), mapped_ivs.in_bounds,
+        loc, input_type.getElementType(), mapped_ivs.in_bounds,
         /*withElseRegion=*/true);
 
     OpBuilder then_builder =
         elem_or_init.getThenBodyBuilder(rewriter->getListener());
-    Value elem = then_builder.create<mlir::LoadOp>(
-        loc, reduce_window_op.operand(), mapped_ivs.ivs);
+    Value elem =
+        then_builder.create<mlir::memref::LoadOp>(loc, input, mapped_ivs.ivs);
     then_builder.create<scf::YieldOp>(loc, elem);
 
     OpBuilder else_builder =
@@ -497,8 +503,8 @@ class SelectAndScatterOpConverter
     auto selected_ivs = SelectIvs(s_and_s_op, loop_over_src, &rewriter);
 
     // Load `source[selected_ivs]`.
-    auto src_elem = rewriter.create<LoadOp>(loc, s_and_s_op.source(),
-                                            loop_over_src.getInductionVars());
+    auto src_elem = rewriter.create<memref::LoadOp>(
+        loc, s_and_s_op.source(), loop_over_src.getInductionVars());
 
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
     auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
@@ -517,14 +523,14 @@ class SelectAndScatterOpConverter
   void InitializeOutput(lmhlo::SelectAndScatterOp s_and_s_op,
                         OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
-    Value init_value = b->create<LoadOp>(loc, s_and_s_op.init_value());
+    Value init_value = b->create<memref::LoadOp>(loc, s_and_s_op.init_value());
 
     scf::ParallelOp loop_over_output =
         MakeLoopOverShape(loc, s_and_s_op.out(), b);
     OpBuilder::InsertionGuard guard(*b);
     b->setInsertionPointToStart(loop_over_output.getBody());
-    b->create<StoreOp>(loc, init_value, s_and_s_op.out(),
-                       loop_over_output.getInductionVars());
+    b->create<memref::StoreOp>(loc, init_value, s_and_s_op.out(),
+                               loop_over_output.getInductionVars());
   }
 
   struct WindowLoops {
@@ -607,9 +613,9 @@ class SelectAndScatterOpConverter
         OpBuilder::atBlockEnd(window_loops.inner_loop.getBody());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in the pad area.
-    MappedIvs mapped_ivs =
-        MapWindowIvsToInput(s_and_s_op, loop_over_src.getInductionVars(),
-                            window_loops.window_ivs, &inner_loop_b);
+    MappedIvs mapped_ivs = MapWindowIvsToInput(
+        s_and_s_op, s_and_s_op.operand(), loop_over_src.getInductionVars(),
+        window_loops.window_ivs, &inner_loop_b);
 
     IterArgs ivs_val_flag(window_loops.inner_loop.getRegionIterArgs());
 
@@ -647,7 +653,7 @@ class SelectAndScatterOpConverter
 
     TypeRange iter_arg_types{ivs_val_flag->to_vector()};
     Value operand_elem =
-        b->create<LoadOp>(loc, s_and_s_op.operand(), operand_ivs);
+        b->create<memref::LoadOp>(loc, s_and_s_op.operand(), operand_ivs);
     auto if_init =
         b->create<scf::IfOp>(loc, iter_arg_types, ivs_val_flag->is_init(),
                              /*withElseRegion=*/true);
@@ -702,7 +708,7 @@ struct LhloLegalizeToParallelLoopsPass
   void runOnFunction() override {
     auto func = getFunction();
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     // clang-format off
     patterns.insert<
         ReduceOpConverter,
@@ -712,8 +718,8 @@ struct LhloLegalizeToParallelLoopsPass
     // clang-format on
 
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           scf::SCFDialect, LmhloDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
+                           StandardOpsDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();
 

@@ -102,11 +102,13 @@ def do_test(create_signature,
     logging.info('Saved model to: %s', save_model_path)
     # TODO(b/153507667): Set the following boolean flag once the hoisting
     #                    variables logic from SavedModel importer is removed.
+    exported_names = ''
     lift_variables = False
     upgrade_legacy = True
     if use_lite:
       mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir_lite(
-          save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
+          save_model_path, exported_names,
+          ','.join([tf.saved_model.tag_constants.SERVING]),
           upgrade_legacy, show_debug_info)
       # We don't strictly need this, but it serves as a handy sanity check
       # for that API, which is otherwise a bit annoying to test.
@@ -116,7 +118,8 @@ def do_test(create_signature,
                                                         show_debug_info)
     else:
       mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
-          save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
+          save_model_path, exported_names,
+          ','.join([tf.saved_model.tag_constants.SERVING]),
           lift_variables, upgrade_legacy, show_debug_info)
 
     if canonicalize:

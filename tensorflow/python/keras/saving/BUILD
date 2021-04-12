@@ -9,10 +9,8 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -172,7 +170,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no_windows",
-        "notap",  # TODO(b/161198218): flaky timeout
+        "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [
         "//tensorflow/python:client_testlib",

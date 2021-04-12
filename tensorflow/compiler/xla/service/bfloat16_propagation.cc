@@ -345,11 +345,8 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
   return true;
 }
 
-namespace {
-
-// Returns whether we should avoid changing the precision of inst regardless of
-// the producers and users.
-bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
+bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
+    const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kFusion &&
       inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return ShouldKeepPrecisionUnchanged(
@@ -358,13 +355,11 @@ bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
   // Do not change precision for side-effecting instructions, control flow, and
   // bitcast-convert, because this pass might break the interfaces or
   // assumptions for them.
-  return inst->opcode() == HloOpcode::kCustomCall ||      //
-         inst->opcode() == HloOpcode::kCall ||            //
-         inst->opcode() == HloOpcode::kBitcastConvert ||  //
+  return inst->opcode() == HloOpcode::kCustomCall ||
+         inst->opcode() == HloOpcode::kCall ||
+         inst->opcode() == HloOpcode::kBitcastConvert ||
          inst->HasSideEffectNoRecurse();
 }
-
-}  // namespace
 
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
                                                         bool skip_parameters) {

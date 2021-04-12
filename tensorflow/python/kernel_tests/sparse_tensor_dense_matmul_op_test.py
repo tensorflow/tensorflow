@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import time
 
+from absl import app
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -35,13 +36,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import test
 
 
 def _maybe_complex(x):
   if x.dtype.kind == "c":  # complex
-    return (x + 1j * x) / 2
+    return x + 1j * x
   return x
 
 
@@ -86,8 +86,10 @@ class SparseTensorDenseMatMulTest(test.TestCase):
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
           self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
+        elif x.dtype == np.float16:
+          self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
         else:
-          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+          self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _testBasic(self, value_dtype, indices_dtype=np.int64):
     x = _maybe_complex(np.random.rand(10, 10).astype(value_dtype))
@@ -100,6 +102,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
     self._testBasic(np.int32)
+    self._testBasic(np.float16)
     self._testBasic(np.float32)
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
@@ -163,6 +166,18 @@ class SparseTensorDenseMatMulTest(test.TestCase):
           sparse_ops.sparse_tensor_dense_matmul(
               sparse_t, dense_t, adjoint_a=True))
 
+  def testUnorderedIndicesForSparseTensorDenseMatmul(self):
+    indices = np.array([(2, 1), (0, 0)]).astype(np.int64)
+    values = np.array([10, 11]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
+    expected_t = np.array([[11] * 500, [0] * 500, [20] * 500], dtype=np.float32)
+
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
+
   @test_util.run_gpu_only
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):
     indices = np.array([[1, 10]]).astype(np.int64)
@@ -200,7 +215,6 @@ class SparseTensorDenseMatMulTest(test.TestCase):
         sparse_ops.sparse_tensor_dense_matmul(
             sparse_t, dense_t, adjoint_a=True))
 
-  # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
     r1 = np.random.randint(6000, 20000)
     r2 = np.random.randint(1, 10)
@@ -220,6 +234,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self._testMatmul(
           x.transpose(), y.transpose(), adjoint_a=True, adjoint_b=True)
 
+  # Tests setting one dimension to be a high value.
+  def testLarge(self):
     np.random.seed(127)  # Repeatable results
     self._testLarge(np.float32)
     self._testLarge(np.float64)

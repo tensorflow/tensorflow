@@ -924,7 +924,7 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   }
 };
 
-// Maps the following represenattions of AvgPool in MHLO into a tf.AvgPool{3D}
+// Maps the following representations of AvgPool in MHLO into a tf.AvgPool{3D}
 // operation when they cleanly map to 2D or 3D average pool with VALID or SAME
 // padding:
 // * div(reduce_sum_window(x), constant(sizeof(window)))
@@ -938,28 +938,29 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       ConversionPatternRewriter &rewriter) const final {
     auto rw =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.lhs().getDefiningOp());
-    if (!rw) return failure();
+    if (!rw || rw->getNumResults() != 1) return failure();
 
     // Check that the reduce-window is a sum-reduce-window.
     if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw.body())))
       return failure();
 
     // Check that this is a floating point reduce window with a rank of 4 or 5.
-    RankedTensorType rw_type = rw.getType().dyn_cast<RankedTensorType>();
+    const RankedTensorType rw_type =
+        rw.getResult(0).getType().dyn_cast<RankedTensorType>();
     if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
         rw_type.getRank() <= 3 || rw_type.getRank() > 5)
       return failure();
 
     // Check that the Div op doesn't do broadcasting on the output of the reduce
     // window.
-    if (div_op.getType() != rw.getType()) return failure();
+    if (div_op.getType() != rw_type) return failure();
 
     // tf.avg_pool need at least 3 dimensions (batch, spatial, channel)
     const uint64_t rank = rw.window_dimensions().size();
     if (rank <= 2) return failure();
 
     // If the init value isn't zero then it can't be an average pool.
-    if (!isFloatZero(rw.init_value())) return failure();
+    if (!isFloatZero(rw.init_values()[0])) return failure();
 
     llvm::SmallVector<int64_t, 5> window_strides;
     if (rw.window_strides().hasValue()) {
@@ -1017,14 +1018,14 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.operand(),
+          div_op, rw.inputs()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
 
     auto rw_rhs =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.rhs().getDefiningOp());
-    if (rw_rhs) {
+    if (rw_rhs && rw_rhs.getNumResults() == 1) {
       // Check that RHS is a sum-reduce-window.
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.body())))
         return failure();
@@ -1032,8 +1033,8 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // Check that the RHS is a reduce_window over a constant 1 input with 0 as
       // the init value.
       DenseFPElementsAttr rhs_input;
-      if (!isFloatZero(rw_rhs.init_value()) ||
-          !matchPattern(rw_rhs.operand(), m_Constant(&rhs_input)) ||
+      if (!isFloatZero(rw_rhs.init_values()[0]) ||
+          !matchPattern(rw_rhs.inputs()[0], m_Constant(&rhs_input)) ||
           !rhs_input.isSplat() ||
           !rhs_input.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -1048,13 +1049,14 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
 
       if (llvm::all_of(padding, [](int64_t i) { return i == 0; }))
         return replaceWithAvgPool(
-            div_op, rw.operand(),
+            div_op, rw.inputs()[0],
             llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
             window_strides, "VALID", rewriter);
 
       RankedTensorType input_type =
-          rw.operand().getType().dyn_cast<RankedTensorType>();
-      RankedTensorType output_type = rw.getType().dyn_cast<RankedTensorType>();
+          rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
+      RankedTensorType output_type =
+          rw.getResult(0).getType().dyn_cast<RankedTensorType>();
       if (!input_type || !output_type) return failure();
 
       // Check that the individual padding values are corresponding to SAME
@@ -1071,7 +1073,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           return failure();
       }
       return replaceWithAvgPool(
-          div_op, rw.operand(),
+          div_op, rw.inputs()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "SAME", rewriter);
     }
@@ -1198,18 +1200,22 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       return failure();
     }
 
-    // Verify that start_index_map and collapsed_slice_dims are both an iota
-    // with the same number of elements as the last dimension of start_indices.
+    // Verify that start_index_map and collapsed_slice_dims contains the same
+    // values.
     auto start_index_map = gather_op.dimension_numbers().start_index_map();
     auto collapsed_slice_dims =
         gather_op.dimension_numbers().collapsed_slice_dims();
-    if (!IsIotaAttr(start_index_map, start_indices_type.getShape().back()) ||
-        !IsIotaAttr(collapsed_slice_dims,
-                    start_indices_type.getShape().back())) {
-      // TODO(tberghammer): Transform start_indices to support non-standard
-      // start_index_maps.
+    if (start_index_map.getNumElements() !=
+        collapsed_slice_dims.getNumElements()) {
       return rewriter.notifyMatchFailure(
-          gather_op, "unsupported start index map and/or collapsed slice dims");
+          gather_op,
+          "different size for start index map and collapsed slice dims");
+    }
+    for (auto c : collapsed_slice_dims) {
+      if (llvm::count(start_index_map, c) == 0) {
+        return rewriter.notifyMatchFailure(
+            gather_op, "collapsed slice dim isn't present in start index map");
+      }
     }
 
     // Verify that slice_sizes is 1 for the indexed dimensions and the full
@@ -1217,7 +1223,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto slice_sizes = gather_op.slice_sizes();
     int64_t index = 0;
     for (int64_t s : slice_sizes.getValues<int64_t>()) {
-      if (index < start_indices_type.getShape().back()) {
+      if (llvm::count(start_index_map, index)) {
         if (s != 1) {
           return rewriter.notifyMatchFailure(gather_op,
                                              "unsupported slice sizes");
@@ -1241,6 +1247,25 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       }
       ++offset;
     }
+
+    // Transpose the operand to handle non-iota start index map.
+    llvm::SmallVector<int64_t, 4> transpose_dimensions;
+    llvm::SmallVector<int64_t, 4> transpose_shape;
+    for (auto s : start_index_map) {
+      transpose_dimensions.push_back(s.getZExtValue());
+      transpose_shape.push_back(operand_type.getShape()[s.getZExtValue()]);
+    }
+    for (int64_t i = 0, e = operand_type.getRank(); i < e; ++i) {
+      if (llvm::count(start_index_map, i) == 0) {
+        transpose_dimensions.push_back(i);
+        transpose_shape.push_back(operand_type.getShape()[i]);
+      }
+    }
+    operand_type =
+        RankedTensorType::get(transpose_shape, operand_type.getElementType());
+    operand = rewriter.create<mhlo::TransposeOp>(
+        gather_op.getLoc(), operand_type, operand,
+        rewriter.getI64TensorAttr(transpose_dimensions));
 
     rewriter.replaceOpWithNewOp<TF::GatherNdOp>(gather_op, result_type, operand,
                                                 start_indices);
@@ -1395,7 +1420,7 @@ void LegalizeHloToTf::runOnFunction() {
   MLIRContext &context = getContext();
 
   // Add legalization patterns to the list.
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
@@ -1423,7 +1448,7 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                    ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
                    ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
                    ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {

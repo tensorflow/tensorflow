@@ -250,6 +250,9 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
 // Checks if a device string is a TPU device.
 bool IsTPUDevice(llvm::StringRef device);
 
+// Checks if a device string is a TPU replicated core device.
+bool IsTPUReplicatedCore(llvm::StringRef device);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

@@ -129,7 +129,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       T* dst_data = output_tensor->flat<T>().data();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, pooling_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_fwd->GetEngine()));
       // Execute pooling op.
       pooling_fwd->Execute(src_data, dst_data, nullptr, fwd_cpu_stream);
 
@@ -250,7 +251,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, pooling_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_bwd->GetEngine()));
       Tensor* output_tensor = nullptr;
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
                                  orig_input_dims_mkl_order,

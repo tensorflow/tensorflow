@@ -29,11 +29,12 @@ namespace grappler {
 namespace {
 
 static const char* kTestOptimizerName = "Test";
+static const char* kTestPluginOptimizerName = "TestPlugin";
 
 class TestGraphOptimizer : public CustomGraphOptimizer {
  public:
-  Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
-                  nullptr) override {
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();
   }
   string name() const override { return kTestOptimizerName; }
@@ -83,6 +84,34 @@ TEST(GraphOptimizerRegistryTest, CrashesOnDuplicateRegistration) {
   const auto creator = []() { return new TestGraphOptimizer; };
   EXPECT_DEATH(CustomGraphOptimizerRegistry::RegisterOptimizerOrDie(
                    creator, "StaticRegister"),
+               "twice");
+}
+
+class TestPluginGraphOptimizer : public CustomGraphOptimizer {
+ public:
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+  string name() const override { return kTestPluginOptimizerName; }
+  bool UsesFunctionLibrary() const override { return false; }
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    return Status::OK();
+  }
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+};
+
+TEST(PluginGraphOptimizerRegistryTest, CrashesOnDuplicateRegistration) {
+  const auto creator = []() { return new TestPluginGraphOptimizer; };
+  ConfigList config_list;
+  PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(creator, "GPU",
+                                                             config_list);
+  PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(creator, "CPU",
+                                                             config_list);
+  EXPECT_DEATH(PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(
+                   creator, "GPU", config_list),
                "twice");
 }
 

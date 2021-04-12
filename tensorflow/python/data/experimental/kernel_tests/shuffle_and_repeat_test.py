@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import shuffle_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -74,7 +75,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output1 = self._gen_outputs(lambda: self._build_ds(10), 100)
     output2 = self._gen_outputs(lambda: self._build_ds(20), 100)
     self.assertNotEqual(output1, output2)
-    self.assertEqual(sorted(output1), sorted(output2))
+    self.assertCountEqual(output1, output2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCountNone(self):
@@ -83,7 +84,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output2 = self._gen_outputs(
         lambda: self._build_ds(20, count=None), 100, verify_exhausted=False)
     self.assertNotEqual(output1, output2)
-    self.assertEqual(sorted(output1), sorted(output2))
+    self.assertCountEqual(output1, output2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCountMinusOne(self):
@@ -92,7 +93,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output2 = self._gen_outputs(
         lambda: self._build_ds(20, count=-1), 100, verify_exhausted=False)
     self.assertNotEqual(output1, output2)
-    self.assertEqual(sorted(output1), sorted(output2))
+    self.assertCountEqual(output1, output2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testInfiniteOutputs(self):
@@ -150,6 +151,18 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertCountEqual(shuffle_1, shuffle_2)
     self.assertNotEqual(shuffle_1, shuffle_2)
+
+
+class ShuffleAndRepeatCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                     parameterized.TestCase):
+
+  def _build_ds(self, seed):
+    return dataset_ops.Dataset.range(20).apply(
+        shuffle_ops.shuffle_and_repeat(buffer_size=5, count=5, seed=seed))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+    self.run_core_tests(lambda: self._build_ds(10), 100)
 
 
 if __name__ == "__main__":

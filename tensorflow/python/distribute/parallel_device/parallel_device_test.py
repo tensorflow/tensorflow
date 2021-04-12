@@ -135,6 +135,21 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_string_representation(self):
+    x = self.device.pack(
+        [constant_op.constant([5., 6.]),
+         constant_op.constant([6., 7.])])
+    parallel_str = str(x)
+    self.assertIn("5", parallel_str)
+    self.assertIn("7", parallel_str)
+    self.assertIn(self.device_type + ":0", parallel_str)
+    self.assertIn(self.device_type + ":1", parallel_str)
+    parallel_repr = repr(x)
+    self.assertIn("5", parallel_repr)
+    self.assertIn("7", parallel_repr)
+    self.assertIn(self.device_type + ":0", parallel_repr)
+    self.assertIn(self.device_type + ":1", parallel_repr)
+
   def test_device_id(self):
     device_ids = self.device.unpack(self.device.device_ids)
     self.assertAllClose([0, 1], device_ids)

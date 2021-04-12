@@ -6,7 +6,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
+        "//tensorflow/compiler/xla/service:eigh_expander",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",

@@ -8,7 +8,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
@@ -349,15 +349,13 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
-        # TODO(b/168923364): Remove deprecated_backends after it is added to all
-        # necessary targets.
-        ":deprecated_backends",
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
         "@ruy//ruy:context",
+        "@ruy//ruy:path",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:macros",
@@ -492,6 +490,7 @@ cc_test(
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
     }),
+    tags = ["tflite_smoke_test"],
     deps = [
         ":kernel_util",
         "//tensorflow/lite/c:common",
@@ -661,6 +660,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_lib",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:util",
     "//tensorflow/lite/c:common",
     "//tensorflow/lite/kernels/internal:audio_utils",
     "//tensorflow/lite/kernels/internal:common",
@@ -740,8 +740,10 @@ cc_library(
     srcs = [
         "multinomial.cc",
         "random_standard_normal.cc",
+        "random_uniform.cc",
     ],
     hdrs = ["custom_ops_register.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
@@ -827,6 +829,7 @@ cc_library(
     name = "reference_ops",
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -1084,6 +1087,27 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "conv_mem_test",
+    srcs = ["conv_mem_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/conv3d_huge_im2col.bin",
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+    ],
+    tags = [
+        "tflite_not_portable_ios",
+        "tflite_smoke_test",
+    ],
+    deps = [
+        ":kernel_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1438,6 +1462,20 @@ cc_test(
     name = "random_standard_normal_test",
     size = "small",
     srcs = ["random_standard_normal_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "random_uniform_test",
+    size = "small",
+    srcs = ["random_uniform_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
