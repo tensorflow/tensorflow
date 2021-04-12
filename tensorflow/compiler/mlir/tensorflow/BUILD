@@ -793,12 +793,36 @@ cc_library(
 )
 
 cc_library(
+    name = "mark_initialized_variables_lib",
+    srcs = [
+        "transforms/mark_initialized_variables.cc",
+    ],
+    hdrs = [
+        "transforms/mark_initialized_variables.h",
+    ],
+    deps = [
+        ":tensorflow_ops",
+        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "fake_session",
     srcs = ["utils/fake_session.cc"],
     hdrs = ["utils/fake_session.h"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:threadpool_device",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_options",
@@ -812,6 +836,7 @@ cc_library(
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
         "transforms/lift_variables_pass.cc",
+        "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
     ],
@@ -820,7 +845,9 @@ cc_library(
     ],
     deps = [
         ":lift_variables_lib",
+        ":mark_initialized_variables_lib",
         ":tensorflow",
+        ":tensorflow_ops",
         ":tensorflow_passes",
         ":tensorflow_types",
         "//tensorflow/core:core_cpu",
@@ -1083,11 +1110,13 @@ cc_library(
         "transforms/init_text_file_to_import_test_pass.cc",
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_pass.cc",
+        "transforms/mark_initialized_variables_test_pass.cc",
     ],
     deps = [
         ":fake_session",
         ":lift_variables_lib",
         ":lower_tf_lib",
+        ":mark_initialized_variables_lib",
         ":tensorflow",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
