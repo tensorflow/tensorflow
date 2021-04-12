@@ -73,6 +73,7 @@ class SpmdBuilder : public HloComputation::Builder {
       : HloComputation::Builder(name) {
     visiting_hlo_ = hlo;
   }
+
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
 
   const std::vector<HloInstruction*>& derived_instructions(
@@ -80,7 +81,10 @@ class SpmdBuilder : public HloComputation::Builder {
     return instructions_.at(hlo);
   }
 
-  void set_visiting_hlo(HloInstruction* hlo) { visiting_hlo_ = hlo; }
+  void set_visiting_hlo(HloInstruction* hlo) {
+    visiting_hlo_ = hlo;
+    instructions_[hlo];
+  }
 
   HloInstruction* visiting_hlo() const { return visiting_hlo_; }
 
@@ -455,6 +459,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Common handle for HLOs that runs on a single device.
   Status HandleSingleDevice(const HloInstruction* hlo);
+
+  // CustomCall handlers per call target.
+  Status HandleCustomCallTopK(HloInstruction* hlo);
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
   PartitionedHlo& GetPartitionedHlo(const HloInstruction* hlo) {
