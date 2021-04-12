@@ -91,8 +91,7 @@ class ConvolutionVisitor {
   // Function that determines if space-to-batch can be propagated into the
   // consumer. Such propagation is only possible when all required operands are
   // space-to-batch'ed.
-  bool CanPropagate(HloInstruction* consumer, HloInstruction* producer,
-                    bool last_try = false);
+  bool CanPropagate(HloInstruction* consumer, HloInstruction* producer);
 
   // Returns true if the op has all its direct and indirect operands being
   // created via broadcasts. Consumer uses op, and is space-to-batched.
@@ -205,9 +204,7 @@ class ConvolutionVisitor {
 
   ~ConvolutionVisitor() = default;
 
-  explicit ConvolutionVisitor(bool enable_propagations_on_base_dilations,
-                              bool enable_propagations_on_window_dilations,
-                              int64 limit_on_batch_size,
+  explicit ConvolutionVisitor(SpaceToBatchController ctrl,
                               HloComputation* computation);
 
   int64 get_chosen_spatial_dim(HloInstruction* convolution) {
@@ -261,13 +258,6 @@ class ConvolutionVisitor {
   // Whether rewrite has occurred.
   bool changed_ = false;
 
-  // Limit on batch size to apply this technique on.
-  int64 limit_on_batch_size_;
-
-  // Controller flags for backprop space-to-batch propagations.
-  bool enable_propagations_on_base_dilations_;
-  bool enable_propagations_on_window_dilations_;
-
   // We choose the new batch size to be kNumSplits times that of the old batch
   // so that space-to-batch propagation through several convolutional layers is
   // consistent.
@@ -275,18 +265,15 @@ class ConvolutionVisitor {
 
   // Depth for searching reduce window
   static constexpr int64 kReduceWindowSearchDepth = 10;
+
+  // Controller for various knobs.
+  SpaceToBatchController ctrl_;
 };
 
-ConvolutionVisitor::ConvolutionVisitor(
-    bool enable_propagations_on_base_dilations,
-    bool enable_propagations_on_window_dilations, int64 limit_on_batch_size,
-    HloComputation* computation) {
+ConvolutionVisitor::ConvolutionVisitor(SpaceToBatchController ctrl,
+                                       HloComputation* computation) {
+  ctrl_ = ctrl;
   computation_ = computation;
-  limit_on_batch_size_ = limit_on_batch_size;
-  enable_propagations_on_base_dilations_ =
-      enable_propagations_on_base_dilations;
-  enable_propagations_on_window_dilations_ =
-      enable_propagations_on_window_dilations;
   for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
     if (inst->opcode() != HloOpcode::kConvolution) {
       continue;
@@ -336,7 +323,7 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
 
   // TODO(b/168316428): Support base dilations more generically.
   if (c.base_dilation_factor != 1) {
-    if (!enable_propagations_on_base_dilations_) {
+    if (!ctrl_.enable_propagations_on_base_dilations) {
       return false;
     }
     if (c.stride != 1) {
@@ -361,7 +348,7 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
   const int64 old_batch_size =
       convolution->operand(0)->shape().dimensions(activations_batch_dim);
 
-  if (old_batch_size > limit_on_batch_size_) {
+  if (old_batch_size > ctrl_.limit_on_batch_size) {
     return false;
   }
 
@@ -731,7 +718,7 @@ StatusOr<bool> ConvolutionVisitor::Run() {
         producer = instr->mutable_operand(1);
       }
       if (producer) {
-        if (CanPropagate(instr, producer, /*last_try=*/true)) {
+        if (CanPropagate(instr, producer)) {
           bool needs_further_propagation;
           TF_ASSIGN_OR_RETURN(needs_further_propagation,
                               Propagate(instr, producer));
@@ -768,7 +755,7 @@ bool IsTrivialElementwise(HloInstruction* hlo) {
 }
 
 bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
-                                      HloInstruction* producer, bool last_try) {
+                                      HloInstruction* producer) {
   if (IsTrivialElementwise(consumer)) {
     VLOG(2) << "Doing propagation check on elementwise op: "
             << consumer->ToString();
@@ -943,7 +930,7 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
       return true;
     }
 
-    if (!enable_propagations_on_window_dilations_) {
+    if (!ctrl_.enable_propagations_on_window_dilations) {
       return false;
     }
     // Check for space-to-depth readiness here. Note this is not done in
@@ -981,7 +968,9 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     }
     // If the rhs_dilation is absent, we want both LHS and RHS to be space-to-
     // batched for propagating on backprop convolutions.
-    if (!last_try || rhs_dilation == 1) {
+
+    if (rhs_dilation == 1 &&
+        !ctrl_.enable_propagations_on_trivial_window_dilations) {
       if (!old_to_new_instrs_.contains(kernel) ||
           !old_to_new_instrs_.contains(activations)) {
         return false;
@@ -3149,9 +3138,7 @@ StatusOr<bool> SpaceToBatchConverter::Run(HloModule* module) {
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations()) {
-    ConvolutionVisitor visitor(enable_propagations_on_base_dilations_,
-                               enable_propagations_on_window_dilations_,
-                               limit_on_batch_size_, comp);
+    ConvolutionVisitor visitor(ctrl_, comp);
     if (visitor.Run().ValueOrDie()) {
       changed = true;
     }
