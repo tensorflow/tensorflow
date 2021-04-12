@@ -60,10 +60,10 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
 
 /// Test `tf.Acosh`.
 
