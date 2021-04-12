@@ -942,13 +942,6 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
 }
 
 OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
-  if (auto reshape = dyn_cast_or_null<ReshapeOp>(input().getDefiningOp())) {
-    auto shape = reshape.shape();
-    Type shape_type = shape.getType();
-    if (!input().getType().cast<ShapedType>().hasStaticShape() &&
-        shape_type == getType())
-      return shape;
-  }
   int width =
       getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
   return ConvertShapeToAttr(getOperand().getType(), width);
