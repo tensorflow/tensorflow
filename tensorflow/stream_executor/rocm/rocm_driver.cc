@@ -1095,8 +1095,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       device)};
 }
 
-/* static */ port::Status GpuDriver::GetMFMASupport(bool& supported) {
-  supported = false;
+/* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
   hipDeviceProp_t props;
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
@@ -1111,8 +1110,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     if(pos!=string::npos)
        gcnArchName = gcnArchName.substr(pos+3);
     VLOG(1)<<"GCN arch name (stripped) " << gcnArchName;
-    supported = (gcnArchName=="908" || gcnArchName=="909");
-    return port::Status::OK();
+    return ((gcnArchName == "908") || (gcnArchName == "909"));
   }
   return port::Status{
       port::error::INTERNAL,

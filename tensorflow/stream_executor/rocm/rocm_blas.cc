@@ -1618,9 +1618,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                       "precondition violation";
     }
   }
-  bool hasXDLOPS = false;
-  port::Status status = GpuDriver::GetMFMASupport(hasXDLOPS);
-  if (status.ok() && hasXDLOPS) {
+  port::StatusOr<bool> maybe_hasXDLOPS = GpuDriver::GetMFMASupport();
+  if (maybe_hasXDLOPS.ok() && maybe_hasXDLOPS.ValueOrDie()) {
     VLOG(1) << "Using rocblas_gemm_ex";
     return DoBlasInternal(
       wrap::rocblas_gemm_ex, stream, /* pointer_mode_host = */ true,
