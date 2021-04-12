@@ -11,7 +11,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for dependency checking.

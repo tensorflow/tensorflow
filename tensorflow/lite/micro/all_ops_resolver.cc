@@ -32,14 +32,16 @@ AllOpsResolver::AllOpsResolver() {
   AddConcatenation();
   AddConv2D();
   AddCos();
+  AddCumSum();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
-  AddDiv();
   AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
+  AddFloorMod();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();

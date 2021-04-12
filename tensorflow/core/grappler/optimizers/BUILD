@@ -15,7 +15,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -665,6 +665,7 @@ cc_library(
     hdrs = [
         "meta_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",

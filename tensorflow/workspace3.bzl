@@ -23,6 +23,16 @@ def workspace():
         ],
     )
 
+    http_archive(
+        name = "tf_runtime",
+        sha256 = "dcf5fc07ad9c97f4a4f4dc0102fea99d308a7637bcbe34e36a52e95efe2512e3",
+        strip_prefix = "runtime-da2734f5c28aca71782376eed2dececd6f96d2b1",
+        urls = [
+            "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/da2734f5c28aca71782376eed2dececd6f96d2b1.tar.gz",
+            "https://github.com/tensorflow/runtime/archive/da2734f5c28aca71782376eed2dececd6f96d2b1.tar.gz",
+        ],
+    )
+
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
 tf_workspace3 = workspace

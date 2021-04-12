@@ -1852,12 +1852,10 @@ mlir::Operation* ImporterBase::CreateOperation(
   if (!name.getAbstractOperation() &&
       // Skip unmodelled ops that are handled differently.
       (node_type_name != "_Arg" && node_type_name != "_Retval")) {
-    if (GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
-      LOG(INFO) << "Unmodelled op type `" << node.type_string() << "`"
-                << (node.op_def().is_stateful()
-                        ? " is stateful but effects not modelled"
-                        : " is not stateful but will be treated as such "
-                          "conservatively");
+    if (node.op_def().is_stateful() &&
+        GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
+      LOG(INFO) << "Op type `" << node.type_string()
+                << "` is stateful but effects not modelled";
     }
   }
 
@@ -3503,15 +3501,9 @@ class SavedModelSignatureDefImporterLite {
   static StatusOr<mlir::OwningModuleRef> Convert(
       SavedModelMLIRImportInput& input, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, bool import_restore = true) {
-    LoadImporterDialects(*context);
     SavedModelSignatureDefImporterLite importer(input, exported_names, context,
                                                 import_restore);
-    TF_ASSIGN_OR_RETURN(auto module, importer.ConvertSignatures());
-
-    SortSavedModelModule(*module);
-    MarkSavedModelFunctionVisibility(*module);
-
-    return module;
+    return importer.ConvertSignatures();
   }
 
  private:
@@ -3556,7 +3548,7 @@ class SavedModelSignatureDefImporterLite {
       absl::string_view name, mlir::ModuleOp sub_module,
       const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
-  GraphImportConfig::InputArrays ParseInputArrays(
+  StatusOr<GraphImportConfig::InputArrays> ParseInputArrays(
       llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs);
 
  private:
@@ -3692,7 +3684,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
 
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
-  specs.inputs = ParseInputArrays(inputs);
+  TF_ASSIGN_OR_RETURN(specs.inputs, ParseInputArrays(inputs));
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
   specs.enable_shape_inference = false;
@@ -3757,15 +3749,19 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
                                         tf_name_to_mlir_name);
 }
 
-GraphImportConfig::InputArrays
+StatusOr<GraphImportConfig::InputArrays>
 SavedModelSignatureDefImporterLite::ParseInputArrays(
     llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
 
-    // Only dense tensor is supported.
-    DCHECK_EQ(tensor_info.encoding_case(), tensorflow::TensorInfo::kName);
+    // TODO(b/184675681): Support other encoding cases.
+    //
+    // TODO(b/184679394): Add unit test for this check.
+    TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
+        << "Only dense tensor is supported, but got encoding case "
+        << tensor_info.encoding_case();
 
     VLOG(1) << "Importing Signature Input: input_name = " << iter.first
             << ", tensor_info = " << tensor_info.DebugString();
@@ -3789,6 +3785,8 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
 StatusOr<mlir::OwningModuleRef>
 SavedModelSignatureDefImporterLite::ConvertSignatures() {
+  LoadImporterDialects(*module_->getContext());
+
   const auto& signatures = input_.meta_graph_def().signature_def();
   PopulateTfVersions(module_.get(),
                      input_.meta_graph_def().graph_def().versions());

@@ -5,7 +5,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -173,6 +173,16 @@ cc_library(
 )
 
 cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core/lib/monitoring:counter",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "pjrt_stream_executor_client",
     srcs = ["pjrt_stream_executor_client.cc"],
     hdrs = ["pjrt_stream_executor_client.h"],
@@ -180,6 +190,7 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":metrics",
         ":pjrt_client",
         ":tracked_device_buffer",
         ":utils",
@@ -353,5 +364,20 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:random",
+    ],
+)
+
+cc_library(
+    name = "tfrt_cpu_pjrt_client",
+    srcs = ["tfrt_cpu_pjrt_client.cc"],
+    hdrs = ["tfrt_cpu_pjrt_client.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
+        "//tensorflow/compiler/xla/pjrt:worker_thread",
+        "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
+        "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/strings",
     ],
 )

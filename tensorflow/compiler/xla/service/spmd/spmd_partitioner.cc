@@ -218,6 +218,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
   HloInstruction* hlo =
       HloComputation::Builder::AddInstruction(std::move(instruction));
   if (visiting_hlo_) {
+    hlo->set_metadata(visiting_hlo_->metadata());
     instructions_[visiting_hlo_].push_back(hlo);
   }
   if (hlo->opcode() == HloOpcode::kBroadcast) {
@@ -1397,7 +1398,6 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
   clone->set_sharding(sharding);
-  clone->set_metadata(hlo->metadata());
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
@@ -2139,7 +2139,6 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         input_shard_shape.dimensions(input_sharded_dim) * merge_factor);
     auto tmp_reshape = b_.AddInstruction(
         HloInstruction::CreateReshape(tmp_shard_shape, operand.hlo()));
-    tmp_reshape->set_metadata(hlo->metadata());
     tmp_reshape->set_sharding(hlo->sharding());
     auto tmp_full_shape = tmp_shard_shape;
     tmp_full_shape.set_dimensions(
@@ -2670,6 +2669,9 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
   auto lhs = GetPartitionedHlo(hlo->operand(0));
   // Create a window config to represent the pad.
   Window window;
+  bool needs_masking = false;
+  const bool pad_value_is_zero =
+      hlo->operand(1)->IsConstant() && hlo->operand(1)->literal().IsZero({});
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     const auto& pd = hlo->padding_config().dimensions(i);
     WindowDimension* dim = window.add_dimensions();
@@ -2680,6 +2682,16 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
     dim->set_padding_low(pd.edge_padding_low());
     dim->set_padding_high(pd.edge_padding_high());
     dim->set_base_dilation(pd.interior_padding() + 1);
+    const int64 shard_count = hlo->sharding().tile_assignment().dim(i);
+    // Need masking only if there is non-zero padding value or the operand is
+    // unevenly partitioned. Halo exchange fills 0 in collective permute result
+    // for non-destination cores.
+    needs_masking |=
+        shard_count > 1 &&
+        (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
+         pd.interior_padding() > 0) &&
+        (!pad_value_is_zero ||
+         hlo->operand(0)->shape().dimensions(i) % shard_count != 0);
   }
 
   auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))
@@ -2687,7 +2699,7 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
                             .hlo();
   auto reshard_operand =
       lhs.ReshardAsWindowedInput(window, hlo->sharding(), replicated_rhs,
-                                 /*mask_invalid_region=*/false);
+                                 /*mask_invalid_region=*/needs_masking);
   if (!reshard_operand.has_value()) {
     return DefaultAction(hlo);
   }
@@ -2793,7 +2805,6 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
-  local_reduce->set_metadata(hlo->metadata());
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
@@ -3527,7 +3538,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
           }
         }
         return b->AddInstruction(HloInstruction::CreateAllGather(
-            ag_shape, operand, all_gather_dimension, device_groups,
+            ag_shape, {operand}, all_gather_dimension, device_groups,
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },
@@ -3694,6 +3705,7 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
 
 StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(PreprocessSharding(module));
+  TF_RETURN_IF_ERROR(PreprocessHlos(module));
 
   XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
                         *module, options_.report_instruction_count));
@@ -3838,6 +3850,74 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     }
   }
 
+  return Status::OK();
+}
+
+Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
+  auto skip_copy_operands = [](HloInstruction* operand) -> HloInstruction* {
+    while (operand->user_count() == 1 &&
+           operand->opcode() == HloOpcode::kCopy) {
+      operand = operand->mutable_operand(0);
+    }
+    if (operand->user_count() != 1) {
+      return nullptr;
+    }
+    return operand;
+  };
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->sharding().IsTileMaximal()) {
+        // No need to optimize for tile-maximal sharding.
+        continue;
+      }
+      if (hlo->opcode() == HloOpcode::kSlice) {
+        HloInstruction* operand = skip_copy_operands(hlo->mutable_operand(0));
+        if (operand == nullptr || operand->sharding() != hlo->sharding()) {
+          continue;
+        }
+
+        // Merge pad->slice to avoid multiple halo exchanges.
+        if (operand->opcode() == HloOpcode::kPad) {
+          absl::optional<PaddingConfig> merged_padding =
+              operand->padding_config();
+          bool may_have_multi_halo_exchanges = false;
+          for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+            const auto& dim = operand->padding_config().dimensions(i);
+            if (dim.interior_padding() != 0 || hlo->slice_strides(i) != 1) {
+              merged_padding = absl::nullopt;
+              break;
+            }
+            if (hlo->sharding().tile_assignment().dim(i) != 1 &&
+                (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) &&
+                hlo->shape().dimensions(i) != operand->shape().dimensions(i)) {
+              // There are padding, slicing, and sharding on this dim.
+              may_have_multi_halo_exchanges = true;
+            }
+
+            auto* merged_dim = merged_padding->mutable_dimensions(i);
+            merged_dim->set_edge_padding_low(dim.edge_padding_low() -
+                                             hlo->slice_starts(i));
+            merged_dim->set_edge_padding_high(hlo->slice_limits(i) -
+                                              dim.edge_padding_low() -
+                                              operand->shape().dimensions(i));
+          }
+          if (merged_padding.has_value() && may_have_multi_halo_exchanges) {
+            // Rewrite to a single Pad.
+            HloInstruction* new_pad =
+                computation->AddInstruction(HloInstruction::CreatePad(
+                    hlo->shape(), operand->mutable_operand(0),
+                    operand->mutable_operand(1), *merged_padding));
+            new_pad->set_metadata(operand->metadata());
+            new_pad->set_sharding(hlo->sharding());
+            TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_pad));
+            TF_RETURN_IF_ERROR(
+                computation->RemoveInstructionAndUnusedOperands(hlo));
+          }
+          continue;
+        }
+      }
+    }
+  }
   return Status::OK();
 }
 

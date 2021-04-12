@@ -90,7 +90,7 @@ class LocalDeviceState {
   // each execution or transfer. This is intended for debugging only.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model, bool asynchronous,
-                   bool allow_event_reuse);
+                   bool allow_event_reuse, bool use_callback_stream);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -107,7 +107,6 @@ class LocalDeviceState {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
-  se::Stream* callback_stream() const { return callback_stream_.get(); }
 
   // Returns a device to host stream. Allocates streams in a round-robin fashion
   // amongst the available streams.
@@ -132,12 +131,17 @@ class LocalDeviceState {
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
-  // Enqueues a host callback on 'stream', to be executed by callback_thread_.
-  // ThenDoHostCallback is often constrained in what it can do, in particular,
-  // on GPU the callback runs on a thread belonging to the GPU runtime and
-  // cannot perform GPU operations itself.
-  void ThenExecuteOnCallbackThread(se::Stream* stream,
-                                   std::function<void()> callback) const;
+  // Enqueues a host callback on 'stream'. `stream` may, but need not, wait for
+  // `callback` to complete. It is safe to call runtime methods from the
+  // callback.
+  // This API differs from ThenDoHostCallback in two ways:
+  // a) ThenDoHostCallback is often constrained in what it can do, in
+  //    particular, on GPU the callback runs on a thread belonging to the GPU
+  //    runtime and cannot perform GPU operations itself. On GPU, callbacks
+  //    execute in a separate thread.
+  // b) ThenDoHostCallback waits for the callback to complete.
+  void ThenExecuteCallback(se::Stream* stream,
+                           std::function<void()> callback) const;
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -147,12 +151,8 @@ class LocalDeviceState {
   // (e.g., GPU objects).
   template <typename T>
   void ThenRelease(se::Stream* stream, T&& object) const {
-    if (callback_stream_.get() != stream) {
-      callback_stream_->ThenWaitFor(stream);
-    }
-    ThenExecuteOnCallbackThread(
-        callback_stream_.get(),
-        [object = std::forward<T>(object)]() { /* releases object */ });
+    ThenExecuteCallback(
+        stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }

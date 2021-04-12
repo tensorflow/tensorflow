@@ -35,9 +35,12 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
@@ -96,6 +99,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -109,6 +113,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
@@ -167,6 +172,7 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RealImagExpander>();
 
     pipeline.AddPass<OperandUpcaster>();
+    pipeline.AddPass<ResultCaster>();
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
@@ -353,6 +359,14 @@ Status GpuCompiler::OptimizeHloModule(
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("all_gather_combiner");
+    pipeline.AddPass<AllGatherCombiner>(
+        /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
@@ -570,6 +584,23 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
   return std::make_tuple(std::move(hlo_module), std::move(assignment));
 }
 
+using OutputInfoMap =
+    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
+static Status GetMlirAllocationInfo(mlir::FuncOp func,
+                                    std::vector<BufferAllocation>* allocations,
+                                    OutputInfoMap* output_info,
+                                    Shape* output_shape);
+
+struct CompileModuleResults {
+  std::unique_ptr<llvm::Module> llvm_module;
+  std::unique_ptr<BufferAssignment> buffer_assignment;
+  std::vector<BufferAllocation> allocations;
+  std::unique_ptr<ThunkSchedule> thunk_schedule;
+  std::vector<GpuExecutable::ConstantInfo> constants;
+  OutputInfoMap output_info;
+  Shape output_shape;
+  std::string module_name;
+};
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
@@ -579,14 +610,10 @@ static Status CompileModuleToLlvmIrImpl(
     absl::optional<CudaComputeCapability> cuda_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, const HloProfileIndexMap* profile_index_map,
-    std::unique_ptr<llvm::Module>* llvm_module,
-    std::unique_ptr<BufferAssignment>* buffer_assignment,
-    std::unique_ptr<ThunkSchedule>* thunk_schedule,
-    std::vector<GpuExecutable::ConstantInfo>* constants) {
-  *llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
-
-  (*llvm_module)->setTargetTriple(target_triple);
-  (*llvm_module)->setDataLayout(data_layout);
+    CompileModuleResults* results) {
+  results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
+  results->llvm_module->setTargetTriple(target_triple);
+  results->llvm_module->setDataLayout(data_layout);
 
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
@@ -600,7 +627,7 @@ static Status CompileModuleToLlvmIrImpl(
   };
 
   TF_ASSIGN_OR_RETURN(
-      *buffer_assignment,
+      results->buffer_assignment,
       BufferAssigner::Run(
           hlo_module, hlo_schedule->ConsumeHloOrdering(),
           buffer_size_bytes_function,
@@ -611,8 +638,8 @@ static Status CompileModuleToLlvmIrImpl(
           /*must_not_live_out=*/{}, can_share_buffer_function));
 
   VLOG(1) << "Buffer Assignment Stats "
-          << (*buffer_assignment)->GetStats().ToString();
-  DumpHloModuleIfEnabled(*hlo_module, **buffer_assignment,
+          << results->buffer_assignment->GetStats().ToString();
+  DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
                          "after_optimizations");
 
   mlir::MLIRContext mlir_context;
@@ -621,16 +648,30 @@ static Status CompileModuleToLlvmIrImpl(
                            mlir::lmhlo_gpu::LmhloGpuDialect>();
   mlir::OwningModuleRef mlir_module =
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
+
   TF_RETURN_IF_ERROR(
-      HloToLhloModule(**buffer_assignment, *hlo_module, *mlir_module));
+      HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
+
+  results->module_name = mlir::GetNameFromLoc(mlir_module->getLoc());
 
   llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
                            hlo_module->config().debug_options());
 
+  auto entry_function = mlir::cast<mlir::FuncOp>(
+      mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
+
+  TF_RETURN_IF_ERROR(
+      GetMlirAllocationInfo(entry_function, &results->allocations,
+                            &results->output_info, &results->output_shape));
+
+  CHECK(!results->allocations.empty());
+
   IrEmitterContext ir_emitter_context(
-      hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,
-      cuda_compute_capability, profile_index_map, &mlir_context,
-      llvm_module->get());
+      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
+      gpu_device_info, cuda_compute_capability, profile_index_map,
+      &mlir_context, results->llvm_module.get());
+
+  ir_emitter_context.set_allocations(results->allocations);
 
   TF_ASSIGN_OR_RETURN(
       auto ir_emitter,
@@ -639,17 +680,12 @@ static Status CompileModuleToLlvmIrImpl(
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
 
-    auto entry_function = mlir::cast<mlir::FuncOp>(
-        mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
-
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
-    *thunk_schedule =
+    results->thunk_schedule =
         absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
-    if (constants) {
-      *constants = std::move(ir_emitter_context.constants());
-    }
+    results->constants = std::move(ir_emitter_context.constants());
   }
 
   return Status::OK();
@@ -894,49 +930,41 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     }
   }
 
-  std::unique_ptr<llvm::Module> llvm_module;
-  std::unique_ptr<BufferAssignment> buffer_assignment;
-  std::unique_ptr<ThunkSchedule> thunk_schedule;
-  std::vector<GpuExecutable::ConstantInfo> constants;
-
+  CompileModuleResults compile_module_results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), gpu_device_info, cuda_compute_capability,
-      GetCanShareBuffer(), pointer_size_, profile_index_map.get(), &llvm_module,
-      &buffer_assignment, &thunk_schedule, &constants));
+      GetCanShareBuffer(), pointer_size_, profile_index_map.get(),
+      &compile_module_results));
 
   if (user_pre_optimization_hook_) {
-    user_pre_optimization_hook_(*llvm_module);
+    user_pre_optimization_hook_(*compile_module_results.llvm_module);
   }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
   if (embed_ir_in_executable) {
-    ir_module_string_before_opt = llvm_ir::DumpModuleToString(*llvm_module);
+    ir_module_string_before_opt =
+        llvm_ir::DumpModuleToString(*compile_module_results.llvm_module);
   }
 
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
+  llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
+                           /*optimized=*/false);
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult backend_result,
-      CompileToTargetBinary(module->config(), std::move(llvm_module),
+      CompileToTargetBinary(module->config(),
+                            std::move(compile_module_results.llvm_module),
                             stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
-                            thunk_schedule->ToString());
+                            compile_module_results.thunk_schedule->ToString());
   }
 
-  using OutputInfoMap =
-      absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-  TF_ASSIGN_OR_RETURN(OutputInfoMap output_info,
-                      GetOutputInfo(*module, *buffer_assignment));
-  auto buffer_assignment_proto =
-      std::make_unique<BufferAssignmentProto>(buffer_assignment->ToProto());
-  std::vector<BufferAllocation> allocations =
-      buffer_assignment->ReleaseAllocations();
-  std::string module_name = module->name();
-  Shape output_shape = module->entry_computation()->root_instruction()->shape();
+  auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
+      compile_module_results.buffer_assignment->ToProto());
+
   size_t profile_index = 0;
   if (profile_index_map) {
     profile_index =
@@ -946,11 +974,13 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(thunk_schedule), std::move(constants),
-       std::move(output_info), module_name, output_shape,
-       std::move(allocations), std::move(buffer_assignment_proto),
-       std::move(module), profile_index, std::move(profile_printer),
-       std::move(profile_index_map)});
+       gpu_version, std::move(compile_module_results.thunk_schedule),
+       std::move(compile_module_results.constants),
+       std::move(compile_module_results.output_info),
+       compile_module_results.module_name, compile_module_results.output_shape,
+       std::move(compile_module_results.allocations),
+       std::move(buffer_assignment_proto), std::move(module), profile_index,
+       std::move(profile_printer), std::move(profile_index_map)});
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -990,16 +1020,12 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
     absl::optional<CudaComputeCapability> cuda_compute_capability,
     int pointer_size) {
-  std::unique_ptr<llvm::Module> llvm_module;
-  std::unique_ptr<BufferAssignment> buffer_assignment;
-  std::unique_ptr<ThunkSchedule> thunk_schedule;
-
+  CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
-      pointer_size, /*profile_index_map=*/nullptr, &llvm_module,
-      &buffer_assignment, &thunk_schedule, nullptr));
-  return llvm_module;
+      pointer_size, /*profile_index_map=*/nullptr, &results));
+  return std::move(results.llvm_module);
 }
 
 // Analyze the function signature to reconstruct a vector of BufferAllocation
@@ -1007,10 +1033,10 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doens't exist yet.
-static Status GetMlirAllocationInfo(
-    mlir::FuncOp func, std::vector<BufferAllocation>* allocations,
-    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape) {
+static Status GetMlirAllocationInfo(mlir::FuncOp func,
+                                    std::vector<BufferAllocation>* allocations,
+                                    OutputInfoMap* output_info,
+                                    Shape* output_shape) {
   std::vector<absl::optional<BufferAllocation>> maybe_allocations;
 
   for (int i = 0; i < func.getNumArguments(); i++) {
@@ -1022,8 +1048,12 @@ static Status GetMlirAllocationInfo(
       maybe_allocations.resize(index + 1);
     }
     mlir::BlockArgument arg = func.getArgument(i);
+
     TF_RET_CHECK(arg.getType().isa<mlir::ShapedType>());
-    size_t size = arg.getType().cast<mlir::ShapedType>().getSizeInBits() / 8;
+    mlir::ShapedType type = arg.getType().cast<mlir::ShapedType>();
+    TF_ASSIGN_OR_RETURN(auto element_type_bytes,
+                        GetElementTypeBytes(type.getElementType()));
+    size_t size = type.getNumElements() * element_type_bytes;
     maybe_allocations[index].emplace(index, size, 0);
   }
 
@@ -1032,7 +1062,7 @@ static Status GetMlirAllocationInfo(
     if (maybe_alloc.has_value()) {
       allocations->push_back(*maybe_alloc);
     } else {
-      return InvalidArgument("Allocation indices should range in [0, n)");
+      allocations->push_back(BufferAllocation(allocations->size(), 0, {}));
     }
   }
 
@@ -1040,59 +1070,80 @@ static Status GetMlirAllocationInfo(
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
       TF_RET_CHECK(attr.first == "lmhlo.alloc" ||
                    attr.first == "lmhlo.params" ||
+                   attr.first == "lmhlo.param_shape_index" ||
+                   attr.first == "lmhlo.constant_name" ||
+                   attr.first == "lmhlo.must_alias" ||
                    attr.first == "lmhlo.output_index");
     }
   }
 
-  std::vector<Shape> output_shapes;
-  absl::optional<int> rank;
+  std::vector<std::pair<ShapeIndex, Shape>> sub_shapes;
   for (int i = 0; i < func.getNumArguments(); i++) {
     auto index =
         func.getArgAttr(i, "lmhlo.alloc").cast<mlir::IntegerAttr>().getInt();
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+      xla::ShapeIndex shape_index;
+      if (auto shape_index_attr =
+              func.getArgAttrOfType<mlir::DenseIntElementsAttr>(
+                  i, "lmhlo.param_shape_index")) {
+        for (const llvm::APInt& element : shape_index_attr) {
+          shape_index.push_back(element.getSExtValue());
+        }
+      }
       allocations->at(index).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), {},
+          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+    }
+    // TODO(timshen): this information is redundant. This is here only for
+    // smooth migration to LMHLO. Remove it.
+    if (func.getArgAttr(i, "lmhlo.constant_name")) {
+      allocations->at(index).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
       allocations->at(index).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
-      for (const llvm::APInt& i :
+      for (const llvm::APInt& element :
            output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        shape_index.push_back(i.getSExtValue());
-      }
-      if (rank.has_value()) {
-        if (*rank != shape_index.size()) {
-          return InvalidArgument("Expect output_index to have the same ranks");
-        }
-      } else {
-        rank.emplace(shape_index.size());
+        shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
       o.allocation_index = index;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+        HloInputOutputAliasConfig::AliasKind kind =
+            HloInputOutputAliasConfig::kMayAlias;
+        if (func.getArgAttr(i, "lmhlo.must_alias")) {
+          kind = HloInputOutputAliasConfig::kMustAlias;
+        }
         o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
-                               ShapeIndex{});
+                               ShapeIndex{}, kind);
       }
-
-      if (shape_index.size() > 1) {
-        return Unimplemented("Expect array type or 1-level tuple type");
+      if (func.getArgument(i).use_empty()) {
+        o.passthrough = true;
       }
 
       mlir::BlockArgument arg = func.getArgument(i);
-      if (shape_index.empty()) {
-        output_shapes.push_back(TypeToShape(arg.getType()));
-      } else {
-        if (shape_index[0] >= output_shapes.size()) {
-          output_shapes.resize(shape_index[0] + 1);
-        }
-        output_shapes[shape_index[0]] = TypeToShape(arg.getType());
-      }
+      sub_shapes.push_back(
+          std::make_pair(shape_index, TypeToShape(arg.getType())));
     }
   }
-  *output_shape = ShapeUtil::MakeTupleShape(output_shapes);
+  // Expects result_xla_shape as a XLA shape in string form.
+  //
+  // The attribute is necessary, because GpuExecutable/ExecutionOutput supports
+  // tuples / tree-like shapes, while the LMHLO argument list loses the tree
+  // form.
+  //
+  // The string format is necessary since MLIR doesn't support XLA shape with
+  // dynamic_dimension.
+  //
+  // TODO(timshen): now this field is mandatory. Make it optional for
+  // non-GpuExecutable outputs.
+  TF_ASSIGN_OR_RETURN(
+      *output_shape,
+      ParseShape(func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
+                     .getValue()
+                     .str()));
 
   return Status::OK();
 }
@@ -1108,13 +1159,12 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
       llvm::StringRef(entry_function_name.data(), entry_function_name.size())));
 
   std::vector<BufferAllocation> allocations;
-  absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
+  OutputInfoMap output_info;
   Shape output_shape;
-  absl::flat_hash_map<ShapeIndex, int> output_to_argnum_map;
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &allocations,
                                            &output_info, &output_shape));
 
-  CHECK(!allocations.empty());
+  TF_RET_CHECK(!allocations.empty());
 
   ir_emitter_context->set_allocations(allocations);
 

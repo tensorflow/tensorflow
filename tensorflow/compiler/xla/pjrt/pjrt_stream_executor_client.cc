@@ -89,6 +89,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
+#include "tensorflow/compiler/xla/pjrt/metrics.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -103,6 +104,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
@@ -192,8 +194,8 @@ class CpuAllocator : public tensorflow::Allocator {
 
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
-    std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
@@ -202,7 +204,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       owned_devices_(std::move(devices)),
-      task_id_(task_id),
+      process_index_(process_index),
       owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
@@ -833,10 +835,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device, std::move(device_buffer), event,
         local_device->host_to_device_stream()));
 
-    local_device->callback_stream()->ThenWaitFor(
-        local_device->host_to_device_stream());
-    local_device->ThenExecuteOnCallbackThread(
-        local_device->callback_stream(),
+    local_device->ThenExecuteCallback(
+        local_device->host_to_device_stream(),
         [staging_buffer{std::move(staging_buffer)},
          on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
           if (on_done_with_host_buffer) {
@@ -1128,7 +1128,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
       }
       if (block_stream != nullptr) {
         se::Stream* block_stream_ptr = block_stream.release();
-        local_device_state->ThenExecuteOnCallbackThread(
+        local_device_state->ThenExecuteCallback(
             block_stream_ptr,
             [device_buffer, block_stream_ptr, local_device_state]() {
               local_device_state->ReturnStreamToPool(
@@ -1916,6 +1916,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device) const {
+  const uint64 start_time_usecs = tensorflow::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -1931,7 +1932,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     (*device_assignment)(0, 0) = device->id();
   }
 
-  CHECK_EQ(device->task_id(), client_->task_id());
+  CHECK_EQ(device->process_index(), client_->process_index());
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
@@ -1997,16 +1998,16 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   }
 
   if (!compute_callbacks.empty()) {
-    device_state->callback_stream()->ThenWaitFor(stream);
-    device_state->ThenExecuteOnCallbackThread(
-        device_state->callback_stream(),
-        [callbacks{std::move(compute_callbacks)},
-         buffers_to_release{std::move(buffers_to_release)}]() {
+    device_state->ThenExecuteCallback(
+        stream, [callbacks{std::move(compute_callbacks)},
+                 buffers_to_release{std::move(buffers_to_release)}]() {
           for (auto& fn : callbacks) {
             fn();
           }
         });
   }
+  ReportExecutableEnqueueTime(tensorflow::Env::Default()->NowMicros() -
+                              start_time_usecs);
   return outputs;
 }
 
@@ -2227,7 +2228,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
         TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
-        if (device->task_id() != task_id()) {
+        if (device->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }

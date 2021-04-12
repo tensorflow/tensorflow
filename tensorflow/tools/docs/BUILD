@@ -13,7 +13,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tpu_module = [
@@ -47,7 +47,6 @@ py_test(
         "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
-        "no_tfrt",  # TODO(b/179308349)
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",

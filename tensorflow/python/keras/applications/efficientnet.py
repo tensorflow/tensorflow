@@ -20,9 +20,6 @@ Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
 import math

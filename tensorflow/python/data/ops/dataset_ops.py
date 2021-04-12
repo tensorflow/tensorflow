@@ -336,6 +336,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   def _graph(self, _):
     raise ValueError("The _graph property is read-only")
 
+  # TODO(b/183496844): Move implementation to FinalizeDatasetOp C++.
   def _has_captured_ref(self):
     """Whether this dataset uses a function that captures ref variables.
 

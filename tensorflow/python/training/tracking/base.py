@@ -65,6 +65,7 @@ ShardInfo = collections.namedtuple(
     "CheckpointInitialValueShardInfo", ["shape", "offset"])
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValueCallable", v1=[])
 class CheckpointInitialValueCallable(object):
   """A callable object that returns a CheckpointInitialValue.
 
@@ -91,6 +92,7 @@ class CheckpointInitialValueCallable(object):
     return self._checkpoint_position.restore_uid
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
 class CheckpointInitialValue(ops.Tensor):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
@@ -479,6 +481,17 @@ class CheckpointPosition(object):
   def __repr__(self):
     return repr(self.object_proto)
 
+  def value_shape(self):
+    """The shape of the VARIABLE_VALUE tensor.
+
+    Returns:
+      If found a TensorShape object, otherwise None.
+    """
+    for serialized_tensor in self.object_proto.attributes:
+      if serialized_tensor.name == VARIABLE_VALUE_KEY:
+        return self._checkpoint.shape_map[serialized_tensor.checkpoint_key]
+    return None
+
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
     "_DeferredSlotVariableRestoration", [
@@ -498,6 +511,7 @@ _SlotVariableRestoration = collections.namedtuple(
     ])
 
 
+@tf_export("__internal__.tracking.no_automatic_dependency_tracking", v1=[])
 def no_automatic_dependency_tracking(method):
   """Disables automatic dependency tracking on attribute assignment.
 

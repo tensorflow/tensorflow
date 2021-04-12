@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -605,9 +604,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 }
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
-    mlir::Value v) {
+    mlir::Value v, std::string* constant_name) {
   return xla::gpu::GetAllocationSliceForMlir(
-      v, ir_emitter_context_->allocations());
+      v, ir_emitter_context_->allocations(), constant_name);
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
@@ -830,12 +829,6 @@ Status IrEmitterUnnested::EmitConditionalFromMlir(MlirEmitterInput mlir_input) {
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(new ConditionalThunk(
       mlir_input.thunk_info, std::move(config), slice, {})));
   return Status::OK();
-}
-
-Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
-  AddThunkToThunkSequence(
-      BuildKernelThunk(convolution, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleConvolution(convolution);
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
@@ -2808,6 +2801,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     xla::XlaComputation xla_computation;
     mlir::MlirToHloConversionOptions options;
     options.propagate_layouts = true;
+    options.propagate_bitcast_layouts_to_backend_config = true;
     TF_RETURN_IF_ERROR(
         ConvertRegionToComputation(region, &xla_computation, options));
 
@@ -3517,12 +3511,12 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     const ShapeIndex& gte_index = slice->gte_index;
 
     llvm::Value* loc;
-    if (buffer_slice.allocation()->is_constant()) {
+    if (!slice->constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
-          llvm_ir::ConstantBufferAllocationToGlobalName(
-              *buffer_slice.allocation()));
+          slice->constant_name);
       CHECK_NE(loc, nullptr);
     } else {
+      CHECK(!buffer_slice.allocation()->is_constant());
       loc = InBoundsGEP(kernel_args.at(buffer_slice.allocation()),
                         {b_.getInt64(buffer_slice.offset())});
     }
@@ -3550,34 +3544,6 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
 
   return absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
                                         std::string(kernel->getName()));
-}
-
-std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
-    const HloInstruction* inst, bool implements_whole_instruction) {
-  std::vector<HloBufferSlice> hlo_slices =
-      GetHloBufferSlices(inst, ir_emitter_context_->buffer_assignment());
-
-  std::vector<BufferSlice*> slice_ptrs;
-  slice_ptrs.reserve(hlo_slices.size());
-  for (auto& slice : hlo_slices) {
-    slice_ptrs.push_back(&slice);
-  }
-
-  return BuildKernelThunkFromBufferSlices(
-      inst->name(),
-      implements_whole_instruction ? GetThunkInfo(inst) : Thunk::ThunkInfo(),
-      slice_ptrs, [this](const BufferSlice* slice, llvm::Value* value) {
-        const HloBufferSlice* hlo_buffer_slice =
-            static_cast<const HloBufferSlice*>(slice);
-        const HloInstruction* instr = hlo_buffer_slice->instr;
-        const ShapeIndex& index = hlo_buffer_slice->hlo_index;
-        VLOG(3) << "Buffer for " << instr->ToString() << " at "
-                << index.ToString() << " is found in slice "
-                << hlo_buffer_slice->buffer_slice.ToString() << " at GTE index "
-                << hlo_buffer_slice->gte_index.ToString();
-
-        bindings_.BindHloToIrValue(*instr, value, index);
-      });
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
@@ -3620,7 +3586,8 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
-    TF_ASSIGN_OR_RETURN(slice.buffer_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice, GetAllocationSliceForMlir(
+                                                operand, &slice.constant_name));
     slice.written = WritesMlirBuffer(op, operand);
     slice.shape = TypeToShape(operand.getType());
   }
@@ -3640,16 +3607,18 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     for (auto operand : operands) {
       slices.emplace_back();
       auto& slice = slices.back();
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSliceForMlir(operand));
+      TF_ASSIGN_OR_RETURN(
+          slice.buffer_slice,
+          GetAllocationSliceForMlir(operand, &slice.constant_name));
       slice.written = false;
       slice.shape = TypeToShape(operand.getType());
     }
     for (auto output : outputs) {
       slices.emplace_back();
       auto& slice = slices.back();
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSliceForMlir(output));
+      TF_ASSIGN_OR_RETURN(
+          slice.buffer_slice,
+          GetAllocationSliceForMlir(output, &slice.constant_name));
       slice.written = true;
       slice.shape = TypeToShape(output.getType());
     }
@@ -3843,41 +3812,6 @@ IrEmitterUnnested::BuildFusedInitializerThunkForMlir(
           .EmitLoop(mlir::GetNameFromLoc(fusion.getLoc())));
   return {std::move(kernel_thunk)};
 }
-
-namespace {
-
-// Checks that the buffers corresponding to the given two HLOs share the same
-// allocation.
-Status CheckHloBuffersShareAllocation(
-    const HloInstruction* a, const HloInstruction* b, const ShapeIndex& index,
-    const BufferAssignment& buffer_assignment) {
-  const BufferAllocation::Slice slice_a =
-      buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
-  const BufferAllocation::Slice slice_b =
-      buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
-  if (slice_a != slice_b) {
-    return InternalError(
-        "instruction %s %s does not share allocation with instruction %s %s",
-        a->ToString(), slice_a.ToString(), b->ToString(), slice_b.ToString());
-  }
-  return Status::OK();
-}
-
-Status AcceptMaybeOrdered(HloComputation* computation,
-                          IrEmitterUnnested* emitter,
-                          const BufferAssignment& buffer_assignment) {
-  const auto& debug_options = computation->parent()->config().debug_options();
-  if (debug_options.xla_gpu_disable_multi_streaming()) {
-    const HloInstructionSequence* sequence =
-        buffer_assignment.hlo_ordering().SequentialOrder(*computation);
-    // Always expect a sequential ordering for single-stream programs.
-    TF_RET_CHECK(sequence);
-    return computation->AcceptOrdered(emitter, sequence->instructions());
-  }
-  return computation->Accept(emitter);
-}
-
-}  // namespace
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info) {
@@ -5495,7 +5429,7 @@ std::vector<std::vector<int>> DivideOutputInstructionsIntoGroups(
     }
   }
   // Place output instructions in the same set into the same group.
-  absl::flat_hash_map<HloInstruction*, std::vector<int>> groups;
+  HloInstructionMap<std::vector<int>> groups;
   for (size_t oid = 0; oid < num_reduces; ++oid) {
     groups[disjoint_sets[oid].Get()].push_back(oid);
   }
@@ -5813,7 +5747,10 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
     const HloInstruction* hlo) const {
-  auto info = ThunkEmitter::EmissionContext::GetThunkInfo(hlo);
+  CHECK(hlo);
+  Thunk::ThunkInfo info;
+  info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s,hlo_module=%s#", hlo->name(), hlo->GetModule()->name());
   if (const auto* index_map = ir_emitter_context_->profile_index_map()) {
     info.profile_index.emplace(
         static_cast<int64>(index_map->GetProfileIndexFor(*hlo)));

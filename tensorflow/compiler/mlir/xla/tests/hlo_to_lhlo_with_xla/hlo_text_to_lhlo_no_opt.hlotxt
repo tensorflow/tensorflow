@@ -536,8 +536,8 @@ max {
 
 // CHECK: func @main
 // CHECK: "lmhlo.reduce_window"(%arg0, %{{.*}}, %{{.*}}) ( {
-// CHECK:   ^bb0(%arg6: tensor<f32>, %arg7: tensor<f32>):
-// CHECK:   %2 = mhlo.maximum %arg6, %arg7 : tensor<f32>
+// CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
+// CHECK:   %2 = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
 // CHECK:   "mhlo.return"(%2) : (tensor<f32>) -> ()
 // CHECK: }) {
 // CHECK-SAME: padding = dense<{{\[}}[0, 0], [2, 0], [0, 2], [0, 0]{{\]}}> : tensor<4x2xi64>,

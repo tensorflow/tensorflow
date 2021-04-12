@@ -14,7 +14,7 @@ package(
         "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow_models/official/vision/beta/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -151,7 +151,6 @@ py_library(
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/engine:keras_tensor",
-        "//tensorflow/python/keras/layers/ops:core",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -266,7 +265,6 @@ py_library(
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -570,6 +568,7 @@ tf_py_test(
     # TODO(b/127881287): Re-enable.
     tags = [
         "no_windows_gpu",
+        "notsan",  # TODO(b/183962355)
     ],
     deps = [
         "//tensorflow/python:client_testlib",

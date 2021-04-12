@@ -15,11 +15,8 @@
 # pylint: disable=protected-access
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
-"""Keras backend API.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Keras backend API."""
 
 import collections
 import itertools
@@ -132,7 +129,7 @@ class _DummyEagerGraph(threading.local):
   weak references.
   """
 
-  class _WeakReferencableClass(object):
+  class _WeakReferencableClass:
     """This dummy class is needed for two reasons.
 
     - We need something that supports weak references. Basic types like string
@@ -838,7 +835,7 @@ def get_default_graph_uid_map():
 # DEVICE MANIPULATION
 
 
-class _TfDeviceCaptureOp(object):
+class _TfDeviceCaptureOp:
   """Class for capturing the TF device scope."""
 
   def __init__(self):
@@ -1309,7 +1306,6 @@ def placeholder(shape=None,
           [guide](https://www.tensorflow.org/guide/ragged_tensors).
 
   Raises:
-      ValueError: If called with eager execution
       ValueError: If called with sparse = True and ragged = True.
 
   Returns:
@@ -1937,9 +1933,13 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  zero_debias = not tf2.enabled()
-  return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=zero_debias)
+  if tf2.enabled():
+    momentum = math_ops.cast(momentum, x.dtype)
+    value = math_ops.cast(value, x.dtype)
+    return x.assign(x * momentum + value * (1 - momentum))
+  else:
+    return moving_averages.assign_moving_average(
+        x, value, momentum, zero_debias=True)
 
 
 # LINEAR ALGEBRA
@@ -3873,7 +3873,7 @@ def print_tensor(x, message=''):
 # GRAPH MANIPULATION
 
 
-class GraphExecutionFunction(object):
+class GraphExecutionFunction:
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
@@ -3974,7 +3974,7 @@ class GraphExecutionFunction(object):
       connection = callable_opts.tensor_connection.add()
       if x.dtype != y.dtype:
         y = math_ops.cast(y, dtype=x.dtype)
-      from_tensor = ops._as_graph_element(y)
+      from_tensor = _as_graph_element(y)
       if from_tensor is None:
         from_tensor = y
       connection.from_tensor = from_tensor.name  # Data tensor
@@ -4104,7 +4104,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
       outs = model(model_inputs)
       if wrap_outputs:
         outs = [outs]
-      return tf_utils.to_numpy_or_python_type(outs)
+      return tf_utils.sync_to_numpy_or_python_type(outs)
+
     return func
 
   if kwargs:
@@ -4796,7 +4797,7 @@ def softplus(x):
   Returns:
       A tensor.
   """
-  return nn.softplus(x)
+  return math_ops.softplus(x)
 
 
 @keras_export('keras.backend.softsign')
@@ -6512,12 +6513,20 @@ def convert_inputs_if_ragged(inputs):
   return inputs, nested_row_lengths
 
 
-def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths):
+def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths,
+                            go_backwards=False):
   """Converts any ragged input back to its initial structure."""
   if not is_ragged_input:
     return output
 
-  return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+  if go_backwards:
+    # Reverse based on the timestep dim, so that nested_row_lengths will mask
+    # from the correct direction. Return the reverse ragged tensor.
+    output = reverse(output, [1])
+    ragged = ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+    return reverse(ragged, [1])
+  else:
+    return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
 
 
 class ContextValueCache(weakref.WeakKeyDictionary):

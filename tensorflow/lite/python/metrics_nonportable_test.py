@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python metrics helper TFLiteMetrics check."""
+import gc
 import os
 from unittest import mock
 
@@ -51,48 +52,58 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       metrics.TFLiteMetrics(model_path='/path/to/model')
 
-  def test_debugger_creation_counter_increase_success(self):
-    stub = metrics.TFLiteMetrics()
-    stub.increase_counter_debugger_creation()
-    self.assertEqual(stub._counter_debugger_creation.get_cell().value(), 1)
+  def test_debugger_creation_counter_increase_multiple_same_topic_success(self):
+    try:
+      stub = metrics.TFLiteMetrics()
+      stub.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 1)
+      stub2 = metrics.TFLiteMetrics()
+      stub2.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 2)
+      del stub
+      gc.collect()
+      stub2.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 3)
+    except:
+      raise Exception('No exception should be raised.')
 
   def test_interpreter_creation_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_interpreter_creation()
     self.assertEqual(
-        stub._counter_interpreter_creation.get_cell('python').value(), 1)
+        metrics._counter_interpreter_creation.get_cell('python').value(), 1)
 
   def test_converter_attempt_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_converter_attempt()
-    self.assertEqual(stub._counter_conversion_attempt.get_cell().value(), 1)
+    self.assertEqual(metrics._counter_conversion_attempt.get_cell().value(), 1)
 
   def test_converter_success_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_converter_success()
-    self.assertEqual(stub._counter_conversion_success.get_cell().value(), 1)
+    self.assertEqual(metrics._counter_conversion_success.get_cell().value(), 1)
 
   def test_converter_params_set_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name', 'value')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name').value(), 'value')
+        metrics._gauge_conversion_params.get_cell('name').value(), 'value')
 
   def test_converter_params_multiple_set_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name', 'value')
     stub.set_converter_param('name', 'value1')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name').value(), 'value1')
+        metrics._gauge_conversion_params.get_cell('name').value(), 'value1')
 
   def test_converter_params_multiple_label_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name1', 'value1')
     stub.set_converter_param('name2', 'value2')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name1').value(), 'value1')
+        metrics._gauge_conversion_params.get_cell('name1').value(), 'value1')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name2').value(), 'value2')
+        metrics._gauge_conversion_params.get_cell('name2').value(), 'value2')
 
 
 class ConverterMetricsTest(test_util.TensorFlowTestCase):

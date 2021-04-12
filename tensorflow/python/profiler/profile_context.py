@@ -295,16 +295,14 @@ class ProfileContext(object):
       return
     if self._debug:
       sys.stderr.write('debug: dumping file at step: %d\n' % step)
-    if not gfile.Exists(self._profiler_dir):
-      gfile.MakeDirs(self._profiler_dir)
+    gfile.MakeDirs(self._profiler_dir)
 
     filename = os.path.join(compat.as_bytes(self._profiler_dir),
                             compat.as_bytes('profile_%d' % step))
     self.profiler._write_profile(filename)  # pylint: disable=protected-access
 
   def _dump_file(self, pb, basename):
-    if not gfile.Exists(self._profiler_dir):
-      gfile.MakeDirs(self._profiler_dir)
+    gfile.MakeDirs(self._profiler_dir)
     with gfile.Open(os.path.join(self._profiler_dir, basename), 'w') as f:
       f.write('%s' % pb)
 

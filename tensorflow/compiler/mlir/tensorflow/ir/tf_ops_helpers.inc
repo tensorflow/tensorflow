@@ -141,6 +141,15 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
   return RankedTensorType::get(out_shape, element_ty);
 }
 
+// Returns the equivalent Value skipping through identity nodes.
+Value LookThroughIdentity(Value result) {
+  while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
+    auto op_result = result.cast<OpResult>();
+    result = op_result.getOwner()->getOperand(op_result.getResultNumber());
+  }
+  return result;
+}
+
 // Verifies that the given types are cast compatible. If not, emits appropriate
 // error for the given op. If mask_one_dim is set to true, then the types are
 // allowed to have one mismatching dimension. Masking one of the dimensions is

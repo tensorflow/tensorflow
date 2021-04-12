@@ -80,6 +80,7 @@ namespace {
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 constexpr char kEntryFuncAttr[] = "tf.entry_function";
+constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
@@ -216,7 +217,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
       func.getArgAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr,
+                                                            kAliasingAttr};
   TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
                                        /*remove_ref_type=*/false,
                                        node_def->mutable_attr()));

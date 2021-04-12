@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -25,7 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import string_lookup
@@ -76,10 +73,10 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
-  transforms a batch of strings (one sample = one string) into either a list of
-  token indices (one sample = 1D tensor of integer token indices) or a dense
-  representation (one sample = 1D tensor of float values representing data about
-  the sample's tokens).
+  transforms a batch of strings (one example = one string) into either a list of
+  token indices (one example = 1D tensor of integer token indices) or a dense
+  representation (one example = 1D tensor of float values representing data 
+  about the example's tokens).
 
   If desired, the user can call this layer's adapt() method on a dataset.
   When this layer is adapted, it will analyze the dataset, determine the
@@ -89,13 +86,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   input than the maximum vocabulary size, the most frequent terms will be used
   to create the vocabulary.
 
-  The processing of each sample contains the following steps:
+  The processing of each example contains the following steps:
 
-    1. standardize each sample (usually lowercasing + punctuation stripping)
-    2. split each sample into substrings (usually words)
+    1. standardize each example (usually lowercasing + punctuation stripping)
+    2. split each example into substrings (usually words)
     3. recombine substrings into tokens (usually ngrams)
     4. index tokens (associate a unique int value with each token)
-    5. transform each sample using this index, either into a vector of ints or
+    5. transform each example using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for
@@ -207,21 +204,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
-    input_array = np.array([["earth", "wind", "and", "fire"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT,
-        vocabulary=vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-
-    output_dataset = model.predict(input_array)
   >>> vocab_data = ["earth", "wind", "and", "fire"]
   >>> max_len = 4  # Sequence length to pad the outputs to.
   >>>
@@ -332,16 +314,12 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    self._index_lookup_layer = self._get_index_lookup_class()(
+    self._index_lookup_layer = string_lookup.StringLookup(
         max_tokens=max_tokens,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
         output_mode=output_mode if output_mode is not None else INT,
         vocabulary_size=vocabulary_size)
-
-  def _get_index_lookup_class(self):
-    return string_lookup.StringLookup
-  # End of V1/V2 shim points.
 
   def _assert_same_type(self, expected_type, values, value_name):
     if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
@@ -367,7 +345,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64 if self._output_mode == INT else K.floatx()
+    output_dtype = (dtypes.int64 if self._output_mode == INT
+                    else backend.floatx())
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -573,7 +552,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       if self._output_sequence_length is None:
         return dense_data
       else:
-        sequence_len = K.shape(dense_data)[1]
+        sequence_len = backend.shape(dense_data)[1]
         pad_amt = self._output_sequence_length - sequence_len
         pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
         slice_fn = lambda: dense_data[:, :self._output_sequence_length]

@@ -175,6 +175,9 @@ class GPUCombination(combinations_lib.TestCombination):
         [required_gpus] + [required_physical_gpus] +
         [d.required_physical_gpus or 0 for d in distributions] +
         [d.required_gpus or 0 for d in distributions])
+    number_of_required_physical_gpus = max(
+        [required_physical_gpus] +
+        [d.required_physical_gpus or 0 for d in distributions])
 
     if (required_physical_gpus and required_gpus):
       raise ValueError("Only one of `required_physical_gpus`(number of physical"
@@ -186,7 +189,8 @@ class GPUCombination(combinations_lib.TestCombination):
           and context.num_gpus() < number_of_required_gpus):
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
-    elif required_physical_gpus > len(config.list_physical_devices("GPU")):
+    elif number_of_required_physical_gpus > len(
+        config.list_physical_devices("GPU")):
       return (False,
               ("Only {} of {} required physical GPUs are available.".format(
                   config.list_physical_devices("GPU"), required_physical_gpus)))

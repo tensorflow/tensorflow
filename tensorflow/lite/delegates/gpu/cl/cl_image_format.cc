@@ -34,14 +34,26 @@ cl_channel_order ToChannelOrder(int num_channels) {
   }
 }
 
-cl_channel_type ToImageChannelType(DataType data_type) {
-  switch (data_type) {
+cl_channel_type DataTypeToChannelType(DataType type, bool normalized) {
+  switch (type) {
     case DataType::FLOAT32:
       return CL_FLOAT;
     case DataType::FLOAT16:
       return CL_HALF_FLOAT;
+    case DataType::INT8:
+      return normalized ? CL_SNORM_INT8 : CL_SIGNED_INT8;
+    case DataType::UINT8:
+      return normalized ? CL_UNORM_INT8 : CL_UNSIGNED_INT8;
+    case DataType::INT16:
+      return normalized ? CL_SNORM_INT16 : CL_SIGNED_INT16;
+    case DataType::UINT16:
+      return normalized ? CL_UNORM_INT16 : CL_UNSIGNED_INT16;
+    case DataType::INT32:
+      return CL_SIGNED_INT32;
+    case DataType::UINT32:
+      return CL_UNSIGNED_INT32;
     default:
-      return -1;
+      return CL_FLOAT;
   }
 }
 

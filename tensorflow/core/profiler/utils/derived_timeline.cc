@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
@@ -157,6 +158,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                   {&tf_name_scope, &hlo_ops});
   DerivedXLineBuilder steps(&plane, kThreadIdStepInfo, kStepLineName,
                             start_timestamp_ns, {&hlo_modules});
+  DerivedXLineBuilder source(&plane, kThreadIdSource, kSourceLineName,
+                             start_timestamp_ns, {});
+
   int64 group_id_stat_metadata_id =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))->id();
   int64 step_name_stat_metadata_id =
@@ -222,10 +226,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
             duration_ps, group_id_stat_metadata_id, group_id));
       }
       hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level);
-      auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_names.back());
-      if (!tf_op_name.empty()) {
-        ProcessTfOpEvent(tf_op_name, offset_ps, duration_ps, group_id, &plane,
-                         &tf_name_scope, &tf_ops);
+      auto symbol = symbol_resolver(hlo_module_name, hlo_op_names.back());
+      if (!symbol.tf_op_name.empty()) {
+        ProcessTfOpEvent(symbol.tf_op_name, offset_ps, duration_ps, group_id,
+                         &plane, &tf_name_scope, &tf_ops);
+      }
+      if (!symbol.source_info.empty()) {
+        source.ExpandOrAddEvent(CreateXEvent(
+            *plane.GetOrCreateEventMetadata(symbol.source_info), offset_ps,
+            duration_ps, group_id_stat_metadata_id, group_id));
       }
     } else if (!tf_op_full_name.empty()) {  // GPU kernel not compiled by XLA
       ProcessTfOpEvent(tf_op_full_name, offset_ps, duration_ps, group_id,
@@ -333,7 +342,7 @@ void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
   // to look up tensorflow op name from hlo_module/hlo_op.
   auto dummy_symbol_resolver = [](absl::string_view hlo_module,
                                   absl::string_view hlo_op) {
-    return absl::string_view();
+    return tensorflow::profiler::Symbol();
   };
   std::vector<XPlane*> device_traces =
       FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);

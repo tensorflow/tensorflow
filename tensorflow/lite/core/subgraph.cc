@@ -377,7 +377,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
-  TFLITE_LOG(
+  TFLITE_LOG_PROD(
       tflite::TFLITE_LOG_INFO,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
@@ -924,7 +924,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        /*preserve_inputs=*/true, /*preserve_intermediates*/ false,
+        /*preserve_inputs=*/true, preserve_all_tensors_,
         kDefaultTensorAlignment));
     memory_planner_->PlanAllocations();
   }
@@ -1627,5 +1627,15 @@ void Subgraph::SetName(const char* name) {
 }
 
 const std::string& Subgraph::GetName() const { return name_; }
+
+TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
+  if (memory_planner_) {
+    ReportError(
+        "PreserveAllTensorsExperimental called after memory was planned. ");
+    return kTfLiteError;
+  }
+  preserve_all_tensors_ = true;
+  return kTfLiteOk;
+}
 
 }  // namespace tflite

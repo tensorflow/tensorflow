@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
@@ -33,6 +32,9 @@ namespace gpu {
 struct BufferSlice {
   // The root buffer to look at.
   BufferAllocation::Slice buffer_slice;
+
+  // The global constant name of the buffer, if it's a constant.
+  std::string constant_name;
 
   // Describes how to dereference starting at that buffer to get to the buffer
   // in question.
@@ -93,8 +95,7 @@ struct MlirEmitterContext {
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
-class IrEmitterUnnested : public IrEmitter,
-                          private ThunkEmitter::EmissionContext {
+class IrEmitterUnnested : public IrEmitter {
  public:
   struct ThreadIdInfo {
     // Raw thread id.
@@ -110,7 +111,7 @@ class IrEmitterUnnested : public IrEmitter,
     llvm::Value* lane_id;
   };
 
-  absl::string_view platform_name() const override {
+  absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
   }
 
@@ -160,7 +161,6 @@ class IrEmitterUnnested : public IrEmitter,
 
   Status HandleConditional(HloInstruction* conditional) override;
   Status EmitConditionalFromMlir(MlirEmitterInput mlir_input);
-  Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status EmitCustomCallFromMlir(MlirEmitterInput input);
   Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
@@ -235,7 +235,7 @@ class IrEmitterUnnested : public IrEmitter,
                     IrEmitterContext* ir_emitter_context);
 
   // Add a owning Thunk object to the thunk sequence.
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
@@ -331,20 +331,10 @@ class IrEmitterUnnested : public IrEmitter,
   //   ```
   Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
-  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
-  StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index) const override {
-    return ir_emitter_context_->buffer_assignment().GetUniqueSlice(&hlo, index);
-  }
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+      mlir::Value v, std::string* constant_name = nullptr);
 
-  BufferAllocation::Slice GetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
-  }
-
-  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(mlir::Value v);
-
-  int64 ByteSizeOf(const Shape& shape) const override {
+  int64 ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
@@ -637,14 +627,6 @@ class IrEmitterUnnested : public IrEmitter,
       std::function<void(const BufferSlice*, llvm::Value*)>
           bind_slice_to_ir_value);
 
-  // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
-  // caller needs to make sure `inst` outlives the lifetime of the returned
-  // Thunk object. 'implements_whole_instruction' specifies whether this
-  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
-  // 'inst' will be implemented by a sequence of Thunks.
-  std::unique_ptr<KernelThunk> BuildKernelThunk(
-      const HloInstruction* inst, bool implements_whole_instruction);
-
   std::unique_ptr<KernelThunk> BuildKernelThunkForMlirImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const MlirBufferSlice> slices,
@@ -726,7 +708,7 @@ class IrEmitterUnnested : public IrEmitter,
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
-  Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
+  Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const;
 
   Status AssertNonDeterminismIsOkay(const string& op_name);
 

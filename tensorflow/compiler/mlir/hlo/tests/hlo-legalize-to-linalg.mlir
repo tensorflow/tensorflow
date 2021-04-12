@@ -1352,6 +1352,56 @@ func @reduce_maximum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32
 
 // -----
 
+func @reduce_and(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
+    %1 = mhlo.and %arg3, %arg4 : tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_and
+// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[INIT_TENSOR]], %[[INIT]])
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = and %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+func @reduce_or(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
+    %1 = mhlo.or %arg3, %arg4 : tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_or
+// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[INIT_TENSOR]], %[[INIT]])
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = or %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
@@ -1860,6 +1910,43 @@ func @reduce_window_max_nhwc_with_cst(%arg0: tensor<1x18x18x64xf32>) -> tensor<1
 // CHECK-SAME:       strides = dense<2> : vector<2xi64>}
 // CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW]] : tensor<1x18x18x64xf32>, tensor<3x3xf32>)
 // CHECK-SAME:      outs(%[[FILL]] : tensor<1x8x8x64xf32>) -> tensor<1x8x8x64xf32>
+
+// -----
+
+func @reduce_window_sum_max_nhwc(%arg0: tensor<1x18x18x64xf32>,
+                             %arg1: tensor<f32>) -> (tensor<1x8x8x64xf32>, tensor<1x8x8x64xf32>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg0, %arg1, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>, %arg4: tensor<f32>, %arg5 : tensor<f32>):
+    %1 = mhlo.add %arg2, %arg4 : tensor<f32>
+    %2 = mhlo.maximum %arg3, %arg5 : tensor<f32>
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
+  }) {window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
+      window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<1x18x18x64xf32>, tensor<1x18x18x64xf32>, tensor<f32>, tensor<f32>) -> (tensor<1x8x8x64xf32>, tensor<1x8x8x64xf32>)
+  return %0#0, %0#1 : tensor<1x8x8x64xf32>, tensor<1x8x8x64xf32>
+}
+
+// CHECK-LABEL: func @reduce_window_sum_max_nhwc
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[WINDOW0:.+]] = linalg.init_tensor [3, 3] : tensor<3x3xf32>
+// CHECK:         %[[INIT0:.+]] = linalg.init_tensor [1, 8, 8, 64] : tensor<1x8x8x64xf32>
+// CHECK:         %[[INIT_VAL0:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK:         %[[FILL0:.+]] = linalg.fill(%[[INIT]], %[[INIT_VAL]]) : tensor<1x8x8x64xf32>, f32 -> tensor<1x8x8x64xf32>
+// CHECK:         %[[RES0:.+]] = linalg.pooling_nhwc_sum
+// CHECK-SAME:      {dilations = dense<1> : vector<2xi64>
+// CHECK-SAME:       strides = dense<2> : vector<2xi64>}
+// CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW0]] : tensor<1x18x18x64xf32>, tensor<3x3xf32>)
+// CHECK-SAME:      outs(%[[FILL0]] : tensor<1x8x8x64xf32>) -> tensor<1x8x8x64xf32>
+// CHECK:         %[[WINDOW1:.+]] = linalg.init_tensor [3, 3] : tensor<3x3xf32>
+// CHECK:         %[[INIT1:.+]] = linalg.init_tensor [1, 8, 8, 64] : tensor<1x8x8x64xf32>
+// CHECK:         %[[INIT_VAL1:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK:         %[[FILL1:.+]] = linalg.fill(%[[INIT1]], %[[INIT_VAL1]]) : tensor<1x8x8x64xf32>, f32 -> tensor<1x8x8x64xf32>
+// CHECK:         %[[RES1:.+]] = linalg.pooling_nhwc_max
+// CHECK-SAME:      {dilations = dense<1> : vector<2xi64>
+// CHECK-SAME:       strides = dense<2> : vector<2xi64>}
+// CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW1]] : tensor<1x18x18x64xf32>, tensor<3x3xf32>)
+// CHECK-SAME:      outs(%[[FILL1]] : tensor<1x8x8x64xf32>) -> tensor<1x8x8x64xf32>
+// CHECK:         return %[[RES0]], %[[RES1]]
 
 // -----
 

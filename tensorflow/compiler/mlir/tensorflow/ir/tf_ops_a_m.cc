@@ -1169,12 +1169,22 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis.
-  auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
-  auto lhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis));
-  auto rhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis));
+  // New lhs and rhs concatenation axis
+  auto axis_type =
+      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
+  DenseIntElementsAttr lhs_attr, rhs_attr;
+  if (axis_type.getElementType().isInteger(32)) {
+    lhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
+    rhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
+  } else {
+    assert(axis_type.getElementType().isInteger(64));
+    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
+    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
+  }
+  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
+  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
 
   // Concatenate binary ops operands on the new axis.
   auto lhs_concat = rewriter.create<ConcatV2Op>(
@@ -2127,6 +2137,35 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
   auto result_type = DeduceEqualCmpOpType(&builder, result.location, x, y,
                                           incompatible_shape_error);
   return build(builder, result, result_type, x, y, incompatible_shape_error);
+}
+
+namespace {
+
+// Flips the incompatible_shape_error attribute to true if the shapes are
+// identical and static.
+static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+  if (op.incompatible_shape_error()) {
+    return rewriter.notifyMatchFailure(op, "the attribute is already true");
+  }
+
+  if (op.x().getType() != op.y().getType()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "require the shapes to be identical");
+  }
+
+  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!src_ty || !src_ty.hasStaticShape()) {
+    return rewriter.notifyMatchFailure(op, "require the shapes to be static");
+  }
+  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
+                                       rewriter.getBoolAttr(true));
+  return success();
+}
+}  // namespace
+
+void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert(convertEqualOp);
 }
 
 //===----------------------------------------------------------------------===//

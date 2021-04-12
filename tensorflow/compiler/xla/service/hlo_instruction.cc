@@ -417,11 +417,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
       TF_RET_CHECK(proto.dimensions_size() == 1)
           << "AllGather cannot have more than 1 all-gather dimensions";
-      TF_RET_CHECK(all_operands().size() == 1)
-          << "AllGather must have a single operand";
       int64 all_gather_dimension = proto.dimensions(0);
       instruction = CreateAllGather(
-          shape, operands(0), all_gather_dimension,
+          shape, all_operands(), all_gather_dimension,
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
           proto.constrain_layout(), channel_id, proto.use_global_device_ids());
@@ -1041,11 +1039,12 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
-    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    bool constrain_layout, const absl::optional<int64>& channel_id,
+    bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
-      shape, operand, all_gather_dimension, replica_groups, constrain_layout,
+      shape, operands, all_gather_dimension, replica_groups, constrain_layout,
       channel_id, use_global_device_ids);
 }
 

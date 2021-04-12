@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
-#include <string.h>
 
+#include <cstdint>
+#include <cstring>
 #include <memory>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -48,9 +48,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   // special -1 value, meaning it will be calculated automatically based on the
   // input. Here we calculate what that dimension should be so that the number
   // of output elements is the same as the number of input elements.
-  int num_input_elements = NumElements(input);
+  int64_t num_input_elements = NumElements(input);
 
-  int num_output_elements = 1;
+  int64_t num_output_elements = 1;
   int stretch_dim = -1;
   for (int i = 0; i < output_shape->size; ++i) {
     int value = output_shape->data[i];

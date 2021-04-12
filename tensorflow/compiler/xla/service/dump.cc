@@ -238,7 +238,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
         opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), buffer_assn->ToString(),
+          StrCat(filename, "-buffer-assignment.txt"),
+          StrCat(buffer_assn->ToString(), "\n\n",
+                 buffer_assn->hlo_live_range().ToString()),
           opts));
     }
   }

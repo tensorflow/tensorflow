@@ -81,14 +81,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
     ]
     self._test_unary_cwise_ops(complex_ops, True)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="This fails on ROCm.")
   def test_unary_cwise_real_ops_1(self):
-    if test.is_built_with_rocm():
-      # TODO(rocm):
-      # This fails on ROCm...see JIRA ticket 236756
-      self.skipTest("Fails on ROCM")
-
     real_ops = [
         lambda x: math_ops.acosh(1 + math_ops.square(x)),
         math_ops.abs,
@@ -691,15 +684,15 @@ class LinalgTest(PForTestCase):
       self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_inverse(self):
-    x = (random_ops.random_uniform([3, 4, 2, 2]) +
-         10 * linalg_ops.eye(2))  # Ensure well-conditioned.
+    x = (random_ops.random_uniform([3, 4, 2, 2]) + 10 * linalg_ops.eye(2)
+        )  # Ensure well-conditioned.
 
     for adjoint in (True, False):
 
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
-        return linalg_ops.matrix_inverse(array_ops.gather(x, i),
-                                         adjoint=adjoint)
+        return linalg_ops.matrix_inverse(
+            array_ops.gather(x, i), adjoint=adjoint)
 
       # pylint: enable=cell-var-from-loop
       self._test_loop_fn(loop_fn, 2)
@@ -710,8 +703,8 @@ class LinalgTest(PForTestCase):
         for stack_b in (True, False):
           shape_a = (2, 4, 3, 3) if stack_a else (4, 3, 3)
           shape_b = (2, 4, 3, 5) if stack_b else (4, 3, 5)
-          x = (random_ops.random_uniform(shape_a) +
-               10 * linalg_ops.eye(3))  # Ensure well-conditioned.
+          x = (random_ops.random_uniform(shape_a) + 10 * linalg_ops.eye(3)
+              )  # Ensure well-conditioned.
           y = random_ops.random_uniform(shape_b)
 
           # pylint: disable=cell-var-from-loop

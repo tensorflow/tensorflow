@@ -1114,18 +1114,6 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-      VLOG(1) << "Setting dynamic size " << i << " -> "
-              << dynamic_size_param_index;
-      arg_handles[i] = xla::SetDimensionSize(
-          arg_handles[i], arg_handles[dynamic_size_param_index],
-          dim_and_arg_num.first);
-    }
-  }
-
   builder->ClearOpMetadata();
 
   // Fill in the handles in non-constant arguments, and reshape parameters
@@ -1323,7 +1311,6 @@ Status XlaCompiler::CompileGraph(
   // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
-
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
@@ -1414,6 +1401,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
+  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
   return Status::OK();
 }
 

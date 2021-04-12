@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -174,11 +175,11 @@ struct LhloLegalizeToGpuPass
     : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
-                    scf::SCFDialect>();
+                    memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
                            StandardOpsDialect, gpu::GPUDialect, scf::SCFDialect,

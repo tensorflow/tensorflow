@@ -76,6 +76,102 @@ class Value(Tensor):
     pass
 
 
+@tf_export("types.experimental.Callable", v1=[])
+class Callable:
+  """Base class for TF callables like those created by tf.function.
+
+  Note: Callables are conceptually very similar to `tf.Operation`: a
+  `tf.Operation` is a kind of callable.
+  """
+
+  def __call__(self, *args, **kwargs):
+    """Executes this callable.
+
+    This behaves like a regular op - in eager mode, it immediately starts
+    execution, returning results. In graph mode, it creates ops which return
+    symbolic TensorFlow values (like `tf.Tensor`, `tf.data.Dataset`,
+    etc.). For example, `tf.function` callables typically generate a
+    `tf.raw_ops.PartitionedCall` op, but not always - the
+    exact operations being generated are an internal implementation detail.
+
+    Args:
+      *args: positional argument for this call
+      **kwargs: keyword arguments for this call
+    Returns:
+      The execution results.
+    """
+
+
+@tf_export("types.experimental.ConcreteFunction", v1=[])
+class ConcreteFunction(Callable):
+  """Base class for graph functions.
+
+  A `ConcreteFunction` encapsulates a single graph function definition and
+  is differentiable under `tf.GradientTape` contexts.
+  """
+
+
+# TODO(mdan): Name just `types.Function`, for historic continuity?
+@tf_export("types.experimental.GenericFunction", v1=[])
+class GenericFunction(Callable):
+  """Base class for polymorphic graph functions.
+
+  Graph functions are Python callable objects that dispatch calls to a
+  TensorFlow graph. Polymorphic graph functions can be backed by multiple TF
+  graphs, and automatically select the appropriate specialization based on the
+  type of input they were called with. They may also create specializations on
+  the fly if necessary, for example by tracing.
+
+  Also see `tf.function`.
+  """
+
+  def get_concrete_function(self, *args, **kwargs) -> ConcreteFunction:
+    """Returns a `ConcreteFunction` specialized to input types.
+
+    The arguments specified by `args` and `kwargs` follow normal function call
+    rules. The returned `ConcreteFunction` has the same set of positional and
+    keyword arguments as `self`, but their types are refined to the types
+    specified by `args` and `kwargs`.
+
+    >>> @tf.function
+    ... def f(x):
+    ...   return x
+    >>> f_concrete = f.get_concrete_function(tf.constant(1.0))
+    >>> f_concrete = f.get_concrete_function(x=tf.constant(1.0))
+
+    Unlike normal calls, `get_concrete_function` allow type specifiers instead
+    of TensorFlow objects, so for example `tf.Tensor`s may be replaced with
+    `tf.TensorSpec`s.
+
+    >>> @tf.function
+    ... def f(x):
+    ...   return x
+    >>> f_concrete = f.get_concrete_function(tf.TensorSpec([], tf.float64))
+
+    If the function definition allows only one specialization, `args` and
+    `kwargs` may be omitted altogether.
+
+    >>> @tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
+    ... def f(x):
+    ...   return x
+    >>> f_concrete = f.get_concrete_function()
+
+    The returned `ConcreteFunction` can be called normally:
+
+    >>> f_concrete(tf.constant(1.0))
+    <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
+    >>> f_concrete(x=tf.constant(1.0))
+    <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
+
+    Args:
+      *args: inputs to specialize on.
+      **kwargs: inputs to specialize on.
+
+    Returns:
+      A `ConcreteFunction`.
+    """
+
+
 class TensorProtocol(Protocol):
   """Protocol type for objects that can be converted to Tensor."""
 

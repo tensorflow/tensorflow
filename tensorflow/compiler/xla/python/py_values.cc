@@ -71,6 +71,46 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   return DevicePutResult(std::move(buffer), /*weak_type=*/true);
 }
 
+StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
+                                          const DevicePutOptions& options) {
+  void* ptr;
+  Shape shape;
+  int64 data_int64;
+  int32 data_int32;
+
+  if (options.squash_64bit_types) {
+    try {
+      data_int32 = py::cast<int32>(obj);
+    } catch (const std::exception& e) {
+      return InvalidArgument(
+          "Unable to convert Python scalar to %s. This most likely means the "
+          "value (%s) overflows the range of the type.",
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32>()),
+          py::repr(obj));
+    }
+    ptr = &data_int32;
+    shape = ShapeUtil::MakeShapeWithType<int32>({});
+  } else {
+    try {
+      data_int64 = py::cast<int64>(obj);
+    } catch (const std::exception& e) {
+      return InvalidArgument(
+          "Unable to convert Python scalar to %s. This most likely means the "
+          "value (%s) overflows the range of the type.",
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64>()),
+          py::repr(obj));
+    }
+    ptr = &data_int64;
+    shape = ShapeUtil::MakeShapeWithType<int64>({});
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto buffer,
+      to_device->client()->BufferFromHostBuffer(
+          ptr, shape, PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, to_device));
+  return DevicePutResult(std::move(buffer), /*weak_type=*/true);
+}
+
 template <typename T, typename SquashedT = T>
 StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
                                             const DevicePutOptions& options) {
@@ -170,7 +210,8 @@ StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
 
 StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
                                          const DevicePutOptions& options) {
-  return PyBufferHelper(obj, obj, py::cast<PyBuffer*>(obj), to_device);
+  return PyBufferHelper(obj, obj, PyBuffer::AsPyBufferUnchecked(obj),
+                        to_device);
 }
 
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
@@ -207,12 +248,8 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 }  // namespace
 
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options,
-                                    PyBuffer* py_buffer) {
+                                    const DevicePutOptions& options) {
   tensorflow::profiler::TraceMe traceme("DevicePut");
-  if (py_buffer) {
-    return PyBufferHelper(arg, arg, py_buffer, to_device);
-  }
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
@@ -222,17 +259,16 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                       "Conversion code assumes bool is 1 byte");
         (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] =
             HandlePythonScalar<bool, bool>;
-        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] =
-            HandlePythonScalar<int64_t, int32_t>;
+        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = HandlePythonInt;
         (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] =
             HandlePythonScalar<double, float>;
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
             HandlePythonScalar<complex128, complex64>;
 
         // Generic subclasses of DeviceArray, e.g., ShardedDeviceArray.
-        (*p)[py::type::handle_of<DeviceArrayBase>().ptr()] = HandleDeviceArray;
+        (*p)[PyBuffer::base_type()] = HandleDeviceArray;
         // The C++ PyBuffer class is handled specially.
-        (*p)[py::type::handle_of<PyBuffer>().ptr()] = HandlePyBuffer;
+        (*p)[PyBuffer::type()] = HandlePyBuffer;
 
         try {
           py::object xla_module = py::module::import("jax.interpreters.xla");
@@ -303,6 +339,205 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                   py::cast<std::string>(py::str(arg.get_type()))));
   } else {
     return res->second(arg, to_device, options);
+  }
+}
+
+bool IsFloat0(py::array arg) {
+  static const auto* dtypes_module =
+      new py::module(py::module::import("jax.dtypes"));
+  static const auto* float0_dtype =
+      new py::handle(dtypes_module->attr("float0"));
+  return float0_dtype->is(arg.attr("dtype"));
+}
+
+std::string PyArgSignature::DebugString() const {
+  std::string result = "";
+  if (weak_type) {
+    absl::StrAppend(&result, "weak_");
+  }
+  absl::StrAppend(&result, xla::PrimitiveType_Name(dtype));
+  absl::StrAppend(&result, "[", absl::StrJoin(shape, ","), "]");
+  return result;
+}
+
+using ToPyArgSignatureHandler =
+    std::function<StatusOr<PyArgSignature>(py::handle, bool)>;
+
+StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
+                                               bool jax_enable_x64) {
+  static const absl::flat_hash_map<
+      PyObject*, ToPyArgSignatureHandler>* const handlers = [] {
+    auto p = new absl::flat_hash_map<PyObject*, ToPyArgSignatureHandler>();
+
+    const auto xla_module = py::module::import("jax.interpreters.xla");
+    const auto& device_array = xla_module.attr("_DeviceArray");
+
+    const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
+
+    // The 4 Python native types.
+    ToPyArgSignatureHandler bool_handler =
+        [](py::handle, bool) -> StatusOr<PyArgSignature> {
+      return PyArgSignature(PrimitiveType::PRED, {}, true);
+    };
+    ToPyArgSignatureHandler int_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      // TODO(phawkins): we should consider checking for integer overflow.
+      if (jax_enable_x64) {
+        return PyArgSignature(PrimitiveType::S64, {}, true);
+      } else {
+        return PyArgSignature(PrimitiveType::S32, {}, true);
+      }
+    };
+    ToPyArgSignatureHandler float_handler =
+        [&dtypes](py::handle h,
+                  bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      // Only Python native types has a True weak_type.
+      bool weak_type = !py::isinstance(h, dtypes.np_float64);
+      if (jax_enable_x64) {
+        return PyArgSignature(PrimitiveType::F64, {}, weak_type);
+      } else {
+        return PyArgSignature(PrimitiveType::F32, {}, weak_type);
+      }
+    };
+    ToPyArgSignatureHandler complex_handler =
+        [&dtypes](py::handle h,
+                  bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      // Note that this branch is also taken  for np.complex128:
+      // isinstance(np.complex128(3), complex) returns True
+      // isinstance(np.complex64(3), complex) returns False
+      bool weak_type = !py::isinstance(h, dtypes.np_complex128);
+      if (jax_enable_x64) {
+        return PyArgSignature(PrimitiveType::C128, {}, weak_type);
+      } else {
+        return PyArgSignature(PrimitiveType::C64, {}, weak_type);
+      }
+    };
+
+    (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] = bool_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = int_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = float_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] = complex_handler;
+
+    // The Buffer types
+    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
+    ToPyArgSignatureHandler buffer_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(h));
+      bool weak_type = buffer->weak_type().has_value()
+                           ? *buffer->weak_type()
+                           : py::cast<bool>(h.attr("aval").attr("weak_type"));
+      return PyArgSignature(buffer->buffer()->on_device_shape().element_type(),
+                            buffer->buffer()->on_device_shape().dimensions(),
+                            weak_type);
+    };
+    (*p)[PyBuffer::base_type()] = buffer_handler;
+    ToPyArgSignatureHandler device_array_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      py::handle aval = h.attr("aval");
+      TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(aval.attr("dtype")));
+      return PyArgSignature(dtype,
+                            py::cast<std::vector<int64>>(aval.attr("shape")),
+                            py::cast<py::bool_>(aval.attr("weak_type")));
+    };
+    // ShardedDeviceArray is covered by the MRO fallback on _DeviceArray.
+    (*p)[device_array.ptr()] = device_array_handler;
+
+    ToPyArgSignatureHandler numpy_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      py::array numpy_array = py::cast<py::array>(h);
+      if (IsFloat0(numpy_array)) {
+        return InvalidArgument(
+            "float0 numpy arrays not supported in C++. "
+            "Falling back to Python.");
+      }
+      TF_ASSIGN_OR_RETURN(PrimitiveType dtype,
+                          DtypeToPrimitiveType(numpy_array.dtype()));
+      if (!jax_enable_x64) {
+        dtype = Squash64BitTypes(dtype);
+      }
+      // We use reinterpret_cast<> to defend against environments where ssize_t
+      // may not be precisely the same type as int64_t, even if it is the same
+      // size (long vs long long).
+      static_assert(sizeof(int64_t) == sizeof(ssize_t),
+                    "Code assumes ssize_t is the same as int64_t");
+      return PyArgSignature(
+          dtype,
+          absl::MakeConstSpan(
+              reinterpret_cast<const int64_t*>(numpy_array.shape()),
+              numpy_array.ndim()),
+          /*weak_type=*/false);
+    };
+    const auto numpy = py::module::import("numpy");
+    const auto& ndarray = numpy.attr("ndarray");
+    (*p)[ndarray.ptr()] = numpy_handler;
+
+    ToPyArgSignatureHandler np_uint64_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      if (jax_enable_x64) {
+        return PyArgSignature(PrimitiveType::U64, {}, /*weak_type=*/false);
+      } else {
+        return PyArgSignature(PrimitiveType::U32, {}, /*weak_type=*/false);
+      }
+    };
+    ToPyArgSignatureHandler np_int_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      if (jax_enable_x64) {
+        return PyArgSignature(PrimitiveType::S64, {}, /*weak_type=*/false);
+      } else {
+        return PyArgSignature(PrimitiveType::S32, {}, /*weak_type=*/false);
+      }
+    };
+    ToPyArgSignatureHandler numpy_array_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
+      // This block deals with all numpy scalar types, except for int64_dt,
+      // float64_dt and complex128_dt which are taken care of in previous if
+      // blocks.
+      TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(h.attr("dtype")));
+      return PyArgSignature(dtype, {}, /*weak_type=*/false);
+    };
+
+    // This block deals with all numpy scalar types, except for int64_dt,
+    // float64_dt and complex128_dt which are taken care of in previous if
+    // blocks.
+    (*p)[dtypes.np_bool.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int8.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int64.ptr()] = np_int_handler;
+    (*p)[dtypes.np_uint8.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
+    (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_float32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_float64.ptr()] = float_handler;
+    (*p)[dtypes.np_complex64.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_complex128.ptr()] = complex_handler;
+    (*p)[dtypes.np_longlong.ptr()] = np_int_handler;
+    (*p)[dtypes.np_intc.ptr()] = numpy_array_handler;
+
+    return p;
+  }();
+
+  auto res = handlers->find(arg.get_type().ptr());
+  if (res == handlers->end()) {
+    // We attempt to look at the MRO classes
+    for (auto base_class : arg.get_type().attr("mro")()) {
+      res = handlers->find(base_class.ptr());
+      if (res != handlers->end()) {
+        return res->second(arg, jax_enable_x64);
+      }
+    }
+    return InvalidArgument(
+        "%s",
+        absl::StrCat("Not supported: The C++ ToPyArgSignature only accepts "
+                     "Buffer/DeviceArray/ShardedDeviceArray, Numpy "
+                     "arrays scalars of supported types "
+                     "(see implementation), or Python scalars. Got type ",
+                     py::cast<std::string>(py::str(arg.get_type()))));
+  } else {
+    return res->second(arg, jax_enable_x64);
   }
 }
 

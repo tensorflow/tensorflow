@@ -309,7 +309,9 @@ REGISTER_OP("LookupTableImportV2")
 
       ShapeHandle keys;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
-      TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(keys, 0), c->Dim(c->input(2), 0), &unused));
       return Status::OK();
     });
 

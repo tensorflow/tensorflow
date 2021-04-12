@@ -367,7 +367,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
