@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
@@ -32,12 +33,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -106,13 +109,59 @@ Status CopyAssociatedFunctions(Graph* g,
   return Status::OK();
 }
 
+// Replaces usages of the given `src_output` index of the given `src` node with
+// the given `replacement` node (assumes the :0 output of `replacement`).
+Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
+                                     Node* replacement) {
+  VLOG(1) << "Replace usages of output " << src_output << " of node "
+          << src->DebugString() << " with " << replacement->DebugString();
+  // Collect all usages of the specified src output (src->out_edges() iterator
+  // will not be stable under modifications).
+  struct OutEdgeInfo {
+    int dst_node_id, dst_input;
+  };
+  std::vector<OutEdgeInfo> usages;
+  for (const Edge* e : src->out_edges()) {
+    if (e->IsControlEdge() || e->src_output() != src_output) {
+      continue;
+    }
+    usages.push_back({e->dst()->id(), e->dst_input()});
+  }
+
+  // Now, replace each usage.
+  for (int i = 0, end = usages.size(); i < end; i++) {
+    // Make a copy of `usage_node`, and change its input to const node.
+    Node* usage_node = g->FindNodeId(usages[i].dst_node_id);
+    VLOG(2) << "  Replace usage by " << usage_node->DebugString();
+    NodeDef replace_def = usage_node->def();
+    *replace_def.mutable_input(usages[i].dst_input) = replacement->name();
+    TF_ASSIGN_OR_RETURN(Node * replace_node,
+                        ReplaceNode(g, usage_node, replace_def));
+    const Edge* usage_edge;
+    TF_RETURN_IF_ERROR(
+        replace_node->input_edge(usages[i].dst_input, &usage_edge));
+    g->RemoveEdge(usage_edge);
+    // Note: Replacement output index is presumed to be 0.
+    g->AddEdge(replacement, 0, replace_node, usages[i].dst_input);
+
+    // Later entries in `usages` might have `usage_node` as dst node, but
+    // `usage_node` is removed. Replace such entries with `replace_node`.
+    for (int j = i + 1, end = usages.size(); j < end; j++) {
+      if (usages[j].dst_node_id == usages[i].dst_node_id) {
+        usages[j].dst_node_id = replace_node->id();
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // For graph `g`, replaces _Arg nodes whose "index" attribute is in
 // `const_input_index_to_node` with Const nodes.
 Status ReplaceArgUsageWithConstNode(
     Graph* g,
-    const std::unordered_map<int, const Node*>& const_input_index_to_node) {
+    const absl::flat_hash_map<int, const Node*>& const_input_index_to_node) {
   // Collect all _Arg nodes.
-  std::unordered_map<int, Node*> arg_nodes;
+  absl::flat_hash_map<int, Node*> arg_nodes;
   for (Node* n : g->op_nodes()) {
     if (n->IsArg()) {
       int index;
@@ -128,42 +177,9 @@ Status ReplaceArgUsageWithConstNode(
     Status s;
     Node* const_node = g->AddNode(const_def, &s);
     TF_RETURN_IF_ERROR(s);
-
     Node* arg_node = arg_nodes[arg_index];
-
-    // Collect all usages of the _Arg node.
-    struct OutEdgeInfo {
-      int dst_node_id, dst_input;
-    };
-    std::vector<OutEdgeInfo> usages;
-    for (const Edge* e : arg_node->out_edges()) {
-      if (e->IsControlEdge()) {
-        continue;
-      }
-      usages.push_back({e->dst()->id(), e->dst_input()});
-    }
-
-    for (int i = 0, end = usages.size(); i < end; i++) {
-      // Make a copy of `usage_node`, and change its input to const node.
-      Node* usage_node = g->FindNodeId(usages[i].dst_node_id);
-      NodeDef replace_def = usage_node->def();
-      *replace_def.mutable_input(usages[i].dst_input) = const_node->name();
-      TF_ASSIGN_OR_RETURN(Node * replace_node,
-                          ReplaceNode(g, usage_node, replace_def));
-      const Edge* usage_edge;
-      TF_RETURN_IF_ERROR(
-          replace_node->input_edge(usages[i].dst_input, &usage_edge));
-      g->RemoveEdge(usage_edge);
-      g->AddEdge(const_node, 0, replace_node, usages[i].dst_input);
-
-      // Later entries in `usages` might have `usage_node` as dst node, but
-      // `usage_node` is removed. Replace such entries with `replace_node`.
-      for (int j = i + 1, end = usages.size(); j < end; j++) {
-        if (usages[j].dst_node_id == usages[i].dst_node_id) {
-          usages[j].dst_node_id = replace_node->id();
-        }
-      }
-    }
+    TF_RETURN_IF_ERROR(
+        ReplaceSrcOutputUsageWithNode(g, arg_node, 0, const_node));
   }
   return Status::OK();
 }
@@ -173,9 +189,10 @@ Status ReplaceArgUsageWithConstNode(
 // inputs.
 Status PropagateConstIntoFuncAttr(
     Node* n, const string& attr_name,
-    const std::unordered_map<int, const Node*>& const_input_index_to_node,
+    const absl::flat_hash_map<int, const Node*>& const_input_index_to_node,
     const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
+  VLOG(1) << "Propagate const into " << attr_name << " of node " << n->name();
   // Instantiate the function.
   NameAttrList func_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
@@ -202,6 +219,7 @@ Status PropagateConstIntoFuncAttr(
   TF_RETURN_IF_ERROR(fld->AddFunctionDef(
       replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
+  VLOG(1) << "replace func " << func_attr.name() << " with " << new_func_name;
   // Change the node to use rewritten function.
   func_attr.set_name(new_func_name);
   n->ClearAttr(attr_name);
@@ -223,7 +241,7 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
                                 FunctionLibraryDefinition* fld) {
   // Notice that first input for If node is predicate; other inputs are function
   // inputs.
-  std::unordered_map<int, const Node*> const_input_index_to_node;
+  absl::flat_hash_map<int, const Node*> const_input_index_to_node;
   for (int i = 1; i < if_node->num_inputs(); i++) {
     const Node* input_node;
     TF_RETURN_IF_ERROR(if_node->input_node(i, &input_node));
@@ -246,29 +264,105 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
   return Status::OK();
 }
 
+// Determines whether a loop body is invariant for the given argument index.
+xla::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld);
+
+// Traces backward through non-modifying ops such as Identity and loop-invariant
+// While, to find a preceding source edge.
+xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
+    const Edge* src, const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld) {
+  const Edge* e = src;
+  VLOG(2) << "Traverse: Begin at " << e->DebugString();
+  // TODO(b/184727356): Also traverse If/Case nodes.
+  // Begin walking back from the output node.
+  while (IsConstTraversableOpType(e->src())) {
+    VLOG(2) << e->DebugString();
+
+    if (e->src()->IsWhileNode()) {
+      NameAttrList body_attr;
+      TF_RETURN_IF_ERROR(GetNodeAttr(e->src()->def(), "body", &body_attr));
+      const string fn_name = body_attr.name();
+      const FunctionDef* body_func = lookup_fld->Find(fn_name);
+      if (!body_func && fallback_fld != nullptr) {
+        body_func = fallback_fld->Find(fn_name);
+      }
+      if (!body_func) {
+        return errors::Internal("Traverse: Cannot find body function ", fn_name,
+                                " for While node ", e->src()->name());
+      }
+      std::unique_ptr<FunctionBody> fbody;
+      Status s = FunctionDefToBodyHelper(
+          *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody);
+      if (!s.ok() && fallback_fld != nullptr) {
+        TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+            *body_func, AttrSlice(&body_attr.attr()), fallback_fld, &fbody));
+      }
+      TF_ASSIGN_OR_RETURN(bool is_loop_invariant,
+                          IsLoopInvariant(fbody.get(), e->src_output(),
+                                          lookup_fld, fallback_fld));
+      if (!is_loop_invariant) {
+        VLOG(2) << "Non-loop-invariant: index " << e->src_output() << " of "
+                << fn_name;
+        break;
+      }
+    }  // if While|StatelessWhile
+    // Proceed backward to the src's input corresponding with the output index.
+    TF_RETURN_IF_ERROR(e->src()->input_edge(e->src_output(), &e));
+  }
+  VLOG(2) << "Traverse: Finish at " << e->DebugString();
+
+  return e;
+}
+
+// Determines whether a loop body is invariant for the given argument index.
+xla::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld) {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(loop_body->ret_nodes[index]->input_edge(0, &e));
+  TF_ASSIGN_OR_RETURN(const Edge* reachable, TraverseUnmodifiedPathBackward(
+                                                 e, lookup_fld, fallback_fld));
+  if (reachable->src()->id() == loop_body->arg_nodes[index]->id()) {
+    return true;
+  }
+  VLOG(2) << "Index " << index << " not loop invariant: "
+          << "walk backward from " << e->src()->DebugString() << " to "
+          << reachable->src()->DebugString() << " did not reach "
+          << loop_body->arg_nodes[index]->DebugString();
+  return false;
+}
+
 // For a "While" node in graph `g`, if it has Const node inputs, rewrite its
-// cond/body function to replace _Arg nodes with those Const inputs.
-Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
-                                   const FunctionLibraryDefinition* lookup_fld,
-                                   FunctionLibraryDefinition* fld) {
+// cond/body function to replace _Arg nodes with those Const inputs. Then,
+// propagate these Const to consumers of the relevant outputs of the while loop.
+Status PropagateConstIntoAndAroundWhileNode(
+    Graph* g, Node* while_node, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld) {
+  VLOG(1) << "Propagate const into " << while_node->name();
+
   // For "While" node, we should only replace _Arg nodes which are loop
   // invariants. For such _Arg nodes, the return value's input will come
   // directly from the corresponding arg.
-  std::unordered_map<int, const Node*> const_input_index_to_node;
+  absl::flat_hash_map<int, const Node*> const_input_index_to_node;
+  absl::flat_hash_map<int, Node*> const_input_index_to_mutable_node;
   NameAttrList body_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_attr));
-  const FunctionDef* body_func = lookup_fld->Find(body_attr.name());
+  const string fn_name = body_attr.name();
+  const FunctionDef* body_func = lookup_fld->Find(fn_name);
   if (!body_func) {
-    return errors::Internal("Cannot find body function ", body_attr.name(),
+    return errors::Internal("Propagate: Cannot find body function ", fn_name,
                             " for While node ", while_node->name());
   }
-  for (int i = 0; i < while_node->num_inputs(); i++) {
-    const Node* input_node;
-    TF_RETURN_IF_ERROR(while_node->input_node(i, &input_node));
-    if (input_node->type_string() != "Const") {
-      continue;
-    }
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody));
 
+  for (int i = 0; i < while_node->num_inputs(); i++) {
     // Check if i-th retval's input comes from i-th arg directly.
     // For resource variable input of While nodes, TF2XLA convention is to place
     // them at the end of all inputs (after all data inputs), and *not* return
@@ -277,33 +371,26 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     if (i >= body_func->signature().output_arg_size()) {
       continue;
     }
-    const OpDef_ArgDef& output_arg = body_func->signature().output_arg(i);
-    auto output_arg_input = body_func->ret().find(output_arg.name());
-    if (output_arg_input == body_func->ret().end()) {
-      return errors::Internal("Cannot find input for output arg ",
-                              output_arg.name(), " in function ",
-                              body_attr.name());
-    }
-    const OpDef_ArgDef& input_arg = body_func->signature().input_arg(i);
-    if (output_arg_input->second != input_arg.name()) {
-      // Attempt to tolerate _Retval = Identity(_Arg).
-      const NodeDef* output_arg_identity = nullptr;
-      for (const NodeDef& node : body_func->node_def()) {
-        if (node.op() == "Identity" &&
-            (node.name() == output_arg_input->second ||
-             node.name() + ":0" == output_arg_input->second ||
-             node.name() + ":output:0" == output_arg_input->second)) {
-          output_arg_identity = &node;
-        }
-      }
-      if (!output_arg_identity ||
-          output_arg_identity->input(0) != input_arg.name()) {
-        VLOG(1) << "While input/output mismatch; not propagating const " << i;
-        continue;
-      }
+
+    const Edge* input_edge;
+    TF_RETURN_IF_ERROR(while_node->input_edge(i, &input_edge));
+    TF_ASSIGN_OR_RETURN(input_edge, TraverseUnmodifiedPathBackward(
+                                        input_edge, lookup_fld, fld));
+    if (!input_edge->src()->IsConstant()) {
+      VLOG(2) << "Input " << i << " is not Const";
+      continue;
     }
 
-    const_input_index_to_node[i] = input_node;
+    TF_ASSIGN_OR_RETURN(bool is_loop_invariant,
+                        IsLoopInvariant(fbody.get(), i, lookup_fld, fld));
+    if (!is_loop_invariant) {
+      VLOG(2) << "While state not loop-invariant; not propagating Const " << i;
+      continue;
+    }
+    VLOG(2) << "While state is loop-invariant; propagating Const " << i;
+
+    const_input_index_to_mutable_node[i] = input_edge->src();
+    const_input_index_to_node[i] = input_edge->src();
   }
   if (const_input_index_to_node.empty()) {
     return Status::OK();
@@ -315,10 +402,24 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     TF_RETURN_IF_ERROR(PropagateConstIntoFuncAttr(
         while_node, attr_name, const_input_index_to_node, lookup_fld, fld));
   }
+
+  // Rewrite usages of the output edges corresponding to loop-invariant const
+  // inputs to refer instead to the Const node.
+  for (const auto& it : const_input_index_to_mutable_node) {
+    TF_RETURN_IF_ERROR(
+        ReplaceSrcOutputUsageWithNode(g, while_node, it.first, it.second));
+  }
   return Status::OK();
 }
 
 }  // namespace
+
+xla::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld) {
+  return IsLoopInvariant(loop_body, index, lookup_fld,
+                         /*fallback_fld=*/nullptr);
+}
 
 const char kTpuReplicateAttrName[] = "_tpu_replicate";
 const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
@@ -781,11 +882,29 @@ xla::StatusOr<Node*> BuildIdentityNode(
 Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
-  for (Node* n : g->op_nodes()) {
-    if (n->IsIfNode()) {
-      TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
-    } else if (n->IsWhileNode()) {
-      TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));
+  absl::flat_hash_set<int> done_node_ids;
+
+  // Because we may propagate Const around a while node as well as into it,
+  // we restart the op_nodes() iterator after each pass and keep track of which
+  // nodes we've already dealt with.
+  bool should_continue = true;
+  while (should_continue) {
+    should_continue = false;
+    for (Node* n : g->op_nodes()) {
+      if (!done_node_ids.contains(n->id())) {
+        if (n->IsIfNode()) {
+          VLOG(1) << "PropagateConstIntoIfNode: " << n->name();
+          TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
+          done_node_ids.emplace(n->id());
+        } else if (n->IsWhileNode()) {
+          VLOG(1) << "PropagateConstIntoWhileNode: " << n->name();
+          TF_RETURN_IF_ERROR(
+              PropagateConstIntoAndAroundWhileNode(g, n, lookup_fld, fld));
+          done_node_ids.emplace(n->id());
+          should_continue = true;
+          break;
+        }
+      }
     }
   }
   return Status::OK();

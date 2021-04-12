@@ -374,6 +374,29 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertAllGreater(g(array_ops.zeros([7])), 0.)
 
+  def testNestedWhileLoopWithUnmodifiedCarriedShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      signature = [tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)]
+
+      @def_function.function(input_signature=signature, jit_compile=True)
+      def g(x):
+
+        def inner(z, shp):
+          return z + random_ops.random_normal(shp)**2, shp
+
+        def outer(y, shp):
+          y, shp = control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=3)
+          y, shp = array_ops.identity_n([y, shp])
+          return control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=5)
+
+        shp = array_ops.shape(x, name='x_shp')
+        return control_flow_ops.while_loop_v2(
+            lambda *_: True, outer, (x, shp), maximum_iterations=4)[0]
+
+      self.assertAllGreater(g(array_ops.zeros([7])), 0.)
+
   def testMethodCompilation(self):
 
     with ops.device('device:{}:0'.format(self.device)):

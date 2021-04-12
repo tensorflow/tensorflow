@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -112,26 +113,22 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
     for (int i = 0; i < num_inputs; i++) {
       if (compile_time_const_arg_indices[i]) {
         // Check that this input is actually a loop invariant.
-        Node* arg_i = fbody->arg_nodes[i];
-        Node* ret_i = fbody->ret_nodes[i];
-        const Node* ret_i_input_0;
-        TF_RETURN_IF_ERROR(ret_i->input_node(0, &ret_i_input_0));
-        if (ret_i_input_0->type_string() == "Identity") {
-          // TODO(b/184727356): Support IdentityN, loop-invariant While.
-          VLOG(2) << "Propagate through Identity: input " << i;
-          TF_RETURN_IF_ERROR(ret_i_input_0->input_node(0, &ret_i_input_0));
-        }
-        if (ret_i_input_0->id() == arg_i->id()) {
+        TF_ASSIGN_OR_RETURN(
+            bool is_loop_invariant,
+            IsLoopInvariant(fbody, i,
+                            flib_runtime->GetFunctionLibraryDefinition()));
+        if (is_loop_invariant) {
           const_input_idxs->push_back(i);
         } else {
           // TODO(b/178546817): Verify that it's OK and raise an error if we are
           // using this branch from jit_compile=True.
-          VLOG(1) << "Argument " << i << " to while-loop "
-                  << node.ShortDebugString()
+          Node* arg_i = fbody->arg_nodes[i];
+          Node* ret_i = fbody->ret_nodes[i];
+          VLOG(1) << "Argument " << i << " to while-loop " << node.name()
                   << " has to be constant, but it's not a loop invariant, "
                      "cluster compilation likely to fail at compile time: "
-                  << arg_i->def().ShortDebugString() << " vs. "
-                  << ret_i->def().ShortDebugString();
+                  << arg_i->DebugString() << " vs. " << ret_i->DebugString();
+          VLOG(1) << node.ShortDebugString();
         }
       }
     }
@@ -221,6 +218,7 @@ Status BackwardsConstAnalysis(
     // If this node must be const, and it isn't a metadata op, then all of its
     // parents must be const.
     if ((*compile_time_const_nodes)[node->id()]) {
+      VLOG(3) << "marking consts for " << node->name();
       if (node->type_string() == "_Arg") {
         int index;
         status = GetNodeAttr(node->attrs(), "index", &index);
@@ -232,16 +230,16 @@ Status BackwardsConstAnalysis(
       }
       for (const Edge* pred : node->in_edges()) {
         if (!pred->IsControlEdge() && edge_filter(*pred)) {
-          // If the src node of the `pred` is an IdentityN do not mark it as a
-          // compile-time const. Only mark the corresponding input to the
-          // IdentityN node as a const.
-          // Note: XLA IdentityN op simply forwards its inputs so this is safe.
-          while (edge_filter(*pred) &&
-                 pred->src()->type_string() == "IdentityN") {
+          // If the src node of the `pred` is an IdentityN/While do not mark it
+          // as a compile-time const. Only mark the corresponding input to the
+          // IdentityN/While node as a const. XLA IdentityN op simply forwards
+          // its inputs so this is safe; loop-invariance is checked elsewhere.
+          while (edge_filter(*pred) && IsConstTraversableOpType(pred->src())) {
             status = pred->src()->input_edge(pred->src_output(), &pred);
             if (!status.ok()) return;
           }
           if (edge_filter(*pred)) {
+            VLOG(4) << pred->src()->name() << " must be const";
             (*compile_time_const_nodes)[pred->src()->id()] = true;
           }
         }
@@ -261,17 +259,17 @@ Status BackwardsConstAnalysis(
       if (!edge->IsControlEdge() &&
           absl::c_binary_search(const_input_idxs, edge->dst_input()) &&
           edge_filter(*edge)) {
-        // Do not mark IdentityN nodes as compile-time const.
+        // Do not mark IdentityN / While nodes as compile-time const.
         // If the src node of the `pred` is an IdentityN do not mark it as a
         // compile-time const. Only mark the corresponding input to the
-        // IdentityN node as a const.
-        // Note: XLA IdentityN op simply forwards its inputs so this is safe.
-        while (edge_filter(*edge) &&
-               edge->src()->type_string() == "IdentityN") {
+        // IdentityN/While node as a const. XLA IdentityN op simply forwards its
+        // inputs so this is safe; loop invariance is checked elsewhere.
+        while (edge_filter(*edge) && IsConstTraversableOpType(edge->src())) {
           status = edge->src()->input_edge(edge->src_output(), &edge);
           if (!status.ok()) return;
         }
         if (edge_filter(*edge)) {
+          VLOG(4) << edge->src()->name() << " must be const";
           (*compile_time_const_nodes)[edge->src()->id()] = true;
         }
       }
