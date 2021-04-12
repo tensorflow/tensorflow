@@ -70,3 +70,7 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
 *   [Pre-allocated tensors](docs/preallocated_tensors.md)
+
+# RFCs
+
+1. [TensorFlow Lite for Microcontrollers Port of 16x8 Quantized Operators](docs/rfc/001-rfc-16x8-quantization-port.md)
