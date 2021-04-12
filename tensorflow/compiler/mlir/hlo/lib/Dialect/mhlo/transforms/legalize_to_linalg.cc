@@ -1134,6 +1134,70 @@ class SliceConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
+ public:
+  using OpConversionPattern<mhlo::DynamicSliceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicSliceOp dynamic_slice_op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = dynamic_slice_op.getLoc();
+    mhlo::DynamicSliceOp::Adaptor adaptor(args);
+    auto arg_type = adaptor.operand().getType().dyn_cast<ShapedType>();
+    if (!arg_type || !arg_type.hasRank()) {
+      return rewriter.notifyMatchFailure(dynamic_slice_op,
+                                         "require known-rank args");
+    }
+
+    auto index_type = rewriter.getIndexType();
+    SmallVector<OpFoldResult, 3> start_indices, sizes;
+    Value zero = rewriter.create<ConstantOp>(
+        loc, rewriter.getZeroAttr(adaptor.start_indices()[0]
+                                      .getType()
+                                      .cast<RankedTensorType>()
+                                      .getElementType()));
+    for (auto en : llvm::enumerate(
+             llvm::zip(adaptor.start_indices(),
+                       dynamic_slice_op.slice_sizes().getValues<int64_t>()))) {
+      int64_t size = std::get<1>(en.value());
+      sizes.push_back(rewriter.getI64IntegerAttr(size));
+
+      // By mhlo.DynamicSlice definition:
+      //   `start_indices[i] = clamp(start_indices[i],
+      //       0, operand.dimension_size[i] - size_indices[i])`
+      Value start_index =
+          rewriter.create<tensor::ExtractOp>(loc, std::get<0>(en.value()));
+      Value ub = rewriter.createOrFold<memref::DimOp>(loc, adaptor.operand(),
+                                                      en.index());
+      // ClampOp lowering does not support index type, so cast it into integer
+      // type.
+      ub = rewriter.createOrFold<IndexCastOp>(loc, start_index.getType(), ub);
+      ub = rewriter.createOrFold<SubIOp>(
+          loc, ub,
+          rewriter.create<ConstantOp>(
+              loc, rewriter.getIntegerAttr(start_index.getType(), size)));
+      // TODO(hanchung): This is a workaround to use the method because only
+      // lmhlo version is defined. The implementation in
+      // map_lmhlo_to_scalar_op.h requires to pass a mhlo op. It will convert it
+      // to an lmhlo op and call the lmhlo implementation.
+      start_index = lmhlo::HloOpToStdScalarOp::map<lmhlo::ClampOp>(
+          loc, start_index.getType(), ArrayRef<Value>{zero, start_index, ub},
+          &rewriter);
+      start_indices.push_back(
+          rewriter.create<IndexCastOp>(loc, index_type, start_index)
+              .getResult());
+    }
+
+    int64_t rank = arg_type.getRank();
+    SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
+
+    rewriter.replaceOpWithNewOp<SubTensorOp>(
+        dynamic_slice_op, dynamic_slice_op.getType().cast<RankedTensorType>(),
+        adaptor.operand(), start_indices, sizes, strides);
+    return success();
+  }
+};
+
 enum class DotOperationType {
   kVectorDot = 0,
   kMatrixVector = 1,
@@ -2090,6 +2154,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReshapeOpConverter<mhlo::ReshapeOp, false>,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
+      DynamicSliceConverter,
       TransposeConverter<mhlo::TransposeOp, false>,
       DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
                                linalg::MatmulOp>,
