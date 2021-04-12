@@ -421,10 +421,10 @@ func @matmulNoTransposeAOrB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf
   return %166 : tensor<1x1000xf32>
 
   // CHECK-LABEL: matmulNoTransposeAOrB
-  // CHECK: %0 = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
-  // CHECK: %1 = "tf.Transpose"(%arg1, %0) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %2 = "tf.MatMul"(%arg0, %1) {transpose_a = false, transpose_b = true} : (tensor<1x1280xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
-  // CHECK: return %2 : tensor<1x1000xf32>
+  // CHECK: %[[RES:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[TRANS:.*]] = "tf.Transpose"(%arg1, %[[RES]]) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
+  // CHECK: %[[MM:.*]] = "tf.MatMul"(%arg0, %[[TRANS]]) {transpose_a = false, transpose_b = true} : (tensor<1x1280xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
+  // CHECK: return %[[MM]] : tensor<1x1000xf32>
  }
 
 func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>) -> tensor<1x1000xf32> {
@@ -432,11 +432,11 @@ func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>
   return %166 : tensor<1x1000xf32>
 
   // CHECK-LABEL: matmulNoTransposeB
-  // CHECK: %0 = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
-  // CHECK: %1 = "tf.Transpose"(%arg0, %0) : (tensor<1x1280xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %2 = "tf.Transpose"(%arg1, %0) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %3 = "tf.MatMul"(%1, %2) {transpose_a = false, transpose_b = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
-  // CHECK: return %3 : tensor<1x1000xf32>
+  // CHECK: %[[RES:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[TRANS1:.*]] = "tf.Transpose"(%arg0, %[[RES]]) : (tensor<1x1280xf32>, tensor<?xi32>) -> tensor<*xf32>
+  // CHECK: %[[TRANS2:.*]] = "tf.Transpose"(%arg1, %[[RES]]) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
+  // CHECK: %[[MM:.*]] = "tf.MatMul"(%[[TRANS1]], %[[TRANS2]]) {transpose_a = false, transpose_b = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
+  // CHECK: return %[[MM]] : tensor<1x1000xf32>
 
 }
 
