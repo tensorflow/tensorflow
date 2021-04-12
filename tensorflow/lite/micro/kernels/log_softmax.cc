@@ -27,6 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+// used only with quantized data
 struct LogSoftmaxOpData {
   int32_t input_multiplier;
   int32_t input_left_shift;
@@ -42,8 +43,6 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
-  LogSoftmaxOpData* data = static_cast<LogSoftmaxOpData*>(node->user_data);
-
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input;
@@ -56,6 +55,10 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, HaveSameShapes(input, output));
 
   if (input->type == kTfLiteInt8) {
+    node->user_data =
+        context->AllocatePersistentBuffer(context, sizeof(LogSoftmaxOpData));
+    auto data = static_cast<LogSoftmaxOpData*>(node->user_data);
+
     // quantization datum
     constexpr int32_t kOutputZeroPoint = 127;
     constexpr float kOutputScale = 16.0 / 256;
@@ -87,12 +90,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   }
 
   return kTfLiteOk;
-}
-
-void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
-                     size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context, sizeof(LogSoftmaxOpData));
 }
 
 TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -140,7 +137,7 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 
 TfLiteRegistration Register_LOG_SOFTMAX() {
-  return {/*init=*/LogSoftmaxInit,
+  return {/*init=*/nullptr,
           /*free=*/nullptr,
           /*prepare=*/LogSoftmaxPrepare,
           /*invoke=*/LogSoftmaxEval,
