@@ -90,6 +90,33 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
   }
 }
 
+const NumpyScalarTypes& GetNumpyScalarTypes() {
+  static const NumpyScalarTypes* singleton = []() {
+    NumpyScalarTypes* dtypes = new NumpyScalarTypes();
+    const auto numpy = py::module::import("numpy");
+    dtypes->np_bool = py::object(numpy.attr("bool_"));
+    dtypes->np_int8 = py::object(numpy.attr("int8"));
+    dtypes->np_int16 = py::object(numpy.attr("int16"));
+    dtypes->np_int32 = py::object(numpy.attr("int32"));
+    dtypes->np_int64 = py::object(numpy.attr("int64"));
+    dtypes->np_uint8 = py::object(numpy.attr("uint8"));
+    dtypes->np_uint16 = py::object(numpy.attr("uint16"));
+    dtypes->np_uint32 = py::object(numpy.attr("uint32"));
+    dtypes->np_uint64 = py::object(numpy.attr("uint64"));
+    dtypes->np_bfloat16 =
+        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+    dtypes->np_float16 = py::object(numpy.attr("float16"));
+    dtypes->np_float32 = py::object(numpy.attr("float32"));
+    dtypes->np_float64 = py::object(numpy.attr("float64"));
+    dtypes->np_complex64 = py::object(numpy.attr("complex64"));
+    dtypes->np_complex128 = py::object(numpy.attr("complex128"));
+    dtypes->np_longlong = py::object(numpy.attr("longlong"));
+    dtypes->np_intc = py::object(numpy.attr("intc"));
+    return dtypes;
+  }();
+  return *singleton;
+}
+
 // Returns a numpy-style format descriptor string for `type`.
 StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
   // We use an "=" prefix to indicate that we prefer "standard" types like
@@ -167,6 +194,21 @@ StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
+  }
+}
+
+PrimitiveType Squash64BitTypes(PrimitiveType type) {
+  switch (type) {
+    case S64:
+      return S32;
+    case U64:
+      return U32;
+    case F64:
+      return F32;
+    case C128:
+      return C64;
+    default:
+      return type;
   }
 }
 

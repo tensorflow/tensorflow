@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -32,7 +33,7 @@ from tensorflow.python.platform import test
 class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDataset(self):
+  def testBasic(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
         components).map(lambda x: array_ops.fill([x], x)).apply(
@@ -55,7 +56,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetWithUnknownShape(self):
+  def testWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
         components).map(lambda x: array_ops.fill([x, x], x)).apply(
@@ -83,14 +84,14 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetWithInvalidShape(self):
+  def testWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegex(ValueError, "Dimension -2 must be >= 0"):
       dataset_ops.Dataset.from_tensors(input_tensor).apply(
           batching.dense_to_sparse_batch(4, [-2]))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetShapeErrors(self):
+  def testShapeErrors(self):
 
     def dataset_fn(input_tensor):
       return dataset_ops.Dataset.from_tensors(input_tensor).apply(
@@ -107,6 +108,22 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.DataLossError,
                                 "larger than the row shape"):
       self.evaluate(get_next())
+
+
+class DenseToSparseBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
+
+  def _build_dataset(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.fill([x], x)).apply(
+            batching.dense_to_sparse_batch(4, [12]))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+    components = np.random.randint(5, size=(40,)).astype(np.int32)
+
+    num_outputs = len(components) // 4
+    self.run_core_tests(lambda: self._build_dataset(components), num_outputs)
 
 
 if __name__ == "__main__":

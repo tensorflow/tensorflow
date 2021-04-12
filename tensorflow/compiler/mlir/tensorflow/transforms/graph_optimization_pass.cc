@@ -31,9 +31,11 @@ using ConfigProto = ::tensorflow::ConfigProto;
 using Graph = ::tensorflow::Graph;
 }  // namespace
 
-Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      ModuleOp module, const Graph& graph) {
-  if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
+Status MlirGraphOptimizationPass::Run(
+    const ConfigProto& config_proto, ModuleOp module, const Graph& graph,
+    const tensorflow::FunctionLibraryDefinition& function_library) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
+                   function_library) ==
       ::tensorflow::MlirOptimizationPassState::Disabled) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";

@@ -25,13 +25,12 @@ import tempfile
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,redefined-builtin
-
+from absl import app
 from absl.testing.absltest import *
 # pylint: enable=wildcard-import,redefined-builtin
 
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator

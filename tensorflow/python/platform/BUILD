@@ -19,7 +19,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_build_info_genrule(
@@ -54,7 +54,9 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:_pywrap_util_port",
+        "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],

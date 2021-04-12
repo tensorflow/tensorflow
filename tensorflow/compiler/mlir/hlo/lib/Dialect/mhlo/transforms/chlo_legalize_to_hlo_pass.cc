@@ -43,7 +43,7 @@ struct ChloLegalizeToHloPass
 
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
+    OwningRewritePatternList conversionPatterns(&getContext());
     conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
@@ -51,6 +51,7 @@ struct ChloLegalizeToHloPass
     conversionTarget.addLegalDialect<
         MhloDialect, mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
+    conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (broadcast_only_) {
       chlo::PopulateChloBroadcastingPatterns(&getContext(),

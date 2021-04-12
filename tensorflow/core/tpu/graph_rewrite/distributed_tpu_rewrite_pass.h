@@ -180,13 +180,14 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
     }
 
     bool IsBroadcastArg(int64 index) const {
-      return index >= num_per_replica_args_ &&
+      return (index >= num_per_replica_args_ + num_distributed_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_);
     }
 
     bool IsVariableArg(int64 index) const {
-      return index >= (num_per_replica_args_ + num_broadcast_args_) &&
+      return index >= (num_per_replica_args_ + num_distributed_args_ +
+                       num_broadcast_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_ + num_variables_);
     }

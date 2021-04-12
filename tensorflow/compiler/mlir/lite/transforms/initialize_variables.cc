@@ -123,7 +123,11 @@ class InitializeVariablesPass
         // with ops that accepts resource as input.
         if (!llvm::isa<TF::ReadVariableOp, TF::AssignVariableOp>(op))
           return WalkResult::advance();
-        tensors_to_initialize.insert(GetGlobalTensorOp(op, symbol_table, func));
+        auto global_tensor = GetGlobalTensorOp(op, symbol_table, func);
+        // In case the function doesn't have bound_input to a resource
+        // then we return nullptr.
+        // We need only to initialize the variables that are bounded.
+        if (global_tensor) tensors_to_initialize.insert(global_tensor);
         return WalkResult::advance();
       });
     }
@@ -154,9 +158,9 @@ class InitializeVariablesPass
 
   void runOnOperation() override {
     auto module = getOperation();
-    // Use ordered container to make sure ids are deterministic if we got tensor
-    // ids from different part, since we have different passes that touches
-    // variables.
+    // Use ordered container to make sure ids are deterministic if we got
+    // tensor ids from different part, since we have different passes that
+    // touches variables.
     // TODO(b/149099381): Remove integer IDs after adding the new variable
     // handle type.
     std::map<std::string, int> global_tensor_id;

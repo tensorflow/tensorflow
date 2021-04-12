@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -50,8 +51,8 @@ struct PmapCacheEntry {
   // A function taking as argument a list of arguments and returns a list of
   // list of buffers `[num_devices x num_args]`.
   py::function handle_args;
-  // A function taking as argument the output of `ExecuteOnLocalDevices` and
-  // returning a list of ShardedDeviceArray objects.
+  // A function taking as argument the output of `ExecuteShardedOnLocalDevices`
+  // and returning a list of ShardedDeviceArray objects.
   py::function out_handler;
   xla::PyTreeDef out_pytree_def;
 
@@ -74,18 +75,11 @@ struct PmapCacheEntry {
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
-               py::function get_jax_enable_x64, std::vector<int> static_argnums)
+               std::vector<int> static_argnums)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)),
-        get_jax_enable_x64_(get_jax_enable_x64) {
+        static_argnums_(std::move(static_argnums)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
-  }
-
-  ~PmapFunction() {
-    for (const auto& entry : executables_) {
-      entry.first.DecRef();
-    }
   }
 
   // This function will:
@@ -124,9 +118,6 @@ class PmapFunction {
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
 
-  const py::function get_jax_enable_x64_;
-  absl::optional<bool> jax_enable_x64_ = absl::nullopt;
-
   // A vector of size `num_outputs`, specifying the sharding of each output
   std::vector<ShardingSpec> sharding_specs_;
 };
@@ -157,8 +148,6 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
       executables_.emplace(signature, std::make_unique<PmapCacheEntry>());
   auto it = result.first;
   PmapCacheEntry* cache_entry = it->second.get();
-  // CallSignatures in the cache own their keyword argument reference.
-  result.first->first.IncRef();
 
   py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
   CHECK_EQ(tuple.size(), 2);
@@ -198,23 +187,21 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   if (always_fallback_to_python_) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
-  // Delayed values are retrieved on the first call to `Call`.
-  if (jax_enable_x64_ == absl::nullopt) {
-    jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
-  }
 
   ParsedArgumentsAsBuffers arguments;
-  if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
+  if (!ParseArguments(args, kwargs, static_argnums_, /*static_argnames=*/{},
+                      arguments)
+           .ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
 
   // Get dynamic argument signatures.
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = ArgSignatureOfValue(arg, jax_enable_x64_.value());
+    auto signature_or_error = xla::PyArgSignatureOfValue(arg, GetEnableX64());
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
-    arguments.signature.dynamic_args_signatures.push_back(
+    arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
   }
 
@@ -254,19 +241,19 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   arguments.keep_alive_objects.push_back(
       py::cast<py::object>(list_of_list_of_buffers));
   // Should be `[num_devices x num_args]`.
-  std::vector<std::vector<xla::PyBuffer*>> arg_buffers;
+  std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
   arg_buffers.reserve(list_of_list_of_buffers.size());
   for (int i = 0; i < list_of_list_of_buffers.size(); ++i) {
-    std::vector<xla::PyBuffer*> buffers;
+    std::vector<xla::PyBuffer::object> buffers;
     buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
     for (auto& buf : list_of_list_of_buffers[i]) {
-      buffers.push_back(py::cast<xla::PyBuffer*>(buf));
+      buffers.push_back(py::cast<xla::PyBuffer::object>(buf));
     }
     arg_buffers.push_back(std::move(buffers));
   }
 
-  std::vector<std::vector<std::unique_ptr<xla::PyBuffer>>> outputs =
-      ValueOrThrow(cache_entry->executable->ExecuteOnLocalDevices(arg_buffers));
+  std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
+      cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
   // TODO(jblespiau): Move this to C++.
   py::list outputs_as_python_objects;
@@ -367,11 +354,9 @@ void BuildPmapSubmodule(pybind11::module& m) {
   pmap_lib.def(
       "pmap",
       [](py::function fun, py::function cache_miss,
-         py::function get_jax_enable_x64,
          std::vector<int> static_argnums) -> std::unique_ptr<PmapFunction> {
         return std::make_unique<PmapFunction>(
-            std::move(fun), std::move(cache_miss),
-            std::move(get_jax_enable_x64), std::move(static_argnums));
+            std::move(fun), std::move(cache_miss), std::move(static_argnums));
       });
 }
 

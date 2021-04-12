@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 HARD_FP_FLAGS_IF_APPLICABLE = select({
@@ -467,6 +467,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
@@ -576,6 +577,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
@@ -809,7 +811,10 @@ cc_library(
         ): [":neon_tensor_utils"],
         (
             ":x86_any",
-        ): [":sse_tensor_utils"],
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
         (
             "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",

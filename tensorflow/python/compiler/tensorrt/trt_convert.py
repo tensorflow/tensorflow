@@ -316,8 +316,11 @@ def _get_tensorrt_rewriter_config(conversion_params,
   if max_batch_size is not None:
     optimizer.parameter_map["max_batch_size"].i = max_batch_size
   optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
+  # While we accept case insensitive strings from the users, we only pass the
+  # strings in lower cases to TF-TRT converter.
   if not use_implicit_batch:
-    optimizer.parameter_map["profile_strategy"].s = _to_bytes(profile_strategy)
+    optimizer.parameter_map["profile_strategy"].s = _to_bytes(
+        profile_strategy.lower())
 
   # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
@@ -806,21 +809,6 @@ def _get_resource_handle(name, device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
-class _TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
-  """Resource deleter for destroying TRT engine cache resource."""
-
-  def __init__(self, resource_name, device):
-    super(_TRTEngineResourceDeleter, self).__init__()
-    self._resource_name = resource_name
-    self._device = device
-
-  def destroy_resource(self):
-    handle = _get_resource_handle(self._resource_name, self._device)
-    with ops.device(self._device):
-      gen_resource_variable_ops.destroy_resource_op(
-          handle, ignore_lookup_error=True)
-
-
 class _TRTEngineResource(tracking.TrackableResource):
   """Class to track the serialized engines resource."""
 
@@ -829,8 +817,7 @@ class _TRTEngineResource(tracking.TrackableResource):
                filename,
                maximum_cached_engines,
                device="GPU"):
-    super(_TRTEngineResource, self).__init__(
-        device=device, deleter=_TRTEngineResourceDeleter(resource_name, device))
+    super(_TRTEngineResource, self).__init__(device=device)
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -845,6 +832,12 @@ class _TRTEngineResource(tracking.TrackableResource):
         self.resource_handle,
         self._filename,
         max_cached_engines_count=self._maximum_cached_engines)
+
+  def _destroy_resource(self):
+    handle = _get_resource_handle(self._resource_name, self._resource_device)
+    with ops.device(self._resource_device):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True)
 
 
 @tf_export("experimental.tensorrt.Converter", v1=[])
@@ -1013,6 +1006,7 @@ class TrtGraphConverterV2(object):
     else:
       self._use_dynamic_shape = use_dynamic_shape
 
+    self._profile_strategy = "Unknown"
     if self._use_dynamic_shape:
       if dynamic_shape_profile_strategy is None:
         self._profile_strategy = PROFILE_STRATEGY_RANGE
@@ -1022,10 +1016,9 @@ class TrtGraphConverterV2(object):
 
     # Fields to support TF-TRT testing and shouldn't be used for other purpose.
     self._test_only_disable_non_trt_optimizers = False
-    self._test_only_use_implicit_batch = True
 
   def _need_trt_profiles(self):
-    return not self._test_only_use_implicit_batch
+    return self._use_dynamic_shape
 
   def _run_conversion(self, meta_graph_def):
     """Run Grappler's OptimizeGraph() tool to convert the graph.
@@ -1042,7 +1035,8 @@ class TrtGraphConverterV2(object):
         is_dynamic_op=True,
         max_batch_size=None,
         disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
-        use_implicit_batch=self._test_only_use_implicit_batch)
+        use_implicit_batch=not self._use_dynamic_shape,
+        profile_strategy=self._profile_strategy)
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
         custom_rewriter_config)
     return tf_optimizer.OptimizeGraph(

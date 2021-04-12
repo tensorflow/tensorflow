@@ -535,7 +535,8 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
   profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
-            "ProcessBatch", {{"batch_size_before_padding", batch->size()}});
+            "ProcessBatch", {{"batch_size_before_padding", batch->size()},
+                             {"_r", 2} /*root_event*/});
       },
       profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());

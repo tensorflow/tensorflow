@@ -46,12 +46,13 @@ llvm::cl::opt<std::string> tfl_tosa_denylist(
     llvm::cl::value_desc("pattern name"));
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
-class LegalizeTFL : public PassWrapper<LegalizeTFL, FunctionPass> {
+class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
   explicit LegalizeTFL() {}
   void runOnFunction() override;
@@ -119,8 +120,6 @@ DECL_CONVERT_OP(ZerosLike);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
-DECL_CONVERT_OP(ResizeBilinear);
-DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Select);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToBatchNd);
@@ -2268,44 +2267,6 @@ LogicalResult ConvertTFLPadOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFLResizeBilinearOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_resize_op = cast<TFL::ResizeBilinearOp>(op);
-
-  RankedTensorType output_type =
-      tfl_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!output_type) return failure();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tfl_resize_op.input(), StringRef("BILINEAR"));
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
-
-  return success();
-}
-
-LogicalResult ConvertTFLResizeNearestNeighborOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_resize_op = cast<TFL::ResizeNearestNeighborOp>(op);
-
-  RankedTensorType output_type =
-      tfl_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!output_type) return failure();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tfl_resize_op.input(), StringRef("NEAREST"));
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
-
-  return success();
-}
-
 LogicalResult ConvertTFLSelectOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sel_op = cast<TFL::SelectOp>(op);
@@ -2883,12 +2844,12 @@ LogicalResult ConvertTFLQConstOp::matchAndRewrite(
 }
 
 void LegalizeTFL::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
 
 #define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
 
@@ -2943,8 +2904,6 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLLess);
   DEF_PATTERN_INSERT(TFLLessEqual);
   DEF_PATTERN_INSERT(TFLPad);
-  DEF_PATTERN_INSERT(TFLResizeBilinear);
-  DEF_PATTERN_INSERT(TFLResizeNearestNeighbor);
   DEF_PATTERN_INSERT(TFLSelect);
   DEF_PATTERN_INSERT(TFLSelectV2);
   DEF_PATTERN_INSERT(TFLSpaceToBatchNd);

@@ -113,11 +113,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       initializer, _ = restore_from_saver(
           constant_op.constant(self._variables_path))
       if not ops.executing_eagerly_outside_functions():
-        # Add the initialization operation to the table initializers collection
-        # in case we don't have any lifted variables to attach it to. There
-        # isn't another great place to put it.
-        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, initializer)
+        # Add the initialization operation to the "saved_model_initializers"
+        # collection in case we don't have any lifted variables to attach it to.
+        ops.add_to_collection("saved_model_initializers", initializer)
         one_unlifted = False
+
         for variable in wrapped.graph.get_collection_ref(
             ops.GraphKeys.GLOBAL_VARIABLES):
           if variable.graph is wrapped.graph:
@@ -128,7 +128,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         if one_unlifted:
           logging.warning(
               "Some variables could not be lifted out of a loaded function. "
-              "Run the tf.initializers.tables_initializer() operation to "
+              "Please run "
+              "`sess.run(tf.get_collection(\"saved_model_initializers\"))`to "
               "restore these variables.")
 
   def _extract_signatures(self, wrapped, meta_graph_def):

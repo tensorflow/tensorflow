@@ -45,6 +45,7 @@ TensorCastHelper = _unified_api.EagerTensorToImmediateExecutionTensorHandle
 
 
 def get_immediate_execution_context():
+  context._reset_context()
   context.context().ensure_initialized()
   return _unified_api.EagerContextToImmediateExecutionContext(
       context.context()._handle)

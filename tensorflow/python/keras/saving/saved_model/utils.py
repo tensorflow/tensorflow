@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utility functions shared between SavedModel saving/loading implementations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import itertools
 import threading
@@ -55,8 +52,8 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     call_fn are added to the layer losses.
   """
   expects_training_arg = layer_uses_training_bool(layer)
-  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
-    original_call = call_fn.original_call
+  if hasattr(call_fn, 'original_layer_call'):  # call_fn is a LayerCall object
+    original_call = call_fn.original_layer_call
     # In Python 3, callable objects are not compatible with inspect.getargspec
     call_fn = call_fn.__call__
   else:
@@ -151,7 +148,6 @@ def maybe_add_training_arg(
   """
   if not expects_training_arg:
     return wrapped_call, None
-
   def wrap_with_training_arg(*args, **kwargs):
     """Wrap the `wrapped_call` function, and set training argument."""
     training_arg_index = get_training_arg_index(original_call)
@@ -212,41 +208,45 @@ def get_training_arg_index(call_fn):
           variable keyword arguments
     - None: if layer doesn't expect a training argument.
   """
-  arg_list = tf_inspect.getfullargspec(call_fn).args
-  if tf_inspect.ismethod(call_fn):
-    arg_list = arg_list[1:]
-  if 'training' in arg_list:
-    return arg_list.index('training')
+  argspec = tf_inspect.getfullargspec(call_fn)
+  if argspec.varargs:
+    # When there are variable args, training must be a keyword arg.
+    if 'training' in argspec.kwonlyargs or argspec.varkw:
+      return -1
+    return None
   else:
-    return -1
+    # Try to find 'training' in the list of args or kwargs.
+    arg_list = argspec.args
+    if tf_inspect.ismethod(call_fn):
+      arg_list = arg_list[1:]
+
+    if 'training' in arg_list:
+      return arg_list.index('training')
+    elif 'training' in argspec.kwonlyargs or argspec.varkw:
+      return -1
+    return None
 
 
 def set_training_arg(training, index, args, kwargs):
-  if index is None:
-    pass
-  elif index >= 0 and len(args) > index:
-    args[index] = training
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     kwargs['training'] = training
+  else:
+    args[index] = training
   return args, kwargs
 
 
 def get_training_arg(index, args, kwargs):
-  if index is None:
-    return None
-  elif index >= 0 and len(args) > index:
-    return args[index]
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     return kwargs.get('training', None)
+  else:
+    return args[index]
 
 
 def remove_training_arg(index, args, kwargs):
-  if index is None:
-    pass
-  elif index >= 0 and len(args) > index:
-    args.pop(index)
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     kwargs.pop('training', None)
+  else:
+    args.pop(index)
 
 
 class SaveOptionsContext(threading.local):
@@ -270,5 +270,37 @@ def keras_option_scope(save_traces):
 
 
 def should_save_traces():
+  """Whether to trace layer functions-can be disabled in the save_traces arg."""
   return _save_options_context.save_traces
 
+
+@tf_contextlib.contextmanager
+def no_automatic_dependency_tracking_scope(obj):
+  """A context that disables automatic dependency tracking when assigning attrs.
+
+  Objects that inherit from Autotrackable automatically creates dependencies
+  to trackable objects through attribute assignments, and wraps data structures
+  (lists or dicts) with trackable classes. This scope may be used to temporarily
+  disable this behavior. This works similar to the decorator
+  `no_automatic_dependency_tracking`.
+
+  Example usage:
+  ```
+  model = tf.keras.Model()
+  model.arr1 = []  # Creates a ListWrapper object
+  with no_automatic_dependency_tracking_scope(model):
+    model.arr2 = []  # Creates a regular, untracked python list
+  ```
+
+  Args:
+    obj: A trackable object.
+
+  Yields:
+    a scope in which the object doesn't track dependencies.
+  """
+  previous_value = getattr(obj, '_setattr_tracking', True)
+  obj._setattr_tracking = False  # pylint: disable=protected-access
+  try:
+    yield
+  finally:
+    obj._setattr_tracking = previous_value  # pylint: disable=protected-access

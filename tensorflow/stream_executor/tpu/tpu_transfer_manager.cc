@@ -78,7 +78,7 @@ Status TpuTransferManager::TransferLiteralToDeviceAsync(
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralToDeviceAsyncFn(
       manager_,
-      TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
           stream->implementation()),
       &c_literal, &c_device_buffer, status.c_status);
   ApiConverter::Free(&c_device_buffer);
@@ -284,7 +284,7 @@ Status TpuTransferManager::WriteSingleTupleIndexTable(
 
   tpu::ExecutorApiFn()->TpuTransferManager_WriteSingleTupleIndexTableFn(
       manager_,
-      TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
           stream->implementation()),
       elements_bases, elements.size(), &c_shape, &region_base, status.c_status);
 

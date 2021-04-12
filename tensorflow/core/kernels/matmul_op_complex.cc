@@ -18,9 +18,13 @@ limitations under the License.
 namespace tensorflow {
 
 TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_CPU);
+REGISTER_BATCH_MATMUL_TOUT_CPU(complex64, complex64, complex64);
+REGISTER_BATCH_MATMUL_TOUT_CPU(complex128, complex128, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_GPU);
+REGISTER_BATCH_MATMUL_TOUT_GPU(complex64, complex64, complex64);
+REGISTER_BATCH_MATMUL_TOUT_GPU(complex128, complex128, complex128);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

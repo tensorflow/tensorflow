@@ -13,7 +13,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -197,19 +197,19 @@ cc_library(
 )
 
 cc_library(
-    name = "rocfft_if_static",
+    name = "hipfft_if_static",
     deps = if_static([
-        "@local_config_rocm//rocm:rocfft",
+        "@local_config_rocm//rocm:hipfft",
     ]),
 )
 
 cc_library(
-    name = "rocfft_plugin",
+    name = "hipfft_plugin",
     srcs = if_rocm_is_configured(["rocm_fft.cc"]),
     hdrs = if_rocm_is_configured(["rocm_fft.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocfft_if_static",
+        ":hipfft_if_static",
         ":rocm_platform_id",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:fft",
@@ -266,6 +266,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -332,7 +333,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":miopen_plugin",
-        ":rocfft_plugin",
+        ":hipfft_plugin",
         ":rocblas_plugin",
         ":rocrand_plugin",
         ":rocm_driver",

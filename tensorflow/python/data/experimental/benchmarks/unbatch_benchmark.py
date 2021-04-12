@@ -37,6 +37,10 @@ class UnbatchBenchmark(benchmark_base.DatasetBenchmarkBase):
           dataset=dataset,
           num_elements=num_elements,
           iters=5,
+          extras={
+              "model_name": "unbatch.benchmark.1",
+              "parameters": "%d" % batch_size,
+          },
           name="native_batch_size_%d" % batch_size)
 
   # Include a benchmark of the previous `unbatch()` implementation that uses
@@ -55,6 +59,10 @@ class UnbatchBenchmark(benchmark_base.DatasetBenchmarkBase):
           dataset=dataset,
           num_elements=num_elements,
           iters=5,
+          extras={
+              "model_name": "unbatch.benchmark.2",
+              "parameters": "%d" % batch_size,
+          },
           name="unfused_batch_size_%d" % batch_size)
 
 

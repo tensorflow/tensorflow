@@ -30,7 +30,9 @@ TEST_F(SortingTest, SimpleCase1) {
                  %arg2: memref<4xf32> {lmhlo.alloc = 2 : index, lmhlo.output_index = dense<[0]> : tensor<1xindex>},
                  %arg3: memref<4xf32> {lmhlo.alloc = 3 : index, lmhlo.output_index = dense<[1]> : tensor<1xindex>},
                  %arg4: memref<4xf32> {lmhlo.alloc = 4 : index, lmhlo.output_index = dense<[2]> : tensor<1xindex>},
-                 %arg5: memref<4xf32> {lmhlo.alloc = 5 : index, lmhlo.output_index = dense<[3]> : tensor<1xindex>}) -> () {
+                 %arg5: memref<4xf32> {lmhlo.alloc = 5 : index, lmhlo.output_index = dense<[3]> : tensor<1xindex>}) attributes {
+                     result_xla_shape = "(f32[4], f32[4], f32[4], f32[4]) "
+                 } {
           "lmhlo.sort"(%arg0, %arg1, %arg2, %arg3) ( {
           ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f32>, %d: tensor<f32>):
             %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>

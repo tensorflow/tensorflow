@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import optional_ops
@@ -43,6 +44,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
@@ -63,6 +65,24 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(
           dataset._as_serialized_graph(external_state_policy=distribute_options
                                        .ExternalStatePolicy.FAIL))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              init_source=["textfile", "keyvaluetensor", "dataset"])))
+  def testLookupTableGraphSerialization(self, init_source):
+    vals = [10, 11]
+    initializer = self.lookupTableInitializer(init_source, vals)
+    table = lookup_ops.StaticHashTable(initializer, -1)
+    dataset = dataset_ops.Dataset.range(3)
+    dataset = dataset.map(table.lookup)
+    self.evaluate(lookup_ops.tables_initializer())
+    round_tripped = self.graphRoundTrip(dataset)
+    del table
+    del dataset
+    self.assertDatasetProduces(
+        round_tripped, [10, 11, -1], requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):
@@ -557,6 +577,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesOpError(""):
       self.getDatasetOutput(dataset)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNamedTupleStructure(self):
     Foo = collections.namedtuple("Foo", ["a", "b"])
     x = Foo(a=3, b="test")
@@ -566,6 +587,42 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         str(dataset.element_spec),
         "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
         "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeEagerExecution(self):
+    dataset_ops.toggle_debug_mode(True)
+    counter = []
+    ds = dataset_ops.Dataset.range(10)
+
+    def map_fn(x):
+      counter.append(1)
+      return x
+
+    ds = ds.map(map_fn)
+    self.assertDatasetProduces(ds, list(range(10)))
+
+    # The body of `map_fn` will be executed 11 times since the implementation
+    # traces the function to figure out what the types and shapes of its
+    # outputs are.
+    self.assertLen(counter, 11)
+    dataset_ops.toggle_debug_mode(False)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeSequentialExecution(self):
+    dataset_ops.toggle_debug_mode(True)
+    ds = dataset_ops.Dataset.range(10)
+    ds = ds.apply(
+        testing.assert_next(["Interleave", "Map", "Batch", "FiniteTake"]))
+    ds = ds.interleave(
+        lambda x: dataset_ops.Dataset.from_tensors(x),
+        cycle_length=10,
+        num_parallel_calls=10)
+    ds = ds.map(lambda x: x * x, num_parallel_calls=10)
+    ds = ds.batch(batch_size=5, num_parallel_calls=2)
+    ds = ds.prefetch(buffer_size=2)
+    ds = ds.take(2)
+    self.assertDatasetProduces(ds, [[0, 1, 4, 9, 16], [25, 36, 49, 64, 81]])
+    dataset_ops.toggle_debug_mode(False)
 
 
 if __name__ == "__main__":

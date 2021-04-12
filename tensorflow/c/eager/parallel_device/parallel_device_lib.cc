@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -404,6 +405,30 @@ ParallelDevice::Join(
   return result;
 }
 
+std::vector<std::string> ParallelDevice::SummarizeDeviceNames() const {
+  std::vector<DeviceNameUtils::ParsedName> parsed_components(
+      underlying_devices_.size());
+  for (int component_index = 0; component_index < underlying_devices_.size();
+       ++component_index) {
+    if (!DeviceNameUtils::ParseFullName(underlying_devices_[component_index],
+                                        &parsed_components[component_index]) ||
+        !DeviceNameUtils::IsSameAddressSpace(
+            underlying_devices_[component_index], underlying_devices_[0])) {
+      // Device names are from different address spaces, or we can't figure out
+      // whether they are, so we'll fully-qualify everything.
+      return underlying_devices_;
+    }
+  }
+  std::vector<std::string> local_names;
+  local_names.reserve(underlying_devices_.size());
+  for (const DeviceNameUtils::ParsedName& parsed_component :
+       parsed_components) {
+    local_names.push_back(
+        absl::StrCat(parsed_component.type, ":", parsed_component.id));
+  }
+  return local_names;
+}
+
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
     std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
@@ -464,6 +489,26 @@ Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;
+  return Status::OK();
+}
+
+Status ParallelTensor::SummarizeValue(std::string& summary) {
+  summary = "{";
+  std::vector<std::string> summarized_devices = device_.SummarizeDeviceNames();
+  for (int component_index = 0; component_index < tensors_.size();
+       ++component_index) {
+    // TODO(allenl): Add a C API for summarizing tensors. Currently custom
+    // devices limiting themselves to a C API (for ABI compatibility) would need
+    // to implement summarization for component tensors themselves.
+    ImmediateExecutionTensorHandle* component =
+        tensorflow::unwrap(tensors_[component_index].get());
+    std::string component_summary;
+    TF_RETURN_IF_ERROR(component->SummarizeValue(component_summary));
+    absl::StrAppend(&summary, component_index == 0 ? "" : ", ", "\"",
+                    summarized_devices[component_index],
+                    "\": ", component_summary);
+  }
+  summary += "}";
   return Status::OK();
 }
 

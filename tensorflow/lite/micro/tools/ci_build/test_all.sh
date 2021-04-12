@@ -33,6 +33,21 @@ if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
   exit 1
 fi
 
+# Check that an incorrect optimized kernel directory results in an error.
+# Without such an error, an incorrect optimized kernel directory can result in
+# an unexpected fallback to reference kernels and which can be hard to debug. We
+# add some complexity to the CI to make sure that we do not repeat the same
+# mistake as described in http://b/183546742.
+INCORRECT_CMD="make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=does_not_exist clean"
+EXT_LIBS_INC=tensorflow/lite/micro/tools/make/ext_libs/does_not_exist.inc
+touch ${EXT_LIBS_INC}
+if ${INCORRECT_CMD} &> /dev/null ; then
+  echo "'${INCORRECT_CMD}' should have failed but it did not have any errors."
+  rm -f ${EXT_LIBS_INC}
+  exit 1
+fi
+rm -f ${EXT_LIBS_INC}
+
 echo "Running code style checks at `date`"
 tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
 
@@ -61,6 +76,12 @@ if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
   # coverage, it is unlikely that an internal change would break only the corstone build.
   echo "Running cortex_m_corstone_300 tests at `date`"
   tensorflow/lite/micro/tools/ci_build/test_cortex_m_corstone_300.sh
+
+  # Only running project generation v2 prototype as part of the github CI while
+  # it is under development. See
+  # https://github.com/tensorflow/tensorflow/issues/47413 for more context.
+  echo "Running project_generation test at `date`"
+  tensorflow/lite/micro/tools/ci_build/test_project_generation.sh
 fi
 
 echo "Running x86 tests at `date`"
@@ -85,5 +106,12 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
+
+if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
+  # This is needed to prevent rsync errors with the TFLM github Kokoro build.
+  # See https://github.com/tensorflow/tensorflow/issues/48254 for additional
+  # context.
+  make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+fi
 
 echo "Finished all micro tests at `date`"

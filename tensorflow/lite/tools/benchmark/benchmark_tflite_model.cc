@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
@@ -78,6 +79,37 @@ void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
 void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   ruy_profile_ = nullptr;
 }
+
+class InterpreterStatePrinter : public BenchmarkListener {
+ public:
+  explicit InterpreterStatePrinter(Interpreter* interpreter)
+      : interpreter_(interpreter) {}
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override {
+    params_ = &params;
+    if (params_->Get<bool>("print_preinvoke_state")) {
+      TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter pre-invoke "
+                          "state begins====";
+      tflite::PrintInterpreterState(interpreter_);
+      TFLITE_LOG(INFO) << "====Printing out TfLite interpreter pre-invoke "
+                          "state ends====\n";
+    }
+  }
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    if (params_->Get<bool>("print_postinvoke_state")) {
+      TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter post-invoke "
+                          "state begins====";
+      tflite::PrintInterpreterState(interpreter_);
+      TFLITE_LOG(INFO) << "====Printing out TfLite interpreter post-invoke "
+                          "state ends====\n";
+    }
+  }
+
+ private:
+  Interpreter* const interpreter_ = nullptr;  // not own the memory.
+  const BenchmarkParams* params_ = nullptr;   // not own the memory.
+};
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
   std::vector<std::string> results;
@@ -255,6 +287,11 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
 
+  default_params.AddParam("print_preinvoke_state",
+                          BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("print_postinvoke_state",
+                          BenchmarkParam::Create<bool>(false));
+
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
     default_params.Merge(delegate_provider->DefaultParams());
@@ -314,7 +351,16 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
-          "prints to stdout.")};
+          "prints to stdout."),
+      CreateFlag<bool>(
+          "print_preinvoke_state", &params_,
+          "print out the interpreter internals just before calling Invoke. The "
+          "internals will include allocated memory size of each tensor etc."),
+      CreateFlag<bool>(
+          "print_postinvoke_state", &params_,
+          "print out the interpreter internals just before benchmark completes "
+          "(i.e. after all repeated Invoke calls complete). The internals will "
+          "include allocated memory size of each tensor etc.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -349,6 +395,10 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Max profiling buffer entries", verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
+  LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
+                      "Print pre-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
+                      "Print post-invoke interpreter state", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -618,6 +668,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // installed profiler profile memory usage information.
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
+
+  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get()));
+  AddListener(interpreter_state_printer_.get());
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 

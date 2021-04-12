@@ -35,9 +35,10 @@ from __future__ import print_function
 import argparse
 import sys
 
+from absl import app
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 

@@ -40,6 +40,10 @@ namespace {
 // replaces the regions with calls to these outlined functions.
 class WhileOutlinePass
     : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TF::TensorFlowDialect>();
+  }
+
  public:
   explicit WhileOutlinePass() {}
 

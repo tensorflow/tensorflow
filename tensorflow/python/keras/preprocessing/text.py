@@ -12,12 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for text input preprocessing.
-"""
+"""Utilities for text input preprocessing."""
 # pylint: disable=invalid-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from keras_preprocessing import text
 

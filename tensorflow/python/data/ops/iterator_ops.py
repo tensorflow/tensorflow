@@ -93,12 +93,12 @@ class Iterator(trackable.Trackable):
         iterator.
       initializer: A `tf.Operation` that should be run to initialize this
         iterator.
-      output_types: A nested structure of `tf.DType` objects corresponding to
+      output_types: A (nested) structure of `tf.DType` objects corresponding to
         each component of an element of this iterator.
-      output_shapes: A nested structure of `tf.TensorShape` objects
+      output_shapes: A (nested) structure of `tf.TensorShape` objects
         corresponding to each component of an element of this iterator.
-      output_classes: A nested structure of Python `type` objects corresponding
-        to each component of an element of this iterator.
+      output_classes: A (nested) structure of Python `type` objects
+        corresponding to each component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
@@ -171,15 +171,15 @@ class Iterator(trackable.Trackable):
     ```
 
     Args:
-      output_types: A nested structure of `tf.DType` objects corresponding to
+      output_types: A (nested) structure of `tf.DType` objects corresponding to
         each component of an element of this dataset.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset. If
-        omitted, each component will have an unconstrainted shape.
+      output_shapes: (Optional.) A (nested) structure of `tf.TensorShape`
+        objects corresponding to each component of an element of this dataset.
+        If omitted, each component will have an unconstrainted shape.
       shared_name: (Optional.) If non-empty, this iterator will be shared under
         the given name across multiple sessions that share the same devices
         (e.g. when using a remote server).
-      output_classes: (Optional.) A nested structure of Python `type` objects
+      output_classes: (Optional.) A (nested) structure of Python `type` objects
         corresponding to each component of an element of this iterator. If
         omitted, each component is assumed to be of type `tf.Tensor`.
 
@@ -252,12 +252,12 @@ class Iterator(trackable.Trackable):
     Args:
       string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates to
         a handle produced by the `Iterator.string_handle()` method.
-      output_types: A nested structure of `tf.DType` objects corresponding to
+      output_types: A (nested) structure of `tf.DType` objects corresponding to
         each component of an element of this dataset.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset. If
-        omitted, each component will have an unconstrainted shape.
-      output_classes: (Optional.) A nested structure of Python `type` objects
+      output_shapes: (Optional.) A (nested) structure of `tf.TensorShape`
+        objects corresponding to each component of an element of this dataset.
+        If omitted, each component will have an unconstrainted shape.
+      output_classes: (Optional.) A (nested) structure of Python `type` objects
         corresponding to each component of an element of this iterator. If
         omitted, each component is assumed to be of type `tf.Tensor`.
 
@@ -306,7 +306,8 @@ class Iterator(trackable.Trackable):
     """Returns a `tf.Operation` that initializes this iterator on `dataset`.
 
     Args:
-      dataset: A `Dataset` with compatible structure to this iterator.
+      dataset: A `Dataset` whose `element_spec` if compatible with this
+        iterator.
       name: (Optional.) A name for the created operation.
 
     Returns:
@@ -315,7 +316,7 @@ class Iterator(trackable.Trackable):
 
     Raises:
       TypeError: If `dataset` and this iterator do not have a compatible
-        element structure.
+        `element_spec`.
     """
     with ops.name_scope(name, "make_initializer") as name:
       # NOTE(mrry): Cannot depend on `dataset_ops.get_legacy_output*()` due
@@ -362,7 +363,7 @@ class Iterator(trackable.Trackable):
           dataset._variant_tensor, self._iterator_resource, name=name)
 
   def get_next(self, name=None):
-    """Returns a nested structure of `tf.Tensor`s representing the next element.
+    """Returns the next element.
 
     In graph mode, you should typically call this method *once* and use its
     result as the input to another computation. A typical loop will then call
@@ -403,7 +404,7 @@ class Iterator(trackable.Trackable):
       name: (Optional.) A name for the created operation.
 
     Returns:
-      A nested structure of `tf.Tensor` objects.
+      A (nested) structure of values matching `tf.data.Iterator.element_spec`.
     """
     self._get_next_call_count += 1
     if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
@@ -454,7 +455,7 @@ class Iterator(trackable.Trackable):
     The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
-      A nested structure of Python `type` objects corresponding to each
+      A (nested) structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -468,7 +469,7 @@ class Iterator(trackable.Trackable):
     """Returns the shape of each component of an element of this iterator.
 
     Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
+      A (nested) structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -482,7 +483,7 @@ class Iterator(trackable.Trackable):
     """Returns the type of each component of an element of this iterator.
 
     Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
+      A (nested) structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
     return nest.map_structure(
@@ -491,6 +492,16 @@ class Iterator(trackable.Trackable):
 
   @property
   def element_spec(self):
+    """The type specification of an element of this iterator.
+
+    For more information,
+    read [this guide](https://www.tensorflow.org/guide/data#dataset_structure).
+
+    Returns:
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
+      element of this iterator and specifying the type of individual components.
+    """
+
     return self._element_spec
 
   def _gather_saveables_for_checkpoint(self):
@@ -587,15 +598,18 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
     >>> iterator.element_spec
     tf.TensorSpec(shape=(), dtype=tf.int32, name=None)
 
+    For more information,
+    read [this guide](https://www.tensorflow.org/guide/data#dataset_structure).
+
     Returns:
-      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this iterator, specifying the type of individual components.
     """
     raise NotImplementedError("Iterator.element_spec")
 
   @abc.abstractmethod
   def get_next(self):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
+    """Returns the next element.
 
     >>> dataset = tf.data.Dataset.from_tensors(42)
     >>> iterator = iter(dataset)
@@ -603,7 +617,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
     tf.Tensor(42, shape=(), dtype=int32)
 
     Returns:
-      A nested structure of `tf.Tensor` objects.
+      A (nested) structure of values matching `tf.data.Iterator.element_spec`.
 
     Raises:
       `tf.errors.OutOfRangeError`: If the end of the iterator has been reached.
@@ -612,7 +626,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
 
   @abc.abstractmethod
   def get_next_as_optional(self):
-    """Returns a `tf.experimental.Optional` which contains the next element.
+    """Returns the next element warpped in `tf.experimental.Optional`.
 
     If the iterator has reached the end of the sequence, the returned
     `tf.experimental.Optional` will have no value.
@@ -654,7 +668,7 @@ class OwnedIterator(IteratorBase):
     Args:
       dataset: A `tf.data.Dataset` object.
       components: Tensor components to construct the iterator from.
-      element_spec: A nested structure of `TypeSpec` objects that
+      element_spec: A (nested) structure of `TypeSpec` objects that
         represents the type specification of elements of the iterator.
 
     Raises:
@@ -757,7 +771,7 @@ class OwnedIterator(IteratorBase):
     The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
-      A nested structure of Python `type` objects corresponding to each
+      A (nested) structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -771,7 +785,7 @@ class OwnedIterator(IteratorBase):
     """Returns the shape of each component of an element of this iterator.
 
     Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
+      A (nested) structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -785,7 +799,7 @@ class OwnedIterator(IteratorBase):
     """Returns the type of each component of an element of this iterator.
 
     Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
+      A (nested) structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
     return nest.map_structure(
@@ -846,8 +860,8 @@ class IteratorSpec(type_spec.TypeSpec):
   tf.Tensor(25, shape=(), dtype=int32)
 
   Attributes:
-    element_spec: A nested structure of `TypeSpec` objects that represents the
-      type specification of the iterator elements.
+    element_spec: A (nested) structure of `tf.TypeSpec` objects that represents
+      the type specification of the iterator elements.
   """
 
   __slots__ = ["_element_spec"]

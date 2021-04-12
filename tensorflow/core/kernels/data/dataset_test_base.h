@@ -161,6 +161,15 @@ class DatasetParams {
   // the dataset kernel.
   virtual string dataset_type() const = 0;
 
+  // Returns the dataset op name. By default, it returns the Op::kDatasetType
+  // concatenated with "Dataset". For ops that do not have "Dataset" suffix,
+  // this method can be overriden to return a different name.
+  virtual string op_name() const {
+    name_utils::OpNameParams params;
+    params.op_version = op_version();
+    return name_utils::OpName(dataset_type(), params);
+  }
+
   virtual int op_version() const { return op_version_; }
 
  protected:
@@ -366,6 +375,33 @@ class ConcatenateDatasetParams : public DatasetParams {
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
   string dataset_type() const override;
+};
+
+// `OptionsDatasetParams` is a common dataset parameter type that is used in
+// testing.
+class OptionsDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  OptionsDatasetParams(T input_dataset_params, const string& serialized_options,
+                       DataTypeVector output_dtypes,
+                       std::vector<PartialTensorShape> output_shapes,
+                       string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        serialized_options_(serialized_options) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+  }
+
+  std::vector<Tensor> GetInputTensors() const override;
+
+  Status GetInputNames(std::vector<string>* input_names) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  string dataset_type() const override;
+
+ private:
+  string serialized_options_;
 };
 
 template <typename T>
@@ -616,6 +652,9 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Checks `DatasetBase::Cardinality()`.
   Status CheckDatasetCardinality(int expected_cardinality);
 
+  // Checks `DatasetBase::options()`.
+  Status CheckDatasetOptions(const Options& expected_options);
+
   // Checks `IteratorBase::output_dtypes()`.
   Status CheckIteratorOutputDtypes(
       const DataTypeVector& expected_output_dtypes);
@@ -714,6 +753,10 @@ class DatasetOpsTestBase : public ::testing::Test {
   // iterator.
   Status CreateSerializationContext(
       std::unique_ptr<SerializationContext>* context);
+
+  // Creates the dataset op kernel.
+  Status MakeGetOptionsOpKernel(const DatasetParams& dataset_params,
+                                std::unique_ptr<OpKernel>* op_kernel);
 
  private:
   // Runs the dataset operation according to the predefined dataset params and

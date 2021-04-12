@@ -20,9 +20,6 @@ loading from the SavedModel.
 
 Tests that focus on the model structure should go in revive_test.py
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import shutil
@@ -820,23 +817,30 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.assertAllClose(layer.states, loaded_layer.states)
     self.assertAllClose(model(input_arr), loaded(input_arr))
 
-  def testSaveStatelessConvLSTM2D(self):
+  @parameterized.named_parameters([('stateful', True), ('stateless', False)])
+  def testSaveConvLSTM2D(self, stateful):
     data_format = 'channels_first'
     batch, timesteps, channels, rows, cols = 12, 10, 8, 4, 4
     input_arr = np.ones(
         (batch, timesteps, channels, rows, cols)).astype('float32')
     layer = keras.layers.ConvLSTM2D(
-        filters=16, kernel_size=(1, 1), data_format=data_format)
+        filters=16, kernel_size=(1, 1), data_format=data_format,
+        stateful=stateful)
     x = keras.Input(batch_shape=(batch, timesteps, channels, rows, cols))
     y = layer(x)
     model = keras.Model(x, y)
 
     predict_1 = model(input_arr)
+    self.evaluate([v.initializer for v in model.variables])
     saved_model_dir = self._save_model_dir()
+
     tf_save.save(model, saved_model_dir)
     del model
 
     loaded = keras_load.load(saved_model_dir)
+    self.evaluate([v.initializer for v in loaded.variables])
+    if stateful:
+      loaded.reset_states()
     predict_2 = loaded(input_arr)
     self.assertAllClose(predict_1, predict_2)
 
@@ -910,6 +914,34 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
                         self.evaluate(actual))
     self.assertAllEqual(self.evaluate(expected_loss),
                         self.evaluate(actual_loss))
+
+  def test_wrapped_layer_training(self):
+    class Custom(keras.models.Model):
+
+      def __init__(self):
+        super(Custom, self).__init__()
+        self.layer = LayerWithLearningPhase()
+
+      def call(self, inputs):
+        return self.layer(inputs)
+    model = Custom()
+    x = constant_op.constant(1., shape=[1, 1])
+    expected_default = model(x)
+    expected_training_true = model(x, training=True)
+    expected_training_false = model(x, training=False)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    def assert_loaded_model(loaded):
+      actual_default = loaded(x)
+      actual_training_true = loaded(x, training=True)
+      actual_training_false = loaded(x, training=False)
+      self.assertAllClose(
+          [expected_default, expected_training_true, expected_training_false],
+          [actual_default, actual_training_true, actual_training_false])
+
+    assert_loaded_model(keras_load.load(saved_model_dir))
+    assert_loaded_model(tf_load.load(saved_model_dir))
 
 
 class TestSavedModelFormat(test.TestCase):
@@ -1008,40 +1040,51 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
         return inputs * 2
 
     layer = Layer()
+
     call_collection = keras_save.LayerCallCollection(layer)
-    fn = call_collection.add_function(layer.call, 'call')
-    fn2 = call_collection.add_function(layer.call2, 'call2')
+    fn = call_collection.add_function(layer.call, 'call', True)
+    fn2 = call_collection.add_function(layer.call2, 'call2', True)
 
-    fn(np.ones((2, 3)))
-    fn(np.ones((4, 5)))
+    with keras_save.tracing_scope():
+      fn(np.ones((2, 3)))
+      fn(np.ones((4, 5)))
 
-    self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
-    self.assertLen(fn2._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(
+        fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(
+        fn2.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
 
     # Check that the shapes are correct
     self.assertEqual(
         {(2, 3), (4, 5)},
-        set(tuple(c.structured_input_signature[0][0].shape.as_list())
-            for c in fn2._list_all_concrete_functions_for_serialization()))
+        set(tuple(c.structured_input_signature[0][0].shape.as_list()) for c in
+            fn2.wrapped_call._list_all_concrete_functions_for_serialization()))
 
   def test_training_arg_replacement(self):
 
     def assert_num_traces(layer_cls, training_keyword):
       layer = layer_cls()
       call_collection = keras_save.LayerCallCollection(layer)
-      fn = call_collection.add_function(layer.call, 'call')
+      fn = call_collection.add_function(layer.call, 'call', True)
 
-      fn(np.ones((2, 3)), training=True)
-      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
-
-      fn(np.ones((2, 4)), training=False)
-      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 4)
+      with keras_save.tracing_scope():
+        fn(np.ones((2, 3)), training=True)
+      self.assertLen(
+          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
+      with keras_save.tracing_scope():
+        fn(np.ones((2, 4)), training=False)
+      self.assertLen(
+          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 4)
 
       if training_keyword:
-        fn(np.ones((2, 5)), True)
-        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 6)
-        fn(np.ones((2, 6)))
-        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 8)
+        with keras_save.tracing_scope():
+          fn(np.ones((2, 5)), True)
+        self.assertLen(
+            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 6)
+        with keras_save.tracing_scope():
+          fn(np.ones((2, 6)))
+        self.assertLen(
+            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 8)
 
     class LayerWithTrainingKeyword(keras.engine.base_layer.Layer):
 
@@ -1075,7 +1118,7 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
     previous_losses = layer.losses[:]
 
     call_collection = keras_save.LayerCallCollection(layer)
-    fn = call_collection.add_function(layer.call, 'call')
+    fn = call_collection.add_function(layer.call, 'call', True)
     fn(np.ones((2, 3)))
 
     self.assertAllEqual(previous_losses, layer.losses)
@@ -1235,24 +1278,41 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_custom_metric_model(self):
+    # TODO(b/134519980): Issue with `model.fit` if the model call function uses
+    # a `tf.function` in graph mode.
+    if not context.executing_eagerly():
+      return
+
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 4))
 
     class CustomMetric(keras.metrics.MeanSquaredError):
       pass
 
-    with self.cached_session():
-      metric = CustomMetric()
-      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-      model.compile(loss='mse', optimizer='rmsprop', metrics=[metric])
-      self.evaluate(variables.global_variables_initializer())
-      self.evaluate([v.initializer for v in metric.variables])
+    def zero_metric(y_true, y_pred):
+      del y_true, y_pred
+      return 0
 
+    with self.cached_session():
+      custom_metric = CustomMetric()
+      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+      model.compile(loss='mse', optimizer='SGD',
+                    metrics=[custom_metric, zero_metric])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate([v.initializer for v in custom_metric.variables])
+      model.fit(x, y)
       saved_model_dir = self._save_model_dir()
       tf_save.save(model, saved_model_dir)
-    with self.assertRaisesRegex(ValueError, 'custom_objects'):
-      keras_load.load(saved_model_dir)
 
-    keras_load.load(saved_model_dir, compile=False)
+      with self.assertRaisesRegex(ValueError, 'custom_objects'):
+        keras_load.load(saved_model_dir)
 
+      with generic_utils.CustomObjectScope(
+          {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
+        loaded = keras_load.load(saved_model_dir)
+
+      self.evaluate([v.initializer for v in loaded.variables])
+      loaded.fit(x, y)
 
 if __name__ == '__main__':
   test.main()

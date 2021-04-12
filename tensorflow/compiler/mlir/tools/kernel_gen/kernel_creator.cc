@@ -31,8 +31,6 @@ limitations under the License.
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
@@ -46,7 +44,7 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
@@ -87,7 +85,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
   auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
-  if (!type || !alloc.getDefiningOp<mlir::AllocOp>()) return false;
+  if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp
     // or SelectOp(_, RankOp, RankOp).
@@ -116,11 +114,11 @@ bool IsSmallAlloc(Value alloc) {
 }
 
 // TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
-struct RemoveUnusedTensorToMemrefOperations
-    : public mlir::PassWrapper<RemoveUnusedTensorToMemrefOperations,
+struct RemoveUnusedBufferCastOperations
+    : public mlir::PassWrapper<RemoveUnusedBufferCastOperations,
                                mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](mlir::TensorToMemrefOp op) {
+    getFunction().walk([](mlir::memref::BufferCastOp op) {
       // Drop all tensor_to_memref that have no more users. Currently this will
       // not happen, as tensor_to_memref has a side-effect. See
       // https://reviews.llvm.org/D91967 for a dicsussion.
@@ -207,6 +205,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateShapeSimplification());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
@@ -222,7 +222,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // TODO(pifon): Rename the pass to CreateHloLinalgBufferizePass or bufferize
   // in 2 steps: first Linalg, then Hlo. That would need refactoring of
   // BufferizeTypeConverter.
-  pm.addPass(mlir::kernel_gen::transforms::CreateHloBufferizePass());
+  pm.addPass(
+      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Find candidates for buffer reuse. This is only successful if buffer size
@@ -278,7 +279,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(mlir::createCanonicalizerPass());
   // TODO(herhut) Remove once handled in mlir core.
   pm.addNestedPass<mlir::FuncOp>(
-      std::make_unique<RemoveUnusedTensorToMemrefOperations>());
+      std::make_unique<RemoveUnusedBufferCastOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // Before inserting more allocs, map the ones we already have to the
@@ -435,12 +436,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
-  registry.insert<mlir::NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect>();
-  registry.addDialectInterface<mlir::NVVM::NVVMDialect,
-                               mlir::NVVMDialectLLVMIRTranslationInterface>();
-  registry.addDialectInterface<mlir::ROCDL::ROCDLDialect,
-                               mlir::ROCDLDialectLLVMIRTranslationInterface>();
   mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 

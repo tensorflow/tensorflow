@@ -64,7 +64,7 @@ namespace tensorflow {
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
-  explicit GpuCudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
+  explicit GpuCudaMallocAsyncAllocator(PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = false);
@@ -83,6 +83,12 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   void ClearStats() override;
 
+  void SetStream(void* stream) override {
+#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+    cuda_stream_ = reinterpret_cast<CUstream>(stream);
+#endif
+  }
+
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   se::StreamExecutor* stream_exec_;  // Not owned.
@@ -91,6 +97,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // compute stream and already synchronize with the h2d, d2h and d2d
   // stream. So we do not need to ask cudaMallocAsync to add extra
   // synchronization.
+  // Not owned.
   CUstream cuda_stream_;
 
   // Not owned. The default pool of the associated GPU.

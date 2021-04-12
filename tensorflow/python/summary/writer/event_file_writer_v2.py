@@ -74,8 +74,7 @@ class EventFileWriterV2(object):
     self._session = session
     self._logdir = logdir
     self._closed = False
-    if not gfile.IsDirectory(self._logdir):
-      gfile.MakeDirs(self._logdir)
+    gfile.MakeDirs(self._logdir)
 
     with self._session.graph.as_default():
       with ops.name_scope('filewriter'):

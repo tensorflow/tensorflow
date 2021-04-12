@@ -6,15 +6,14 @@ def repo():
     """Imports absl."""
 
     # Attention: tools parse and update these lines.
-    ABSL_COMMIT = "df3ea785d8c30a9503321a3d35ee7d35808f190d"
-    ABSL_SHA256 = "f368a8476f4e2e0eccf8a7318b98dafbe30b2600f4e3cf52636e5eb145aba06a"
+    ABSL_COMMIT = "997aaf3a28308eba1b9156aa35ab7bca9688e9f6"
+    ABSL_SHA256 = "35f22ef5cb286f09954b7cc4c85b5a3f6221c9d4df6b8c4a1e9d399555b366ee"
 
     tf_http_archive(
         name = "com_google_absl",
         sha256 = ABSL_SHA256,
         build_file = "//third_party/absl:com_google_absl.BUILD",
-        # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
-        # and when TensorFlow is build against CUDA 10.2
+        # TODO(mihaimaruseac): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
         patch_file = "//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch",
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = [

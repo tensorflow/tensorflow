@@ -44,6 +44,17 @@ namespace {
 using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
 
+// Fetch the platform Id from device.
+se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
+  auto device = static_cast<Device*>(device_base);
+  se::Platform::Id platform_id = nullptr;
+  if (device->device_type() == DEVICE_CPU) {
+    platform_id = se::host::kHostPlatformId;
+  }
+
+  return platform_id;
+}
+
 }  // anonymous namespace
 
 VariableInfo::VariableInfo(int index, absl::string_view name, Var* var)
@@ -203,14 +214,18 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 // Fills in `execution_input` with `buffer` for `index`.
 static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
                                          xla::ShapeIndex index,
-                                         se::DeviceMemoryBase& buffer,
+                                         se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
   xla::MaybeOwningDeviceMemory* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
+    // Here we pass ownership of the buffer to execution_input without releasing
+    // ownership from the caller of PopulateExecutionInputBuffer. If execution
+    // succeeds, we'll take back that duplicate ownership in
+    // GetOrCreateTensorForOutput. If execution fails, the ExecutionInput will
+    // release that duplicate ownership automatically.
     *in_buffer = se::OwningDeviceMemory(buffer, device_ordinal, allocator);
-    buffer = se::DeviceMemoryBase();
   } else {
     *in_buffer = buffer;
   }
@@ -297,18 +312,21 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
   return t;
 }
 
-// Get aliased tensor, or make a new one for the corresponding output operation.
-static Tensor GetOrCreateTensorForOutput(
-    int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
+// Get aliased tensor from output, or make a new one for the corresponding
+// output operation. Transfers ownership of the buffer from output to the
+// returned tensor.
+static xla::StatusOr<Tensor> GetOrCreateTensorForOutput(
+    xla::ScopedShapedBuffer& output, int output_num, OpKernelContext* ctx,
+    int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
     absl::Span<const int> input_mapping,
     const std::map<int, const Tensor*>& resource_vars_snapshots,
     DataType output_dtype, const TensorShape& output_shape,
-    se::DeviceMemoryBase output_buffer, Allocator* output_allocator) {
+    Allocator* output_allocator, bool allocate_xla_tensors, se::Stream* stream,
+    bool use_multiple_streams, std::shared_ptr<se::Event> definition_event) {
   xla::ShapeIndex output_index = input_output_alias.shape().IsTuple()
                                      ? xla::ShapeIndex({output_num})
                                      : xla::ShapeIndex({});
-
   CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
   if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
           input_output_alias.GetAliasedParameter(output_index)) {
@@ -319,24 +337,39 @@ static Tensor GetOrCreateTensorForOutput(
         ctx->input(tf_param).dtype() != DT_RESOURCE
             ? ctx->input(tf_param)
             : *resource_vars_snapshots.at(missing_ctx_input_prefix + tf_param);
-    if (output_buffer.opaque() == input_tensor.data()) {
+    se::DeviceMemoryBase input_buffer =
+        XlaTensor::DeviceMemoryFromTensor(input_tensor);
+    se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+    if (input_buffer.opaque() == output_buffer.opaque()) {
+      // In the case of a donated buffer, both input_tensor and output think
+      // they have ownership of the buffer (see comment in
+      // PopulateExecutionInputBuffer). Release ownership from output to avoid
+      // double free.
+      output.set_buffer(se::OwningDeviceMemory(), {output_num});
       return input_tensor;
     }
   }
-  return MakeTensor(output_dtype, output_shape, output_buffer,
-                    output_allocator);
-}
 
-static void PopulateXlaTensor(Tensor* output_tensor,
-                              xla::ScopedShapedBuffer* output, int output_num,
-                              se::Stream* stream, bool use_multiple_streams,
-                              std::shared_ptr<se::Event> definition_event) {
-  XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
-  CHECK(xla_tensor);
-  xla_tensor->set_shaped_buffer(output->TakeSubTree({output_num}));
-  if (use_multiple_streams) {
-    xla_tensor->ResetDefinitionEvent(definition_event, stream);
+  if (allocate_xla_tensors) {
+    Tensor output_tensor;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_temp(output_dtype, output_shape, &output_tensor));
+    if (output_tensor.TotalBytes() > 0) {
+      XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
+      TF_RET_CHECK(xla_tensor);
+      xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
+      if (use_multiple_streams) {
+        xla_tensor->ResetDefinitionEvent(definition_event, stream);
+      }
+    }
+    return output_tensor;
   }
+
+  se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+  Tensor output_tensor =
+      MakeTensor(output_dtype, output_shape, output_buffer, output_allocator);
+  output.set_buffer(se::OwningDeviceMemory(), {output_num});
+  return output_tensor;
 }
 
 // Sets output `output_num` for `ctx` provided it is known at a compile time.
@@ -461,9 +494,17 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   std::vector<TensorShape> output_tensor_shapes;
   output_tensor_shapes.reserve(ctx->num_outputs());
   if (output.on_host_shape().is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(
-        auto transfer_manager,
-        xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+    const se::Platform* platform = nullptr;
+    if (stream != nullptr) {
+      platform = stream->parent()->platform();
+    } else {
+      // Stream is not set for the host platform.
+      TF_ASSIGN_OR_RETURN(platform,
+                          se::MultiPlatformManager::PlatformWithId(
+                              XlaPlatformInfoFromDevice(ctx->device())));
+    }
+    TF_ASSIGN_OR_RETURN(auto transfer_manager,
+                        xla::TransferManager::GetForPlatform(platform));
 
     xla::Shape output_device_shape = output.on_device_shape();
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
@@ -506,22 +547,15 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           << "Invalid input for outputs " << i << ": " << input_index;
       ctx->set_output(i, ctx->input(input_index));
     } else {
-      if (allocate_xla_tensors_) {
-        Tensor* output_tensor;
-        TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
-        if (output_tensor->TotalBytes() > 0) {
-          PopulateXlaTensor(output_tensor, &output, output_num, stream,
-                            use_multiple_streams_, definition_event);
-        }
-      } else {
-        se::DeviceMemoryBase buffer = output.buffer({output_num});
-        Tensor output_tensor = GetOrCreateTensorForOutput(
-            output_num, ctx, missing_ctx_input_prefix, input_output_alias,
-            compilation_result->input_mapping, resource_vars,
-            ctx->expected_output_dtype(i), shape, buffer, allocator);
-        ctx->set_output(i, output_tensor);
-      }
-      output.set_buffer(se::OwningDeviceMemory(), {output_num});
+      TF_ASSIGN_OR_RETURN(
+          Tensor output_tensor,
+          GetOrCreateTensorForOutput(
+              output, output_num, ctx, missing_ctx_input_prefix,
+              input_output_alias, compilation_result->input_mapping,
+              resource_vars, ctx->expected_output_dtype(i), shape, allocator,
+              allocate_xla_tensors_, stream, use_multiple_streams_,
+              definition_event));
+      ctx->set_output(i, output_tensor);
       ++output_num;
     }
   }
@@ -552,22 +586,14 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       return errors::Internal("Mismatched type in variable write");
     }
 
-    Tensor output_tensor;
-    if (allocate_xla_tensors_) {
-      TF_RETURN_IF_ERROR(
-          ctx->allocate_temp(write.type, write.shape, &output_tensor));
-      if (write.shape.num_elements() > 0) {
-        PopulateXlaTensor(&output_tensor, &output, output_num, stream,
-                          use_multiple_streams_, definition_event);
-      }
-    } else {
-      se::DeviceMemoryBase buffer = output.buffer({output_num});
-      output_tensor = GetOrCreateTensorForOutput(
-          output_num, ctx, missing_ctx_input_prefix, input_output_alias,
-          compilation_result->input_mapping, resource_vars, write.type,
-          write.shape, buffer, allocator);
-    }
-    output.set_buffer(se::OwningDeviceMemory(), {output_num});
+    TF_ASSIGN_OR_RETURN(
+        Tensor output_tensor,
+        GetOrCreateTensorForOutput(output, output_num, ctx,
+                                   missing_ctx_input_prefix, input_output_alias,
+                                   compilation_result->input_mapping,
+                                   resource_vars, write.type, write.shape,
+                                   allocator, allocate_xla_tensors_, stream,
+                                   use_multiple_streams_, definition_event));
     var->is_initialized |= write.modified;
     *var->tensor() = output_tensor;
     ++output_num;

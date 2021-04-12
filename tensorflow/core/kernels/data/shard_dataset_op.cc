@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -120,6 +121,12 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      if (dataset()->num_shards_ == kShardHint) {
+        return errors::FailedPrecondition(
+            "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
+            "combiantion with "
+            "`tf.distribute.Strategy.experimental_distribute_dataset()`.");
+      }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
@@ -248,14 +255,14 @@ void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumShards, &num_shards));
   OP_REQUIRES(
-      ctx, num_shards > 0,
+      ctx, num_shards > 0 || num_shards == kShardHint,
       errors::InvalidArgument("Number of shards must be greater than zero "
                               "(currently num_shards = ",
                               num_shards, ")."));
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kIndex, &index));
   OP_REQUIRES(
-      ctx, index >= 0 && index < num_shards,
+      ctx, (index >= 0 && index < num_shards) || num_shards == kShardHint,
       errors::InvalidArgument("Index must be between 0 and ", num_shards - 1,
                               " (currently index = ", index, ")."));
 

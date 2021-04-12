@@ -14,38 +14,23 @@
 # ==============================================================================
 """Tests for Keras text vectorization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
-
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import string_lookup
-from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
-from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return string_lookup.StringLookup
-  else:
-    return string_lookup_v1.StringLookup
 
 
 def _get_end_to_end_test_cases():
@@ -83,7 +68,7 @@ def _get_end_to_end_test_cases():
   return crossed_test_cases
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class StringLookupLayerTest(keras_parameterized.TestCase,
                             preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -91,7 +76,7 @@ class StringLookupLayerTest(keras_parameterized.TestCase,
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
                                        use_dataset, expected_output,
                                        input_dtype):
-    cls = get_layer_class()
+    cls = string_lookup.StringLookup
     expected_output_dtype = dtypes.int64
     input_shape = input_data.shape
 
@@ -126,7 +111,7 @@ class StringLookupLayerTest(keras_parameterized.TestCase,
     self.assertAllClose(expected_output, output_data)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class StringLookupVocabularyTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
@@ -147,7 +132,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -160,7 +145,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -169,17 +154,18 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
   def test_no_vocab(self):
     with self.assertRaisesRegex(
         ValueError, "You must set the layer's vocabulary"):
-      layer = get_layer_class()()
+      layer = string_lookup.StringLookup()
       layer([["a"]])
 
   def test_binary_output(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
-    expected_output = [[0, 0, 1, 1, 1, 1], [0, 1, 1, 0, 1, 1]]
+    expected_output = [[0, 1, 1, 1, 1], [1, 1, 0, 1, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_data, output_mode="binary")
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, output_mode="binary")
     res = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=res)
     output_data = model.predict(input_array)
@@ -189,10 +175,11 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "earth", "fire", "fire"],
                             ["fire", "and", "earth", "michigan"]])
-    expected_output = [[0, 0, 2, 0, 0, 2], [0, 1, 1, 0, 1, 1]]
+    expected_output = [[0, 2, 0, 0, 2], [1, 1, 0, 1, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_data, output_mode="count")
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, output_mode="count")
     res = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=res)
     output_data = model.predict(input_array)
@@ -202,7 +189,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     vocab_data = ["earth", "wind", "and", "fire"]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = string_lookup.StringLookup(
         vocabulary=vocab_data, output_mode="binary", sparse=True)
     res = layer(input_data)
     self.assertTrue(res.__class__.__name__, "SparseKerasTensor")
@@ -210,16 +197,16 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
   def test_get_vocab_returns_str(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     expected_vocab = ["", "[UNK]", "earth", "wind", "and", "fire"]
-    layer = get_layer_class()(vocabulary=vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data)
     layer_vocab = layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
-    self.assertIsInstance(layer_vocab[0], six.text_type)
+    self.assertIsInstance(layer_vocab[0], str)
 
-    inverse_layer = get_layer_class()(vocabulary=layer.get_vocabulary(),
-                                      invert=True)
+    inverse_layer = string_lookup.StringLookup(
+        vocabulary=layer.get_vocabulary(), invert=True)
     layer_vocab = inverse_layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
-    self.assertIsInstance(layer_vocab[0], six.text_type)
+    self.assertIsInstance(layer_vocab[0], str)
 
   def test_int_output_explicit_vocab_from_file(self):
     vocab_list = ["earth", "wind", "and", "fire"]
@@ -230,7 +217,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_path)
+    layer = string_lookup.StringLookup(vocabulary=vocab_path)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -245,7 +232,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()()
+    layer = string_lookup.StringLookup()
     layer.set_vocabulary(vocab_path)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -255,13 +242,15 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
   def test_non_unique_vocab_fails(self):
     vocab_data = ["earth", "wind", "and", "fire", "fire"]
     with self.assertRaisesRegex(ValueError, ".*repeated term.*fire.*"):
-      _ = get_layer_class()(vocabulary=vocab_data)
+      _ = string_lookup.StringLookup(vocabulary=vocab_data)
 
   def test_non_unique_vocab_from_file_fails(self):
     vocab_list = ["earth", "wind", "and", "fire", "earth"]
     vocab_path = self._write_to_temp_file("repeat_vocab_file", vocab_list)
-    with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
-      _ = get_layer_class()(vocabulary=vocab_path)
+    with self.assertRaisesRegex(
+        errors_impl.FailedPreconditionError,
+        "HashTable has different value for same key.*earth"):
+      _ = string_lookup.StringLookup(vocabulary=vocab_path)
 
   def test_inverse_layer(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -270,7 +259,36 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
                                 ["fire", "and", "earth", ""]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
-    layer = get_layer_class()(vocabulary=vocab_data, invert=True)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_inverse_layer_from_file(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[UNK]"]])
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = string_lookup.StringLookup(vocabulary=vocab_path, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_inverse_layer_from_file_with_non_default_msk(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 0]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[M]"]])
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_path, invert=True, mask_token="[M]")
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -284,8 +302,9 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
                                 ["fire", "and", "earth", "[UNK]"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=vocab_data)
-    invert_layer = get_layer_class()(vocabulary=vocab_data, invert=True)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data)
+    invert_layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, invert=True)
     int_data = layer(input_data)
     out_data = invert_layer(int_data)
     model = keras.Model(inputs=input_data, outputs=out_data)
@@ -300,9 +319,9 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
                                 ["fire", "and", "earth", "[UNK]"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()()
+    layer = string_lookup.StringLookup()
     layer.adapt(adapt_data)
-    invert_layer = get_layer_class()(
+    invert_layer = string_lookup.StringLookup(
         vocabulary=layer.get_vocabulary(), invert=True)
     int_data = layer(input_data)
     out_data = invert_layer(int_data)
@@ -318,44 +337,12 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[3, 4, 6], [6, 5, 3, 2]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string, ragged=True)
-    layer = get_layer_class()(num_oov_indices=2)
+    layer = string_lookup.StringLookup(num_oov_indices=2)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
-
-
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True)
-class StringLookupSaveableTest(keras_parameterized.TestCase,
-                               preprocessing_test_utils.PreprocessingLayerTest):
-
-  def test_ops_are_not_added_with_multiple_get_set_weights(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=10)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    weights = model.get_weights()
-    model.set_weights(weights)
-    keras.backend.get_session().graph.finalize()
-    weights = model.get_weights()
-    model.set_weights(weights)
-
-  def test_layer_saving_with_h5(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=10)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    path = os.path.join(self.get_temp_dir(), "model")
-    with self.assertRaisesRegex(NotImplementedError,
-                                "Save or restore weights that is not.*"):
-      save.save_model(model, path, save_format="h5")
 
 
 if __name__ == "__main__":

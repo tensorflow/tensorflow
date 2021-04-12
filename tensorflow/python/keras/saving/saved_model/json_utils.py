@@ -21,10 +21,6 @@ separate inputs if the given input_shape is a list, and will create a single
 input if the given shape is a tuple.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections.abc as collections_abc
 import enum
 import json

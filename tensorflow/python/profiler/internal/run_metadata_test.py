@@ -115,6 +115,13 @@ def _run_loop_model():
 
 class RunMetadataTest(test.TestCase):
 
+  # This test requires HARDWARE_TRACE or FULL_TRACE to be specified to
+  # work as expected. Since we now run this test with SOFTWARE_TRACE
+  # (see _run_model routine above), this test will / should fail since
+  # GPU device tracers are not enabled
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Test fails on ROCm when run without FULL_TRACE')
   @test_util.run_deprecated_v1
   def testGPU(self):
     if not test.is_gpu_available(cuda_only=True):
@@ -221,6 +228,13 @@ class RunMetadataTest(test.TestCase):
     for _, f in six.iteritems(back_to_forward):
       self.assertTrue(f in forward_op)
 
+  # This test requires HARDWARE_TRACE or FULL_TRACE to be specified to
+  # work as expected. Since we now run this test with SOFTWARE_TRACE
+  # (see _run_model routine above), this test will / should fail since
+  # GPU device tracers are not enabled
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Test fails on ROCm when run without FULL_TRACE')
   def testLoopGPU(self):
     if not test.is_gpu_available():
       return

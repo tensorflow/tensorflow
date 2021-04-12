@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace test {
@@ -47,21 +48,32 @@ static ::testing::AssertionResult EqualFailure(const T& x, const T& y) {
          << std::setprecision(std::numeric_limits<T>::digits10 + 2) << x
          << " not equal to " << y;
 }
-static ::testing::AssertionResult IsEqual(float x, float y) {
+static ::testing::AssertionResult IsEqual(float x, float y, Tolerance t) {
   // We consider NaNs equal for testing.
-  if ((Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) ||
-      ::testing::internal::CmpHelperFloatingPointEQ<float>("", "", x, y))
+  if (Eigen::numext::isnan(x) && Eigen::numext::isnan(y))
     return ::testing::AssertionSuccess();
+  if (t == Tolerance::kNone) {
+    if (x == y) return ::testing::AssertionSuccess();
+  } else {
+    if (::testing::internal::CmpHelperFloatingPointEQ<float>("", "", x, y))
+      return ::testing::AssertionSuccess();
+  }
   return EqualFailure(x, y);
 }
-static ::testing::AssertionResult IsEqual(double x, double y) {
+static ::testing::AssertionResult IsEqual(double x, double y, Tolerance t) {
   // We consider NaNs equal for testing.
-  if ((Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) ||
-      ::testing::internal::CmpHelperFloatingPointEQ<double>("", "", x, y))
+  if (Eigen::numext::isnan(x) && Eigen::numext::isnan(y))
     return ::testing::AssertionSuccess();
+  if (t == Tolerance::kNone) {
+    if (x == y) return ::testing::AssertionSuccess();
+  } else {
+    if (::testing::internal::CmpHelperFloatingPointEQ<double>("", "", x, y))
+      return ::testing::AssertionSuccess();
+  }
   return EqualFailure(x, y);
 }
-static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y) {
+static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y,
+                                          Tolerance t) {
   // We consider NaNs equal for testing.
   if (Eigen::numext::isnan(x) && Eigen::numext::isnan(y))
     return ::testing::AssertionSuccess();
@@ -80,35 +92,40 @@ static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y) {
 
   auto xb = sign_and_magnitude_to_biased(x.x);
   auto yb = sign_and_magnitude_to_biased(y.x);
-  auto distance = xb >= yb ? xb - yb : yb - xb;
-  const uint16_t kMaxUlps = 4;
-
-  if (distance <= kMaxUlps) return ::testing::AssertionSuccess();
+  if (t == Tolerance::kNone) {
+    if (xb == yb) return ::testing::AssertionSuccess();
+  } else {
+    auto distance = xb >= yb ? xb - yb : yb - xb;
+    const uint16_t kMaxUlps = 4;
+    if (distance <= kMaxUlps) return ::testing::AssertionSuccess();
+  }
   return EqualFailure(x, y);
 }
 template <typename T>
-static ::testing::AssertionResult IsEqual(const T& x, const T& y) {
+static ::testing::AssertionResult IsEqual(const T& x, const T& y, Tolerance t) {
   if (::testing::internal::CmpHelperEQ<T>("", "", x, y))
     return ::testing::AssertionSuccess();
   return EqualFailure(x, y);
 }
 template <typename T>
 static ::testing::AssertionResult IsEqual(const std::complex<T>& x,
-                                          const std::complex<T>& y) {
-  if (IsEqual(x.real(), y.real()) && IsEqual(x.imag(), y.imag()))
+                                          const std::complex<T>& y,
+                                          Tolerance t) {
+  if (IsEqual(x.real(), y.real(), t) && IsEqual(x.imag(), y.imag(), t))
     return ::testing::AssertionSuccess();
   return EqualFailure(x, y);
 }
 
 template <typename T>
-static void ExpectEqual(const Tensor& x, const Tensor& y) {
+static void ExpectEqual(const Tensor& x, const Tensor& y,
+                        Tolerance t = Tolerance::kDefault) {
   const T* Tx = x.unaligned_flat<T>().data();
   const T* Ty = y.unaligned_flat<T>().data();
   auto size = x.NumElements();
   int max_failures = 10;
   int num_failures = 0;
   for (decltype(size) i = 0; i < size; ++i) {
-    EXPECT_TRUE(IsEqual(Tx[i], Ty[i])) << "i = " << (++num_failures, i);
+    EXPECT_TRUE(IsEqual(Tx[i], Ty[i], t)) << "i = " << (++num_failures, i);
     ASSERT_LT(num_failures, max_failures) << "Too many mismatches, giving up.";
   }
 }
@@ -169,15 +186,15 @@ static void ExpectClose(const Tensor& x, const Tensor& y, double atol,
       << "Mismatches detected (atol = " << atol << " rtol = " << rtol << ").";
 }
 
-void ExpectEqual(const Tensor& x, const Tensor& y) {
+void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
   ASSERT_TRUE(IsSameType(x, y));
   ASSERT_TRUE(IsSameShape(x, y));
 
   switch (x.dtype()) {
     case DT_FLOAT:
-      return ExpectEqual<float>(x, y);
+      return ExpectEqual<float>(x, y, t);
     case DT_DOUBLE:
-      return ExpectEqual<double>(x, y);
+      return ExpectEqual<double>(x, y, t);
     case DT_INT32:
       return ExpectEqual<int32>(x, y);
     case DT_UINT32:
@@ -193,9 +210,9 @@ void ExpectEqual(const Tensor& x, const Tensor& y) {
     case DT_STRING:
       return ExpectEqual<tstring>(x, y);
     case DT_COMPLEX64:
-      return ExpectEqual<complex64>(x, y);
+      return ExpectEqual<complex64>(x, y, t);
     case DT_COMPLEX128:
-      return ExpectEqual<complex128>(x, y);
+      return ExpectEqual<complex128>(x, y, t);
     case DT_INT64:
       return ExpectEqual<int64>(x, y);
     case DT_UINT64:
@@ -213,9 +230,9 @@ void ExpectEqual(const Tensor& x, const Tensor& y) {
     case DT_QINT32:
       return ExpectEqual<qint32>(x, y);
     case DT_BFLOAT16:
-      return ExpectEqual<bfloat16>(x, y);
+      return ExpectEqual<bfloat16>(x, y, t);
     case DT_HALF:
-      return ExpectEqual<Eigen::half>(x, y);
+      return ExpectEqual<Eigen::half>(x, y, t);
     default:
       EXPECT_TRUE(false) << "Unsupported type : " << DataTypeString(x.dtype());
   }
