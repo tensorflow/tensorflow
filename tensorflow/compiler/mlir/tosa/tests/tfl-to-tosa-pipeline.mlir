@@ -958,3 +958,20 @@ func @test_fakequant_resize_bilinear(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f
   return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
 }
 
+// -----
+// CHECK-LABEL: test_gather_nd
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reduce_sum
+// CHECK: tosa.reshape
+// CHECK: tosa.gather
+// CHECK: tosa.reshape
+func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[[0], [5], [3], [12], [2], [4], [3]], [[11], [1], [11], [10], [3], [12], [8]], [[5], [3], [1], [11], [3], [10], [0]], [[0], [8], [4], [7], [3], [12], [2]], [[7], [6], [11], [4], [2], [10], [11]], [[11], [1], [11], [1], [1], [11], [8]]]> : tensor<6x7x1xi32>} : () -> tensor<6x7x1xi32>
+  %1 = "tfl.gather_nd"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<6x7x1xi32>) -> tensor<6x7x21x3xf32>
+  return %1 : tensor<6x7x21x3xf32>
+}

@@ -2899,7 +2899,9 @@ LogicalResult ConvertTFLQuantizeOp::matchAndRewrite(
 
   RankedTensorType input_type =
       tfl_quantize_op.input().getType().dyn_cast<RankedTensorType>();
-  if (!input_type) return failure();
+  RankedTensorType output_type =
+      tfl_quantize_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!input_type || !output_type) return failure();
 
   ShapedType qtype =
       tfl_quantize_op.getResult().getType().dyn_cast<ShapedType>();
@@ -2908,13 +2910,6 @@ LogicalResult ConvertTFLQuantizeOp::matchAndRewrite(
   UniformQuantizedType element_type =
       qtype.getElementType().dyn_cast<UniformQuantizedType>();
   if (!element_type) return failure();
-
-  // In some cases output_type is dynamic shape as tensor<*xelement_type>
-  // tfl.quantize should always have same input/output shape. So it's safe to
-  // overwrite output type as (input_type.shape, output_type.dtype) instead of
-  // original output type
-  RankedTensorType output_type =
-      RankedTensorType::get(input_type.getShape(), element_type);
 
   UniformQuantizedType input_element_type =
       input_type.getElementType().dyn_cast<UniformQuantizedType>();
