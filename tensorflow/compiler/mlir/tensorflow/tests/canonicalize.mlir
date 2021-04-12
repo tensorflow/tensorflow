@@ -1703,3 +1703,11 @@ func @testConvertQuantizeAndDequantizeV2ToQuantizeAndDequantizeV4(%arg0 : tensor
   // CHECK: %[[QUANT:.*]] = "tf.QuantizeAndDequantizeV4"(%arg0, %arg1, %arg2) {axis = -1 : i64, narrow_range = false, num_bits = 8 : i64, range_given = false, round_mode = "HALF_TO_EVEN", signed_input = true} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
   // CHECK: return %[[QUANT]] : tensor<?x?xf32>
 }
+
+// CHECK-LABEL: testShapeOfReshape
+func @testShapeOfReshape(%arg0: tensor<?x?x2xf32>, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?x?x2xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  %1 = "tf.Shape"(%0) : (tensor<?x?xf32>) -> tensor<2xi32>
+  // CHECK: return %arg1
+  return %1 : tensor<2xi32>
+}
