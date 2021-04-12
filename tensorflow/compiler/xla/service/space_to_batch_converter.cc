@@ -143,6 +143,9 @@ class ConvolutionVisitor {
   // activations were already space-to-batched.
   Status PropagateOnConv(HloInstruction* convolution);
 
+  // Perform space-to-batch propagation on concatenate.
+  Status PropagateOnConcat(HloInstruction* concat);
+
   // Perform space-to-batch propagation on the backprop filter convolution.
   // Assumes the activations and kernel were already space-to-batched.
   Status PropagateOnBackpropFilterConv(HloInstruction* convolution);
@@ -841,6 +844,41 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     }
   }
 
+  if (consumer->opcode() == HloOpcode::kConcatenate) {
+    // Make sure all operands have been space-to-batched.
+    for (int64 i = 0; i < consumer->operand_count(); ++i) {
+      if (!instr_to_dim_map_.contains(consumer->mutable_operand(i))) {
+        return false;
+      }
+    }
+    auto pivot_operand = consumer->mutable_operand(0);
+    auto pivot_new_instr = old_to_new_instrs_[pivot_operand];
+    auto pivot_permute_dims = instr_to_dim_permute_map_[pivot_new_instr];
+    for (int64 i = 1; i < consumer->operand_count(); ++i) {
+      auto new_instr = old_to_new_instrs_[consumer->mutable_operand(i)];
+      auto permute_dims = instr_to_dim_permute_map_[new_instr];
+
+      for (int j = 0; j < pivot_permute_dims.size(); ++j) {
+        // Ensure the dimension mapping is the same.
+        if (pivot_permute_dims[j] != permute_dims[j]) {
+          VLOG(2) << "Concat op: checking for shape equivalence "
+                  << consumer->ToString()
+                  << " failed due to permuted dimensions ";
+          return false;
+        }
+        // Make sure all other dimensions are of the same size.
+        if (pivot_new_instr->shape().dimensions(j) !=
+            new_instr->shape().dimensions(j)) {
+          VLOG(2) << "Concat op: checking for shape equivalence "
+                  << consumer->ToString()
+                  << " failed due to changed shape sizes ";
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kConvolution) {
     if (!ConsumeFuel("space-to-batch-converter", [&] {
           return "Skipping space-to-batch propagation because fuel over\n";
@@ -1281,6 +1319,29 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     return true;
   }
 
+  if (consumer->opcode() == HloOpcode::kConcatenate) {
+    HloInstruction* pivot_operand = nullptr;
+    for (int64 i = 0; i < consumer->operand_count(); ++i) {
+      if (instr_to_dim_map_.contains(consumer->mutable_operand(i))) {
+        pivot_operand = consumer->mutable_operand(i);
+        break;
+      }
+    }
+    if (pivot_operand == nullptr) {
+      VLOG(1) << "Concat: Dim map not found on any operand";
+      return false;
+    }
+    // Disallow concating on the batch and space dims
+    auto result = instr_to_dim_map_[pivot_operand];
+    const int64 old_batch_dim = result.batch;
+    const int64 old_space_dim = result.space;
+    if (consumer->concatenate_dimension() == old_batch_dim ||
+        consumer->concatenate_dimension() == old_space_dim) {
+      return false;
+    }
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kReduce) {
     // Support only the trivial case where both batch and split spatial dim are
     // being reduced
@@ -1539,6 +1600,11 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
       TF_CHECK_OK(PropagateOnBackpropFilterConv(consumer));
       return false;
     }
+  }
+
+  if (consumer->opcode() == HloOpcode::kConcatenate) {
+    TF_CHECK_OK(PropagateOnConcat(consumer));
+    return true;
   }
 
   if (consumer->opcode() == HloOpcode::kReduce) {
@@ -2227,6 +2293,26 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   instr_to_dim_permute_map_[new_conv] = std::vector<int64>(transpose_dims);
 
   convs_to_visit_.erase(convolution);
+  return Status::OK();
+}
+
+Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
+  auto first_operand = old_to_new_instrs_[concat->mutable_operand(0)];
+  auto permute_dims = instr_to_dim_permute_map_[first_operand];
+  const int64 new_concat_dim =
+      DimLookUp(permute_dims, concat->concatenate_dimension());
+  std::vector<HloInstruction*> new_operands(concat->operand_count());
+  for (int64 i = 0; i < concat->operand_count(); ++i) {
+    new_operands[i] = old_to_new_instrs_[concat->mutable_operand(i)];
+  }
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_concat,
+                      MakeConcatHlo(new_operands, new_concat_dim));
+  old_to_new_instrs_[concat] = new_concat;
+  // Set mappings from operand 0.
+  instr_to_dim_map_[concat] = instr_to_dim_map_[concat->mutable_operand(0)];
+  instr_to_dim_permute_map_[new_concat] =
+      std::vector<int64>(instr_to_dim_permute_map_[first_operand]);
+
   return Status::OK();
 }
 
