@@ -146,8 +146,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
-    context->ReportError(context, "Output type is %d, requires float.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Output type is %d, requires float, int8 or uint8.",
+                       output->type);
     return kTfLiteError;
   }
 
