@@ -566,6 +566,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(input->dims));
 }
 
+template <KernelType kernel_type>
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
   SoftmaxOpData* data = reinterpret_cast<SoftmaxOpData*>(node->user_data);
@@ -576,42 +577,72 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-  if (output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE(context, input->type == kTfLiteInt8 ||
-                                input->type == kTfLiteUInt8 ||
-                                input->type == kTfLiteInt16);
-  } else {
-    TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
-  }
 
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    switch (output->type) {
-      case kTfLiteUInt8:
-      case kTfLiteInt8:
-#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-        // Only apply when both input & output are uint8/int8 & build with clang
-        // on aarch64.
-        // TODO(b/143709993): Port to ARMv7 and other platforms.
-        data->params.uint8_table1 = data->uint8_table1;
-        data->params.uint8_table2 = data->uint8_table2;
-        optimized_ops::PopulateSoftmaxUInt8LookupTable(
-            &data->params, input->params.scale, params->beta);
-        break;
-#endif
-      case kTfLiteInt16:
-      default:
-        data->params.table = data->table;
-        optimized_ops::PopulateSoftmaxLookupTable(
-            &data->params, input->params.scale, params->beta);
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
+    if (input->type == kTfLiteInt16) {
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt16);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+      TF_LITE_ENSURE_NEAR(context, output->params.scale, 1.f / 32768,
+                          (0.001f * 1.f / 32768));
+    } else {
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE(
+            context, input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        TF_LITE_ENSURE_NEAR(context, output->params.scale, 1.f / 65536,
+                            (0.001f * 1.f / 65536));
+      } else if (output->type == kTfLiteInt8) {
+        TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      } else if (output->type == kTfLiteUInt8) {
+        TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteUInt8);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      }
     }
-
-    data->params.zero_point = output->params.zero_point;
-    data->params.scale = output->params.scale;
   }
 
-  if (input->type == kTfLiteInt16) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    if (kernel_type == kReference) {
+      const int kScaledDiffIntegerBits = 5;
+      int input_left_shift;
+      tflite::PreprocessSoftmaxScaling(
+          static_cast<double>(params->beta),
+          static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
+          &data->params.input_multiplier, &input_left_shift);
+      data->params.input_left_shift = input_left_shift;
+      data->params.diff_min =
+          -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                              input_left_shift);
+    } else {
+      switch (output->type) {
+        case kTfLiteUInt8:
+        case kTfLiteInt8:
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+          // Only apply when both input & output are uint8/int8 & build with
+          // clang on aarch64.
+          // TODO(b/143709993): Port to ARMv7 and other platforms.
+          data->params.uint8_table1 = data->uint8_table1;
+          data->params.uint8_table2 = data->uint8_table2;
+          optimized_ops::PopulateSoftmaxUInt8LookupTable(
+              &data->params, input->params.scale, params->beta);
+          break;
+#endif
+        case kTfLiteInt16:
+        default:
+          data->params.table = data->table;
+          optimized_ops::PopulateSoftmaxLookupTable(
+              &data->params, input->params.scale, params->beta);
+      }
+
+      data->params.zero_point = output->params.zero_point;
+      data->params.scale = output->params.scale;
+    }
+  } else if (input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
@@ -1036,56 +1067,47 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
-                          TfLiteTensor* output, TfLiteSoftmaxParams* params) {
+                          TfLiteTensor* output, TfLiteSoftmaxParams* params,
+                          KernelType kernel_type) {
   SoftmaxParams op_params;
   op_params.beta = params->beta;
-  optimized_ops::Softmax(op_params, GetTensorShape(input),
-                         GetTensorData<float>(input), GetTensorShape(output),
-                         GetTensorData<float>(output),
-                         CpuBackendContext::GetFromContext(context));
+  if (kernel_type == kReference) {
+    reference_ops::Softmax(op_params, GetTensorShape(input),
+                           GetTensorData<float>(input), GetTensorShape(output),
+                           GetTensorData<float>(output));
+  } else {
+    optimized_ops::Softmax(op_params, GetTensorShape(input),
+                           GetTensorData<float>(input), GetTensorShape(output),
+                           GetTensorData<float>(output),
+                           CpuBackendContext::GetFromContext(context));
+  }
   return kTfLiteOk;
 }
 
 template <typename In, typename Out>
 TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
-                              TfLiteTensor* output, SoftmaxOpData* data) {
-  optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<In>(input), GetTensorShape(output),
-                         GetTensorData<Out>(output));
-  return kTfLiteOk;
-}
-
-template <>
-TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
-                                              const TfLiteTensor* input,
-                                              TfLiteTensor* output,
-                                              SoftmaxOpData* data) {
+                              TfLiteTensor* output, SoftmaxOpData* data,
+                              KernelType kernel_type) {
+  if (kernel_type == kReference) {
+    reference_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<In>(input), GetTensorShape(output),
+                           GetTensorData<Out>(output));
+  }
 #ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-  optimized_ops::SoftmaxInt8LUT(
-      data->params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
-#else
-  optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<int8_t>(input), GetTensorShape(output),
-                         GetTensorData<int8_t>(output));
+  else if ((std::is_same<In, uint8_t>::value &&
+            std::is_same<Out, uint8_t>::value) ||
+           (std::is_same<In, int8_t>::value &&
+            std::is_same<Out, int8_t>::value)) {
+    optimized_ops::SoftmaxInt8LUT(
+        data->params, GetTensorShape(input), GetTensorData<In>(input),
+        GetTensorShape(output), GetTensorData<Out>(output));
+  }
 #endif
-  return kTfLiteOk;
-}
-
-template <>
-TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
-                                                const TfLiteTensor* input,
-                                                TfLiteTensor* output,
-                                                SoftmaxOpData* data) {
-#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-  optimized_ops::SoftmaxInt8LUT(
-      data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-      GetTensorShape(output), GetTensorData<uint8_t>(output));
-#else
-  optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<uint8_t>(input), GetTensorShape(output),
-                         GetTensorData<uint8_t>(output));
-#endif
+  else {
+    optimized_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<In>(input), GetTensorShape(output),
+                           GetTensorData<Out>(output));
+  }
   return kTfLiteOk;
 }
 
@@ -1093,7 +1115,8 @@ template <>
 TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
                                             const TfLiteTensor* input,
                                             TfLiteTensor* output,
-                                            SoftmaxOpData* data) {
+                                            SoftmaxOpData* data,
+                                            KernelType /*kernel_type*/) {
   if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
     reference_ops::SoftmaxInt16(
         data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -1108,6 +1131,7 @@ TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
   }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
   SoftmaxOpData* data = reinterpret_cast<SoftmaxOpData*>(node->user_data);
@@ -1119,16 +1143,16 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteFloat32: {
-      return SoftmaxFloat(context, input, output, params);
+      return SoftmaxFloat(context, input, output, params, kernel_type);
     }
     case kTfLiteUInt8: {
       switch (output->type) {
         case kTfLiteUInt8:
           return SoftmaxQuantized<uint8_t, uint8_t>(context, input, output,
-                                                    data);
+                                                    data, kernel_type);
         case kTfLiteInt16:
           return SoftmaxQuantized<uint8_t, int16_t>(context, input, output,
-                                                    data);
+                                                    data, kernel_type);
         default:
           TF_LITE_KERNEL_LOG(context,
                              "Only uint8_t and int16_t outputs are supported "
@@ -1140,10 +1164,11 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       switch (output->type) {
         case kTfLiteInt8:
-          return SoftmaxQuantized<int8_t, int8_t>(context, input, output, data);
+          return SoftmaxQuantized<int8_t, int8_t>(context, input, output, data,
+                                                  kernel_type);
         case kTfLiteInt16:
-          return SoftmaxQuantized<int8_t, int16_t>(context, input, output,
-                                                   data);
+          return SoftmaxQuantized<int8_t, int16_t>(context, input, output, data,
+                                                   kernel_type);
         default:
           TF_LITE_KERNEL_LOG(context,
                              "Only int8_t and int16_t outputs are supported "
@@ -1153,7 +1178,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       }
     }
     case kTfLiteInt16: {
-      return SoftmaxQuantized<int16_t, int16_t>(context, input, output, data);
+      return SoftmaxQuantized<int16_t, int16_t>(context, input, output, data,
+                                                kernel_type);
     }
 
     default:
@@ -1524,10 +1550,19 @@ TfLiteRegistration* Register_LOGISTIC() {
   return Register_LOGISTIC_GENERIC_OPT();
 }
 
+TfLiteRegistration* Register_SOFTMAX_REF() {
+  static TfLiteRegistration r = {
+      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxPrepare<activations::kReference>,
+      activations::SoftmaxEval<activations::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {
       activations::SoftmaxInit, activations::SoftmaxFree,
-      activations::SoftmaxPrepare, activations::SoftmaxEval};
+      activations::SoftmaxPrepare<activations::kGenericOptimized>,
+      activations::SoftmaxEval<activations::kGenericOptimized>};
   return &r;
 }
 
