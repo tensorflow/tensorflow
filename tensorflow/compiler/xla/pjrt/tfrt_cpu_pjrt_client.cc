@@ -180,4 +180,214 @@ StatusOr<absl::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
   return absl::optional<std::string>();
 }
 
+static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options,
+    const ExecutionOptions& execution_options) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  // Unoptimized HloModuleConfig.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> hlo_module_config,
+      CreateModuleConfig(program_shape, argument_layouts, &execution_options,
+                         execution_options.num_replicas(),
+                         /*num_threads=*/absl::nullopt,
+                         /*aot_options=*/nullptr));
+
+  // Unoptimized HloModule.
+  const xla::HloModuleProto& hlo_module_proto = computation.proto();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
+  VLOG(1) << "Unoptimized HLO module: " << hlo_module->ToString();
+
+  // Run Hlo Passes
+  cpu::CpuCompiler compiler;
+  xla::Compiler::CompileOptions dummy;
+  TF_ASSIGN_OR_RETURN(hlo_module,
+                      compiler.RunHloPasses(std::move(hlo_module),
+                                            /*stream_exec=*/nullptr, dummy));
+
+  // Run backend.
+  return compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
+                             dummy);
+}
+
+// Find the root instruction of the entry computation.
+static const InstructionValueSet& GetRootValueSet(
+    const BufferAssignment& assignment, const HloModule& module) {
+  return assignment.dataflow_analysis().GetInstructionValueSet(
+      module.entry_computation()->root_instruction());
+}
+
+// Buffer table is indexed by buffer allocation indices. The output buffer is
+// made up of a subset of those buffer allocations (for tuple, it includes tuple
+// index table). This helper finds the buffer allocation indices in buffer
+// assignment that make up for the output buffer. It is used by
+// CreateResultShapedBuffer to reconstruct the output buffer from the buffer
+// table allocated by MemoryForAllocation.
+static StatusOr<absl::InlinedVector<BufferAllocation::Index, 4>>
+FindResultBufferAllocationIndex(const BufferAssignment& assignment,
+                                const HloModule& module) {
+  absl::InlinedVector<BufferAllocation::Index, 4> buffer_indices;
+  const InstructionValueSet& root_value_set =
+      GetRootValueSet(assignment, module);
+  const Shape& result_shape = module.result_shape();
+  if (!result_shape.IsTuple()) {
+    // Find the buffer allocation that corresponds to the output buffer.
+    const HloValueSet& sources = root_value_set.element({});
+    // The points to set is unambiguous so the set should be a singleton.
+    CHECK_EQ(1, sources.values().size());
+    const HloValue* value_source = sources.values()[0];
+    HloInstruction* src = value_source->instruction();
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                        assignment.GetUniqueSlice(src, value_source->index()));
+    const BufferAllocation::Index buffer_index = slice.index();
+    buffer_indices.push_back(buffer_index);
+    return {std::move(buffer_indices)};
+  }
+  buffer_indices.reserve(result_shape.tuple_shapes_size());
+  for (int i = 0; i < result_shape.tuple_shapes_size(); ++i) {
+    // Find the buffer allocations that corresponds to the output tuple,
+    // including the tuple index table.
+    const HloValueSet& sources = root_value_set.element({i});
+    // The points to set is unambiguous so the set should be a singleton.
+    CHECK_EQ(1, sources.values().size());
+    const HloValue* value_source = sources.values()[0];
+    HloInstruction* src = value_source->instruction();
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                        assignment.GetUniqueSlice(src, value_source->index()));
+    const BufferAllocation::Index buffer_index = slice.index();
+    buffer_indices.push_back(buffer_index);
+  }
+  return {std::move(buffer_indices)};
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tensorflow::profiler::TraceMe traceme("TfrtCpuClient::Compile");
+  ExecutableBuildOptions& build_options = options.executable_build_options;
+
+  int num_replicas;
+  int num_partitions;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this](int num_replicas, int num_partitions) {
+        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
+
+  std::vector<const Shape*> argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation, &LayoutUtil::GetWithDefaultLayout, options.argument_layouts,
+      &options.executable_build_options, &argument_layout_pointers));
+
+  std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
+  if (device_assignment != nullptr) {
+    addressable_device_logical_ids.reserve(num_replicas * num_partitions);
+    addressable_devices.reserve(num_replicas * num_partitions);
+    for (int replica = 0; replica < num_replicas; ++replica) {
+      for (int partition = 0; partition < num_partitions; ++partition) {
+        int device_id = (*device_assignment)(replica, partition);
+        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        if (device->process_index() != process_index()) {
+          VLOG(3) << "Non-local device: " << device_id;
+          continue;
+        }
+        PjRtExecutable::LogicalDeviceIds logica_device_ids;
+        logica_device_ids.replica = replica;
+        logica_device_ids.partition = partition;
+        addressable_device_logical_ids.push_back(std::move(logica_device_ids));
+        addressable_devices.push_back(device);
+      }
+    }
+    if (addressable_devices.empty()) {
+      return InvalidArgument(
+          "Device assignment (%s) does not have any local devices.",
+          device_assignment->ToString());
+    }
+
+    if (build_options.device_ordinal() < 0) {
+      build_options.set_device_ordinal(
+          addressable_devices.front()->local_hardware_id());
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  ExecutionOptions execution_options =
+      CreateExecutionOptions(build_options, &program_shape);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> cpu_executable,
+                      JitCompile(computation, argument_layout_pointers,
+                                 build_options, execution_options));
+  auto cpu_executable_ptr =
+      down_cast<cpu::CpuExecutable*>(cpu_executable.get());
+
+  // `buffer_table[result_slice.index()]` points to result buffer:
+  // If output is a tuple, it points to the buffer index table.
+  // If output is a non-tuple, it points to the buffer itself.
+  TF_ASSIGN_OR_RETURN(
+      const BufferAllocation::Slice result_slice,
+      cpu_executable_ptr->buffer_assignment().GetUniqueTopLevelOutputSlice());
+
+  // `result_buffer_indices` has the buffer allocation indices that make up the
+  // output buffer (could be tuple).
+  TF_ASSIGN_OR_RETURN(
+      auto result_buffer_indices,
+      FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
+                                      cpu_executable->module()));
+
+  auto executable = std::make_unique<TfrtCpuExecutable>(
+      num_replicas, num_partitions, std::move(device_assignment),
+      options.parameter_is_tupled_arguments, std::move(cpu_executable),
+      result_slice.index(), std::move(result_buffer_indices),
+      std::move(addressable_device_logical_ids), std::move(addressable_devices),
+      this);
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
+
+  return std::unique_ptr<PjRtExecutable>(std::move(executable));
+}
+
+TfrtCpuExecutable::TfrtCpuExecutable(
+    int num_replicas, int num_partitions,
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    bool parameter_is_tupled_arguments,
+    std::unique_ptr<Executable> cpu_executable,
+    BufferAllocation::Index result_buffer_index,
+    absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
+    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices, TfrtCpuClient* client)
+    : client_(client),
+      num_replicas_(num_replicas),
+      num_partitions_(num_partitions),
+      device_assignment_(std::move(device_assignment)),
+      parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
+      cpu_executable_(std::move(cpu_executable)),
+      result_buffer_index_(result_buffer_index),
+      result_buffer_indices_(std::move(result_buffer_indices)),
+      addressable_device_logical_ids_(
+          std::move(addressable_device_logical_ids)),
+      addressable_devices_(std::move(addressable_devices)) {}
+
+void TfrtCpuExecutable::Delete() {}
+
+StatusOr<absl::optional<std::string>> TfrtCpuExecutable::Fingerprint() const {
+  return absl::optional<std::string>();
+}
+
+Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
+  TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
+                      GetParametersThatMustBeDonated(
+                          *cpu_executable_->shared_module(), tuple_inputs));
+  return Status::OK();
+}
+
+bool TfrtCpuExecutable::MustDonateParameter(int parameter) const {
+  return parameters_that_must_be_donated_.contains(parameter);
+}
+
 }  // namespace xla
