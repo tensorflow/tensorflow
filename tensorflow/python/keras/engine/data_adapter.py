@@ -14,10 +14,6 @@
 # ==============================================================================
 """Adapter module that convert different input data objects into tf.dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import functools
@@ -26,7 +22,6 @@ import math
 import random
 
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -58,18 +53,8 @@ from tensorflow.python.util.tf_export import keras_export
 keras_data_adapter_gauge = monitoring.BoolGauge(
     "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
-try:
-  from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
-except ImportError:
-  scipy_sparse = None
-try:
-  import pandas as pd  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pd = None
 
-
-@six.add_metaclass(abc.ABCMeta)
-class DataAdapter(object):
+class DataAdapter(object, metaclass=abc.ABCMeta):
   """Base class for input data adapter.
 
   In TF 2.0, tf.data is the preferred API for user to feed in data. In order
@@ -239,9 +224,7 @@ class TensorLikeDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    tensor_types = (ops.Tensor, np.ndarray)
-    if pd:
-      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    tensor_types = _get_tensor_types()
 
     def _is_tensor(v):
       if isinstance(v, tensor_types):
@@ -459,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
@@ -518,8 +501,21 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
 class DatasetCreatorAdapter(DataAdapter):
   """Adapter that handles dataset functions."""
 
-  def __init__(self, *args, **kwargs):
-    super(DatasetCreatorAdapter, self).__init__(*args, **kwargs)
+  def __init__(self, x, y, steps=None, distribution_strategy=None, **kwargs):
+    super(DatasetCreatorAdapter, self).__init__(x, **kwargs)
+
+    if not isinstance(x, dataset_creator.DatasetCreator):
+      raise TypeError("The input of a `DatasetCreatorAdapter` should be a "
+                      "`DatasetCreator` but it received type {}.".format(
+                          type(x)))
+    if steps is None:
+      raise ValueError("When using a "
+                       "`tf.keras.utils.experimental.DatasetCreator`, "
+                       "`steps_per_epoch` argument must be provided in "
+                       "`Model.fit`.")
+    self.dataset_creator = x
+    self.steps = steps
+    self.strategy = distribution_strategy
 
   @staticmethod
   def can_handle(x, y=None):
@@ -534,10 +530,11 @@ class DatasetCreatorAdapter(DataAdapter):
     return False
 
   def get_size(self):
-    raise NotImplementedError()
+    return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    raise NotImplementedError()
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -567,9 +564,7 @@ class CompositeTensorDataAdapter(DataAdapter):
           not _is_distributed_dataset(v)):
         return True
       # Support Scipy sparse tensors if scipy is installed
-      if scipy_sparse is not None and scipy_sparse.issparse(v):
-        return True
-      return False
+      return _is_scipy_sparse(v)
 
     def _is_tensor_or_composite(v):
       if isinstance(v, (ops.Tensor, np.ndarray)):
@@ -1045,7 +1040,7 @@ def _process_tensorlike(inputs):
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
       return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
-    elif scipy_sparse and scipy_sparse.issparse(x):
+    elif _is_scipy_sparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
 
@@ -1181,9 +1176,7 @@ class DataHandler(object):
                                                class_weight, distribute)
 
   def _verify_data_adapter_compatibility(self, adapter_cls):
-    if adapter_cls == DatasetCreatorAdapter:
-      raise NotImplementedError("`DatasetCreator` input is only supported in "
-                                "`ParameterServerStrategy` at this time.")
+    pass
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1337,9 +1330,6 @@ class DataHandler(object):
           "`steps_per_execution > 1`, you must specify the number of steps "
           "to run.")
 
-  def resolve_logs(self, logs):
-    return logs
-
 
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
@@ -1356,7 +1346,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
@@ -1367,9 +1358,6 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access
-
-  def resolve_logs(self, logs):
-    return logs.fetch()
 
 
 def get_data_handler(*args, **kwargs):
@@ -1463,9 +1451,7 @@ def train_validation_split(arrays, validation_split):
   """
 
   def _can_split(t):
-    tensor_types = (ops.Tensor, np.ndarray)
-    if pd:
-      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    tensor_types = _get_tensor_types()
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
@@ -1644,6 +1630,24 @@ def _check_data_cardinality(data):
           label, ", ".join(str(i.shape[0]) for i in nest.flatten(single_data)))
     msg += "Make sure all arrays contain the same number of samples."
     raise ValueError(msg)
+
+
+def _get_tensor_types():
+  try:
+    import pandas as pd  # pylint: disable=g-import-not-at-top
+
+    return (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+  except ImportError:
+    return (ops.Tensor, np.ndarray)
+
+
+def _is_scipy_sparse(x):
+  try:
+    from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
+
+    return issparse(x)
+  except ImportError:
+    return False
 
 
 def _scipy_sparse_to_sparse_tensor(t):

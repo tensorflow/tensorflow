@@ -276,6 +276,10 @@ std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
 // transformations like resource op lifting.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass();
 
+// Creates a pass that marks TPU cluster input-output pairs reading and writing
+// to same resource variable as aliases.
+std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
+
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
 // variable load operations are all before device computation while resource
@@ -311,6 +315,10 @@ CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
+
+// Creates a pass that wraps each TensorFlow dialect with `device` attribute
+// in a `tf_device.launch` op with the same `device` attribute.
+std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass();
 
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`

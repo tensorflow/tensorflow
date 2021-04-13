@@ -272,9 +272,10 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
-  // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
-  // from cudnn), one for memset.
-  EXPECT_EQ(device_plane->event_metadata_size(), 5);
+  // The device plane should have at least five events: one for MemcpyH2D, one
+  // for MemcpyD2H, two for Matmul (one from Eigen, one from cudnn), one for
+  // memset.
+  EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
   EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());

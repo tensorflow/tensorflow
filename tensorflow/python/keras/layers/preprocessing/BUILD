@@ -12,7 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -46,7 +46,6 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
-        "discretization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -147,7 +146,6 @@ py_library(
     name = "index_lookup",
     srcs = [
         "index_lookup.py",
-        "index_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -169,7 +167,6 @@ py_library(
     name = "normalization",
     srcs = [
         "normalization.py",
-        "normalization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -191,7 +188,6 @@ py_library(
     name = "integer_lookup",
     srcs = [
         "integer_lookup.py",
-        "integer_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -217,7 +213,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_functional_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -229,7 +224,6 @@ py_library(
     name = "text_vectorization",
     srcs = [
         "text_vectorization.py",
-        "text_vectorization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -300,7 +294,6 @@ py_library(
     name = "string_lookup",
     srcs = [
         "string_lookup.py",
-        "string_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -444,7 +437,10 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    tpu_tags = ["no_oss"],
+    tpu_tags = [
+        "no_oss",
+        "noguitar",  # TODO(b/183957207)
+    ],
     deps = [
         ":image_preprocessing",
         ":preprocessing_test_utils",
@@ -538,6 +534,7 @@ tf_py_test(
     size = "medium",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
@@ -616,6 +613,7 @@ tf_py_test(
     size = "medium",
     srcs = ["integer_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":integer_lookup",
         ":preprocessing_test_utils",

@@ -31,7 +31,7 @@ struct OpDataQuantizeReference {
 };
 
 TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node);
-
+TfLiteStatus PrepareQuantizeReference(TfLiteContext* context, TfLiteNode* node);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_QUANTIZE_H_

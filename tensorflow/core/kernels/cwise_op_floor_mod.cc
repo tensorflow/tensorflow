@@ -18,8 +18,8 @@ limitations under the License.
 namespace tensorflow {
 REGISTER3(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64,
           uint64);
-REGISTER3(BinaryOp, CPU, "FloorMod", functor::floor_fmod, bfloat16, float,
-          double);
+REGISTER4(BinaryOp, CPU, "FloorMod", functor::floor_fmod, Eigen::half, bfloat16,
+          float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.

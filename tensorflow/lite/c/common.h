@@ -84,7 +84,8 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
+    defined(HEXAGON) ||                                           \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -375,6 +376,17 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
+// The flags used in `Interpreter::SetCustomAllocationForTensor`.
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum TfLiteCustomAllocationFlags {
+  kTfLiteCustomAllocationFlagsNone = 0,
+  // Skips checking whether allocation.data points to an aligned buffer as
+  // expected by the TFLite runtime.
+  // NOTE: Setting this flag can cause crashes when calling Invoke().
+  // Use with caution.
+  kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
+} TfLiteCustomAllocationFlags;
+
 // A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
@@ -444,8 +456,8 @@ typedef struct TfLiteTensor {
 } TfLiteTensor;
 
 // A structure representing an instance of a node.
-// This structure only exhibits the inputs, outputs and user defined data, not
-// other features like the type.
+// This structure only exhibits the inputs, outputs, user defined data and some
+// node properties (like statefulness), not other features like the type.
 typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
@@ -478,6 +490,9 @@ typedef struct TfLiteNode {
   // created by calling `interpreter.ModifyGraphWithDelegate`.
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
+
+  // Whether this op might have side effect (e.g. stateful op).
+  bool might_have_side_effect;
 } TfLiteNode;
 #else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.

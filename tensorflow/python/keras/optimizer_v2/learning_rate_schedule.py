@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Various learning rate decay functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import math
@@ -23,6 +20,7 @@ import math
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -32,12 +30,46 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export("keras.optimizers.schedules.LearningRateSchedule")
 class LearningRateSchedule(object):
-  """A serializable learning rate decay schedule.
+  """The learning rate schedule base class.
 
-  `LearningRateSchedule`s can be passed in as the learning rate of optimizers in
-  `tf.keras.optimizers`. They can be serialized and deserialized using
-  `tf.keras.optimizers.schedules.serialize` and
-  `tf.keras.optimizers.schedules.deserialize`.
+  You can use a learning rate schedule to modulate how the learning rate
+  of your optimizer changes over time.
+
+  Several built-in learning rate schedules are available, such as
+  `tf.keras.optimizers.schedules.ExponentialDecay` or
+  `tf.keras.optimizers.schedules.PiecewiseConstantDecay`:
+
+  ```python
+  lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+      initial_learning_rate=1e-2,
+      decay_steps=10000,
+      decay_rate=0.9)
+  optimizer = keras.optimizers.SGD(learning_rate=lr_schedule)
+  ```
+
+  A `LearningRateSchedule` instance can be passed in as the `learning_rate`
+  argument of any optimizer.
+
+  To implement your own schedule object, you should implement the `__call__`
+  method, which takes a `step` argument (scalar integer tensor, the
+  current training step count).
+  Like for any other Keras object, you can also optionally
+  make your object serializable by implementing the `get_config`
+  and `from_config` methods.
+
+  Example:
+
+  ```python
+  class MyLRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+
+    def __init__(self, initial_learning_rate):
+      self.initial_learning_rate = initial_learning_rate
+
+    def __call__(self, step):
+       return self.initial_learning_rate / (step + 1)
+
+  optimizer = tf.keras.optimizers.SGD(learning_rate=MyLRSchedule(0.1))
+  ```
   """
 
   @abc.abstractmethod
@@ -385,9 +417,9 @@ class PolynomialDecay(LearningRateSchedule):
       if self.cycle:
         # Find the first multiple of decay_steps that is bigger than
         # global_step. If global_step is zero set the multiplier to 1
-        multiplier = control_flow_ops.cond(
-            math_ops.equal(global_step_recomp, 0), lambda: 1.0,
-            lambda: math_ops.ceil(global_step_recomp / self.decay_steps))
+        multiplier = array_ops.where_v2(
+            math_ops.equal(global_step_recomp, 0), 1.0,
+            math_ops.ceil(global_step_recomp / self.decay_steps))
         decay_steps_recomp = math_ops.multiply(decay_steps_recomp, multiplier)
       else:
         # Make sure that the global_step used is not bigger than decay_steps.

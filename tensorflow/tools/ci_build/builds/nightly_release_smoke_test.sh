@@ -19,14 +19,19 @@ set -e
 set -x
 
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=185M
-LINUX_CPU_MAX_WHL_SIZE=153M
+MAC_CPU_MAX_WHL_SIZE=190M
+LINUX_CPU_MAX_WHL_SIZE=170M
 WIN_CPU_MAX_WHL_SIZE=113M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=395M
+LINUX_GPU_MAX_WHL_SIZE=435M
 WIN_GPU_MAX_WHL_SIZE=252M
 
 function run_smoke_test() {
+
+  if [[ -z "${WHL_NAME}" ]]; then
+    echo "TF WHL path not given, unable to install and test."
+    exit 1
+  fi
 
   # Upload the PIP package if whl test passes.
   if [ ${IN_VENV} -eq 0 ]; then
@@ -143,10 +148,6 @@ within pypi's CDN distribution limit, we must not exceed that threshold."
 ###########################################################################
 # Main
 ###########################################################################
-if [[ -z "${1}" ]]; then
-  echo "TF WHL path not given, unable to install and test."
-  return 1
-fi
 
 IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 WHL_NAME=${1}

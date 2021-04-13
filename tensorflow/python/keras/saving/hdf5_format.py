@@ -13,19 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Functions for saving and loading a Keras Model from HDF5 format.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Functions for saving and loading a Keras Model from HDF5 format."""
 
 import json
 import os
 
 import numpy as np
-from six.moves import zip  # pylint: disable=redefined-builtin
 
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
@@ -405,7 +400,7 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if K.int_shape(layer.weights[0]) != weights[0].shape:
+    if backend.int_shape(layer.weights[0]) != weights[0].shape:
       weights[0] = np.transpose(weights[0], (3, 2, 0, 1))
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
@@ -594,7 +589,7 @@ def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
     weights_group = hdf5_group.create_group('optimizer_weights')
     weight_names = [str(w.name).encode('utf8') for w in symbolic_weights]
     save_attributes_to_hdf5_group(weights_group, 'weight_names', weight_names)
-    weight_values = K.batch_get_value(symbolic_weights)
+    weight_values = backend.batch_get_value(symbolic_weights)
     for name, val in zip(weight_names, weight_values):
       param_dset = weights_group.create_dataset(
           name, val.shape, dtype=val.dtype)
@@ -631,7 +626,7 @@ def save_weights_to_hdf5_group(f, layers):
 
   save_attributes_to_hdf5_group(
       f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
-  f.attrs['backend'] = K.backend().encode('utf8')
+  f.attrs['backend'] = backend.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
   # Sort model layers by layer name to ensure that group names are strictly
@@ -639,7 +634,7 @@ def save_weights_to_hdf5_group(f, layers):
   for layer in sorted(layers, key=lambda x: x.name):
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
-    weight_values = K.batch_get_value(weights)
+    weight_values = backend.batch_get_value(weights)
     weight_names = [w.name.encode('utf8') for w in weights]
     save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
     for name, val in zip(weight_names, weight_values):
@@ -715,7 +710,7 @@ def load_weights_from_hdf5_group(f, layers):
                        ' weights, but the saved weights have ' +
                        str(len(weight_values)) + ' elements.')
     weight_value_tuples += zip(symbolic_weights, weight_values)
-  K.batch_set_value(weight_value_tuples)
+  backend.batch_set_value(weight_value_tuples)
 
 
 def load_weights_from_hdf5_group_by_name(
@@ -784,7 +779,7 @@ def load_weights_from_hdf5_group_by_name(
                          str(len(weight_values)) + ' element(s).')
       # Set values.
       for i in range(len(weight_values)):
-        if K.int_shape(symbolic_weights[i]) != weight_values[i].shape:
+        if backend.int_shape(symbolic_weights[i]) != weight_values[i].shape:
           if skip_mismatch:
             logging.warning('Skipping loading of weights for '
                             'layer {}'.format(layer.name) + ' due to '
@@ -794,14 +789,14 @@ def load_weights_from_hdf5_group_by_name(
             continue
           raise ValueError('Layer #' + str(k) +' (named "' + layer.name +
                            '"), weight ' + str(symbolic_weights[i]) +
-                           ' has shape {}'.format(K.int_shape(
+                           ' has shape {}'.format(backend.int_shape(
                                symbolic_weights[i])) +
                            ', but the saved weight has shape ' +
                            str(weight_values[i].shape) + '.')
 
         else:
           weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
-  K.batch_set_value(weight_value_tuples)
+  backend.batch_set_value(weight_value_tuples)
 
 
 def save_attributes_to_hdf5_group(group, name, data):

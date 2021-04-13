@@ -23,7 +23,10 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+    ],
+    licenses = ["notice"],
 )
 
 tf_cuda_library(

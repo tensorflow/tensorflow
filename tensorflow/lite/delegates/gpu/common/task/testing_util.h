@@ -48,11 +48,25 @@ class TestExecutionEnvironment {
       const std::vector<BHWC>& dst_sizes,
       const std::vector<TensorFloat32*>& dst_cpu) = 0;
 
+  virtual absl::Status ExecuteGPUOperation(
+      const std::vector<Tensor5DFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWDC>& dst_sizes,
+      const std::vector<Tensor5DFloat32*>& dst_cpu) = 0;
+
   absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,
                                    const BHWC& dst_size,
                                    TensorFloat32* result) {
     return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
+                               std::move(operation), dst_size, result);
+  }
+
+  absl::Status ExecuteGPUOperation(const Tensor5DFloat32& src_cpu,
+                                   std::unique_ptr<GPUOperation>&& operation,
+                                   const BHWDC& dst_size,
+                                   Tensor5DFloat32* result) {
+    return ExecuteGPUOperation(std::vector<Tensor5DFloat32>{src_cpu},
                                std::move(operation), dst_size, result);
   }
 
@@ -63,6 +77,15 @@ class TestExecutionEnvironment {
     return ExecuteGPUOperation(
         std::vector<TensorFloat32>{src_cpu}, std::move(operation),
         std::vector<BHWC>{dst_size}, std::vector<TensorFloat32*>{result});
+  }
+
+  absl::Status ExecuteGPUOperation(const std::vector<Tensor5DFloat32>& src_cpu,
+                                   std::unique_ptr<GPUOperation>&& operation,
+                                   const BHWDC& dst_size,
+                                   Tensor5DFloat32* result) {
+    return ExecuteGPUOperation(
+        std::vector<Tensor5DFloat32>{src_cpu}, std::move(operation),
+        std::vector<BHWDC>{dst_size}, std::vector<Tensor5DFloat32*>{result});
   }
 };
 

@@ -52,13 +52,13 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
                         platform->GetExecutor(config));
     auto device_state = absl::make_unique<LocalDeviceState>(
         executor, client, LocalDeviceState::kSynchronous, asynchronous,
-        /*allow_event_reuse=*/false);
+        /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
     auto device = absl::make_unique<CpuDevice>(i, std::move(device_state));
     devices.push_back(std::move(device));
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
-      kCpuName, client, std::move(devices), /*task_id=*/0,
+      kCpuName, client, std::move(devices), /*process_index=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr));

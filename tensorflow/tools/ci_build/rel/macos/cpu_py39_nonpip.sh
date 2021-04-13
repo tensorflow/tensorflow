@@ -31,13 +31,6 @@ setup_python_from_pyenv_macos "${PY_VERSION}"
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
 
-# Run configure.
-export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
-export TF2_BEHAVIOR=1
-export PYTHON_BIN_PATH=$(which python)
-yes "" | "$PYTHON_BIN_PATH" configure.py
-
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
@@ -45,11 +38,10 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
-bazel test --test_output=errors --config=opt \
+bazel test \
+  --config=release_cpu_macos \
   --action_env PYENV_VERSION="${PY_VERSION}" \
-  --copt=-DGRPC_BAZEL_BUILD \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
-  --test_tag_filters="${tag_filters}" -- \
-  ${DEFAULT_BAZEL_TARGETS} \
-  -//tensorflow/lite/...
+  --test_tag_filters="${tag_filters}" \
+  --test_output=errors \
+  -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...

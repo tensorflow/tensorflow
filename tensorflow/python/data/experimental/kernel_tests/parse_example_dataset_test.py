@@ -25,10 +25,10 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsing_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
@@ -584,7 +584,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         create_iterator_twice=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testerializedContainingSparseAndSparseFeatureWithReuse(self):
+  def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
         np.array([0, 3, 7, 1]),
@@ -622,7 +622,12 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  def _testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(batch_size=[1, 10, 20, 100, 256]))
+  )
+  def testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
+    np.random.seed(3456)
     # During parsing, data read from the serialized proto is stored in buffers.
     # For small batch sizes, a buffer will contain one minibatch entry.
     # For larger batch sizes, a buffer may contain several minibatch
@@ -681,12 +686,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         },
         expected_values=expected_output,
         create_iterator_twice=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSerializedContainingVarLenDenseLargerBatch(self):
-    np.random.seed(3456)
-    for batch_size in (1, 10, 20, 100, 256):
-      self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSerializedShapeMismatch(self):
@@ -1150,13 +1149,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
       self.assertCountEqual(expected, actual)
 
 
-class ParseExampleDatasetCheckpointTest(
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
+                                        checkpoint_test_base.CheckpointTestBase,
+                                        parameterized.TestCase):
 
   def _parse_example_dataset(self, num_repeat, batch_size):
     return self.make_batch_feature(
-        filenames=self.test_filenames,
+        filenames=self._filenames,
         num_epochs=num_repeat,
         batch_size=batch_size,
         reader_num_threads=5,

@@ -84,8 +84,10 @@ class RangeOp : public XlaOpKernel {
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in_shape.DebugString()));
     xla::Literal start, limit, delta;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &start));
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &limit));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            0, &start, xla::ValueInferenceMode::kLowerBound));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            1, &limit, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &delta));
 
     DataType type = input_type(0);
@@ -108,23 +110,29 @@ class RangeOp : public XlaOpKernel {
                                          DataTypeString(type));
     }
     OP_REQUIRES_OK(ctx, output.status());
+    bool start_is_dynamic = false;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ResolveInputDynamismIntoPred(0, &start_is_dynamic));
+    bool limit_is_dynamic = false;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ResolveInputDynamismIntoPred(1, &limit_is_dynamic));
 
-    if (type == DT_INT32 || type == DT_INT64) {
-      bool limit_is_dynamic = false;
-      OP_REQUIRES_OK(ctx,
-                     ctx->ResolveInputDynamismIntoPred(1, &limit_is_dynamic));
-      if (type == DT_INT32) {
-        if (limit_is_dynamic) {
-          output = xla::SetDimensionSize(output.ValueOrDie(), ctx->Input(1), 0);
-        }
+    if (start_is_dynamic || limit_is_dynamic) {
+      xla::XlaOp delta = ctx->Input(2);
+      xla::XlaOp limit = ctx->Input(1);
+      xla::XlaOp start = ctx->Input(0);
+      if (type == DT_INT32 || type == DT_INT64) {
+        auto dynamic_size =
+            ((xla::Abs(limit - start) + xla::Abs(delta) -
+              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
+             xla::Abs(delta));
+        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
       } else {
-        if (limit_is_dynamic) {
-          output = xla::SetDimensionSize(
-              output.ValueOrDie(),
-              xla::ConvertElementType(ctx->Input(1), xla::S32), 0);
-        }
+        auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
+        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
       }
     }
+
     ctx->SetOutput(0, output.ValueOrDie());
   }
 };

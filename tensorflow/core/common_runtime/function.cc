@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -419,9 +420,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
       delete this->overlay_flr;
     }
   };
-  std::unique_ptr<std::unordered_map<Handle, std::unique_ptr<Item>>> items_
+  std::unique_ptr<absl::flat_hash_map<Handle, std::unique_ptr<Item>>> items_
       TF_GUARDED_BY(mu_);
-
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
   // Overloads the CreateKernel method, providing a FunctionLibraryRuntime
@@ -475,7 +476,9 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
       next_handle_(0),
-      items_(new std::unordered_map<Handle, std::unique_ptr<Item>>),
+      items_(absl::make_unique<
+             absl::flat_hash_map<Handle, std::unique_ptr<Item>>>()),
+      function_handle_cache_(absl::make_unique<FunctionHandleCache>(this)),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
@@ -608,9 +611,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   const CustomKernelCreator* custom_kernel_creator =
       GetDefaultCustomKernelCreator();
   if (custom_kernel_creator &&
-      custom_kernel_creator->CanCreateKernel(*this, props)) {
+      custom_kernel_creator->CanCreateKernel(*flr, props)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator->CreateKernel(this, props, &ret);
+    s = custom_kernel_creator->CreateKernel(flr, props, &ret);
     if (s.ok()) {
       *kernel = ret.release();
     } else {
@@ -742,6 +745,13 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     const InstantiateOptions& options, Handle* handle) {
   if (!IsLocalTarget(options)) {
     return parent_->Instantiate(function_name, attrs, options, handle);
+  }
+
+  if (options.use_function_cache) {
+    InstantiateOptions options_copy(options);
+    options_copy.use_function_cache = false;
+    return function_handle_cache_->Instantiate(function_name, attrs,
+                                               options_copy, handle);
   }
 
   // Since this is a local target, ensure that the local `device_name_` appears
@@ -917,7 +927,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   }
   const FunctionLibraryDefinition* lib_def =
       flr->GetFunctionLibraryDefinition();
-  std::unique_ptr<Graph> g(new Graph(lib_def));
+  auto g = absl::make_unique<Graph>(lib_def);
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(fbody->fdef, g.get());

@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-classes-have-attributes
 """Locally-connected layers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -263,8 +261,9 @@ class LocallyConnected1D(Layer):
 
   def call(self, inputs):
     if self.implementation == 1:
-      output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
-                            (self.output_length,), self.data_format)
+      output = backend.local_conv(
+          inputs, self.kernel, self.kernel_size, self.strides,
+          (self.output_length,), self.data_format)
 
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
@@ -280,7 +279,7 @@ class LocallyConnected1D(Layer):
                        self.implementation)
 
     if self.use_bias:
-      output = K.bias_add(output, self.bias, data_format=self.data_format)
+      output = backend.bias_add(output, self.bias, data_format=self.data_format)
 
     output = self.activation(output)
     return output
@@ -572,9 +571,10 @@ class LocallyConnected2D(Layer):
 
   def call(self, inputs):
     if self.implementation == 1:
-      output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
-                            (self.output_row, self.output_col),
-                            self.data_format)
+      output = backend.local_conv(
+          inputs, self.kernel, self.kernel_size, self.strides,
+          (self.output_row, self.output_col),
+          self.data_format)
 
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
@@ -590,7 +590,7 @@ class LocallyConnected2D(Layer):
                        self.implementation)
 
     if self.use_bias:
-      output = K.bias_add(output, self.bias, data_format=self.data_format)
+      output = backend.bias_add(output, self.bias, data_format=self.data_format)
 
     output = self.activation(output)
     return output
@@ -729,14 +729,14 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   Returns:
       Output (N+2)-D tensor with shape `output_shape`.
   """
-  inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
+  inputs_flat = backend.reshape(inputs, (backend.shape(inputs)[0], -1))
 
   kernel = kernel_mask * kernel
-  kernel = make_2d(kernel, split_dim=K.ndim(kernel) // 2)
+  kernel = make_2d(kernel, split_dim=backend.ndim(kernel) // 2)
 
   output_flat = math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
-  output = K.reshape(output_flat, [
-      K.shape(output_flat)[0],
+  output = backend.reshape(output_flat, [
+      backend.shape(output_flat)[0],
   ] + output_shape.as_list()[1:])
   return output
 
@@ -767,17 +767,17 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
   Returns:
       Output (N+2)-D dense tensor with shape `output_shape`.
   """
-  inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
+  inputs_flat = backend.reshape(inputs, (backend.shape(inputs)[0], -1))
   output_flat = gen_sparse_ops.SparseTensorDenseMatMul(
       a_indices=kernel_idxs,
       a_values=kernel,
       a_shape=kernel_shape,
       b=inputs_flat,
       adjoint_b=True)
-  output_flat_transpose = K.transpose(output_flat)
+  output_flat_transpose = backend.transpose(output_flat)
 
-  output_reshaped = K.reshape(output_flat_transpose, [
-      K.shape(output_flat_transpose)[0],
+  output_reshaped = backend.reshape(output_flat_transpose, [
+      backend.shape(output_flat_transpose)[0],
   ] + output_shape.as_list()[1:])
   return output_reshaped
 

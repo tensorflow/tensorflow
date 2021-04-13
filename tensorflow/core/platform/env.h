@@ -407,6 +407,9 @@ class Env {
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
 
+  /// Returns the process ID of the calling process.
+  int32 GetProcessId();
+
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
   ///
@@ -604,6 +607,10 @@ Status ReadBinaryProto(Env* env, const std::string& fname,
                        protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
+inline Status WriteTextProto(Env* /* env */, const std::string& /* fname */,
+                             const protobuf::MessageLite& /* proto */) {
+  return errors::Unimplemented("Can't write text protos with protolite.");
+}
 Status WriteTextProto(Env* env, const std::string& fname,
                       const protobuf::Message& proto);
 
@@ -632,21 +639,22 @@ namespace register_file_system {
 
 template <typename Factory>
 struct Register {
-  Register(Env* env, const std::string& scheme, bool legacy) {
+  Register(Env* env, const std::string& scheme, bool try_modular_filesystems) {
     // TODO(yongtang): Remove legacy file system registration for hdfs/s3/gcs
     // after TF 2.6+.
-    if (legacy) {
-      const char* enable_legacy_env = getenv("TF_ENABLE_LEGACY_FILESYSTEM");
-      string enable_legacy =
-          enable_legacy_env ? absl::AsciiStrToLower(enable_legacy_env) : "";
-      if (!(enable_legacy == "true" || enable_legacy == "1")) {
+    if (try_modular_filesystems) {
+      const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
+      string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
+      if (load_plugin == "true" || load_plugin == "1") {
+        // We don't register the static filesystem and wait for SIG IO one
+        LOG(WARNING) << "Using modular file system for '" << scheme << "'."
+                     << " Please switch to tensorflow-io"
+                     << " (https://github.com/tensorflow/io) for file system"
+                     << " support of '" << scheme << "'.";
         return;
       }
-      LOG(WARNING) << "Legacy file system for '" << scheme << "' is deprecated"
-                   << " and will be removed in tensorflow 2.6 or higher."
-                   << " Please switch to tensorflow-io"
-                   << " (https://github.com/tensorflow/io) for file system"
-                   << " support of '" << scheme << "'.";
+      // If the envvar is missing or not "true"/"1", then fall back to legacy
+      // implementation to be backwards compatible.
     }
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
@@ -662,15 +670,15 @@ struct Register {
 
 // Register a FileSystem implementation for a scheme. Files with names that have
 // "scheme://" prefixes are routed to use this implementation.
-#define REGISTER_FILE_SYSTEM_ENV(env, scheme, factory, legacy) \
-  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, env, scheme, factory, legacy)
-#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, env, scheme, factory, legacy) \
-  REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, legacy)
-#define REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, legacy)         \
+#define REGISTER_FILE_SYSTEM_ENV(env, scheme, factory, modular) \
+  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, env, scheme, factory, modular)
+#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, env, scheme, factory, modular) \
+  REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, modular)
+#define REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, modular)        \
   static ::tensorflow::register_file_system::Register<factory>               \
       register_ff##ctr TF_ATTRIBUTE_UNUSED =                                 \
           ::tensorflow::register_file_system::Register<factory>(env, scheme, \
-                                                                legacy)
+                                                                modular)
 
 #define REGISTER_FILE_SYSTEM(scheme, factory)                             \
   REGISTER_FILE_SYSTEM_ENV(::tensorflow::Env::Default(), scheme, factory, \

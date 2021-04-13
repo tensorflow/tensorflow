@@ -26,10 +26,8 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -137,6 +135,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
     ],
 )
@@ -146,9 +145,6 @@ tf_py_test(
     size = "medium",
     srcs = ["autocast_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_tfrt",  # TODO(b/179863362)
-    ],
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -291,7 +287,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/179863362)
     ],
     deps = [
         "//tensorflow/python:client_testlib",

@@ -56,6 +56,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.BatchDatasetV2`
 *   `raw_ops.BatchMatMul`
 *   `raw_ops.BatchMatMulV2`
+*   `raw_ops.BatchMatrixBandPart`
 *   `raw_ops.BatchMatrixDiag`
 *   `raw_ops.BatchMatrixDiagPart`
 *   `raw_ops.BatchMatrixInverse`
@@ -225,6 +226,11 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.InplaceUpdate`
 *   `raw_ops.InTopK`
 *   `raw_ops.InTopKV2`
+*   `raw_ops.InitializeTable`
+*   `raw_ops.InitializeTableFromDataset`
+*   `raw_ops.InitializeTableFromTextFile`
+*   `raw_ops.InitializeTableFromTextFileV2`
+*   `raw_ops.InitializeTableV2`
 *   `raw_ops.Inv`
 *   `raw_ops.Invert`
 *   `raw_ops.InvertPermutation`
@@ -265,6 +271,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.LRN`
 *   `raw_ops.MapDataset`
 *   `raw_ops.MatMul`
+*   `raw_ops.MatrixBandPart`
 *   `raw_ops.MatrixDiag`
 *   `raw_ops.MatrixDiagPart`
 *   `raw_ops.MatrixDiagPartV2`
@@ -387,11 +394,15 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RaggedBincount`
 *   `raw_ops.RaggedGather`
 *   `raw_ops.RaggedRange`
+*   `raw_ops.RaggedTensorFromVariant`
 *   `raw_ops.RaggedTensorToSparse`
 *   `raw_ops.RaggedTensorToTensor`
+*   `raw_ops.RaggedTensorToVariant`
+*   `raw_ops.RaggedTensorToVariantGradient`
 *   `raw_ops.RandomGamma`
 *   `raw_ops.RandomPoisson`
 *   `raw_ops.RandomPoissonV2`
+*   `raw_ops.RandomShuffle`
 *   `raw_ops.RandomStandardNormal`
 *   `raw_ops.RandomUniform`
 *   `raw_ops.RandomUniformInt`
@@ -419,6 +430,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Relu6Grad`
 *   `raw_ops.ReluGrad`
 *   `raw_ops.RemoteCall`
+*   `raw_ops.RepeatDataset`
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`
@@ -553,6 +565,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSqrtNWithNumSegments`
 *   `raw_ops.SparseSegmentSum`
 *   `raw_ops.SparseSegmentSumWithNumSegments`
+*   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
 *   `raw_ops.SparseToDense`
 *   `raw_ops.SparseToSparseSetOperation`
 *   `raw_ops.Split`
@@ -572,6 +585,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StackV2`
 *   `raw_ops.StatelessMultinomial`
 *   `raw_ops.StatelessRandomGammaV2`
+*   `raw_ops.StatelessRandomGetAlg`
+*   `raw_ops.StatelessRandomGetKeyCounter`
 *   `raw_ops.StatelessRandomGetKeyCounterAlg`
 *   `raw_ops.StatelessRandomNormal`
 *   `raw_ops.StatelessRandomNormalV2`
@@ -674,10 +689,12 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.TensorScatterMin`
 *   `raw_ops.TensorScatterSub`
 *   `raw_ops.TensorScatterUpdate`
+*   `raw_ops.TensorSliceDataset`
 *   `raw_ops.TensorStridedSliceUpdate`
 *   `raw_ops.Tile`
 *   `raw_ops.TileGrad`
 *   `raw_ops.Timestamp`
+*   `raw_ops.TokenizerFromLogits`
 *   `raw_ops.TopK`
 *   `raw_ops.TopKV2`
 *   `raw_ops.Transpose`

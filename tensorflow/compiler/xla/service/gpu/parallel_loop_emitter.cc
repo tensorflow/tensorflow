@@ -130,13 +130,44 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                       /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
-  array_indices.emplace_back(linear_index_base, shape_, b_);
+  // When enable_row_index is true, it means the inner most dimensions
+  // match the block sizes.  So we can generate a simpler indexing
+  // for that dimensions.  This helps LLVM generate vectorized codes
+  // in that cases.
+  LaunchDimensions::Dim3D dim3 = launch_dimensions_.thread_counts_per_block();
+  bool enable_row_index =
+      shape_.rank() > 1 && unroll_factor_ > 1 && shape_.has_layout() &&
+      shape_.layout().minor_to_major()[shape_.rank() - 1] == 0 &&
+      dim3.x * dim3.y * dim3.z * unroll_factor_ == shape_.dimensions().back();
+  VLOG(2) << "Emitting row optimized indexing: " << enable_row_index;
+  llvm::Value* row_index = nullptr;
+  if (!enable_row_index) {
+    array_indices.emplace_back(linear_index_base, shape_, b_);
+  } else {
+    // Simpler index for row computation.
+    // This will allow LLVM to vectorize.
+    row_index = b_->CreateMul(
+        thread_id, llvm::ConstantInt::get(index_type, unroll_factor_),
+        "row_index", /*HasNUW=*/true, /*HasNSW=*/true);
+    std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+    multidim.back() = row_index;
+    array_indices.emplace_back(linear_index_base, multidim, shape_, b_);
+  }
+
   for (int i = 1; i < unroll_factor_; ++i) {
     llvm::Value* linear_index =
         b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
-                      "linear_index",
+                      absl::StrCat("linear_index", i),
                       /*HasNUW=*/true, /*HasNSW=*/true);
-    array_indices.emplace_back(linear_index, shape_, b_);
+    if (!enable_row_index) {
+      array_indices.emplace_back(linear_index, shape_, b_);
+    } else {
+      std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+      multidim.back() = b_->CreateAdd(
+          row_index, llvm::ConstantInt::get(index_type, i),
+          absl::StrCat("row_index_plus", i), /*HasNUW=*/true, /*HasNSW=*/true);
+      array_indices.emplace_back(linear_index, multidim, shape_, b_);
+    }
   }
 
   auto if_in_bounds = llvm_ir::EmitIfThenElse(

@@ -285,43 +285,5 @@ REGISTER_UNIQUE(tstring)
 REGISTER_UNIQUE(bool)
 #undef REGISTER_UNIQUE
 
-// Fake integer GPU kernels so that the use of Unique in optimizers (to
-// de-duplicate sparse gradient indices) does not conflict with gradients being
-// located on a GPU. These kernels run on the CPU, their inputs and outputs
-// residing in host (not GPU) memory.
-REGISTER_KERNEL_BUILDER(Name("Unique")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_idx")
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("idx"),
-                        UniqueOp<int32, int32>);
-REGISTER_KERNEL_BUILDER(Name("Unique")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("out_idx")
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("idx"),
-                        UniqueOp<int32, int64>);
-REGISTER_KERNEL_BUILDER(Name("Unique")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
-                            .TypeConstraint<int32>("out_idx")
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("idx"),
-                        UniqueOp<int64, int32>);
-REGISTER_KERNEL_BUILDER(Name("Unique")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
-                            .TypeConstraint<int64>("out_idx")
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("idx"),
-                        UniqueOp<int64, int64>);
-
-
 }  // namespace
 }  // namespace tensorflow

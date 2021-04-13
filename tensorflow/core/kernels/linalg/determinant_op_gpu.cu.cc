@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/linalg/determinant_op.h"
 #include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -42,41 +43,6 @@ __device__ int PermutationOrder(int n, const int* __restrict__ pivots) {
   }
   return order;
 }
-
-#if defined(__CUDACC__)
-// Hack around missing support for complex in NVCC.
-template <typename T>
-__device__ inline std::complex<T> complex_multiply(const std::complex<T>& a,
-                                                   const std::complex<T>& b) {
-  const T a_real = Eigen::numext::real(a);
-  const T a_imag = Eigen::numext::imag(a);
-  const T b_real = Eigen::numext::real(b);
-  const T b_imag = Eigen::numext::imag(b);
-  return std::complex<T>(a_real * b_real - a_imag * b_imag,
-                         a_real * b_imag + a_imag * b_real);
-}
-__device__ inline complex64 operator*(const complex64& a, const complex64& b) {
-  return complex_multiply<float>(a, b);
-}
-__device__ inline complex64 operator*(const complex64& a, const float& b) {
-  return complex64(Eigen::numext::real(a) * b, Eigen::numext::imag(a) * b);
-}
-__device__ inline complex64 operator/(const complex64& a, const float& b) {
-  const float inv_b = 1.0f / b;
-  return a * inv_b;
-}
-__device__ inline complex128 operator*(const complex128& a,
-                                       const complex128& b) {
-  return complex_multiply<double>(a, b);
-}
-__device__ inline complex128 operator*(const complex128& a, const double& b) {
-  return complex128(Eigen::numext::real(a) * b, Eigen::numext::imag(a) * b);
-}
-__device__ inline complex128 operator/(const complex128& a, const double& b) {
-  const double inv_b = 1.0 / b;
-  return a * inv_b;
-}
-#endif
 }  // namespace
 
 // This kernel computes either determinant or log_abs_determinant, depending

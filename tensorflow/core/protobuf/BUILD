@@ -18,7 +18,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//tensorflow_models:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 COMMON_PROTO_SRCS = [

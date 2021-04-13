@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 35.
+// Next ID to use: 36.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -235,4 +235,9 @@ message TocoFlags {
   // Whether to enable tflite resource variables during conversion or not.
   // Note: This is an experimental feature.
   optional bool enable_tflite_resource_variables = 34;
+
+  // Whether to unfold tf.BatchMatMul to a set of tfl.fully_connected ops. If
+  // not, translate to tfl.batch_matmul.
+  // WARNING: Experimental interface, subject to change.
+  optional bool unfold_batchmatmul = 35 [default = true];
 }

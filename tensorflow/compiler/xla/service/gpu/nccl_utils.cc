@@ -74,8 +74,14 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
 }
 
 bool IsGlobalNcclConfig() {
-  static bool global_nccl_config = std::getenv("NCCL_COMM_ID") != nullptr;
+  static const bool global_nccl_config = std::getenv("NCCL_COMM_ID") != nullptr;
   return global_nccl_config;
+}
+
+bool IsNcclLaunchModeParallel() {
+  static const bool is_launch_mode_parallel =
+      absl::string_view(std::getenv("NCCL_LAUNCH_MODE")) == "PARALLEL";
+  return is_launch_mode_parallel;
 }
 
 Status ToStatus(ncclResult_t s, const char* file, int64 line,

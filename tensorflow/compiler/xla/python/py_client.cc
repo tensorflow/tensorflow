@@ -56,12 +56,12 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   return devices;
 }
 
-std::vector<ClientAndPtr<PyBuffer>> PyClient::LiveBuffers() {
+std::vector<py::object> PyClient::LiveBuffers() {
   CHECK(PyGILState_Check());
-  std::vector<ClientAndPtr<PyBuffer>> buffers;
+  std::vector<py::object> buffers;
   for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
     if (!buffer->is_deleted()) {
-      buffers.push_back(WrapWithClient(shared_from_this(), buffer));
+      buffers.push_back(py::reinterpret_borrow<py::object>(buffer->AsHandle()));
     }
   }
   return buffers;
@@ -146,8 +146,8 @@ StatusOr<py::object> PyClient::BufferFromPyval(
 
   if (put.owned_buffer) {
     auto traceback = Traceback::Get();
-    return py::cast(std::make_unique<PyBuffer>(
-        shared_from_this(), std::move(put.owned_buffer), std::move(traceback)));
+    return PyBuffer::Make(shared_from_this(), std::move(put.owned_buffer),
+                          std::move(traceback));
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
@@ -273,7 +273,7 @@ py::bytes PyClient::HeapProfile() {
     // We only wish to count each PjRtBuffer once, even though they may be
     // shared by multiple PyBuffers.
     if (buffer_set.insert(buffer->buffer()).second) {
-      HeapProfileKey key{buffer->traceback(),
+      HeapProfileKey key{buffer->traceback().get(),
                          buffer->buffer()->OnDeviceSizeInBytes(),
                          buffer->buffer()->device()};
       ++entries[key];

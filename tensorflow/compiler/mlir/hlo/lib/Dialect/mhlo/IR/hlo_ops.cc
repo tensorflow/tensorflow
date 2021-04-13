@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
@@ -130,7 +132,60 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
+/// Replaces the given op with the contents of the given single-block region,
+/// using the operands of the block terminator to replace operation results.
+static void ReplaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
+                                Region& region, ValueRange blockArgs = {}) {
+  assert(llvm::hasSingleElement(region) && "expected single-block region");
+  Block* block = &region.front();
+  Operation* terminator = block->getTerminator();
+  ValueRange results = terminator->getOperands();
+  rewriter.mergeBlockBefore(block, op, blockArgs);
+  rewriter.replaceOp(op, results);
+  rewriter.eraseOp(terminator);
+}
+
 #include "mhlo_canonicalize.inc"
+
+// Common shape function helper for RngNormal and RngUniform.
+static LogicalResult rngInferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  if (operands.size() != 3)
+    return emitOptionalError(location, "expected 3 operands");
+
+  SmallVector<int64_t> shapeVector;
+  Value shapeOperand = operands[2];
+  auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
+  Type elementType = getElementTypeOrSelf(operands[1]);
+
+  // Match constant shape arguments.
+  DenseIntElementsAttr shape;
+  if (!matchPattern(shapeOperand, m_Constant(&shape))) {
+    if (!shapeOperandType.hasRank()) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    if (shapeOperandType.getRank() != 1)
+      return emitOptionalError(location, "shape operand required to be 1D");
+    int size = shapeOperandType.getDimSize(0);
+    if (size == ShapedType::kDynamicSize) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    shapeVector.resize(size, ShapedType::kDynamicSize);
+    inferredReturnShapes.emplace_back(shapeVector, elementType);
+    return success();
+  }
+
+  shapeVector.reserve(shape.size());
+  for (const APInt& fp : shape.getIntValues())
+    shapeVector.push_back(fp.getSExtValue());
+  inferredReturnShapes.emplace_back(shapeVector, elementType);
+  return success();
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -597,12 +652,18 @@ OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TupleOp op) {
-  SmallVector<Type, 8> operandTypes = {op.operand_type_begin(),
-                                       op.operand_type_end()};
-  auto expectedType = TupleType::get(op.getContext(), operandTypes);
-  if (op.getType() != expectedType) {
-    return op.emitOpError(llvm::formatv("has return type {0}, but expected {1}",
-                                        op.getType(), expectedType));
+  auto opType = op.getType().dyn_cast<TupleType>();
+  if (!opType) return op.emitOpError("tuple op with non-tuple result");
+  if (op.getNumOperands() != opType.size())
+    return op.emitOpError(
+        "number of operands to tuple expected to match number of types in "
+        "resultant tuple type");
+  for (auto it : llvm::enumerate(
+           llvm::zip_first(op.getOperandTypes(), opType.getTypes()))) {
+    if (std::get<0>(it.value()) != std::get<1>(it.value()))
+      return op.emitOpError("has return type mismatch at ")
+             << it.index() << "th value (" << std::get<0>(it.value())
+             << " != " << std::get<1>(it.value()) << ")";
   }
   return success();
 }
@@ -877,6 +938,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   return success();
 }
 
+namespace {
 // If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
 // BroadcastInDimOp.
 class DynamicBroadcastInDimOpNotActuallyDynamic
@@ -894,12 +956,55 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
   }
 };
 
+class ChainedDynamicBroadcastInDimCanonicalization
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp bcast,
+                                PatternRewriter& rewriter) const override {
+    auto preceding_bcast =
+        bcast.operand().getDefiningOp<DynamicBroadcastInDimOp>();
+    if (!preceding_bcast) return failure();
+
+    // Compose broadcast dimensions.
+    DenseIntElementsAttr preceding_bcast_dims =
+        preceding_bcast.broadcast_dimensions();
+    DenseIntElementsAttr bcast_dims = bcast.broadcast_dimensions();
+    SmallVector<APInt, 4> composition;
+    for (APInt preceding_dim : preceding_bcast_dims) {
+      auto composed_dim = bcast_dims.getValue({preceding_dim.getZExtValue()})
+                              .cast<IntegerAttr>();
+      composition.push_back(composed_dim.getValue());
+    }
+    auto composed_bcast_dims =
+        DenseIntElementsAttr::get(preceding_bcast_dims.getType(), composition);
+
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        bcast, bcast.getType(), preceding_bcast.operand(),
+        bcast.output_dimensions(), composed_bcast_dims);
+    return success();
+  }
+};
+}  // namespace
+
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
+  results.insert<ChainedDynamicBroadcastInDimCanonicalization,
+                 DynamicBroadcastInDimOpNotActuallyDynamic,
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
                  DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
+}
+
+LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
+    MLIRContext*, llvm::Optional<mlir::Location>, ValueRange, DictionaryAttr,
+    RegionRange, llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  return failure();
+}
+
+LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
+    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  reifiedReturnShapes.push_back(output_dimensions());
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1696,6 +1801,38 @@ static LogicalResult Verify(RecvOp op) {
 OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 
 //===----------------------------------------------------------------------===//
+// ReduceWindowOp
+//===----------------------------------------------------------------------===//
+
+// For reduce-window, all `inputs` need to have compatible shapes.
+static LogicalResult Verify(ReduceWindowOp op) {
+  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+    return op.emitOpError() << "requires same shape for all inputs";
+  return success();
+}
+
+// Get the operation used for reduction applied to `result_index`th result. Its
+// expected to be a binary operation that consumes `result_index`th and
+// `result_index + operands().size`th arguments of the body.
+Operation* ReduceWindowOp::getReductionOp(int result_index) {
+  auto return_op = cast<ReturnOp>(body().front().getTerminator());
+  Operation* compute_op = return_op.results()[result_index].getDefiningOp();
+  if (compute_op->getNumOperands() != 2) return nullptr;
+  auto arg0 = compute_op->getOperand(0).dyn_cast<BlockArgument>();
+  auto arg1 = compute_op->getOperand(1).dyn_cast<BlockArgument>();
+  if (!arg0 || !arg1) return nullptr;
+  int arg0_num = arg0.getArgNumber();
+  int arg1_num = arg1.getArgNumber();
+  int other_arg_index = result_index + inputs().size();
+  if (arg0_num == result_index && arg1_num == other_arg_index)
+    return compute_op;
+  if (arg0_num == other_arg_index && arg1_num == result_index &&
+      compute_op->hasTrait<OpTrait::IsCommutative>())
+    return compute_op;
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 
@@ -1767,6 +1904,30 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// RngNormalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngNormalOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// RngUniformOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngUniformOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2067,44 +2228,111 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// If Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
+                                             Value operand,
+                                             llvm::Twine branchName,
+                                             llvm::Twine operandName) {
+  mlir::Block& entryBlock = region.front();
+  if (entryBlock.getNumArguments() != 1)
+    return op->emitOpError()
+           << branchName << " block should have single argument, but found "
+           << entryBlock.getNumArguments();
+
+  Type operandType = operand.getType();
+  Type branchArgType = entryBlock.getArgument(0).getType();
+  if (branchArgType != operandType)
+    return op->emitOpError()
+           << operandName << " type (" << operandType << ") does not match "
+           << branchName << " block arg type (" << branchArgType << ")";
+  TypeRange branchReturnTypes = entryBlock.getTerminator()->getOperandTypes();
+  if (branchReturnTypes != op->getResultTypes())
+    return op->emitOpError()
+           << branchName << " returned types (" << branchReturnTypes
+           << ") do not match op result types (" << op->getResultTypes() << ")";
+
+  return success();
+}
+
+static LogicalResult Verify(IfOp op) {
+  if (failed(VerifyConditionalBranch(op, op.true_branch(), op.true_arg(),
+                                     /*branchName=*/"true_branch",
+                                     /*operandName=*/"true_arg"))) {
+    return failure();
+  }
+
+  if (failed(VerifyConditionalBranch(op, op.false_branch(), op.false_arg(),
+                                     /*branchName=*/"false_branch",
+                                     /*operandName=*/"false_arg"))) {
+    return failure();
+  }
+  return success();
+}
+
+static LogicalResult InlineIfConstantCondition(IfOp ifOp,
+                                               PatternRewriter& rewriter) {
+  DenseIntElementsAttr pred_attr;
+  if (!matchPattern(ifOp.pred(), m_Constant(&pred_attr))) return failure();
+
+  if (pred_attr.getSplatValue<BoolAttr>().getValue()) {
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch(), ifOp.true_arg());
+  } else {
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch(), ifOp.false_arg());
+  }
+  return success();
+}
+
+void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                       MLIRContext* context) {
+  results.add(&InlineIfConstantCondition);
+}
+
+//===----------------------------------------------------------------------===//
 // Case Op
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(CaseOp op) {
   auto num_branches = op.branches().size();
   if (op.branch_operands().size() != num_branches)
-    return op.emitOpError() << "expects number of branches " << num_branches
-                            << " to be same as number of branch operands "
-                            << op.branch_operands().size();
+    return op.emitOpError() << " number of branches (" << num_branches
+                            << ") does not match number of branch operands ("
+                            << op.branch_operands().size() << ")";
 
-  MutableArrayRef<Region> branches = op.branches();
-  OperandRange branch_operands = op.branch_operands();
-  for (unsigned i = 0; i < num_branches; ++i) {
-    mlir::Region& branch_region = branches[i];
-    if (branch_region.empty())
-      return op.emitOpError() << "cannot have empty regions";
-    mlir::Block& entry_block = branch_region.front();
-    if (entry_block.getNumArguments() != 1)
-      return op.emitOpError()
-             << "expects branch regions to have single argument, but found "
-             << entry_block.getNumArguments() << " for branch " << i;
-    auto operand = branch_operands[i];
-    if (entry_block.getArgument(0).getType() != operand.getType())
-      return op.emitOpError()
-             << "expects operand " << i + 1 << " to be of type "
-             << entry_block.getArgument(0).getType() << ", but found "
-             << operand.getType();
-    WalkResult walker = branch_region.walk([&](ReturnOp return_op) {
-      if (return_op.getOperands().getTypes() != op.getResultTypes())
-        return WalkResult::interrupt();
-      return WalkResult::advance();
-    });
-    if (walker.wasInterrupted())
-      return op.emitOpError()
-             << "branch " << i
-             << " returned values do not match op result types";
-  }
+  for (unsigned i = 0; i < num_branches; ++i)
+    if (failed(VerifyConditionalBranch(
+            op, op.branches()[i], op.branch_operands()[i],
+            /*branchName=*/"branch " + Twine(i),
+            /*operandName=*/"branch_operand " + Twine(i))))
+      return failure();
+
   return success();
+}
+
+static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
+                                                 PatternRewriter& rewriter) {
+  DenseIntElementsAttr index_attr;
+  if (!matchPattern(caseOp.index(), m_Constant(&index_attr))) {
+    return failure();
+  }
+  int64_t index =
+      index_attr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+  // For an OOB index, the last branch is executed as the default branch:
+  // https://www.tensorflow.org/xla/operation_semantics#conditional
+  if (index < 0 || index >= caseOp.getNumRegions())
+    index = caseOp.getNumRegions() - 1;
+
+  Region& region = caseOp.getRegion(index);
+  if (!llvm::hasSingleElement(region)) return failure();
+  ReplaceOpWithRegion(rewriter, caseOp, region,
+                      caseOp.branch_operands()[index]);
+  return success();
+}
+
+void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.add(&InlineCaseConstantCondition);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2177,6 +2405,12 @@ struct round {
   }
 };
 
+struct logical_not {
+  APInt operator()(const APInt& i) {
+    return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
+  }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -2184,6 +2418,13 @@ struct round {
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
       return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
     return {};                                                                \
+  }
+
+#define UNARY_FOLDER_INT(Op, Func)                                   \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())          \
+      return UnaryFolder<Op, IntegerType, APInt, Func>(this, attrs); \
+    return {};                                                       \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
@@ -2194,7 +2435,12 @@ struct round {
   }
 
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER_INT(NotOp, logical_not);
 UNARY_FOLDER_FLOAT(RoundOp, round);
+
+#undef UNARY_FOLDER
+#undef UNARY_FOLDER_INT
+#undef UNARY_FOLDER_FLOAT
 
 //===----------------------------------------------------------------------===//
 // BinaryOps

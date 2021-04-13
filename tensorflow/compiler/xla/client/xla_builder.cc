@@ -351,7 +351,7 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       break;
   }
   if (!*is_constant) {
-    VLOG(1) << "Non-constant: " << instr.name();
+    VLOG(1) << "Non-constant: " << instr.name() << " " << instr.opcode();
   }
   visited->insert(op_handle);
 }
@@ -1275,7 +1275,8 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape->dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers, precision_config);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+                      preferred_element_type);
   });
 }
 
@@ -2704,9 +2705,10 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllGatherShape(
-                            *operand_shape, all_gather_dimension, shard_count));
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        ShapeInference::InferAllGatherShape({operand_shape},
+                                            all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);
@@ -4289,6 +4291,20 @@ XlaOp ReduceWindowWithGeneralPadding(
       absl::MakeSpan(&operand, 1), absl::MakeSpan(&init_value, 1), computation,
       window_dimensions, window_strides, base_dilations, window_dilations,
       padding);
+}
+
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindowWithGeneralPadding(
+      operands, init_values, computation, window_dimensions, window_strides,
+      base_dilations, window_dilations, padding);
 }
 
 XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,

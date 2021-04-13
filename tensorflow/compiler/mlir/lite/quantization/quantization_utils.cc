@@ -50,6 +50,26 @@ namespace quant {
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
+using QType = quant::QuantizedType;
+
+const char kQuantTraitAttr[] = "_tfl_quant_trait";
+const absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                              "not_quantizable"};
+
+bool IsOpNotQuantizable(Operation* op) {
+  // If it is terminator or not quantizable or any ops form the mlir quant
+  // ops dialect, we shouldn't rewrite.
+  bool attr_enforced_quantizable =
+      op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
+      op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
+          QuantTraitValues[QuantizationTrait::FullyQuantizable];
+  bool prop_enforced_no_quantizable =
+      op->hasTrait<OpTrait::quant::NoQuantizableResult>();
+
+  return op->hasTrait<OpTrait::IsTerminator>() ||
+         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
+         (!attr_enforced_quantizable && prop_enforced_no_quantizable);
+}
 
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
 // very small (< 1.0e-6). This is to prevent very large quantized value by this
@@ -499,6 +519,12 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
                      return APInt(8, value, /*isSigned=*/true);
                    });
     return DenseElementsAttr::get(new_dense_type, quantized_attr);
+  } else if (width == 8) {
+    // This can be a state tensor, or an actual constant tensor with
+    // asymmetric range. For a state tensor, assigining correct quantization
+    // parameters is sufficient, and for constants with asymmetric range it's
+    // not correctly quantized by legacy quantizer so call the new Quantize.
+    return Quantize(real_value, tensor_type);
   } else if (width == 16) {
     if (auto uniform_type = q_type.dyn_cast<UniformQuantizedType>()) {
       auto quantized_values =
@@ -786,5 +812,43 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
       result_type.getElementType(), scale, zero_point, storage_min,
       storage_max);
 }
+
+Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {
+  auto qtype = QType::getQuantizedElementType(signed_tensor_type);
+  if (!qtype || !qtype.isSigned()) return {};
+
+  int num_bits = qtype.getStorageTypeIntegralWidth();
+  // This is a negative value, and will be applied on zero points and fixed
+  // point ranges.
+  int64_t offset =
+      QType::getDefaultMinimumForInteger(/*isSigned=*/true, num_bits) -
+      QType::getDefaultMinimumForInteger(/*isSigned=*/false, num_bits);
+
+  auto flags = !quant::QuantizationFlags::Signed;
+  QType new_qtype;
+  if (auto uqtype = qtype.dyn_cast<quant::UniformQuantizedType>()) {
+    new_qtype = quant::UniformQuantizedType::getChecked(
+        loc, flags, qtype.getStorageType(), qtype.getExpressedType(),
+        uqtype.getScale(), uqtype.getZeroPoint() - offset,
+        uqtype.getStorageTypeMin() - offset,
+        uqtype.getStorageTypeMax() - offset);
+  } else if (auto aqtype =
+                 qtype.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    auto zero_points = aqtype.getZeroPoints();
+    llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
+                                                  zero_points.end());
+    for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+      new_zero_points[i] -= offset;
+    }
+    new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
+        loc, flags, qtype.getStorageType(), qtype.getExpressedType(),
+        aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
+        aqtype.getStorageTypeMin() - offset,
+        aqtype.getStorageTypeMax() - offset);
+  }
+  return new_qtype.castFromExpressedType(
+      QType::castToExpressedType(signed_tensor_type));
+}
+
 }  // namespace quant
 }  // namespace mlir

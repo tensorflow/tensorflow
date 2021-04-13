@@ -65,7 +65,7 @@ void CompareNumericalAndManualGradients(
 Status MatMulModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::MatMul(ctx, inputs, outputs, "MatMul",
+  return ops::MatMul(ctx, inputs[0], inputs[1], outputs, "MatMul",
                      /*transpose_a=*/false,
                      /*transpose_b=*/false);
 }
@@ -73,7 +73,7 @@ Status MatMulModel(AbstractContext* ctx,
 Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Mul(ctx, inputs, outputs, "Mul");
+  return ops::Mul(ctx, inputs[0], inputs[1], outputs, "Mul");
 }
 
 // TODO(vnvo2409): Add more tests from `python/ops/gradient_checker_v2_test.py`.
@@ -87,8 +87,11 @@ class GradientCheckerTest
   void SetUp() override {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
-    Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+
+    {
+      Status s = StatusFromTF_Status(status.get());
+      CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    }
 
     {
       AbstractContext* ctx_raw = nullptr;

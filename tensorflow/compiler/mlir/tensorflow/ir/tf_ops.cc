@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -57,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -65,6 +67,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -175,9 +179,39 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
     return is_stateless.getValue();
 
-  // Otherwise, assume ops can be duplicated by default if its registered, else
-  // it cannot be for unknown ops.
+  // Assume ops can be duplicated if modelled.
   return op->isRegistered();
+}
+
+// TF dialect fallback for MemoryEffectOpInterface. The filtering for returning
+// the interface is done in the return below and here it is empty as it is only
+// returned for known not-stateful and unmodelled ops.
+struct TensorFlowRegistryEffectInterfaceFallback
+    : public MemoryEffectOpInterface::FallbackModel<
+          TensorFlowRegistryEffectInterfaceFallback> {
+  static bool classof(Operation *op) { return true; }
+  void getEffects(
+      Operation *op,
+      SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+          &effects) const {}
+};
+
+void *TensorFlowDialect::getRegisteredInterfaceForOp(
+    mlir::TypeID interface, mlir::OperationName opName) {
+  if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
+    // Don't use fallback for modelled ops.
+    if (opName.getAbstractOperation()) return nullptr;
+
+    // Only use fallback interface for known not-stateful ops.
+    const tensorflow::OpRegistrationData *op_reg_data = nullptr;
+    tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
+        opName.stripDialect().str(), &op_reg_data);
+    return (s.ok() && !op_reg_data->op_def.is_stateful())
+               ? fallback_effect_op_interface_
+               : nullptr;
+  }
+
+  return nullptr;
 }
 
 // Returns true if the op can have side effects.
@@ -217,14 +251,12 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addTypes<
-#define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
-#define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-      >();
+  registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
-  addAttributes<ShapeAttr, FuncAttr>();
+  fallback_effect_op_interface_ =
+      new TensorFlowRegistryEffectInterfaceFallback();
+  registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
@@ -233,6 +265,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   for (const auto &hook : *GetAdditionalOperationHooks()) {
     hook(*this);
   }
+}
+
+TensorFlowDialect::~TensorFlowDialect() {
+  delete fallback_effect_op_interface_;
 }
 
 namespace {
@@ -283,49 +319,6 @@ void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
   os << ">";
 }
 
-// Parses a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-//
-// where the first element is a SymbolRefAttr and the second element is a
-// DictionaryAttr.
-FuncAttr ParseFuncAttr(MLIRContext *context, StringRef spec, Location loc) {
-  auto emit_error = [&, spec]() {
-    emitError(loc, "invalid TensorFlow func attribute: ") << spec;
-    return nullptr;
-  };
-
-  if (!spec.consume_front("func<")) return emit_error();
-
-  size_t func_name_num_read = 0;
-  Attribute func_name_attr =
-      mlir::parseAttribute(spec, context, func_name_num_read);
-  if (!func_name_attr || !func_name_attr.isa<SymbolRefAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_name_num_read);
-
-  if (!spec.consume_front(", ")) return emit_error();
-
-  size_t func_attrs_num_read = 0;
-  Attribute func_attrs_attr =
-      mlir::parseAttribute(spec, context, func_attrs_num_read);
-  if (!func_attrs_attr || !func_attrs_attr.isa<DictionaryAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_attrs_num_read);
-
-  if (!spec.consume_front(">")) return emit_error();
-
-  return mlir::TF::FuncAttr::get(context, func_name_attr.cast<SymbolRefAttr>(),
-                                 func_attrs_attr.cast<DictionaryAttr>());
-}
-
-// Prints a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-void PrintFuncAttr(FuncAttr attr, DialectAsmPrinter &os) {
-  os << "func<" << attr.GetName() << ", " << attr.GetAttrs() << ">";
-}
-
 }  // namespace
 
 Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
@@ -335,7 +328,14 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
   if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
 
-  if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
+  {
+    StringRef attrTag;
+    if (failed(parser.parseKeyword(&attrTag))) return Attribute();
+    Attribute attr;
+    OptionalParseResult parseResult =
+        ParseTensorFlowAttribute(getContext(), parser, attrTag, type, attr);
+    if (parseResult.hasValue()) return attr;
+  }
 
   return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
 }
@@ -344,10 +344,8 @@ void TensorFlowDialect::printAttribute(Attribute attr,
                                        DialectAsmPrinter &os) const {
   if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
     PrintShapeAttr(shape_attr, os);
-  else if (auto func_attr = attr.dyn_cast<FuncAttr>())
-    PrintFuncAttr(func_attr, os);
   else
-    llvm_unreachable("unexpected tensorflow attribute type");
+    printTensorFlowAttribute(attr, os);
 }
 
 // Parses a type registered to this dialect.

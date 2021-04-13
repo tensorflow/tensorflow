@@ -418,7 +418,7 @@ def distribute(processing_mode,
   ```
   range5_dataset = tf.data.Dataset.range(5)
   dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "grpc://localhost:5000", job_name="my_job_name"))
+      "parallel_epochs", "localhost:5000", job_name="my_job_name"))
   for iteration in range(3):
     print(list(dataset))
   ```
@@ -569,6 +569,7 @@ def _register_dataset(service, dataset, compression):
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   # Apply options so that the dataset executed in the tf.data service will
   # be optimized and support autotuning.
+  # TODO(b/183497230): Move options application after deserialization.
   dataset = dataset._apply_options()  # pylint: disable=protected-access
 
   dataset_id = gen_experimental_dataset_ops.register_dataset(

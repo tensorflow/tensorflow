@@ -17,7 +17,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(b/152902651): Remove this file once all circular dependencies are resolved.
@@ -221,6 +221,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:logging_ops",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -736,7 +738,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 

@@ -7,7 +7,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", 
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([

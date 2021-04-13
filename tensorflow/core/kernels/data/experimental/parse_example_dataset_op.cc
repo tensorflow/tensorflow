@@ -603,17 +603,23 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                   &result->return_values);
             },
             std::move(input_element));
+        auto node = model_node();
+        const bool collect_usage =
+            node && ctx->model() && ctx->model()->collect_resource_usage();
         // `ctx->runner()` may execute its logic synchronous so we wrap it in
         // `RecordStop` and `RecordStart` to prevent invalid nesting of
         // `RecordStart` calls.
         RecordStop(ctx.get());
-        (*ctx->runner())(
-            [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              RecordStart(ctx.get());
-              auto cleanup =
-                  gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
-            });
+        (*ctx->runner())([node, collect_usage, fn = std::move(fn),
+                          done = std::move(done)]() {
+          if (collect_usage) {
+            node->record_start(EnvTime::NowNanos());
+          }
+          done(fn());
+          if (collect_usage) {
+            node->record_stop(EnvTime::NowNanos());
+          }
+        });
         RecordStart(ctx.get());
       }
 

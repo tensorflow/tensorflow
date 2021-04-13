@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -51,15 +52,15 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     auto elements_attr = op.value().cast<DenseElementsAttr>();
 
     if (result_rank == 0) {
-      Value buffer = rewriter.create<AllocOp>(loc, memref_type);
+      Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
       Value constant =
           rewriter.create<ConstantOp>(loc, elements_attr.getValue({}));
-      rewriter.create<StoreOp>(loc, constant, buffer);
+      rewriter.create<memref::StoreOp>(loc, constant, buffer);
       rewriter.replaceOp(op, {buffer});
       return success();
     }
 
-    Value buffer = rewriter.create<AllocaOp>(loc, memref_type);
+    Value buffer = rewriter.create<memref::AllocaOp>(loc, memref_type);
 
     bool all_same_elems = elements_attr.isSplat();
     Value value;
@@ -68,22 +69,22 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
       if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
       Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
-      rewriter.create<StoreOp>(loc, value, buffer, index);
+      rewriter.create<memref::StoreOp>(loc, value, buffer, index);
     }
     rewriter.replaceOp(op, {buffer});
     return success();
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<DimOp> {
+class BufferizeDimOp : public OpConversionPattern<memref::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      DimOp op, ArrayRef<Value> operands,
+      memref::DimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<DimOp>(op, adaptor.memrefOrTensor(),
-                                       adaptor.index());
+    memref::DimOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.memrefOrTensor(),
+                                               adaptor.index());
     return success();
   }
 };
@@ -106,26 +107,19 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     size_t k = shapes.size();
     SmallVector<Value> ranks;
     ranks.reserve(k);
-    SmallVector<Value> real_ranks;
-    real_ranks.reserve(k);
-    SmallVector<Value> leading_ones;
-    leading_ones.reserve(k);
 
-    // Determine the "real" rank of each operand shape by counting leading 1's.
+    // Determine the maximum rank of the operands.
+    Value max_rank;
     for (size_t i = 0; i < k; ++i) {
-      Value rank = lb.create<DimOp>(loc, shapes[i], zero);
+      Value rank = lb.create<memref::DimOp>(loc, shapes[i], zero);
       ranks.push_back(rank);
-      leading_ones.push_back(CountLeadingOnes(lb, shapes[i], rank));
-      Value real_rank = lb.create<SubIOp>(rank, leading_ones[i]);
-      real_ranks.push_back(real_rank);
-    }
-
-    // Determine the maximum real rank of the operands.
-    Value max_rank = real_ranks[0];
-    for (size_t i = 1; i < k; ++i) {
-      Value rank_is_greater =
-          lb.create<CmpIOp>(CmpIPredicate::ugt, real_ranks[i], max_rank);
-      max_rank = lb.create<SelectOp>(rank_is_greater, real_ranks[i], max_rank);
+      if (i) {
+        Value rank_is_greater =
+            lb.create<CmpIOp>(CmpIPredicate::ugt, ranks[i], max_rank);
+        max_rank = lb.create<SelectOp>(rank_is_greater, ranks[i], max_rank);
+      } else {
+        max_rank = ranks[0];
+      }
     }
 
     // Allocate buffers for the return values and initialize them with 1's.
@@ -137,11 +131,11 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     for (size_t i = 0; i < k; ++i) {
       // We assume the buffer will be small, so we allocate it on the stack.
       // TODO(b/181654096): Replace AllocaOp with AllocOp.
-      auto result = lb.create<AllocaOp>(result_type, real_ranks[i]);
-      lb.create<scf::ForOp>(zero, real_ranks[i], one, llvm::None,
+      auto result = lb.create<memref::AllocaOp>(result_type, ranks[i]);
+      lb.create<scf::ForOp>(zero, ranks[i], one, llvm::None,
                             [&one, &result](OpBuilder &b, Location l, Value idx,
                                             ValueRange /*vr*/) {
-                              b.create<StoreOp>(l, one, result, idx);
+                              b.create<memref::StoreOp>(l, one, result, idx);
                               b.create<scf::YieldOp>(l, llvm::None);
                             });
       result_shapes.push_back(result);
@@ -204,11 +198,9 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
             // Determine the size of the current dimension. If the dimension is
             // out of bounds, we choose the value 'one'.
             Value is_out_of_bounds =
-                b.create<CmpIOp>(l, CmpIPredicate::ult, real_ranks[i], v);
+                b.create<CmpIOp>(l, CmpIPredicate::ult, ranks[i], v);
             Value dimension = b.create<SubIOp>(l, ranks[i], v);
-            Value result_dimension =
-                b.create<SubIOp>(l, dimension, leading_ones[i]);
-            result_dimensions.push_back(result_dimension);
+            result_dimensions.push_back(dimension);
             Value current_size =
                 b.create<scf::IfOp>(
                      l, TypeRange{b.getIndexType()}, is_out_of_bounds,
@@ -218,7 +210,8 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                      [&](OpBuilder &b, Location l) {
                        // Using IfOp instead of SelectOp makes sure that we
                        // don't try to load if the dimension is out of bounds.
-                       Value size = b.create<LoadOp>(l, shapes[i], dimension);
+                       Value size =
+                           b.create<memref::LoadOp>(l, shapes[i], dimension);
                        b.create<scf::YieldOp>(l, size);
                      })
                     .getResult(0);
@@ -302,16 +295,16 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                                  l, should_store_dimension,
                                  [&](OpBuilder &b, Location l) {
                                    Value output_dimension = b.create<SubIOp>(
-                                       l, real_ranks[i], new_dimension_offset);
+                                       l, ranks[i], new_dimension_offset);
                                    // If the shape needed broadcasting at the
                                    // previous dimension, we set the output size
                                    // to 1, otherwise to 'running_product'.
                                    Value output_size = b.create<SelectOp>(
                                        l, prev_no_broadcasting[i],
                                        running_product, one);
-                                   b.create<StoreOp>(l, output_size,
-                                                     result_shapes[i],
-                                                     output_dimension);
+                                   b.create<memref::StoreOp>(l, output_size,
+                                                             result_shapes[i],
+                                                             output_dimension);
                                    b.create<scf::YieldOp>(l, llvm::None);
                                  });
                            }
@@ -342,7 +335,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     Value is_invalid = main_loop.getResults().back();
     for (size_t i = 0; i < k; ++i) {
       result_shapes[i] =
-          RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], real_ranks[i]);
+          RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], ranks[i]);
       result_shapes[i] =
           lb.create<SelectOp>(is_invalid, shapes[i], result_shapes[i]);
     }
@@ -363,7 +356,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     auto leading_ones_loop = lb.create<scf::ForOp>(
         zero, rank, one, ValueRange{constant_true, zero},
         [&](OpBuilder &b, Location l, Value idx, ValueRange vr) {
-          auto size = b.create<LoadOp>(l, extent_memref, idx);
+          auto size = b.create<memref::LoadOp>(l, extent_memref, idx);
           auto is_equal_to_one =
               b.create<CmpIOp>(l, CmpIPredicate::eq, size, one);
           auto all_ones = b.create<AndOp>(l, vr.front(), is_equal_to_one);
@@ -388,15 +381,16 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     // desired size and copy the elements over. We assume the buffer will be
     // small, so we allocate it on the stack.
     // TODO(b/181654096): Replace AllocaOp with AllocOp.
-    Value result = lb.create<AllocaOp>(result_type, new_rank);
+    Value result = lb.create<memref::AllocaOp>(result_type, new_rank);
     Value zero = lb.create<ConstantIndexOp>(0);
     Value one = lb.create<ConstantIndexOp>(1);
     lb.create<scf::ForOp>(
         zero, new_rank, one, llvm::None,
         [&](OpBuilder &b, Location l, Value idx, ValueRange /*vr*/) {
           Value idx_with_offset = b.create<AddIOp>(l, idx, leading_ones);
-          auto size = b.create<LoadOp>(l, extent_memref, idx_with_offset);
-          b.create<StoreOp>(l, size, result, idx);
+          auto size =
+              b.create<memref::LoadOp>(l, extent_memref, idx_with_offset);
+          b.create<memref::StoreOp>(l, size, result, idx);
           b.create<scf::YieldOp>(l, llvm::None);
         });
     return result;
@@ -418,7 +412,7 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
-                                      OwningRewritePatternList *patterns) {
+                                      RewritePatternSet *patterns) {
   patterns
       ->insert<BufferizeConstantOp, BufferizeDimOp,
                BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(

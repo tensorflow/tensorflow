@@ -9,7 +9,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

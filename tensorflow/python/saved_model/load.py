@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import os
+import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.distribute import distribute_utils
@@ -858,7 +859,7 @@ def load(export_dir, tags=None, options=None):
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
     it also points to trackable objects, functions, debug info which it has been
     saved.
 
@@ -882,6 +883,12 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
+    # tensor_content field contains raw bytes in litle endian format
+    # which causes problems when loaded on big-endian systems
+    # requiring byteswap
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(

@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -219,10 +220,29 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   std::string op_str;
   llvm::raw_string_ostream os(op_str);
   inst->getName().print(os);
+  os << "(";
+  if (!inst->getOperandTypes().empty()) {
+    bool first = true;
+    for (Type operand_type : inst->getOperandTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << operand_type;
+    }
+  }
+  os << ") -> (";
+  if (!inst->getResultTypes().empty()) {
+    bool first = true;
+    for (Type result_type : inst->getResultTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << result_type;
+    }
+  }
+  os << ")";
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
   if (!inst->getAttrDictionary().empty()) {
-    os << " {";
+    os << " : {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
@@ -1451,18 +1471,6 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       results.push_back(tensor_index_map.lookup(result));
     }
     Operation* real_inst = &inst;
-    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
-    // not the wrapper, so we fetch the op from the region.
-    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
-      // If we have custom op with a region, then use the first op in the
-      // region, if it exists, otherwise just use params for custom op.
-      if (!custom_op.body().empty()) {
-        real_inst = &custom_op.body().front().front();
-      } else {
-        module_.emitError(
-            "Invalid CustomTfOp: Custom TF Op have empty region.");
-      }
-    }
     std::vector<int32_t> operands;
     operands.reserve(real_inst->getNumOperands());
     for (auto operand : real_inst->getOperands()) {
@@ -1474,6 +1482,19 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         operands.push_back(tensor_index_map.lookup(stats_op.arg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
+    }
+
+    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
+    // not the wrapper, so we fetch the op from the region.
+    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
+      // If we have custom op with a region, then use the first op in the
+      // region, if it exists, otherwise just use params for custom op.
+      if (!custom_op.body().empty()) {
+        real_inst = &custom_op.body().front().front();
+      } else {
+        module_.emitError(
+            "Invalid CustomTfOp: Custom TF Op have empty region.");
+      }
     }
 
     if (auto tfl_operator =
@@ -1572,7 +1593,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 }
 
 std::vector<SignatureDefData> BuildSignaturedef(
-    FuncOp main_op, const std::string& saved_model_tag) {
+    FuncOp main_op, const std::string& saved_model_tag,
+    tensorflow::OpOrArgNameMapper& name_mapper) {
   static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
@@ -1636,7 +1658,11 @@ std::vector<SignatureDefData> BuildSignaturedef(
     result[0].inputs[sig_def_inputs[i]] = input_names[i].str();
   }
   for (int i = 0; i < output_names.size(); ++i) {
-    result[0].outputs[sig_def_outputs[i]] = output_names[i].str();
+    // Fetch the name from the actual operand and not rely on names from
+    // outputs as deduping can make them invalid after conversion.
+    auto& operand = term->getOpOperand(i);
+    auto unique_name = std::string(name_mapper.GetUniqueName(operand.get()));
+    result[0].outputs[sig_def_outputs[i]] = unique_name;
   }
   if (auto name_attr = exported_name[0].dyn_cast_or_null<StringAttr>())
     result[0].method_name = name_attr.getValue().str();
@@ -1828,7 +1854,8 @@ Optional<std::string> Translator::TranslateInternal() {
   // Build SignatureDef
   // We only have 1 entry point 'main' function, so build only 1 signature def.
   auto main_fn_signature_def = BuildSignaturedef(
-      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin());
+      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin(),
+      name_mapper_);
   auto signature_defs = CreateSignatureDefs(main_fn_signature_def);
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,

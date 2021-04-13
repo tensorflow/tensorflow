@@ -385,7 +385,7 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
     # If you're changing the commandline below, please build wheels and run smoke
     # tests on all the three operating systems.
     command = "echo 'import flatbuffers\n' > %s; "
-    command += "for f in $(find %s -name '*.py'); do cat $f | sed '/import flatbuffers/d' >> %s; done "
+    command += "for f in $(find %s -name '*.py' | sort); do cat $f | sed '/import flatbuffers/d' >> %s; done "
     ctx.actions.run_shell(
         inputs = ctx.attr.deps[0].files,
         outputs = [ctx.outputs.out],

@@ -1273,6 +1273,15 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+  friend XlaOp ReduceWindowWithGeneralPadding(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
+
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllGather(XlaOp operand, int64 all_gather_dimension,
@@ -2161,6 +2170,14 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64> base_dilations,
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
 // replicas supply one input to the sum and all replicas receive the resulting
@@ -2394,7 +2411,7 @@ XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
 
 // Enqueues a B(initial_state) random bit generation instruction onto the
-// computation. Resturns the new key and random bits with the specified shape.
+// computation. Returns the new key and random bits with the specified shape.
 XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                       const Shape& shape);
 

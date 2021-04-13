@@ -33,6 +33,7 @@ limitations under the License.
 #ifndef LHLO_OPS
 #define LHLO_OPS
 
+include "mlir/Dialect/MemRef/IR/MemRefBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -211,14 +212,16 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_Reduce
   );
 
   let regions = (region SizedRegion<1>:$body);
+
+  let hasCanonicalizer = 1;
 }
 
-def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
-
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [SameVariadicOperandSize]>,
+                         BASE_HLO_ReduceWindowOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$init_value,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$out,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -230,6 +233,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
   );
 
   let regions = (region SizedRegion<1>:$body);
+  let verifier = [{ return Verify(*this); }];
 }
 
 // TODO(timshen): Add a custom syntax for this.
@@ -683,39 +687,35 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
   ];
 
   let extraClassDeclaration = [{
-    SmallVector<Value, 4> getInputBuffers() {
-      SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
-        if (load.memref().getParentRegion()->isProperAncestor(&region()))
-          buffers.push_back(load.memref());
-      });
+    SmallVector<Value> getInputBuffers() {
+      SmallVector<Value> buffers;
+      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+        buffers.push_back(load.memref());
+      }
       return buffers;
     }
 
-    SmallVector<Value, 4> getOutputBuffers() {
-      SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
-        if (store.memref().getParentRegion()->isProperAncestor(&region()))
-          buffers.push_back(store.memref());
-      });
+    SmallVector<Value> getOutputBuffers() {
+      SmallVector<Value> buffers;
+      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+        buffers.push_back(store.memref());
+      }
       return buffers;
     }
 
-    SmallVector<Value, 4> getFusionParameters() {
-      SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
-        if (load.memref().getParentRegion()->isProperAncestor(&region()))
-          buffers.push_back(load);
-      });
+    SmallVector<Value> getFusionParameters() {
+      SmallVector<Value> buffers;
+      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+        buffers.push_back(load);
+      }
       return buffers;
     }
 
-    SmallVector<Value, 4> getFusionResults() {
-      SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
-        if (store.memref().getParentRegion()->isProperAncestor(&region()))
-          buffers.push_back(store.tensor());
-      });
+    SmallVector<Value> getFusionResults() {
+      SmallVector<Value> buffers;
+      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+        buffers.push_back(store.tensor());
+      }
       return buffers;
     }
   }];

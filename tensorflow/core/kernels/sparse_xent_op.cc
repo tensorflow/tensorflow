@@ -18,11 +18,13 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/sparse_xent_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -46,6 +48,33 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
   }
   return Status::OK();
 }
+
+namespace {
+
+// TODO(duncanriach): Factor this into a shared utility library
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
+}
+
+bool DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions() {
+  static bool cached_disable = [] {
+    bool disable = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_DISABLE_SPARSE_SOFTMAX_XENT_WITH_LOGITS_OP_DETERMINISM_EXCEPTIONS",
+        /*default_val=*/false, &disable));
+    return disable;
+  }();
+  return cached_disable;
+}
+
+}  // namespace
 
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
@@ -72,6 +101,16 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
                 errors::InvalidArgument(
                     "Must have at least one class, but got logits shape ",
                     logits.shape().DebugString()));
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          context,
+          !RequireDeterminism() ||
+              DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions(),
+          errors::Unimplemented(
+              "Deterministic GPU implementation of"
+              " SparseSoftmaxCrossEntropyWithLogits not available."));
+    }
 
     Tensor scratch;
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,

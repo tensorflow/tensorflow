@@ -34,6 +34,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
@@ -189,7 +190,8 @@ An n-way switch statement, implementing the following:
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -1003,7 +1005,7 @@ lookup operation.
   );
 }
 
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 An op which shards the input based on the given sharding attribute.
   }];
@@ -1035,6 +1037,25 @@ def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
 
   TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
   TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
+// TODO(b/177675373): Make dtypes and shapes derived attributes,
+// use more general solution.
+def TF_InfeedEnqueueTupleOp : TF_Op<"InfeedEnqueueTuple", []> {
+  let summary = [{
+Feeds multiple Tensor values into the computation as an XLA tuple.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be provided using the infeed mechanism.}]>:$inputs,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
+    TF_ShapeAttrArray:$shapes,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$layouts,
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal
+  );
+
+  let results = (outs);
 }
 
 def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
@@ -2142,6 +2163,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     TF_ShapeAttrArray:$shapes,
     OptionalAttr<SymbolRefAttr>:$shape_inference_graph,
     StrAttr:$key,
+    DefaultValuedAttr<StrAttr, "">:$send_key,
+    DefaultValuedAttr<StrAttr, "">:$recv_key,
     DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core
   );
