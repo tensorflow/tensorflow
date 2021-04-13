@@ -345,6 +345,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     INDEX_TYPE first_dimension;
+    const Tensor first_partition_tensor =
+        context->input(kFirstPartitionInputIndex);
+    OP_REQUIRES(context, first_partition_tensor.NumElements() > 0,
+                errors::InvalidArgument("Invalid first partition input. Tensor "
+                                        "requires at least one element."));
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
