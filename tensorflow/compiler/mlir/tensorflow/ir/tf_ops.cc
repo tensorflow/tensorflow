@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -372,6 +373,15 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
   if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
 
+  {
+    StringRef attrTag;
+    if (failed(parser.parseKeyword(&attrTag))) return Attribute();
+    Attribute attr;
+    OptionalParseResult parseResult =
+        ParseTensorFlowAttribute(getContext(), parser, attrTag, type, attr);
+    if (parseResult.hasValue()) return attr;
+  }
+
   return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
 }
 
@@ -382,7 +392,7 @@ void TensorFlowDialect::printAttribute(Attribute attr,
   else if (auto func_attr = attr.dyn_cast<FuncAttr>())
     PrintFuncAttr(func_attr, os);
   else
-    llvm_unreachable("unexpected tensorflow attribute type");
+    printTensorFlowAttribute(attr, os);
 }
 
 // Parses a type registered to this dialect.

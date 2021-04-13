@@ -108,6 +108,12 @@ Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
 }
 
+Status ConvertAttribute(const mlir::TF::PlaceholderAttr& attr,
+                        AttrValue* value) {
+  value->set_placeholder(attr.getValue().str());
+  return Status::OK();
+}
+
 Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
   return Status::OK();
@@ -371,9 +377,10 @@ Status ConvertAttributes(
         llvm::TypeSwitch<mlir::Attribute, Status>(attr)
             .Case<mlir::BoolAttr, mlir::IntegerAttr, mlir::FloatAttr,
                   mlir::StringAttr, mlir::ElementsAttr, mlir::UnitAttr,
-                  mlir::TF::ShapeAttr>([&](auto derived_attr) {
-              return ConvertAttribute(derived_attr, &value);
-            })
+                  mlir::TF::ShapeAttr, mlir::TF::PlaceholderAttr>(
+                [&](auto derived_attr) {
+                  return ConvertAttribute(derived_attr, &value);
+                })
             .Case<mlir::ArrayAttr, mlir::TypeAttr>([&](auto derived_attr) {
               return ConvertAttribute(derived_attr, remove_ref_type, &value);
             })

@@ -28,7 +28,7 @@ package_group(
 )
 
 exports_files([
-    "ir/tf_generated_ops.td",
+    "tf_generated_ops.td",
     "ir/tf_op_base.td",
     "ir/tf_op_interfaces.td",
     "ir/tf_ops.td",
@@ -118,6 +118,24 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
+)
+
+gentbl(
+    name = "tensorflow_attributes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "ir/tf_attributes.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "ir/tf_attributes.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tf_attributes.td",
+    deps = [":tensorflow_ops_td_files"],
 )
 
 gentbl(
@@ -366,6 +384,7 @@ cc_library(
         "ir/tf_dialect.h",
     ],
     deps = [
+        ":tensorflow_attributes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

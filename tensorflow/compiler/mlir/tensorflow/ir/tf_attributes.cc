@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.cc.inc"
 
 namespace mlir {
 namespace TF {
@@ -134,7 +141,35 @@ DictionaryAttr FuncAttr::GetAttrs() const {
 }
 
 void TensorFlowDialect::registerAttributes() {
-  addAttributes<ShapeAttr, FuncAttr>();
+  addAttributes<ShapeAttr, FuncAttr, PlaceholderAttr>();
+}
+
+void PlaceholderAttr::print(DialectAsmPrinter& os) const {
+  os << "placeholder<" << StringAttr::get(getContext(), getValue()) << ">";
+}
+
+Attribute PlaceholderAttr::parse(MLIRContext* context, DialectAsmParser& parser,
+                                 Type type) {
+  if (failed(parser.parseLess())) return {};
+  StringRef content;
+  if (failed(parser.parseOptionalString(&content))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "expected string while parsing tf.placeholder attribute";
+    return {};
+  }
+  if (failed(parser.parseGreater())) return {};
+  return PlaceholderAttr::get(context, content);
+}
+
+OptionalParseResult ParseTensorFlowAttribute(MLIRContext* context,
+                                             DialectAsmParser& parser,
+                                             StringRef mnemonic, Type type,
+                                             Attribute& value) {
+  return generatedAttributeParser(context, parser, mnemonic, type, value);
+}
+
+void printTensorFlowAttribute(Attribute attr, DialectAsmPrinter& os) {
+  (void)generatedAttributePrinter(attr, os);
 }
 
 }  // namespace TF
