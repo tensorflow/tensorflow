@@ -562,6 +562,9 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//tensorflow:with_tpu_support": [
+            "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        ],
         "//conditions:default": [],
     }),
 )
