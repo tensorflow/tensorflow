@@ -123,7 +123,7 @@ bool GetEnableX64() {
 
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const py::object& o) {
-    out->append(py::cast<std::string>(o));
+    out->append(py::cast<std::string>(py::str(o)));
   };
   auto treedef_formatter = [](std::string* out, const xla::PyTreeDef& d) {
     out->append(d.ToString());
