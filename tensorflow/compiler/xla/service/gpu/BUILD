@@ -1402,6 +1402,26 @@ cc_library(
     ]) + ["//tensorflow/stream_executor/gpu:gpu_driver_header"],
 )
 
+tf_cc_test(
+    name = "nvptx_compiler_test",
+    srcs = [
+        "nvptx_compiler_test.cc",
+    ],
+    tags = [
+        "gpu",
+    ],
+    deps = [
+        ":nvptx_compiler_impl",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
