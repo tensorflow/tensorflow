@@ -200,6 +200,8 @@ def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
                   inference_type=_types_pb2.QUANTIZED_INT8,
+                  input_data_type=dtypes.float32,
+                  output_data_type=dtypes.float32,
                   enable_numeric_verify=False):
   """Quantize `input_data_str` with calibration results.
 
@@ -211,6 +213,8 @@ def mlir_quantize(input_data_str,
     fully_quantize: Bool indicating whether to fully quantize the model. Besides
       model body, the input/output will be quantized as well.
     inference_type: Data type for the activations. The default value is int8.
+    input_data_type: Data type for the inputs. The default value is float32.
+    output_data_type: Data type for the outputs. The default value is float32.
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
 
@@ -218,11 +222,11 @@ def mlir_quantize(input_data_str,
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
-                                                      disable_per_channel,
-                                                      fully_quantize,
-                                                      inference_type,
-                                                      enable_numeric_verify)
+  return wrap_toco.wrapped_experimental_mlir_quantize(
+      input_data_str, disable_per_channel, fully_quantize, inference_type,
+      convert_tensor_tf_type_to_tflite_type(input_data_type),
+      convert_tensor_tf_type_to_tflite_type(output_data_type),
+      enable_numeric_verify)
 
 
 def mlir_sparsify(input_data_str):
