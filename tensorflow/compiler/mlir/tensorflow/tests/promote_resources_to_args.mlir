@@ -19,6 +19,28 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 
 // -----
 
+// One resource, one read. _is_initialized is false, shouldn't be promoted.
+// CHECK-LABEL: func @main()
+func @main() -> tensor<f32> {
+  // CHECK: "tf.VarHandleOp"
+  %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = false} : () -> tensor<!tf.resource<tensor<f32>>>
+  %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  return %2 : tensor<f32>
+}
+
+// -----
+
+// One resource, one read. _is_initialized is true, should be promoted.
+// CHECK: func @main(%[[ARG:.*]]: tensor<f32> {tf.resource_name = "x"})
+func @main() -> tensor<f32> {
+  // CHECK-NOT: "tf.VarHandleOp"
+  %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = true} : () -> tensor<!tf.resource<tensor<f32>>>
+  %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  return %2 : tensor<f32>
+}
+
+// -----
+
 // One resource, one write. The initial value of the resource is not read.
 // CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<f32> {tf.resource_name = "x"})
 func @main(%arg0: tensor<i1>) {

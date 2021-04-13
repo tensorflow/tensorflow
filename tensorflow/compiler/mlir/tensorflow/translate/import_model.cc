@@ -3916,6 +3916,9 @@ Status SavedModelSignatureDefImporter::LiftVariables(
   pm.addNestedPass<mlir::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_saved_model::CreateMarkInitializedVariablesPass(
+          bundle.GetSession()));
   pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
   pm.addPass(
       mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
