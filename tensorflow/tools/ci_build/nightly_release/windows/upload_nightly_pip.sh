@@ -18,8 +18,6 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-source tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
-
 # Use a virtual environment to get access to the latest pips
 python3.9 -m venv venv && source venv/bin/activate
 
@@ -41,6 +39,8 @@ OVERALL_RETVAL=0
 # Upload the built packages to pypi.
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly*dev*cp3*-cp3*-win_amd64.whl); do
   WHL_NAME="$f"
+  # Requires loading after WHL_NAME is set.
+  source tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
   test_tf_whl_size
   RETVAL=$?
 
