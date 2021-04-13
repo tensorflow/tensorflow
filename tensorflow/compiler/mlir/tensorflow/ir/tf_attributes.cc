@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/SMLoc.h"
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 #define GET_ATTRDEF_CLASSES
@@ -52,28 +54,6 @@ struct ShapeAttrStorage : public AttributeStorage {
 
   ArrayRef<int64_t> shape;
   bool unranked = false;
-};
-
-// The storage class for FuncAttr.
-struct FuncAttrStorage : public AttributeStorage {
-  using KeyTy = std::pair<Attribute, Attribute>;
-
-  explicit FuncAttrStorage(Attribute name, Attribute attrs)
-      : name(name), attrs(attrs) {}
-
-  bool operator==(const KeyTy& key) const { return key == KeyTy(name, attrs); }
-  static unsigned hashKey(const KeyTy& key) {
-    return llvm::hash_combine(key.first, key.second);
-  }
-
-  static FuncAttrStorage* construct(mlir::AttributeStorageAllocator& allocator,
-                                    const KeyTy& key) {
-    return new (allocator.allocate<FuncAttrStorage>())
-        FuncAttrStorage(key.first, key.second);
-  }
-
-  Attribute name;
-  Attribute attrs;
 };
 
 }  // namespace detail
@@ -121,27 +101,61 @@ bool ShapeAttr::hasStaticShape() const {
   return true;
 }
 
-FuncAttr FuncAttr::get(mlir::MLIRContext* context, llvm::StringRef name,
-                       DictionaryAttr attr) {
-  auto symbol = SymbolRefAttr::get(context, name);
-  return Base::get(context, symbol, attr);
-}
-
-FuncAttr FuncAttr::get(mlir::MLIRContext* context, SymbolRefAttr symbol,
-                       DictionaryAttr attr) {
-  return Base::get(context, symbol, attr);
-}
-
-SymbolRefAttr FuncAttr::GetName() const {
-  return getImpl()->name.cast<SymbolRefAttr>();
-}
-
-DictionaryAttr FuncAttr::GetAttrs() const {
-  return getImpl()->attrs.cast<DictionaryAttr>();
-}
-
 void TensorFlowDialect::registerAttributes() {
   addAttributes<ShapeAttr, FuncAttr, PlaceholderAttr>();
+}
+
+// Print a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+// or
+//   #tf.func<"", {attr = "value"}>
+// in case of null symbol ref.
+void FuncAttr::print(mlir::DialectAsmPrinter& os) const {
+  if (getName().getRootReference().empty())
+    os << "func<\"\", " << getAttrs() << ">";
+  else
+    os << "func<" << getName() << ", " << getAttrs() << ">";
+}
+
+// Parses a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+//
+// where the first element is a SymbolRefAttr and the second element is a
+// DictionaryAttr.
+Attribute FuncAttr::parse(MLIRContext* context, DialectAsmParser& parser,
+                          Type type) {
+  if (failed(parser.parseLess())) return {};
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  Attribute name, dict;
+  if (failed(parser.parseAttribute(name))) {
+    parser.emitError(loc) << "expected symbol while parsing tf.func attribute";
+    return {};
+  }
+  if (auto func_name_str = name.dyn_cast<StringAttr>()) {
+    if (!func_name_str.getValue().empty()) {
+      parser.emitError(loc)
+          << "expected empty string or symbol while parsing tf.func "
+             "attribute";
+      return {};
+    }
+    name = SymbolRefAttr::get(context, "");
+  }
+  if (!name.isa<SymbolRefAttr>()) {
+    parser.emitError(loc) << "expected symbol while parsing tf.func attribute";
+    return {};
+  }
+  if (failed(parser.parseComma())) return {};
+  loc = parser.getCurrentLocation();
+  if (failed(parser.parseAttribute(dict)) || !dict.isa<DictionaryAttr>()) {
+    parser.emitError(loc)
+        << "expected Dictionary attribute while parsing tf.func attribute";
+    return {};
+  }
+  if (failed(parser.parseGreater())) return {};
+  return FuncAttr::get(context, name.cast<SymbolRefAttr>(),
+                       dict.cast<DictionaryAttr>());
 }
 
 void PlaceholderAttr::print(DialectAsmPrinter& os) const {

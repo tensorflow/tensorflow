@@ -23,6 +23,36 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 class TF_Attr<string name> : AttrDef<TF_Dialect, name>;
 
 //===----------------------------------------------------------------------===//
+// FuncAttr
+//===----------------------------------------------------------------------===//
+
+def TF_FuncAttr : TF_Attr<"Func"> {
+  let mnemonic = "func";
+  let summary = "Models the `AttrValue.value.func` proto attribute value as a "
+    "pair of SymbolRef and DictionaryAttr.";
+  let description = [{
+    This attributes matches the protobuf `AttrValue.value.func` with a
+    `SymbolRefAttr`, for the `NameAttrList.name` `string` and a `DictionaryAttr`
+    for the `NameAttrList.attr` `map<string, AttrValue>`. It is currently
+    printed and parsed for the following format:
+
+      #tf.func<@symbol, {attr = "value"}>
+
+    where the first element is the `SymbolRefAttr` and the second element is the
+    `DictionaryAttr`.  }];
+
+  let parameters = (ins
+    "SymbolRefAttr":$name,
+    "DictionaryAttr":$attrs
+  );
+  let builders = [
+    AttrBuilder<(ins "StringRef":$name, "DictionaryAttr":$attr), [{
+      return $_get($_ctxt, SymbolRefAttr::get($_ctxt, name), attr);
+    }]>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // Placeholder
 //===----------------------------------------------------------------------===//
 

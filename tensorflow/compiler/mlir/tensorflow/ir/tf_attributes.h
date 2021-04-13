@@ -30,7 +30,6 @@ namespace TF {
 namespace detail {
 
 struct ShapeAttrStorage;
-struct FuncAttrStorage;
 
 }  // namespace detail
 
@@ -63,31 +62,6 @@ class ShapeAttr : public Attribute::AttrBase<ShapeAttr, Attribute,
   // have static shape. If all dimensions have known size (>= 0), it has static
   // shape.
   bool hasStaticShape() const;
-};
-
-// Custom attribute to model AttrValue.value.func (NameAttrList type attribute).
-// This attribute holds a SymbolRefAttr, for the NameAttrList.name string and a
-// DictionaryAttr for the NameAttrList.attr map<string, AttrValue>. It is
-// currently printed and parsed for the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-//
-// where the first element is the SymbolRefAttr and the second element is the
-// DictionaryAttr.
-class FuncAttr
-    : public Attribute::AttrBase<FuncAttr, Attribute, detail::FuncAttrStorage> {
- public:
-  using Base::Base;
-
-  static FuncAttr get(MLIRContext* context, llvm::StringRef name,
-                      DictionaryAttr attr);
-
-  static FuncAttr get(MLIRContext* context, SymbolRefAttr symbol,
-                      DictionaryAttr attr);
-
-  SymbolRefAttr GetName() const;
-
-  DictionaryAttr GetAttrs() const;
 };
 
 // Parse one of the ODS defined TensorFlow attribute.

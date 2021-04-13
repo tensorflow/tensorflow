@@ -290,7 +290,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
 
 void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     FuncOp func, FuncAttr attr) {
-  auto api_name = attr.GetName().getLeafReference();
+  auto api_name = attr.getName().getLeafReference();
   bool enable_fuse_tftext =
       fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
   if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {

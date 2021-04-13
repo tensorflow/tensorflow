@@ -387,6 +387,7 @@ cc_library(
         ":tensorflow_attributes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
     ],
 )
 

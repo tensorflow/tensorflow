@@ -319,49 +319,6 @@ void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
   os << ">";
 }
 
-// Parses a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-//
-// where the first element is a SymbolRefAttr and the second element is a
-// DictionaryAttr.
-FuncAttr ParseFuncAttr(MLIRContext *context, StringRef spec, Location loc) {
-  auto emit_error = [&, spec]() {
-    emitError(loc, "invalid TensorFlow func attribute: ") << spec;
-    return nullptr;
-  };
-
-  if (!spec.consume_front("func<")) return emit_error();
-
-  size_t func_name_num_read = 0;
-  Attribute func_name_attr =
-      mlir::parseAttribute(spec, context, func_name_num_read);
-  if (!func_name_attr || !func_name_attr.isa<SymbolRefAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_name_num_read);
-
-  if (!spec.consume_front(", ")) return emit_error();
-
-  size_t func_attrs_num_read = 0;
-  Attribute func_attrs_attr =
-      mlir::parseAttribute(spec, context, func_attrs_num_read);
-  if (!func_attrs_attr || !func_attrs_attr.isa<DictionaryAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_attrs_num_read);
-
-  if (!spec.consume_front(">")) return emit_error();
-
-  return mlir::TF::FuncAttr::get(context, func_name_attr.cast<SymbolRefAttr>(),
-                                 func_attrs_attr.cast<DictionaryAttr>());
-}
-
-// Prints a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-void PrintFuncAttr(FuncAttr attr, DialectAsmPrinter &os) {
-  os << "func<" << attr.GetName() << ", " << attr.GetAttrs() << ">";
-}
-
 }  // namespace
 
 Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
@@ -370,8 +327,6 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
   Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
 
   if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
-
-  if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
 
   {
     StringRef attrTag;
@@ -389,8 +344,6 @@ void TensorFlowDialect::printAttribute(Attribute attr,
                                        DialectAsmPrinter &os) const {
   if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
     PrintShapeAttr(shape_attr, os);
-  else if (auto func_attr = attr.dyn_cast<FuncAttr>())
-    PrintFuncAttr(func_attr, os);
   else
     printTensorFlowAttribute(attr, os);
 }

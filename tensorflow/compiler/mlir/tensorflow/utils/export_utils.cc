@@ -127,8 +127,8 @@ Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
 Status ConvertAttribute(const mlir::TF::FuncAttr& attr, bool remove_ref_type,
                         AttrValue* value) {
   TF_RETURN_IF_ERROR(
-      ConvertAttribute(attr.GetName().cast<mlir::FlatSymbolRefAttr>(), value));
-  TF_RETURN_IF_ERROR(ConvertAttributes(attr.GetAttrs().getValue(),
+      ConvertAttribute(attr.getName().cast<mlir::FlatSymbolRefAttr>(), value));
+  TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
                                        /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
   return Status::OK();
