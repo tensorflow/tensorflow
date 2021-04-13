@@ -399,6 +399,10 @@ struct QuantizationPattern : public RewritePattern {
   bool log_if_failed;
 };
 
+// Converts quantized tensor type with signed integer type to quantized tensor
+// type with unsigned integer type.
+Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc);
+
 // Converts quantize ops with unsigned quantized types to these with signed
 // quantized types and preserves the scales.
 template <typename Q>

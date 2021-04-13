@@ -525,7 +525,9 @@ class TFLiteConverterBase(object):
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
-      return _mlir_quantize(calibrated, disable_per_channel)
+      return _mlir_quantize(calibrated, disable_per_channel,
+                            input_data_type=inference_input_type,
+                            output_data_type=inference_output_type)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
@@ -785,7 +787,12 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+    if self.experimental_new_quantizer:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags(
+          self.inference_input_type, self.inference_output_type)
+    else:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
@@ -907,7 +914,12 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     converter_kwargs.update(quant_mode.converter_flags())
 
     result = _convert_saved_model(**converter_kwargs)
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+    if self.experimental_new_quantizer:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags(
+          self.inference_input_type, self.inference_output_type)
+    else:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
