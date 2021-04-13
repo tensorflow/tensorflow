@@ -602,15 +602,21 @@ func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1:
 }
 
 // CHECK-LABEL: @StridedSliceEllipsisAndNewAxisMaskBothSet
-func @StridedSliceEllipsisAndNewAxisMaskBothSet(%arg0: tensor<21x15x7xf32>) -> tensor<21x15x2xf32> {
-  %cst = constant dense<0> : tensor<2xi32>
-  %cst_0 = constant dense<1> : tensor<2xi32>
-  %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
-  return %0 : tensor<21x15x2xf32>
+func @StridedSliceEllipsisAndNewAxisMaskBothSet(%arg0: tensor<6x7x8xf32>) -> tensor<2x1x7x8x1xf32> {
+  %begin = constant dense<0> : tensor<4xi32>
+  %end = constant dense<[2,3,4,5]> : tensor<4xi32>
+  %step = constant dense<1> : tensor<4xi32>
+  %0 = "tf.StridedSlice"(%arg0, %begin, %end, %step) {
+    begin_mask = 0 : i64, ellipsis_mask = 4 : i64, end_mask = 0 : i64, new_axis_mask = 10 : i64, shrink_axis_mask = 0 : i64
+  } : (tensor<6x7x8xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<2x1x7x8x1xf32>
+  return %0 : tensor<2x1x7x8x1xf32>
 
-  // CHECK: %[[CST:.*]] = constant dense<0> : tensor<2xi32>
-  // CHECK: %[[CST_0:.*]] = constant dense<1> : tensor<2xi32>
-  // CHECK: %[[STRIDED_SLICE:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST]], %[[CST_0]]) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
+  // CHECK: %[[BEGIN:.*]] = constant dense<0> : tensor<5xi32>
+  // CHECK: %[[END:.*]] = constant dense<[2, 3, 0, 0, 5]> : tensor<5xi32>
+  // CHECK: %[[STEP:.*]] = constant dense<1> : tensor<5xi32>
+  // CHECK: %[[NEW_DIMS:.*]] = constant dense<[6, 1, 7, 8, 1]> : tensor<5xi32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[NEW_DIMS]]) : (tensor<6x7x8xf32>, tensor<5xi32>) -> tensor<6x1x7x8x1xf32>
+  // CHECK: %[[STRIDED_SLICE:.*]] = "tf.StridedSlice"(%[[RESHAPE]], %[[BEGIN]], %[[END]], %[[STEP]]) {begin_mask = 30 : i64, ellipsis_mask = 0 : i64, end_mask = 30 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<6x1x7x8x1xf32>, tensor<5xi32>, tensor<5xi32>, tensor<5xi32>) -> tensor<2x1x7x8x1xf32>
 }
 
 func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
