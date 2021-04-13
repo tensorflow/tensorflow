@@ -41,6 +41,7 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

@@ -5,6 +5,9 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+    ],
     licenses = ["notice"],
 )
 

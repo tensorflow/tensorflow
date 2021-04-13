@@ -23,6 +23,9 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+    ],
     licenses = ["notice"],
 )
 
