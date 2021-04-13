@@ -565,8 +565,7 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   // required shift "ourselves" instead of using, say, Rescale.
   FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
   // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int32_t z_a_headroom_plus_1 =
-      CountLeadingZeros(static_cast<uint32_t>(z_a.raw()));
+  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32_t>(z_a.raw()));
   FixedPoint0 r_a_tmp =
       SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
   const int32_t r_a_raw =
@@ -576,18 +575,19 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   //                   InputIntegerBits - z_b_headroom - 0.25);
   const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
+          static_cast<int32_t>(InputIntegerBits - z_a_headroom_plus_1),
+          31 - kAccumIntegerBits)),
       shifted_quarter);
 
   // z_b is treated like z_a, but premultiplying by sqrt(0.5).
   FixedPoint0 z_b = z_a * sqrt_half;
-  int32_t z_b_headroom =
-      CountLeadingZeros(static_cast<uint32_t>(z_b.raw())) - 1;
+  int z_b_headroom = CountLeadingZeros(static_cast<uint32_t>(z_b.raw())) - 1;
   const int32_t r_b_raw =
       SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
   const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
+          static_cast<int32_t>(InputIntegerBits - z_b_headroom),
+          31 - kAccumIntegerBits)),
       shifted_quarter);
 
   const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
