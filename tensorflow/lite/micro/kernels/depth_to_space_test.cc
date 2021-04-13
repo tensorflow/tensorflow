@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,97 +12,127 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
+#include <type_traits>
 
-#include <initializer_list>
-#include <vector>
-
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
+namespace testing {
 namespace {
 
-using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
-
+#ifdef notdef
 class DepthToSpaceOpModel : public SingleOpModel {
  public:
-  DepthToSpaceOpModel(const TensorData& tensor_data, int block_size) {
-    input_ = AddInput(tensor_data);
-    output_ = AddOutput(tensor_data);
-    SetBuiltinOp(BuiltinOperator_DEPTH_TO_SPACE,
-                 BuiltinOptions_DepthToSpaceOptions,
-                 CreateDepthToSpaceOptions(builder_, block_size).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  template <typename T>
-  void SetInput(std::initializer_list<T> data) {
-    PopulateTensor<T>(input_, data);
-  }
-  template <typename T>
-  std::vector<T> GetOutput() {
-    return ExtractVector<T>(output_);
-  }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int input_;
-  int output_;
+  DepthToSpaceOpModel(const TensorData& tensor_data, int block_size) {}
 };
+#endif  // notdef
 
-#ifdef GTEST_HAS_DEATH_TEST
-TEST(DepthToSpaceOpModel, BadBlockSize) {
-  EXPECT_DEATH(DepthToSpaceOpModel({TensorType_FLOAT32, {1, 1, 1, 4}}, 4),
-               "Cannot allocate tensors");
-}
-#endif
+}  // namespace
+}  // namespace testing
+}  // namespace tflite
 
-TEST(DepthToSpaceOpModel, Float32) {
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1114_2) {
+#ifdef notdef
   DepthToSpaceOpModel m({TensorType_FLOAT32, {1, 1, 1, 4}}, 2);
   m.SetInput<float>({1.4, 2.3, 3.2, 4.1});
-  m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.4, 2.3, 3.2, 4.1}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+#endif  // notdef
 }
 
-TEST(DepthToSpaceOpModel, Uint8) {
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1124_2) {
+#ifdef notdef
   DepthToSpaceOpModel m({TensorType_UINT8, {1, 1, 2, 4}}, 2);
   m.SetInput<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8});
-  m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 4, 1));
+#endif  // notdef
 }
 
-TEST(DepthToSpaceOpModel, int8) {
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1214_2) {
+#ifdef notdef
   DepthToSpaceOpModel m({TensorType_INT8, {1, 2, 1, 4}}, 2);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8});
-  m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 2, 1));
+#endif  // notdef
 }
 
-TEST(DepthToSpaceOpModel, Int32) {
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1224_2) {
+#ifdef notdef
   DepthToSpaceOpModel m({TensorType_INT32, {1, 2, 2, 4}}, 2);
   m.SetInput<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray(
                   {1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 4, 1));
+#endif  // notdef
 }
 
-TEST(DepthToSpaceOpModel, Int64) {
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1111_1) {
+#ifdef notdef
   DepthToSpaceOpModel m({TensorType_INT64, {1, 1, 1, 1}}, 1);
   m.SetInput<int64_t>({4});
-  m.Invoke();
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 1));
+#endif  // notdef
 }
 
-}  // namespace
-}  // namespace tflite
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1114_2) {
+#ifdef notdef
+  DepthToSpaceOpModel m({TensorType_FLOAT32, {1, 1, 1, 4}}, 2);
+  m.SetInput<float>({1.4, 2.3, 3.2, 4.1});
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.4, 2.3, 3.2, 4.1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1124_2) {
+#ifdef notdef
+  DepthToSpaceOpModel m({TensorType_UINT8, {1, 1, 2, 4}}, 2);
+  m.SetInput<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8});
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 4, 1));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1214_2) {
+#ifdef notdef
+  DepthToSpaceOpModel m({TensorType_INT8, {1, 2, 1, 4}}, 2);
+  m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8});
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 2, 1));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1224_2) {
+#ifdef notdef
+  DepthToSpaceOpModel m({TensorType_INT32, {1, 2, 2, 4}}, 2);
+  m.SetInput<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray(
+                  {1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 4, 1));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1111_1) {
+#ifdef notdef
+  DepthToSpaceOpModel m({TensorType_INT64, {1, 1, 1, 1}}, 1);
+  m.SetInput<int64_t>({4});
+  EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({4}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 1));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TESTS_END
