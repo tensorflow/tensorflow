@@ -1917,7 +1917,9 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     unroll_factor = 1;
   }
 
-  bool few_waves = [fusion]() mutable {
+
+  bool row_vectorized = RowVectorizationEnabled(fusion);
+  bool few_waves = [fusion, row_vectorized]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
       if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
                     mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
@@ -1929,7 +1931,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
         continue;
       }
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-        if (broadcast.broadcast_dimensions().size() == 0) {
+        if (broadcast.broadcast_dimensions().size() == 0 || row_vectorized) {
           continue;
         }
       }
@@ -1939,7 +1941,6 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     return true;
   }();
 
-  bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};
