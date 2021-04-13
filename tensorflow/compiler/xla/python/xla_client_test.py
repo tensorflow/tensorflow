@@ -43,7 +43,7 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False):
+def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
   tests = []
 
   if not cloud_tpu:
@@ -2220,7 +2220,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2238,7 +2238,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2254,7 +2254,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
                                          np.testing.assert_equal)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,

@@ -1389,6 +1389,62 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
+/// Converts a TF::RollOp to HLO. Only support 0D axis and shift case, and axis
+/// have to be a constant.
+class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::RollOp op,
+                                PatternRewriter &rewriter) const override {
+    auto shift_ty = op.shift().getType().dyn_cast<RankedTensorType>();
+    if (!shift_ty || shift_ty.getRank() != 0) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of shift to be 0D tensor");
+    }
+
+    APInt val;
+    if (!matchPattern(op.axis(), m_ConstantInt(&val))) {
+      return rewriter.notifyMatchFailure(op, "require axis to be constant");
+    }
+    int axis = val.getSExtValue();
+
+    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of input to have static shapes");
+    }
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+    int input_rank = input_ty.getRank();
+    if (axis < 0) axis += input_rank;
+
+    // Adjust large offsets into [0, axis_size). This also makes negative
+    // offsets positive.
+    // offset = ((offset % axis_size) + axis_size) % axis_size
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    Value offset = op.shift();
+    auto axis_size = b.create<mhlo::ConstOp>(b.getIntegerAttr(
+        getElementTypeOrSelf(offset.getType()), input_shape[axis]));
+    offset = b.create<RemOp>(
+        b.create<AddOp>(b.create<RemOp>(offset, axis_size), axis_size),
+        axis_size);
+
+    // Stack two copies of the dimension, then slice from the calculated
+    // offset. This also works if shift is not constant.
+    // DynamicSliceOp requires the sizes being integer, and we can get the
+    // information from input shape.
+    auto concat = b.create<ConcatenateOp>(ValueRange{op.input(), op.input()},
+                                          b.getI64IntegerAttr(axis));
+    Value zero = b.create<mhlo::ConstOp>(
+        b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
+    SmallVector<Value> slice_begin_indices(input_rank, zero);
+    slice_begin_indices[axis] = b.create<SubOp>(axis_size, offset);
+    rewriter.replaceOpWithNewOp<DynamicSliceOp>(
+        op, input_ty, concat, slice_begin_indices,
+        rewriter.getI64TensorAttr(input_shape));
+    return success();
+  }
+};
+
 /// Converts a TF::LeakyReluOp to HLO.
 /// LeakyRelu(x) = alpha * x if x < 0 else x.
 class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
@@ -6448,6 +6504,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaAllReduceOp,
+    ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp>(context);
   // clang-format on

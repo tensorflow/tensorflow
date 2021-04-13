@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_
 
+#include <atomic>
 #include <deque>
 
 #include "absl/base/thread_annotations.h"
@@ -75,9 +76,21 @@ class PythonRefManager {
   // to free any garbage that has accumulated.
   void CollectGarbage();
 
+  // Cheaper version of CollectGarbage() with relaxed consistency and frequency.
+  // The purpose of this function is to amortize lock acquisition costs over
+  // a larger number of API calls.
+  void MaybeCollectGarbage() {
+    if (garbage_count_.load(std::memory_order_relaxed) > 100) {
+      CollectGarbage();
+    }
+  }
+
  private:
   absl::Mutex mu_;
   std::deque<pybind11::object> python_garbage_ ABSL_GUARDED_BY(mu_);
+
+  // Writes to garbage_count_ are protected by mu_, reads are not protected.
+  std::atomic<int> garbage_count_ = 0;
 };
 
 // A global PythonRefManager. Unless `CollectGarbage()` is called before

@@ -73,10 +73,10 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
-  transforms a batch of strings (one sample = one string) into either a list of
-  token indices (one sample = 1D tensor of integer token indices) or a dense
-  representation (one sample = 1D tensor of float values representing data about
-  the sample's tokens).
+  transforms a batch of strings (one example = one string) into either a list of
+  token indices (one example = 1D tensor of integer token indices) or a dense
+  representation (one example = 1D tensor of float values representing data 
+  about the example's tokens).
 
   If desired, the user can call this layer's adapt() method on a dataset.
   When this layer is adapted, it will analyze the dataset, determine the
@@ -86,13 +86,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   input than the maximum vocabulary size, the most frequent terms will be used
   to create the vocabulary.
 
-  The processing of each sample contains the following steps:
+  The processing of each example contains the following steps:
 
-    1. standardize each sample (usually lowercasing + punctuation stripping)
-    2. split each sample into substrings (usually words)
+    1. standardize each example (usually lowercasing + punctuation stripping)
+    2. split each example into substrings (usually words)
     3. recombine substrings into tokens (usually ngrams)
     4. index tokens (associate a unique int value with each token)
-    5. transform each sample using this index, either into a vector of ints or
+    5. transform each example using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for

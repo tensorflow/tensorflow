@@ -661,6 +661,30 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
   }
 }
 
+TEST_F(GraphTest, NodeTypeBasicOperations) {
+  FromGraphDef(
+      "node { name: 'A' op: 'NoOp' }"
+      "node { name: 'B' op: 'NoOp' }");
+
+  auto node_name_index = graph_.BuildNodeNameIndex();
+
+  FullTypeDef* ft;
+  graph_.NodeType("A", &ft);
+  ASSERT_EQ(ft, nullptr);
+  graph_.NodeType("B", &ft);
+  ASSERT_EQ(ft, nullptr);
+
+  FullTypeDef basic_t;
+  basic_t.set_type_id(FT_TENSOR);
+  graph_.SetNodeType("A", basic_t);
+
+  graph_.NodeType("A", &ft);
+  ASSERT_NE(ft, nullptr);
+  ASSERT_EQ(ft->type_id(), FT_TENSOR);
+  graph_.NodeType("B", &ft);
+  ASSERT_EQ(ft, nullptr);
+}
+
 void BM_InEdgeIteration(::testing::benchmark::State& state) {
   const int num_nodes = state.range(0);
   const int num_edges_per_node = state.range(1);

@@ -52,7 +52,8 @@ namespace tflite {
 ///
 /// Returns a kTfLiteOk when successful and sets interpreter to a valid
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
-/// reporter, if provided) is at least as long as interpreter's lifetime.
+/// reporter, if provided) is at least as long as interpreter's lifetime, and
+/// a single model instance may safely be used with multiple interpreters.
 class InterpreterBuilder {
  public:
   /// For this constructor, the ErrorReporter will be extracted from the

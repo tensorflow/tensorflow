@@ -760,6 +760,40 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # The number of debug ops should be equal to that of quantized ops.
     self.assertEqual(num_debug_ops, num_debug_quantize_ops)
 
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    func, calib_gen = self._getIntegerQuantizeModel()
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calib_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
@@ -1312,6 +1346,51 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
+
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Conv2D(16, (3, 3), activation='relu')
+    ])
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+    k_conv_name = 'sequential/conv2d/Conv2D1'
+    k_num_filters = 16
+    quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    def calib_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+
+    quantized_converter.representative_dataset = calib_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = k_num_filters
+    if disable_per_channel:
+      expected_num_params = 1
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):

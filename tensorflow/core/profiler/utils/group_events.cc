@@ -146,16 +146,6 @@ void ProcessRootEvent(int64 group_id, bool set_step_name, EventNode* root_event,
   (*group_metadata_map)[group_id].name = std::move(group_name);
 }
 
-bool IsTfDataEvent(const EventNode& event_node) {
-  return event_node.FindParent(HostEventType::kTfDataCapturedFunctionRun) ||
-         event_node.FindParent(
-             HostEventType::kTfDataCapturedFunctionRunAsync) ||
-         event_node.FindParent(
-             HostEventType::kTfDataCapturedFunctionRunInstantiated) ||
-         event_node.FindParent(
-             HostEventType::kTfDataCapturedFunctionRunWithBorrowedArgs);
-}
-
 struct ContextTypeAndId {
   int type;
   uint64 id;
@@ -654,18 +644,36 @@ void EventForest::ProcessTensorFlowLoop() {
   using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
   absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
 
+  absl::flat_hash_set<int64> tf_data_step_ids;
+  const int64 tf_data_event_types[] = {
+      HostEventType::kTfDataCapturedFunctionRun,
+      HostEventType::kTfDataCapturedFunctionRunAsync,
+      HostEventType::kTfDataCapturedFunctionRunInstantiated,
+      HostEventType::kTfDataCapturedFunctionRunWithBorrowedArgs};
+  for (const int64 tf_data_event_type : tf_data_event_types) {
+    auto tf_data_events = gtl::FindOrNull(event_node_map_, tf_data_event_type);
+    if (!tf_data_events) continue;
+    for (const auto& tf_data_event : *tf_data_events) {
+      absl::optional<XStatVisitor> step_id_stat =
+          tf_data_event->GetEventVisitor().GetStat(StatType::kStepId);
+      if (!step_id_stat) continue;
+      tf_data_step_ids.insert(step_id_stat->IntValue());
+    }
+  }
+
   // Sort the TF executor events by TF function/session (step_id) and iter_num.
   auto executor_event_list =
       gtl::FindOrNull(event_node_map_, HostEventType::kExecutorStateProcess);
   if (!executor_event_list) return;
   for (auto& executor_event : *executor_event_list) {
-    if (IsTfDataEvent(*executor_event)) continue;
     absl::optional<XStatVisitor> step_id_stat =
-        executor_event->GetContextStat(StatType::kStepId);
+        executor_event->GetEventVisitor().GetStat(StatType::kStepId);
     absl::optional<XStatVisitor> iter_num_stat =
-        executor_event->GetContextStat(StatType::kIterNum);
+        executor_event->GetEventVisitor().GetStat(StatType::kIterNum);
     if (!step_id_stat || !iter_num_stat) continue;
     int64 step_id = step_id_stat->IntValue();
+    // Skip tf.data events.
+    if (tf_data_step_ids.count(step_id)) continue;
     TensorFlowLoop& tf_loop = tf_loops[step_id];
     TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
     if (!iteration.first_event ||

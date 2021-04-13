@@ -90,7 +90,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
@@ -99,6 +98,7 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/tools/optimize:quantize_weights",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
@@ -139,29 +139,6 @@ cc_library(
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/tools:verifier",
         "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "op_version",
-    srcs = ["op_version.cc"],
-    hdrs = ["op_version.h"],
-    deps = [
-        ":operator",
-        "//tensorflow/lite/toco:model",
-        "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools/versioning",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "op_version_test",
-    srcs = ["op_version_test.cc"],
-    deps = [
-        ":op_version",
-        "//tensorflow/lite/toco:model",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

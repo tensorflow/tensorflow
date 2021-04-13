@@ -1,7 +1,7 @@
 # TensorFlow -> TOSA Compiler Bridge.
 # See:
 #   https://developer.mlplatform.org/w/tosa/
-#   https://github.com/llvm/llvm-project/blob/master/mlir/docs/Dialects/TOSA.md
+#   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//third_party/mlir:tblgen.bzl", "gentbl")

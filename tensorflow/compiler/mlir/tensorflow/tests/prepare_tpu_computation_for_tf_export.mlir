@@ -18,16 +18,18 @@ func @ShardingAttr(%arg0: tensor<128x10xf32> {mhlo.sharding = "\08\03\1A\02\01\0
 func @RewriteHostComputeMlirOp(%arg0: tensor<2x2xi32>, %arg1: tensor<3x?xf64>) -> (tensor<2x2xf32>) {
 
   // CHECK: "tf.XlaHostCompute"(%arg0, %arg1)
-  // CHECK-SAME-DAG: ancestors = []
-  // CHECK-SAME-DAG: cost_estimate_ns = 1000000 : i64
-  // CHECK-SAME-DAG: key = ""
-  // CHECK-SAME-DAG: recv_key = "host_compute_channel_recv"
-  // CHECK-SAME-DAG: send_key = "host_compute_channel_send"
-  // CHECK-SAME-DAG: shape_inference_graph = @not_available
-  // CHECK-SAME-DAG: shapes = [#tf.shape<2x2>, #tf.shape<2x3>]
-  // CHECK-SAME-DAG: tpu_core = 0 : i64
+  // CHECK-SAME: ancestors = []
+  // CHECK-SAME: cost_estimate_ns = 1000000 : i64
+  // CHECK-SAME: key = ""
+  // CHECK-SAME: recv_key = "host_compute_channel_recv"
+  // CHECK-SAME: send_key = "host_compute_channel_send"
+  // CHECK-SAME: shape_inference_graph = @host_func
+  // CHECK-SAME: shapes = [#tf.shape<2x2>, #tf.shape<2x3>]
+  // CHECK-SAME: tpu_core = 0 : i64
+  // CHECK: func @host_func
+  // CHECK: "tf.Identity"
 
-  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = ""} : (tensor<2x2xi32>, tensor<3x?xf64>) -> (tensor<2x2xf32>, tensor<2x3xf64>)
+  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = "module  {\0A  func @host_func(%arg0: tensor<*xf32>, %arg1: tensor<2x3xf64>) -> (tensor<*xf32>, tensor<2x3xf64>) {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0, %arg1 : tensor<*xf32>, tensor<2x3xf64> \0A  } \0A} \0A"} : (tensor<2x2xi32>, tensor<3x?xf64>) -> (tensor<2x2xf32>, tensor<2x3xf64>)
   return %0#0 : tensor<2x2xf32>
 }
 

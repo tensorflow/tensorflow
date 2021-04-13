@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "FullTypeProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto";
+
+// Experimental. Represents the complete type information of a TensorFlow value.
+enum FullTypeId {
+  // The default represents an uninitialized values.
+  FT_UNSET = 0;
+
+  // Type symbols. Used to construct more complex type expressions like
+  // algebraic data types.
+
+  // Type variables may serve as placeholder for any other type ID in type
+  // templates.
+  //
+  // Examples:
+  //   FT_DATASET[FT_VAR["T"]] is a Dataset returning a type indicated by "T".
+  //   FT_TENSOR[FT_VAR["T"]] is a Tensor of n element type indicated by "T".
+  //   FT_TENSOR[FT_VAR["T"]], FT_TENSOR[FT_VAR["T"]] are two tensors of
+  //     identical element types.
+  //   FT_TENSOR[FT_VAR["P"]], FT_TENSOR[FT_VAR["Q"]] are two tensors of
+  //     potentially different element types.
+  //
+  FT_VAR = 1;
+
+  // Wildcard type. Describes a parameter of unknown type. In TensorFlow, that
+  // can mean either a "Top" type (accepts any type), or a dynamically typed
+  // object whose type is unknown in context.
+  // Important: "unknown" does not necessarily mean undeterminable!
+  FT_ANY = 2;
+
+  // The algebraic product type. This is an algebraic type that may be used just
+  // for logical grouping. Not to confused with FT_TUPLE which describes a
+  // concrete object of several elements.
+  //
+  // Example:
+  //   FT_DATASET[FT_PRODUCT[FT_TENSOR[FT_INT32], FT_TENSOR[FT_FLOAT64]]]
+  //     is a Dataset producing two tensors, an integer one and a float one.
+  //
+  FT_PRODUCT = 3;
+
+  // Callable types describe functions and ops.
+  //
+  // Parametrization:
+  //   FT_CALLABLE[<arg type>, <return type>]
+  //   * <arg_type> is the type of the arguments; FT_PRODUCT represents multiple
+  //     arguments.
+  //   * <return_type> is the return type; FT_PRODUCT represents multiple
+  //     return values (that means that callables returning multiple things
+  //     don't necessarily return a single tuple).
+  //
+  // Example:
+  //   FT_CALLABLE[
+  //     FT_ANY,
+  //     FT_PRODUCT[FT_TENSOR[FT_INT32], FT_TENSOR[FT_FLOAT64]],
+  //   ]
+  //     is a callable with unspecified (for now) input arguments, and
+  //     two return values of type tensor.
+  //
+  FT_CALLABLE = 100;
+
+  // Concrete type IDs, representing "proper" data types that can describe
+  // runtime TensorFlow objects.
+
+  // The usual Tensor. This is a parametric type.
+  //
+  // Parametrization:
+  //   FT_TENSOR[<element type>, <shape type>]
+  //   * <element_type> is currently limited to one of the element types
+  //     defined below.
+  //   * <shape_type> is not yet defined, and may only be FT_UNKNOWN for now.
+  //
+  // A FT_SHAPE type will be defined in the future.
+  //
+  // Example:
+  //   FT_TENSOR[FT_INT32, FT_UNKNOWN]
+  //     is a Tensor of int32 element type and unknown shape.
+  //
+  // TODO(mdan): Define FT_SHAPE and add more examples.
+  FT_TENSOR = 1000;
+
+  // Array (or tensorflow::TensorList in the variant type registry).
+  // Note: this is not to be confused with the deprecated `TensorArray*` ops
+  // which are not supported by FullType.
+  // This type represents a random-access list whose elements can be
+  // described by a single type. Although immutable, Array is expected to
+  // support efficient mutation semantics (i.e. element update) in the
+  // user-facing API.
+  // The element type may be generic or even FT_ANY for a heterogenous list.
+  //
+  // Parametrization:
+  //   FT_ARRAY[<element type>]
+  //   * <element_type> may be any concrete type.
+  //
+  // Examples:
+  //   FT_ARRAY[FT_TENSOR[FT_INT32]] is a TensorArray holding int32 Tensors of
+  //     any shape.
+  //   FT_ARRAY[FT_TENSOR[FT_UNKNOWN]] is a TensorArray holding Tensors of
+  //     mixed element types.
+  //   FT_ARRAY[FT_UNKNOWN] is a TensorArray holding any element type.
+  //   FT_ARRAY[] is equivalent to FT_ARRAY[FT_UNKNOWN].
+  //   FT_ARRAY[FT_ARRAY[]] is an array or arrays (of unknown types).
+  FT_ARRAY = 1001;
+
+  // Datasets created by tf.data ops and APIs. Datasets have generator/iterable
+  // semantics, that is, one can construct an iterator from them. Like
+  // Array, they are considered to return elements that can be described
+  // by a single type. Unlike Array, they do not support random access or
+  // mutation, and can potentially produce an infinite number of elements.
+  // A datasets can produce logical structures (e.g. multiple elements). This
+  // is expressed using FT_PRODUCT.
+  //
+  //
+  // Parametrization: FT_ARRAY[<element type>].
+  // <element_type> may be a concrete type or a type symbol. It represents the
+  //   data type of the elements produced by the dataset.
+  //
+  // Examples:
+  //   FT_DATSET[FT_TENSOR[FT_INT32]] is a Dataset producing single int32
+  //     Tensors of unknown shape.
+  //   FT_DATSET[FT_PRODUCT[FT_TENSOR[FT_INT32], FT_TENSOR[FT_FLOAT32]] is a
+  //     Dataset producing pairs of Tensors, one integer and one float.
+  // Note: The high ID number is to prepare for the eventuality that Datasets
+  // will be supported by user types in the future.
+  FT_DATASET = 10102;
+
+  // Type attributes. These always appear in the parametrization of a type,
+  // never alone. For example, there is no such thing as a "bool" TensorFlow
+  // object (for now).
+
+  // The bool element type.
+  // TODO(mdan): Quantized types, legacy representations (e.g. ref)
+  FT_BOOL = 200;
+  // Integer element types.
+  FT_UINT8 = 201;
+  FT_UINT16 = 202;
+  FT_UINT32 = 203;
+  FT_UINT64 = 204;
+  FT_INT8 = 205;
+  FT_INT16 = 206;
+  FT_INT32 = 207;
+  FT_INT64 = 208;
+  // Floating-point element types.
+  FT_HALF = 209;
+  FT_FLOAT = 210;
+  FT_DOUBLE = 211;
+  // Complex element types.
+  // TODO(mdan): Represent as FT_COMPLEX[FT_DOUBLE] instead?
+  FT_COMPLEX64 = 212;
+  FT_COMPLEX128 = 213;
+  // The string element type.
+  FT_STRING = 214;
+}
+
+// Highly experimental and very likely to change.
+// This encoding uses tags instead of dedicated messages for regularity. In
+// particular the encoding imposes no restrictions on what the parameters of any
+// type should be, which in particular needs to be true for type symbols.
+message FullTypeDef {
+  // The principal type represented by this object. This may be a concrete type
+  // (Tensor, Dataset) a type variable (used for dependent types) a type
+  // symbol (Any, Union). See FullTypeId for details.
+  FullTypeId type_id = 1;
+
+  repeated FullTypeDef args = 2;
+
+  // Literal values of this type object, if the the type admits one.
+  // For example, a type variable admits a string attribute - its name.
+  // Shape-related types may admit int attributes - their static shape values.
+  // Fields for more data types to be added as needed.
+  oneof attr {
+    string s = 3;
+  }
+}

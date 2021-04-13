@@ -73,6 +73,8 @@ typedef NS_ENUM(NSUInteger, TFLInterpreterErrorCode) {
 
 /**
  * A TensorFlow Lite model interpreter.
+ *
+ * Note: Interpreter instances are *not* thread-safe.
  */
 @interface TFLInterpreter : NSObject
 

@@ -7,7 +7,10 @@ load(
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/brain/testing/tf2_migration_tools:__pkg__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],
 )
 
@@ -83,6 +86,7 @@ py_library(
     srcs = ["renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
 )
 
 py_library(

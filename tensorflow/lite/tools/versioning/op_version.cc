@@ -394,10 +394,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.options.strided_slice.ellipsis_mask != 0 ||
+          op_sig.options.strided_slice.new_axis_mask != 0) {
+        return 6;
+      }
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 5;
       }
-      if (op_sig.options.single_input_op.num_dims > 4) {
+      if (op_sig.options.strided_slice.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
@@ -593,11 +597,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
-    case BuiltinOperator_PAD:
-    case BuiltinOperator_PADV2:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
@@ -657,6 +672,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     default:
       return 1;
   }
+  // Prevent lint error about this function being too long.
+  // NOLINTNEXTLINE
 }
 
 TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
@@ -669,7 +686,7 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
   if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
     return subgraph->tensors()->Get(idx)->type();
   }
-  LOG(ERROR) << "Can't access tenor " << idx;
+  LOG(ERROR) << "Can't access tensor " << idx;
   return kTensorTypeNone;
 }
 
@@ -814,8 +831,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.conv_2d.is_per_channel_quantized = true;
       }
     } break;
-    // TODO(b/150176627): Add tests for GetOpSignature.
-    case BuiltinOperator_STRIDED_SLICE:
+    case BuiltinOperator_STRIDED_SLICE: {
+      auto strided_slice_option = op->builtin_options_as_StridedSliceOptions();
+      if (strided_slice_option) {
+        op_sig.options.strided_slice.ellipsis_mask =
+            strided_slice_option->ellipsis_mask();
+        op_sig.options.strided_slice.new_axis_mask =
+            strided_slice_option->new_axis_mask();
+      }
+      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
+    } break;
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:

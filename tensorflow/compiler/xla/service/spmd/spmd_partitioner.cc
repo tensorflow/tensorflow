@@ -2669,6 +2669,7 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
   auto lhs = GetPartitionedHlo(hlo->operand(0));
   // Create a window config to represent the pad.
   Window window;
+  bool needs_masking = false;
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     const auto& pd = hlo->padding_config().dimensions(i);
     WindowDimension* dim = window.add_dimensions();
@@ -2679,6 +2680,8 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
     dim->set_padding_low(pd.edge_padding_low());
     dim->set_padding_high(pd.edge_padding_high());
     dim->set_base_dilation(pd.interior_padding() + 1);
+    needs_masking |= hlo->sharding().tile_assignment().dim(i) > 1 &&
+                     (pd.edge_padding_low() < 0 || pd.edge_padding_high() < 0);
   }
 
   auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))
@@ -2686,7 +2689,7 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
                             .hlo();
   auto reshard_operand =
       lhs.ReshardAsWindowedInput(window, hlo->sharding(), replicated_rhs,
-                                 /*mask_invalid_region=*/false);
+                                 /*mask_invalid_region=*/needs_masking);
   if (!reshard_operand.has_value()) {
     return DefaultAction(hlo);
   }

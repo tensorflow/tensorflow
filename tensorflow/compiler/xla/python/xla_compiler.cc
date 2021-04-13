@@ -541,6 +541,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
+      .def_property("xla_backend_optimization_level",
+                    &DebugOptions::xla_backend_optimization_level,
+                    &DebugOptions::set_xla_backend_optimization_level)
       .def_property("xla_cpu_enable_fast_math",
                     &DebugOptions::xla_cpu_enable_fast_math,
                     &DebugOptions::set_xla_cpu_enable_fast_math)
@@ -556,12 +559,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_fast_math_honor_functions",
                     &DebugOptions::xla_cpu_fast_math_honor_functions,
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
+      .def_property("xla_detailed_logging_and_dumping",
+                    &DebugOptions::xla_detailed_logging_and_dumping,
+                    &DebugOptions::set_xla_detailed_logging_and_dumping)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
-      .def_property("xla_backend_optimization_level",
-                    &DebugOptions::xla_backend_optimization_level,
-                    &DebugOptions::set_xla_backend_optimization_level)
       .def_property("xla_cpu_enable_xprof_traceme",
                     &DebugOptions::xla_cpu_enable_xprof_traceme,
                     &DebugOptions::set_xla_cpu_enable_xprof_traceme)

@@ -460,7 +460,7 @@ tf_py_test(
     srcs = ["discretization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"],
+    tags = ["no_rocm"], # fails as CPU-only
     deps = [
         ":discretization",
         ":preprocessing_test_utils",

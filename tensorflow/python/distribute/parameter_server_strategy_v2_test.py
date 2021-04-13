@@ -167,7 +167,10 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self.assertRaisesRegexp(
         NotImplementedError,
         "`tf.distribute.experimental.ParameterServerStrategy` must be used "
-        "with `tf.distribute.experimental.coordinator.ClusterCoordinator`."):
+        "with `tf.distribute.experimental.coordinator.ClusterCoordinator` in "
+        "a custom training loop. If you are using `Model.fit`, please supply "
+        "a dataset function directly to a "
+        "`tf.keras.utils.experimental.DatasetCreator` instead."):
       yield
 
   @contextlib.contextmanager

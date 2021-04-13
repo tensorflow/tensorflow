@@ -67,6 +67,12 @@ bool IsPrefetchZero(const NodeDef& prefetch_node,
   return IsConstNodeWithValue(*graph.GetNode(prefetch_node.input(1)), 0);
 }
 
+bool IsShardOne(const NodeDef& shard_node, const MutableGraphView& graph) {
+  if (shard_node.op() != "ShardDataset") return false;
+  // We are looking only for shard(0) nodes.
+  return IsConstNodeWithValue(*graph.GetNode(shard_node.input(1)), 1);
+}
+
 bool IsOutputIdentityOfInput(const FunctionDef& fdef, const string& output_arg,
                              const string& input_arg) {
   if (!fdef.ret().contains(output_arg)) {
@@ -131,7 +137,7 @@ bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
 bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
          IsRepeatOne(node, graph) || IsPrefetchZero(node, graph) ||
-         IsMapIdentity(node, graph);
+         IsShardOne(node, graph) || IsMapIdentity(node, graph);
 }
 
 }  // namespace

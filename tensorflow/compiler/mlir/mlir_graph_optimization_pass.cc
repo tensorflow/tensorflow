@@ -51,6 +51,10 @@ auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
     "/tensorflow/core/mlir_pass_failed_fallback",
     "Failure count of MLIR pass runs when fallback used");
 
+auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
+    "/tensorflow/core/mlir_pass_succeeded_fallback",
+    "Success count of MLIR pass runs when fallback enabled");
+
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
 }
@@ -270,6 +274,10 @@ Status MlirFunctionOptimizationPass::Run(
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
       }
+    } else {
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+        mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
+      }
     }
 
     if (VLOG_IS_ON(1)) {
@@ -381,6 +389,10 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                       "pass has fallback enabled";
       mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
       return Status::OK();
+    }
+  } else {
+    if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
     }
   }
 

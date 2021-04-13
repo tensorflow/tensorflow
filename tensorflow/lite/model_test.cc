@@ -283,7 +283,7 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
   interpreter.reset();
   ASSERT_EQ(builder(&interpreter, 0), kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, 0);
+  ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, 1);
 
   interpreter.reset();
   ASSERT_EQ(builder(&interpreter, -1), kTfLiteOk);

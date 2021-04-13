@@ -331,17 +331,6 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
-  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
-  StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index) const {
-    return ir_emitter_context_->buffer_assignment().GetUniqueSlice(&hlo, index);
-  }
-
-  BufferAllocation::Slice GetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
-  }
-
   StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
       mlir::Value v, std::string* constant_name = nullptr);
 

@@ -22,6 +22,8 @@ import TensorFlowLiteC
 #endif
 
 /// A TensorFlow Lite interpreter that performs inference from a given model.
+///
+/// - Note: Interpreter instances are *not* thread-safe.
 public final class Interpreter {
   /// The configuration options for the `Interpreter`.
   public let options: Options?

@@ -33,7 +33,7 @@ namespace tensorflow {
                               .TypeConstraint<int64>("out_idx"), \
                           UniqueOpGPU<type, int64>)
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE_GPU);
+TF_CALL_INTEGRAL_TYPES(REGISTER_UNIQUE_GPU);
 REGISTER_UNIQUE_GPU(bool);
 
 #undef REGISTER_UNIQUE_GPU

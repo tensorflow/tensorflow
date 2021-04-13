@@ -1712,6 +1712,10 @@ struct ReduceWindowOpOnTensorsConversion
       return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
     }
 
+    if (op.padding() && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op, "require paddings are all zero");
+    }
+
     SmallVector<int64_t, 2> shapes;
     shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
     shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
@@ -1783,17 +1787,17 @@ struct ReduceWindowOpOnTensorsConversion
       switch (pooling_type) {
         case PoolingType::kMin: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMinOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
           break;
         }
         case PoolingType::kMax: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMaxOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
           break;
         }
         case PoolingType::kAdd: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCSumOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
           break;
         }
         case PoolingType::kInvalid:

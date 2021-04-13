@@ -20,11 +20,11 @@ limitations under the License.
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/toco/tflite/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace toco {
@@ -460,15 +460,23 @@ void ParseControlFlowErrors(std::set<std::string>* custom_ops,
   }
 }
 
-// Exports a string buffer that contains the model's minimum required runtime
-// version.
-void ExportModelVersionBuffer(
+// Exports appropriate model metadata.
+// This consists of a 16-byte placeholder string buffer that will be populated
+// with the model's minimum required runtime version after the model is
+// finalized. We choose 16 bytes as it's the alignment of flatbuffer buffers
+// and prevents wasted space if the final string is shorter than 16 bytes.
+// Note: This logic matches that used in the MLIR flatbuffer export path.
+flatbuffers::Offset<tflite::Metadata> ExportMetadata(
     const Model& model, std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
     FlatBufferBuilder* builder) {
-  const std::string min_runtime = GetMinimumRuntimeVersionForModel(model);
+  auto metadata =
+      CreateMetadata(*builder, builder->CreateString("min_runtime_version"),
+                     buffers_to_write->size());
+  const std::string min_runtime_placeholder = std::string(16, '\0');
   buffers_to_write->push_back(builder->CreateVector(
-      reinterpret_cast<const uint8_t*>(min_runtime.data()),
-      min_runtime.size()));
+      reinterpret_cast<const uint8_t*>(min_runtime_placeholder.data()),
+      min_runtime_placeholder.size()));
+  return metadata;
 }
 
 tensorflow::Status Export(
@@ -629,11 +637,7 @@ tensorflow::Status Export(
         "not implemented yet.");
   }
 
-  // Write the minimum required runtime version into metadata.
-  auto metadata =
-      CreateMetadata(builder, builder.CreateString("min_runtime_version"),
-                     buffers_to_write.size());
-  ExportModelVersionBuffer(model, &buffers_to_write, &builder);
+  auto metadata = ExportMetadata(model, &buffers_to_write, &builder);
   std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata};
 
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
@@ -644,6 +648,7 @@ tensorflow::Status Export(
                   builder.CreateVector(subgraphs), description, buffers,
                   /* metadata_buffer */ 0, builder.CreateVector(metadatas));
   ::tflite::FinishModelBuffer(builder, new_model_location);
+  ::tflite::UpdateMinimumRuntimeVersionForModel(builder.GetBufferPointer());
 
   if (params.quantize_weights == QuantizedBufferType::NONE) {
     WriteModelToString(builder, output_file_contents);

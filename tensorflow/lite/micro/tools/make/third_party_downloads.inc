@@ -36,8 +36,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="http://mirror.tensorflow.org/github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip"
-RUY_MD5="c9cb85bf99dab7a49d78758470890b31"
+RUY_URL="https://github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip"
+RUY_MD5="4cbc3104b27b718c819b2082beb732c5"
 
 CIFAR10_DATASET_URL="http://mirror.tensorflow.org/www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
 CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"

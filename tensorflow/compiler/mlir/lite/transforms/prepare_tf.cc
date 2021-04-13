@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -742,6 +743,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    // This logic doesn't handle simultaneous ellipsis_ and new_axis mask. It
+    // will be handled by the TFLite StridedSlice kernel.
+    if ((strided_slice_op.ellipsis_mask() != 0) &&
+        (strided_slice_op.new_axis_mask() != 0)) {
+      return failure();
+    }
 
     // Handle new axis mask.
     if (strided_slice_op.new_axis_mask() != 0) {
@@ -1447,6 +1455,13 @@ void PrepareTFPass::runOnFunction() {
   }
 
   if (failed(ConvertTf2XlaOps(func, ctx))) {
+    signalPassFailure();
+    return;
+  }
+
+  // Before the tf.FakeQuant* ops being folded, tfl.quantize and tfl.dequantize
+  // ops are created to preserve the quantization parameters.
+  if (failed(ConvertFakeQuantOps(func, ctx))) {
     signalPassFailure();
     return;
   }

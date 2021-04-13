@@ -2139,6 +2139,35 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
+namespace {
+
+// Flips the incompatible_shape_error attribute to true if the shapes are
+// identical and static.
+static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+  if (op.incompatible_shape_error()) {
+    return rewriter.notifyMatchFailure(op, "the attribute is already true");
+  }
+
+  if (op.x().getType() != op.y().getType()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "require the shapes to be identical");
+  }
+
+  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!src_ty || !src_ty.hasStaticShape()) {
+    return rewriter.notifyMatchFailure(op, "require the shapes to be static");
+  }
+  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
+                                       rewriter.getBoolAttr(true));
+  return success();
+}
+}  // namespace
+
+void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert(convertEqualOp);
+}
+
 //===----------------------------------------------------------------------===//
 // ExpandDimsOp
 //===----------------------------------------------------------------------===//

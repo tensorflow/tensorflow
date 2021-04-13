@@ -688,14 +688,32 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 // true.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // CHECK-LABEL: func @metadata
-  func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  // CHECK-LABEL: func @metadata_use_spmd
+  func @metadata_use_spmd(%arg0: tensor<8xi32>) -> tensor<8xi32> {
     %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = true} : (tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      metadata
     // CHECK-SAME: use_spmd_for_xla_partitioning: true
     return %0: tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
+
+// -----
+
+// Tests metadata is populated correctly for is_same_data_across_replicas.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: func @metadata_same_data_across_replicas
+  func @metadata_same_data_across_replicas(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: is_same_data_across_replicas: true
+    // CHECK-SAME: mhlo.is_same_data_across_replicas
+    return %0: tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32> {mhlo.is_same_data_across_replicas}) -> tensor<8xi32> {
     return %arg0 : tensor<8xi32>
   }
 }

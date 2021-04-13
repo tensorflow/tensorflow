@@ -69,7 +69,7 @@ struct GrpcServerOptions {
   WorkerCreationFunction worker_func = nullptr;
   StatsPublisherFactory stats_factory = CreateNoOpStatsPublisher;
   GrpcWorkerServiceOptions worker_service_options;
-  const DeviceMgr* local_device_mgr = nullptr;
+  DeviceMgr* local_device_mgr = nullptr;
 };
 
 class GrpcServer : public ServerInterface {
@@ -88,7 +88,7 @@ class GrpcServer : public ServerInterface {
                        std::unique_ptr<GrpcServer>* out_server);
   // Reuse the local_device_mgr.
   static Status Create(const ServerDef& server_def, Env* env,
-                       const DeviceMgr* local_device_mgr,
+                       DeviceMgr* local_device_mgr,
                        std::unique_ptr<ServerInterface>* out_server);
 
   // Destruction is only supported in the factory method. Clean

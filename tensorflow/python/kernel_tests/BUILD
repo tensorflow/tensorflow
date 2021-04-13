@@ -277,7 +277,6 @@ cuda_py_test(
     srcs = ["collective_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -304,7 +303,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/171435192)
     ],
     deps = [
@@ -1122,7 +1120,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],
@@ -1295,6 +1293,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
         "@six_archive//:six",
     ],
 )
@@ -2453,6 +2454,7 @@ cuda_py_test(
     srcs = ["reduction_ops_test.py"],
     shard_count = 6,
     tags = [
+        "no_cuda_asan",  # times out
         "no_windows_gpu",
     ],
     deps = [
@@ -2701,6 +2703,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "sparse_xent_op_deterministic_test",
+    size = "small",
+    srcs = ["sparse_xent_op_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
     name = "sparse_xent_op_test",
     size = "small",
     srcs = ["sparse_xent_op_test.py"],
@@ -2884,6 +2900,20 @@ cuda_py_test(
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "xent_op_deterministic_test",
+    size = "small",
+    srcs = ["xent_op_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:nn_ops",
     ],
 )
 

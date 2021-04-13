@@ -97,6 +97,15 @@ struct TpuPartitionedCall_Params {
   bool group_tensors_for_packing;
   int32_t minimum_input_tensors_packing;
   int32_t minimum_output_tensors_packing;
+
+  // Whether to attempt to automatically shard inputs by adding an
+  // XlaSharding op after each input.
+  bool enable_auto_xla_input_sharding;
+
+  // The dimension of each input to shard if
+  // enable_auto_xla_input_sharding is set to true. Negative numbers are
+  // allowed and refers to dimensions starting from the end.
+  int32_t auto_xla_input_sharding_dim;
 };
 
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns

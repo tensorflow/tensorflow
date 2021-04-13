@@ -107,4 +107,11 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
 
+if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
+  # This is needed to prevent rsync errors with the TFLM github Kokoro build.
+  # See https://github.com/tensorflow/tensorflow/issues/48254 for additional
+  # context.
+  make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+fi
+
 echo "Finished all micro tests at `date`"

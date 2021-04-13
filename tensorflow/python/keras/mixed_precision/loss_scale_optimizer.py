@@ -522,8 +522,19 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # LossScaleOptimizerV1.
       raise TypeError('"dynamic" argument to LossScaleOptimizer.__init__ must '
                       'be a bool, but got: %r' % (dynamic,))
+    if isinstance(inner_optimizer, LossScaleOptimizer):
+      raise TypeError('LossScaleOptimizer cannot wrap another '
+                      'LossScaleOptimizer, but got: %s' % (inner_optimizer,))
     self._raise_if_strategy_unsupported()
+    if getattr(inner_optimizer, '_is_wrapped_by_loss_scale_optimizer', False):
+      # TODO(reedwm): Maybe support this. The difficulty is that LSO has the
+      # same checkpoint format as the inner optimizer, so multiple LSOs wrapping
+      # the same optimizer causes the checkpointing logic to become confused.
+      raise ValueError('"inner_optimizer" is already wrapped by a '
+                       'LossScaleOptimizer. An optimizer can only be wrapped '
+                       'by a single LossScaleOptimizer')
     self._optimizer = inner_optimizer
+    self._optimizer._is_wrapped_by_loss_scale_optimizer = True
 
     # We don't call super().__init__, since we do not want to call OptimizerV2's
     # constructor.

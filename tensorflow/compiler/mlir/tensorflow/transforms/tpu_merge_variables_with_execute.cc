@@ -426,69 +426,6 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
   execute_launch.erase();
 }
 
-// Returns TPUCompileMlir op that generates the program executed by the
-// TPUExecute op.
-TF::_TPUCompileMlirOp GetTPUCompileOp(tf_device::LaunchOp execute_launch) {
-  auto execute =
-      llvm::dyn_cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
-  if (!execute) return {};
-  auto compile_launch = llvm::dyn_cast_or_null<tf_device::LaunchOp>(
-      execute.getOperand(execute.getNumOperands() - 1).getDefiningOp());
-  if (!compile_launch) return {};
-  return llvm::dyn_cast<TF::_TPUCompileMlirOp>(
-      compile_launch.GetBody().front());
-}
-
-// Updates the serialized module associated with the TPUExecute op to reflect
-// the aliasing information for better management of device memory.
-LogicalResult UpdateSerializedModule(tf_device::LaunchOp execute_launch,
-                                     VariableAccessesForTPUExecute& infos) {
-  TF::_TPUCompileMlirOp compile = GetTPUCompileOp(execute_launch);
-
-  // Skip adding alias information in case of model parallelism i.e.,
-  // TPUCompileMlir op generates multiple programs.
-  if (!compile || compile.program().size() > 1) return failure();
-
-  // Parse the serialized module
-  mlir::OwningModuleRef module_ref;
-  tensorflow::Status status = tensorflow::DeserializeMlirModule(
-      compile.mlir_module().str(), compile.getContext(), &module_ref);
-  if (!status.ok()) {
-    LLVM_DEBUG(llvm::dbgs() << "Error in parsing serialized module: "
-                            << status.error_message() << "\n");
-
-    return failure();
-  }
-
-  // Add aliasing information to main function arguments.
-  FuncOp main_func = module_ref->lookupSymbol<FuncOp>("main");
-  if (!main_func) return failure();
-
-  OpBuilder builder(main_func.getContext());
-  for (auto resource : infos.resources_read) {
-    auto& info = infos.per_resource_info[resource];
-    if (info.execute_input_index < 0 || info.execute_output_index < 0) continue;
-    auto aliasing_attr = main_func.getArgAttrOfType<mlir::IntegerAttr>(
-        info.execute_input_index, kAliasingAttr);
-
-    // Set only if aliasing attribute does not exist.
-    if (!aliasing_attr) {
-      main_func.setArgAttr(
-          info.execute_input_index, kAliasingAttr,
-          builder.getI64IntegerAttr(info.execute_output_index));
-      continue;
-    }
-    // If aliasing attribute already exists, it must match the new value.
-    assert(aliasing_attr.getInt() == info.execute_output_index);
-  }
-
-  // Serialize the updated module back into the TPUCompileMlir op.
-  auto module_string = tensorflow::SerializeMlirModule(module_ref.get());
-  compile.mlir_moduleAttr(
-      mlir::StringAttr::get(module_ref->getContext(), module_string));
-  return success();
-}
-
 // Merges the variable accesses into one TPUExecute op.
 LogicalResult MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
                                     bool check_device, bool check_same_region,
@@ -496,18 +433,6 @@ LogicalResult MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
   auto infos =
       BuildVariableAccessInfo(execute_launch, check_device, check_same_region);
   if (infos.per_resource_info.empty()) return success();
-
-  // Update the serialized module with aliasing information for better memory
-  // management on device.
-  // TODO(b/172608422): Benchmark the cost of deserialization/serialization of
-  // the attached module. We can avoid it by serializing it at the end of the
-  // bridge pipeline.
-  if (failed(UpdateSerializedModule(execute_launch, infos))) {
-    LLVM_DEBUG(
-        llvm::dbgs()
-        << "Unable to update the serialized module with aliasing information "
-           "which can lead to poor memory management on device.\n");
-  }
 
   // Start creating the new TPUExecuteAndUpdateVariables op.
   builder->setInsertionPoint(execute_launch);
