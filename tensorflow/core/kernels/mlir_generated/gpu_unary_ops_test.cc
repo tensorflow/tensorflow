@@ -65,17 +65,10 @@ auto acos_test_config = test::OpsTestConfig().ExpectStrictlyEqual();
 #endif
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-<<<<<<< HEAD
     std::acos, acos_test_config)
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::acos, acos_test_config)
-=======
-    std::acos, test::OpsTestConfig())
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, test::OpsTestConfig())
->>>>>>> upstream/master
 
 /// Test `tf.Acosh`.
 
