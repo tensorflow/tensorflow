@@ -75,13 +75,16 @@ namespace wrap {
 #define FOREACH_HIPSPARSE_API(__macro)		\
   __macro(hipsparseCreate)			\
   __macro(hipsparseCreateMatDescr)		\
+  __macro(hipsparseCcsrgeam)            \
   __macro(hipsparseDcsr2csc)			\
+  __macro(hipsparseDcsrgeam)            \
   __macro(hipsparseDcsrgemm)			\
   __macro(hipsparseDcsrmm2)			\
   __macro(hipsparseDcsrmv)			\
   __macro(hipsparseDestroy)			\
   __macro(hipsparseDestroyMatDescr)		\
   __macro(hipsparseScsr2csc)			\
+  __macro(hipsparseScsrgeam)            \
   __macro(hipsparseScsrgemm)			\
   __macro(hipsparseScsrmm2)			\
   __macro(hipsparseScsrmv)			\
@@ -90,7 +93,8 @@ namespace wrap {
   __macro(hipsparseSetMatType)			\
   __macro(hipsparseXcoo2csr)			\
   __macro(hipsparseXcsr2coo)			\
-  __macro(hipsparseXcsrgemmNnz)
+  __macro(hipsparseXcsrgemmNnz)         \
+  __macro(hipsparseZcsrgeam)            \
 
 // clang-format on
 
