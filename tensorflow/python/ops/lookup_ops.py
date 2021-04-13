@@ -1755,21 +1755,34 @@ def index_to_string_table_from_tensor(vocabulary_list,
     return StaticHashTableV1(init, default_value)
 
 
+@tf_export("lookup.experimental.MutableHashTable")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
+
+  `MutableHashTable` requires additional memory during checkpointing and restore
+  operations to create temporary key and value tensors.
 
   Example usage:
 
-  ```python
-  table = tf.lookup.MutableHashTable(key_dtype=tf.string, value_dtype=tf.int64,
-                                     default_value=-1)
-  sess.run(table.insert(keys, values))
-  out = table.lookup(query_keys)
-  print(out.eval())
-  ```
+  >>> table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.string,
+  ...                                                 value_dtype=tf.int64,
+  ...                                                 default_value=-1)
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9], dtype=tf.int64)
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> table.insert(keys_tensor, vals_tensor)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1])
+  >>> table.remove(tf.constant(['c']))
+  >>> table.lookup(keys_tensor).numpy()
+  array([ 7, 8, -1])
+  >>> sorted(table.export()[0].numpy())
+  [b'a', b'b']
+  >>> sorted(table.export()[1].numpy())
+  [7, 8]
   """
 
   def __init__(self,
@@ -2013,16 +2026,21 @@ class MutableHashTable(LookupInterface):
 
 @tf_export("lookup.experimental.DenseHashTable")
 class DenseHashTable(LookupInterface):
-  """A generic mutable hash table implementation using tensors as backing store.
+  """A mutable hash table with faster lookups and higher memory usage.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
 
-  It uses "open addressing" with quadratic reprobing to resolve collisions.
-  Compared to `MutableHashTable` the insert, remove and lookup operations in a
-  `DenseHashTable` are typically faster, but memory usage can be higher.
-  However, `DenseHashTable` does not require additional memory for
-  temporary tensors created during checkpointing and restore operations.
+  Compared to `MutableHashTable`, `DenseHashTable` offers generally faster
+  `insert`, `remove` and `lookup` operations, in exchange for a higher overall
+  memory footprint.
+
+  It uses "open addressing" with quadratic reprobing to resolve collisions. This
+  requires specifying two keys in the key space, `empty_key` and `deleted_key`,
+  that can never inserted into the table.
+
+  Unlike `MutableHashTable`, `DenseHashTable` does not require additional memory
+  for temporary tensors created during checkpointing and restore operations.
 
   Example usage:
 

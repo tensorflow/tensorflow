@@ -35,7 +35,13 @@
 *   TF Core:
     *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
         creation of custom wrapper objects for resource tensors.
-  
+    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
+        generic mutable hash table implementation.
+        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
+        lower overall memory usage, and a cleaner API. It does not require
+        specifying a `delete_key` and `empty_key` that cannot be inserted into
+        the table.
+
 *  `tf.lite`:
   * Fix mean op reference quantization rounding issue.
 

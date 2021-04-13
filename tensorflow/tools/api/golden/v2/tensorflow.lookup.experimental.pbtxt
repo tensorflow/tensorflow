@@ -8,4 +8,8 @@ tf_module {
     name: "DenseHashTable"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "MutableHashTable"
+    mtype: "<type \'type\'>"
+  }
 }
