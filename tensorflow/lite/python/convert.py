@@ -400,6 +400,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      select_user_tf_ops=None,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
+                     lower_tensor_list_ops=True,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -434,6 +435,7 @@ def build_toco_flags(inference_type=dtypes.float32,
       toco.force_select_tf_ops = True
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   toco.unfold_batchmatmul = unfold_batchmatmul
+  toco.lower_tensor_list_ops = lower_tensor_list_ops
   return toco
 
 
@@ -463,7 +465,8 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
-                              unfold_batchmatmul=True):
+                              unfold_batchmatmul=True,
+                              lower_tensor_list_ops=True):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -543,6 +546,8 @@ def build_toco_convert_protos(input_tensors,
       select TensorFlow ops.
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
+    lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
+      not, use Flex tensor list ops.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -571,7 +576,8 @@ def build_toco_convert_protos(input_tensors,
       target_ops=target_ops,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
-      unfold_batchmatmul=unfold_batchmatmul)
+      unfold_batchmatmul=unfold_batchmatmul,
+      lower_tensor_list_ops=lower_tensor_list_ops)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):

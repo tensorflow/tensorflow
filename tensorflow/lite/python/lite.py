@@ -467,6 +467,7 @@ class TFLiteConverterBase(object):
     # Variable for converter metrics.
     self._tflite_metrics = _global_metrics
     self._experimental_disable_batchmatmul_unfold = False
+    self._experimental_lower_tensor_list_ops = True
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -552,6 +553,7 @@ class TFLiteConverterBase(object):
         "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
+        "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
     }
 
     if self.saved_model_dir:
