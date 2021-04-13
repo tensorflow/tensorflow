@@ -212,13 +212,14 @@ Status BackwardsConstAnalysis(
 
     // If this is a metadata-only op, don't propagate the const requirement.
     if (XlaOpRegistry::IsMetadataOp(node->type_string())) {
+      VLOG(3) << "must-be-const node is metadata op: " << node->name();
       return;
     }
 
     // If this node must be const, and it isn't a metadata op, then all of its
     // parents must be const.
     if ((*compile_time_const_nodes)[node->id()]) {
-      VLOG(3) << "marking consts for " << node->name();
+      VLOG(3) << "marking consts for must-be-const node " << node->name();
       if (node->type_string() == "_Arg") {
         int index;
         status = GetNodeAttr(node->attrs(), "index", &index);
@@ -226,6 +227,7 @@ Status BackwardsConstAnalysis(
         if (compile_time_const_arg_indices) {
           (*compile_time_const_arg_indices)[index] = true;
         }
+        VLOG(3) << "  const _Arg " << index << ": " << node->name();
         return;
       }
       for (const Edge* pred : node->in_edges()) {
@@ -239,7 +241,8 @@ Status BackwardsConstAnalysis(
             if (!status.ok()) return;
           }
           if (edge_filter(*pred)) {
-            VLOG(4) << pred->src()->name() << " must be const";
+            VLOG(4) << "  " << pred->src()->name() << " must be const (is "
+                    << pred->src()->type_string() << ")";
             (*compile_time_const_nodes)[pred->src()->id()] = true;
           }
         }
@@ -251,10 +254,11 @@ Status BackwardsConstAnalysis(
     std::vector<int> const_input_idxs;
     status = GetCompileTimeConstInputs(node, &const_input_idxs, flib_runtime);
 
-    if (!status.ok()) {
+    if (!status.ok() || const_input_idxs.empty()) {
       return;
     }
 
+    VLOG(3) << "marking consts for must-be-const inputs of " << node->name();
     for (Edge const* edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
           absl::c_binary_search(const_input_idxs, edge->dst_input()) &&
@@ -269,7 +273,9 @@ Status BackwardsConstAnalysis(
           if (!status.ok()) return;
         }
         if (edge_filter(*edge)) {
-          VLOG(4) << edge->src()->name() << " must be const";
+          VLOG(4) << "  input " << edge->dst_input() << ": "
+                  << edge->src()->name() << " must be const (is "
+                  << edge->src()->type_string() << ")";
           (*compile_time_const_nodes)[edge->src()->id()] = true;
         }
       }
