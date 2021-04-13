@@ -1337,9 +1337,8 @@ class Precision(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
-                             for v in (self.true_positives,
-                                       self.false_positives)])
+    backend.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1463,9 +1462,8 @@ class Recall(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
-                             for v in (self.true_positives,
-                                       self.false_negatives)])
+    backend.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1548,11 +1546,8 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
 
   def reset_state(self):
     num_thresholds = len(self.thresholds)
-    confusion_matrix_variables = (self.true_positives, self.true_negatives,
-                                  self.false_positives, self.false_negatives)
-    backend.batch_set_value([
-        (v, np.zeros((num_thresholds,))) for v in confusion_matrix_variables
-    ])
+    backend.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {'class_id': self.class_id}
@@ -2378,15 +2373,14 @@ class AUC(Metric):
           name=self.name)
 
   def reset_state(self):
-    confusion_matrix_variables = (self.true_positives, self.true_negatives,
-                                  self.false_positives, self.false_negatives)
     if self.multi_label:
-      backend.batch_set_value([
-          (v, np.zeros((self.num_thresholds, self._num_labels)))
-          for v in confusion_matrix_variables])
+      backend.batch_set_value(
+          [(v, np.zeros((self.num_thresholds, self._num_labels)))
+           for v in self.variables])
     else:
-      backend.batch_set_value([(v, np.zeros((self.num_thresholds,)))
-                               for v in confusion_matrix_variables])
+      backend.batch_set_value([
+          (v, np.zeros((self.num_thresholds,))) for v in self.variables
+      ])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
