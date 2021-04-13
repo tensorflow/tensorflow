@@ -17,6 +17,7 @@ limitations under the License.
 // options. Clustered operations are placed in 'tf_device::ClusterOp'.
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -75,8 +77,8 @@ static tf_device::ClusterOp ClusterMatchedOps(
     llvm::dbgs() << "\n";
   });
 
-  // Find all the values that are used outside of the cluster. These values will
-  // be returned from the created cluster operation.
+  // Find all the values that are source outside of the cluster. These values
+  // will be returned from the created cluster operation.
   llvm::DenseSet<Operation *> in_cluster;
   for (Operation *op : matched_ops) in_cluster.insert(op);
 
@@ -230,16 +232,19 @@ static void FormUseDefClusters(mlir::FuncOp func, ArrayRef<std::string> oplist,
 // -------------------------------------------------------------------------- //
 
 namespace {
+
+// A type that abstracts over types that have uses accessible via `getUses`.
+using Source = PointerUnion<Operation *, BlockArgument *>;
 struct Member {
-  Member(unsigned root, Operation *op, Operation *first_user)
-      : root(root), op(op), first_user(first_user) {}
+  Member(unsigned root, Source source, Operation *first_user)
+      : root(root), source(source), first_user(first_user) {}
 
   unsigned root;
-  Operation *op;
+  Source source;
   // After construction:
-  //   First user of the `op` results in the same block where `op` is defined.
-  //   If there are no users in the same block, then it is a pointer to the
-  //   block terminator.
+  //   First user of the `source` results in the same block where `source` is
+  //   defined. If there are no users in the same block, then it is a pointer to
+  //   the block terminator.
   //
   // During the union-find cluster formation:
   //   The root member will have a pointer to the first user of any result of
@@ -308,7 +313,17 @@ static void ClusterOpsInTheBlock(
   // (index in this vector is the member id).
   llvm::SmallVector<Member> members;
 
-  // Find operations that are candidates for clustering.
+  // Find arguments and operations that are candidates for clustering.
+  for (BlockArgument &arg : block->getArguments()) {
+    // Find the first user that can't be clustered.
+    Operation *first_user = block->getTerminator();
+    for (Operation *user : arg.getUsers())
+      if (user->getBlock() == block && user->isBeforeInBlock(first_user) &&
+          !can_be_clustered(*user))
+        first_user = user;
+
+    members.emplace_back(members.size(), &arg, first_user);
+  }
   for (Operation &op : block->getOperations())
     if (can_be_clustered(op)) {
       // Find the first user that can't be clustered.
@@ -322,9 +337,9 @@ static void ClusterOpsInTheBlock(
     }
 
   // Mapping from the member operation to the id.
-  llvm::DenseMap<Operation *, unsigned> member_ids;
+  llvm::DenseMap<Source, unsigned> member_ids;
   for (auto kv : llvm::enumerate(members))
-    member_ids.try_emplace(kv.value().op, kv.index());
+    member_ids.try_emplace(kv.value().source, kv.index());
 
   LLVM_DEBUG(llvm::dbgs() << "Found " << members.size()
                           << " clustering candidate operations in the block\n");
@@ -335,17 +350,29 @@ static void ClusterOpsInTheBlock(
     Member &member = tuple.value();
 
     // Candidates for clustering with a `member` operation.
-    auto users_rng =
-        llvm::make_filter_range(member.op->getUsers(), [&](Operation *user) {
-          bool same_block = user->getBlock() == block;
-          bool same_device =
-              member.op->getAttr(kDeviceAttr) == user->getAttr(kDeviceAttr);
-          return same_block && same_device && can_be_clustered(*user);
-        });
+    llvm::SmallVector<Operation *> users;
+    if (auto op = member.source.dyn_cast<Operation *>()) {
+      auto users_rng =
+          llvm::make_filter_range(op->getUsers(), [&](Operation *user) {
+            bool same_block = user->getBlock() == block;
+            bool same_device =
+                op->getAttr(kDeviceAttr) == user->getAttr(kDeviceAttr);
+            return same_block && same_device && can_be_clustered(*user);
+          });
+      users.assign(users_rng.begin(), users_rng.end());
+    } else if (auto arg = member.source.dyn_cast<BlockArgument *>()) {
+      auto users_rng =
+          llvm::make_filter_range(arg->getUsers(), [&](Operation *user) {
+            bool same_block = user->getBlock() == block;
+            return same_block && can_be_clustered(*user);
+          });
+      users.assign(users_rng.begin(), users_rng.end());
+    } else {
+      llvm_unreachable("Unexpected type in the union.");
+    }
 
     // We need to process users according to their order in the block to be sure
     // that we do not create clusters that break dominance property.
-    llvm::SmallVector<Operation *> users(users_rng.begin(), users_rng.end());
     llvm::sort(users, [](auto *a, auto *b) { return a->isBeforeInBlock(b); });
 
     for (Operation *user : users) {
@@ -363,11 +390,13 @@ static void ClusterOpsInTheBlock(
 
   // Form clusters found by the union-find algorithm.
   llvm::DenseMap<unsigned, OpList> root_clusters;
-
-  for (auto &tuple : llvm::enumerate(members))
-    root_clusters.FindAndConstruct(FindRoot(members, tuple.index()))
-        .getSecond()
-        .emplace_back(tuple.value().op);
+  for (auto &tuple : llvm::enumerate(members)) {
+    if (auto op = tuple.value().source.dyn_cast<Operation *>()) {
+      root_clusters.FindAndConstruct(FindRoot(members, tuple.index()))
+          .getSecond()
+          .emplace_back(op);
+    }
+  }
 
   LLVM_DEBUG(llvm::dbgs() << "Found " << root_clusters.size() << " clusters\n");
 
