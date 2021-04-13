@@ -5120,12 +5120,24 @@ DEBUG_MODE = False
 def enable_debug_mode():
   """Enables debug mode for tf.data.
 
-  Example usage:
+  Example usage with pdb module:
   ```
   import tensorflow as tf
+  import pdb
 
   tf.data.experimental.enable_debug_mode()
-  ds = ... # input pipeline definition
+
+  def func(x):
+    # Python 3.7 and older requires `pdb.Pdb(nosigint=True).set_trace()`
+    pdb.set_trace()
+    x = x + 1
+    return x
+
+  dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  dataset = dataset.map(func)
+
+  for item in dataset:
+    print(item)
   ```
 
   The effect of debug mode is two-fold:
