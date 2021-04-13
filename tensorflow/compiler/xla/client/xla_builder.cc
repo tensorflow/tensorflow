@@ -339,8 +339,8 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       TF_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
-    case HloOpcode::kConditional:
-      // TODO(b/32495713): We aren't checking control flows.
+      // TODO(b/32495713): We aren't checking the condition and body
+      // computations themselves.
     case HloOpcode::kScatter:
       // TODO(b/32495713): We aren't checking the embedded computation in
       // Scatter.
