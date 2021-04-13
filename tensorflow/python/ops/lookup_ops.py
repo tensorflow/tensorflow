@@ -1216,6 +1216,20 @@ class StaticVocabularyTable(LookupInterface):
 
   The hash function used for generating out-of-vocabulary buckets ID is
   Fingerprint64.
+
+  Note that the out-of-vocabulary bucket IDs always range from the table `size`
+  up to `size + num_oov_buckets - 1` regardless of the table values, which could
+  cause unexpected collisions:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(
+  ...     keys=tf.constant(["emerson", "lake", "palmer"]),
+  ...     values=tf.constant([1, 2, 3], dtype=tf.int64))
+  >>> table = tf.lookup.StaticVocabularyTable(
+  ...     init,
+  ...     num_oov_buckets=1)
+  >>> input_tensor = tf.constant(["emerson", "lake", "palmer", "king"])
+  >>> table[input_tensor].numpy()
+  array([1, 2, 3, 3])
   """
 
   def __init__(self,

@@ -90,7 +90,7 @@ class PythonRefManager {
   std::deque<pybind11::object> python_garbage_ ABSL_GUARDED_BY(mu_);
 
   // Writes to garbage_count_ are protected by mu_, reads are not protected.
-  std::atomic<int> garbage_count_ = 0;
+  std::atomic<int> garbage_count_{0};
 };
 
 // A global PythonRefManager. Unless `CollectGarbage()` is called before

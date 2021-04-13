@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -528,6 +530,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      // Ellipsis mask should have been lowered-away prior to invoking this
+      // function.
+      op->emitError() << "encountered a logical error";
+      return failure();
+    }
+
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
@@ -597,9 +606,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     uint64_t shrink_axis_mask = strided_slice_op.shrink_axis_mask();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
     // Enforce operator precedence.
     shrink_axis_mask &= ~ellipsis_mask;
+    new_axis_mask &= ~ellipsis_mask;
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.begin();
@@ -641,13 +652,17 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     if (begin_dim != 1) return failure();
 
-    const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
+    // The ellipsis fill might exceed the current output shape because we are
+    // also taking account of any to-be-inserted new axes.
+    const int ellipsis_filled_dim_size =
+        input_size - begin_shape[0] + 1 + absl::popcount(new_axis_mask);
 
     int64_t begin_mask = strided_slice_op.begin_mask();
     int64_t end_mask = strided_slice_op.end_mask();
     int64_t revised_begin_mask = 0;
     int64_t revised_end_mask = 0;
     int64_t revised_shrink_axis_mask = 0;
+    int64_t revised_new_axis_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
@@ -664,6 +679,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
+
       ++index;
       ++new_index;
     }
@@ -692,6 +711,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
 
       ++index;
       ++new_index;
@@ -717,9 +738,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type, revised_begin_mask),
         rewriter.getIntegerAttr(attribute_type, revised_end_mask),
         /*ellipsis_mask=*/rewriter.getI64IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.new_axis_mask()),
+        rewriter.getIntegerAttr(attribute_type, revised_new_axis_mask),
         rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
+
     return success();
   }
 
@@ -744,11 +765,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
-    // This logic doesn't handle simultaneous ellipsis_ and new_axis mask. It
-    // will be handled by the TFLite StridedSlice kernel.
-    if ((strided_slice_op.ellipsis_mask() != 0) &&
-        (strided_slice_op.new_axis_mask() != 0)) {
-      return failure();
+    // Handle ellipsis mask.
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      return RewriteEllipsisMask(strided_slice_op, rewriter);
     }
 
     // Handle new axis mask.
@@ -757,11 +776,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if (!strided_slice_op.shrink_axis_mask()) {
         return RewriteNewAxisMask(strided_slice_op, rewriter);
       }
-    }
-
-    // Handle ellipsis mask.
-    if (strided_slice_op.ellipsis_mask() != 0) {
-      return RewriteEllipsisMask(strided_slice_op, rewriter);
     }
 
     auto ranked_input_type =

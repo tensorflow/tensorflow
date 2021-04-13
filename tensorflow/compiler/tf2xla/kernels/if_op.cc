@@ -45,10 +45,6 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
              .ok())
       original_node_name_ = name();
   }
-  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
-                                     &propagate_compile_time_consts_));
-  }
 }
 
 // Populates tensor array gradients for compiled branches, returns whether the
@@ -212,35 +208,33 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  if (propagate_compile_time_consts_) {
-    std::vector<bool> then_branch_must_be_const_nodes;
-    const FunctionBody* then_body;
-    std::vector<bool> else_branch_must_be_const_nodes;
-    const FunctionBody* else_body;
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
-                                             &then_branch_must_be_const_nodes,
-                                             &then_body));
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, else_branch_,
-                                             &else_branch_must_be_const_nodes,
-                                             &else_body));
+  std::vector<bool> then_branch_must_be_const_nodes;
+  const FunctionBody* then_body;
+  std::vector<bool> else_branch_must_be_const_nodes;
+  const FunctionBody* else_body;
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, then_branch_,
+                                &then_branch_must_be_const_nodes, &then_body));
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, else_branch_,
+                                &else_branch_must_be_const_nodes, &else_body));
 
-    auto should_resolve_const = [&](int arg_idx) {
-      XlaCompiler::Argument& arg = arguments[arg_idx];
-      return arg.kind == XlaCompiler::Argument::kParameter &&
-             (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
-                                                  ->id()] ||
-              else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
-                                                  ->id()]);
-    };
+  auto should_resolve_const = [&](int arg_idx) {
+    XlaCompiler::Argument& arg = arguments[arg_idx];
+    return arg.kind == XlaCompiler::Argument::kParameter &&
+           (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
+                                                ->id()] ||
+            else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
+                                                ->id()]);
+  };
 
-    // Replaces `kParameter` type args in `arguments` with `kConstant` if
-    // the op input corresponding to that arg is a compile-time const. This
-    // is necessary to propagate compile time consts to ops in the branch
-    // functions.
-    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
-                                            /*xla_expression_offset=*/1,
-                                            should_resolve_const);
-  }
+  // Replaces `kParameter` type args in `arguments` with `kConstant` if
+  // the op input corresponding to that arg is a compile-time const. This
+  // is necessary to propagate compile time consts to ops in the branch
+  // functions.
+  ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                          /*xla_expression_offset=*/1,
+                                          should_resolve_const);
 
   // Compile both branches of the conditional.
   XlaCompiler::CompileOptions options;

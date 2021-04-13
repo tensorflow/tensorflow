@@ -129,7 +129,7 @@ Status run_type_constructor(Graph* graph, NodeDef* node_def, FullTypeDef* ft) {
     return Status::OK();
   }
 
-  ft->set_type_id(FT_PRODUCT);
+  ft->set_type_id(TFT_PRODUCT);
 
   for (int i = 0; i < op_reg_data->op_def.output_arg_size(); i++) {
     auto* t = ft->add_args();
@@ -148,11 +148,11 @@ Status run_type_constructor(Graph* graph, NodeDef* node_def, FullTypeDef* ft) {
     // way that can be reused for type inference.
     for (int j = 0; j < t->args_size(); j++) {
       auto* arg = t->mutable_args(i);
-      if (arg->type_id() == FT_VAR) {
+      if (arg->type_id() == TFT_VAR) {
         const auto& attr_val = node_def->attr().at(arg->s());
         if (attr_val.value_case() == AttrValue::kList) {
           const auto& attr_list = attr_val.list();
-          arg->set_type_id(FT_PRODUCT);
+          arg->set_type_id(TFT_PRODUCT);
           for (int i = 0; i < attr_list.type_size(); i++) {
             map_dtype_to_tensor(attr_list.type(i), arg->add_args());
           }
@@ -196,7 +196,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   Node* node = graph->AddNode(std::move(node_def), &status);
   if (!status.ok()) return status;
 
-  if (ft.type_id() != FT_UNSET) {
+  if (ft.type_id() != TFT_UNSET) {
     graph->SetNodeType(node->name(), ft);
   }
 

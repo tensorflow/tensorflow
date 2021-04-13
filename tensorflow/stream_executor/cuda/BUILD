@@ -26,6 +26,7 @@ load(
 
 package(
     default_visibility = [":friends"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

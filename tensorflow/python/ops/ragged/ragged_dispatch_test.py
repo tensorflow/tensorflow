@@ -314,7 +314,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                ragged_factory_ops.constant_value([['foo', 'bar'], ['baz']]),
                ragged_factory_ops.constant_value([['2', '9'], ['12']]))},
       ])  # pyformat: disable
-  def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
+  def testListValuedElementwiseOp(self,
+                                  inputs,
+                                  op=math_ops.add_n,
                                   **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
     if use_kwargs:
@@ -671,13 +673,20 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]])),
       dict(
           op=string_ops.string_format,
-          kwargs={'template': 'Hi {}',
-                  'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]},
+          kwargs={
+              'template': 'Hi {}',
+              'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]
+          },
           expected='Hi [[1, 2], [3]]'),
   ])
-  def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
+  def testRaggedDispatch(self,
+                         op,
+                         expected,
+                         args=(),
+                         result_is_list=False,
                          kwargs=None):
-    if kwargs is None: kwargs = {}
+    if kwargs is None:
+      kwargs = {}
     result = op(*args, **kwargs)
     if result_is_list:
       self.assertLen(result, len(expected))
@@ -689,15 +698,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testUnaryElementwiseOpsPreserveUniformRowLength(self):
     # Unary elementwise op
     rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
-        ragged_factory_ops.constant([[1, 2], [3]]),
-        uniform_row_length=2)
+        ragged_factory_ops.constant([[1, 2], [3]]), uniform_row_length=2)
     self.assertAllEqual(rt.uniform_row_length,
                         array_ops.zeros_like(rt).uniform_row_length)
 
     # Unary-list elementwise op
     rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
-        ragged_factory_ops.constant([[1, 2], [3]]),
-        uniform_row_length=2)
+        ragged_factory_ops.constant([[1, 2], [3]]), uniform_row_length=2)
     self.assertAllEqual(rt.uniform_row_length,
                         math_ops.add_n([rt, rt]).uniform_row_length)
 

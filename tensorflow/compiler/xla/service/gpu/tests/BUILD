@@ -83,6 +83,18 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "mlir_gemm_test",
+    srcs = ["mlir_gemm_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_sorting_test",
     srcs = ["mlir_sorting_test.cc"],
     tags = tf_cuda_tests_tags(),

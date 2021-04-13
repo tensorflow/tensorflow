@@ -346,6 +346,26 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
       ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
 }
 
+TEST(ConstUint8MeanOpTest, Rounding) {
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MeanOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
+                     {TensorType_UINT8, {3}, -1.1, 1.1}, {1}, {1}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({163, 168, 192}));
+}
+
+TEST(ConstInt8MeanOpTest, Rounding) {
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MeanOpConstModel m({TensorType_INT8, {3, 2}, -1.0, 1.0},
+                     {TensorType_INT8, {3}, -1.1, 1.1}, {1}, {1}, true);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({34, 39, 63}));
+}
+
 template <typename integer_type, TensorType tensor_dtype>
 void MeanOpConstModelTest() {
   float kQuantizedTolerance = GetTolerance<integer_type>(-255.0, 255.0);

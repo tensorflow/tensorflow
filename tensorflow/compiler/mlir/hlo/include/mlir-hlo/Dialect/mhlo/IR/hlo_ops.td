@@ -1344,7 +1344,9 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
+def HLO_RngUniformOp : HLO_Op<"rng_uniform",
+      InferTensorType<["inferReturnTypeComponents"]>.traits>,
+    BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
     HLO_PredIntOrFpTensor:$b,
@@ -1354,9 +1356,18 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let results = (outs HLO_PredIntOrFpTensor);
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(::mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
-def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
+def HLO_RngNormalOp : HLO_Op<"rng_normal",
+      InferTensorType<["inferReturnTypeComponents"]>.traits>,
+    BASE_HLO_RngNormalOp {
   let arguments = (ins
     HLO_FpTensor:$mu,
     HLO_FpTensor:$sigma,
@@ -1366,6 +1377,13 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let results = (outs HLO_FpTensor);
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(::mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>,

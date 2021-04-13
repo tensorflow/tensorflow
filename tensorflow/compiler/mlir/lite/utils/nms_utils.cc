@@ -90,7 +90,7 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;
-  if (failed(CreateNMSCustomOptions(func_, attr_.GetAttrs(),
+  if (failed(CreateNMSCustomOptions(func_, attr_.getAttrs(),
                                     custom_option_buffer))) {
     return failure();
   }

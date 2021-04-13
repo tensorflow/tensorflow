@@ -24,6 +24,7 @@ class FuncOp;
 class ModuleOp;
 template <typename T>
 class OperationPass;
+class Type;
 
 namespace TFL {
 class QuantizationSpecs;
@@ -74,6 +75,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass();
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
+
+std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
+    mlir::Type input_type, mlir::Type output_type);
 
 // Creates an instance of the TensorFlow Lite dialect pass to add default
 // quantization parameters.

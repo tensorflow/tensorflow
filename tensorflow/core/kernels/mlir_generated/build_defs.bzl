@@ -295,7 +295,10 @@ def _gen_kernel_library(
                         output_type = output_type,
                     ),
                     "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
+<<<<<<< HEAD
                     "--amdhsa-code-object-version=3"
+=======
+>>>>>>> upstream/master
                 ],
                 size = "medium",
                 data = [

@@ -43,34 +43,29 @@ bool GetEnableX64();
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
-  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  absl::InlinedVector<xla::PyTreeDef, 2> dynamic_positional_args_treedef;
+  // A PyTreeDef for each dynamic argument, positional arguments first
+  // followed by keyword arguments. Keyword arguments are in the order given
+  // by dynamic_arg_names.
+  absl::InlinedVector<xla::PyTreeDef, 2> dynamic_arg_treedefs;
+  // Dynamic keyword argument names. Interned, and sorted by the keyword
+  // name.
+  std::vector<pybind11::object> dynamic_arg_names;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
-  absl::InlinedVector<xla::PyArgSignature, 2> dynamic_args_signatures;
+  absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
+
+  // Static arguments. Contains the positional arguments sorted in argument
+  // order, followed by static keyword arguments in the order given by
+  // `static_arg_names`.
+  std::vector<pybind11::object> static_args;
+  // Static keyword argument names. Interned, and sorted by keyword name.
+  std::vector<pybind11::object> static_arg_names;
+
   xla::PjRtDevice* device;
   bool jax_enable_x64;
+
   // Opaque additional context that should be included as part of the cache key.
   pybind11::object extra_jit_context;
-
-  struct KwargEntry {
-    // To avoid comparing strings, we intern the kwargs strings.
-    // The compilation cache holds a reference to all the keys.
-    pybind11::handle key;
-    xla::PyTreeDef value_treedef;
-    bool operator==(const KwargEntry& other) const {
-      return key.ptr() == other.key.ptr() &&
-             value_treedef == other.value_treedef;
-    }
-    bool operator!=(const KwargEntry& other) const { return !(*this == other); }
-  };
-
-  // Only contains the arguments associated to `static_argnums`, sorted in the
-  // order of their argnum index.
-  std::vector<pybind11::object> static_args;
-  // Keyword arguments. Sorted by the keyword name.
-  std::vector<KwargEntry> keyword_args;
-
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -79,12 +74,6 @@ struct CallSignature {
 
   std::string DebugString() const;
 };
-
-template <typename H>
-H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
-  h = H::combine(std::move(h), kw.key.ptr(), kw.value_treedef);
-  return h;
-}
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s);
@@ -115,6 +104,7 @@ struct ParsedArgumentsAsBuffers {
 xla::Status ParseArguments(pybind11::handle args,
                            const absl::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
+                           absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.

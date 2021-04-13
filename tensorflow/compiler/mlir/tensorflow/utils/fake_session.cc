@@ -15,14 +15,52 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/platform/threadpool_options.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace mlir {
 namespace TF {
 namespace test_util {
+namespace {
 using ::tensorflow::Status;
 using ::tensorflow::Tensor;
+
+const char kDeviceNamePrefix[] = "/job:worker/replica:0/task:1";
+const char kDeviceName[] = "/job:worker/replica:0/task:1/device:CPU:0";
+}  // namespace
+
+FakeSession::FakeSession() {
+  BuildDeviceManager();
+  InitVariables();
+}
+
+void FakeSession::BuildDeviceManager() {
+  auto device =
+      tensorflow::DeviceFactory::NewDevice("CPU", {}, kDeviceNamePrefix);
+  device_mgr_ =
+      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+}
+
+void FakeSession::InitVariables() {
+  tensorflow::Device* device = nullptr;
+  auto status = device_mgr_->LookupDevice(kDeviceName, &device);
+  if (status != Status::OK()) return;
+  auto container = device->resource_manager()->default_container();
+
+  // Create 2 resources and initialize them with dummy values.
+  (void)device->resource_manager()->Create(
+      container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
+  (void)device->resource_manager()->Create(
+      container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
+}
 
 Status FakeSession::Create(const tensorflow::GraphDef& graph) {
   return tensorflow::errors::Unimplemented("not available");
@@ -42,9 +80,7 @@ Status FakeSession::ListDevices(
 
 Status FakeSession::LocalDeviceManager(
     const tensorflow::DeviceMgr** deviceMgrPtr) {
-  // This method returns a null device manager without making an error.
-  // Users of this method will be notified since it will have a fake data.
-  *deviceMgrPtr = nullptr;
+  *deviceMgrPtr = device_mgr_.get();
   return Status::OK();
 }
 
@@ -85,6 +121,24 @@ Status FakeSession::Run(
       Tensor t =
           Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({100, 50}));
       t.flat<float>().setZero();
+      outputs->push_back(t);
+    } else if (output_name == "var1") {
+      Tensor t = Tensor(tensorflow::DT_RESOURCE, tensorflow::TensorShape({1}));
+      t.scalar<tensorflow::ResourceHandle>()().set_name("var1");
+      t.scalar<tensorflow::ResourceHandle>()().set_device(kDeviceName);
+
+      outputs->push_back(t);
+    } else if (output_name == "var2") {
+      Tensor t = Tensor(tensorflow::DT_RESOURCE, tensorflow::TensorShape({1}));
+      t.scalar<tensorflow::ResourceHandle>()().set_name("var2");
+      t.scalar<tensorflow::ResourceHandle>()().set_device(kDeviceName);
+
+      outputs->push_back(t);
+    } else if (output_name == "var3") {
+      Tensor t = Tensor(tensorflow::DT_RESOURCE, tensorflow::TensorShape({1}));
+      t.scalar<tensorflow::ResourceHandle>()().set_name("var3");
+      t.scalar<tensorflow::ResourceHandle>()().set_device(kDeviceName);
+
       outputs->push_back(t);
     } else {
       // Create a scalar float tensor.
