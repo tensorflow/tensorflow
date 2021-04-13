@@ -1975,5 +1975,26 @@ GatherOperandsShardedAcrossParallelDims(
   return GatherParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
+int64 FindRotateRightPattern(const HloInstruction* concat,
+                             const HloInstruction* lhs,
+                             const HloInstruction* rhs) {
+  if (lhs->opcode() != HloOpcode::kSlice ||
+      rhs->opcode() != HloOpcode::kSlice ||
+      lhs->operand(0) != rhs->operand(0)) {
+    return -1;
+  }
+  const HloInstruction* to_rotate = lhs->operand(0);
+  if (!ShapeUtil::Compatible(to_rotate->shape(), concat->shape()) ||
+      concat->sharding() != to_rotate->sharding()) {
+    return -1;
+  }
+  const int64 dim = concat->concatenate_dimension();
+  if (lhs->slice_strides(dim) != 1 || rhs->slice_strides(dim) != 1 ||
+      lhs->slice_starts(dim) != rhs->slice_limits(dim)) {
+    return -1;
+  }
+  return lhs->shape().dimensions(dim);
+}
+
 }  // namespace spmd
 }  // namespace xla

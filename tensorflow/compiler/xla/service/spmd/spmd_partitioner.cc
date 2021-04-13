@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/spmd/custom_call_handler.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -3715,6 +3716,34 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
           }
           continue;
         }
+        continue;
+      }
+      if (hlo->opcode() == HloOpcode::kConcatenate) {
+        const int64 dim = hlo->concatenate_dimension();
+        if (hlo->operand_count() != 2 ||
+            hlo->sharding().tile_assignment().dim(dim) == 1) {
+          continue;
+        }
+        // Find a pattern of "rotate right on one dimension":
+        // concat(slice(input), slice(input)).
+        HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
+        HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(1));
+        if (lhs == nullptr || rhs == nullptr) {
+          continue;
+        }
+        const int64 amount = FindRotateRightPattern(hlo, lhs, rhs);
+        if (amount < 0) {
+          continue;
+        }
+        HloInstruction* to_rotate = lhs->mutable_operand(0);
+        HloInstruction* rotate = computation->AddInstruction(
+            CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim, amount));
+        rotate->set_metadata(hlo->metadata());
+        rotate->set_sharding(hlo->sharding());
+        TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
+        TF_RETURN_IF_ERROR(
+            computation->RemoveInstructionAndUnusedOperands(hlo));
+        continue;
       }
     }
   }

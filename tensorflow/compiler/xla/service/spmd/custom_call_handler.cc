@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/spmd/custom_call_handler.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -35,6 +38,33 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
+namespace {
+
+StatusOr<absl::flat_hash_map<string, int64>> ParseOpaqueAsAttributes(
+    const HloInstruction* hlo) {
+  absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
+  HloLexer lexer(opaque);
+  absl::flat_hash_map<string, int64> result;
+  while (lexer.Lex() != TokKind::kEof) {
+    if (lexer.GetKind() != TokKind::kAttributeName) {
+      return InvalidArgument("Expects attribute name, %s", opaque);
+    }
+    string attr_name = lexer.GetStrVal();
+    if (lexer.Lex() != TokKind::kInt) {
+      return InvalidArgument("expects integer attribute value");
+    }
+    result[attr_name] = lexer.GetInt64Val();
+    if (lexer.Lex() != TokKind::kComma) {
+      break;
+    }
+  }
+  return result;
+}
+
+constexpr char kSPMDOpRotateRight[] = "_SPMDInternalOp_RotateRight";
+
+}  // namespace
 
 Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   if (!hlo->operand(0)->has_sharding()) {
@@ -205,6 +235,141 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
+    HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
+  auto dim_it = attrs.find("dimension");
+  TF_RET_CHECK(dim_it != attrs.end())
+      << "No dimension attribute in SPMD rotate op";
+  int64 dim = dim_it->second;
+  auto amount_it = attrs.find("amount");
+  TF_RET_CHECK(amount_it != attrs.end())
+      << "No amount attribute in SPMD rotate op";
+
+  PartitionedHlo input =
+      GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding());
+  const int64 full_size = hlo->shape().dimensions(dim);
+  const int64 shard_size = input.hlo()->shape().dimensions(dim);
+
+  // We exclude shards that are entirely padding.
+  const int64 participating_shards = CeilOfRatio(full_size, shard_size);
+  // The last included shard might still have padding on the right.
+  const int64 right_padding = participating_shards * shard_size - full_size;
+  int64 amount = amount_it->second;
+  TF_RET_CHECK(amount >= 0)
+      << "Rotate amount cannot be negative in SPMD rotate op";
+
+  amount %= full_size;
+  if (amount == 0) {
+    SetPartitionedHlo(hlo, input);
+    return Status::OK();
+  }
+
+  // First step: rotate `amount` on padded data. E.g., before
+  //      012|345|678|9__     (_: padding)
+  // after:
+  //      678|9__|012|345     (amount: 6)
+  auto rotate_with_padding = [&](int64 rotate_amount) {
+    int64 current_size = 0;
+    std::vector<HloInstruction*> concat_pieces;
+    while (current_size < shard_size) {
+      int64 shard_distance =
+          CeilOfRatio(rotate_amount - current_size, shard_size);
+      int64 offset_in_shard =
+          shard_distance * shard_size - rotate_amount + current_size;
+
+      int64 halo_size =
+          std::min(shard_size - offset_in_shard, shard_size - current_size);
+
+      current_size += halo_size;
+      Shape halo_shape = input.hlo()->shape();
+      halo_shape.set_dimensions(dim, halo_size);
+      HloInstruction* halo = input.hlo();
+      if (halo_size != shard_size) {
+        halo_shape.set_dimensions(dim, halo_size);
+        std::vector<int64> slice_starts(hlo->shape().rank(), 0);
+        slice_starts[dim] = offset_in_shard;
+        std::vector<int64> slice_limits(
+            input.hlo()->shape().dimensions().begin(),
+            input.hlo()->shape().dimensions().end());
+        slice_limits[dim] = offset_in_shard + halo_size;
+        halo = b_.AddInstruction(HloInstruction::CreateSlice(
+            halo_shape, halo, slice_starts, slice_limits,
+            std::vector<int64>(halo_shape.rank(), 1)));
+      }
+      if (shard_distance != 0) {
+        std::vector<std::pair<int64, int64>> pairs;
+        hlo->sharding().tile_assignment().Each(
+            [&](absl::Span<const int64> indices, int64 device) {
+              if (indices[dim] >= participating_shards) {
+                return;
+              }
+              std::vector<int64> dst_idx(indices.begin(), indices.end());
+              dst_idx[dim] += shard_distance;
+              dst_idx[dim] %= participating_shards;
+              pairs.emplace_back(device,
+                                 hlo->sharding().tile_assignment()(dst_idx));
+            });
+        halo =
+            collective_ops_creator_.create_cross_partition_collective_permute(
+                &b_, halo, pairs, NewChannel());
+      }
+      concat_pieces.push_back(halo);
+    }
+    if (concat_pieces.size() > 1) {
+      return b_.AddInstruction(HloInstruction::CreateConcatenate(
+          input.hlo()->shape(), concat_pieces, dim));
+    }
+    return concat_pieces[0];
+  };
+  HloInstruction* rotated0 = rotate_with_padding(amount);
+  if (right_padding == 0) {
+    SetPartitionedHlo(hlo, [&] { return rotated0; });
+    return Status::OK();
+  }
+
+  // Second step: perform another rotate from input, with `right_padding` added
+  // to `amount`. E.g., before
+  //      012|345|678|9__     (_: padding)
+  // after:
+  //      456|789|__0|123     (amount: 6 + 2)
+  // combine (select) with first step:
+  //      678|9__|012|345
+  // now we get:
+  //      456|789|012|3__
+
+  HloInstruction* rotated1 = rotate_with_padding(
+      (amount + right_padding) % (shard_size * participating_shards));
+  HloInstruction* shard_offset = MakePartitionOffsets(
+      hlo->shape(), hlo->sharding(), partition_id_, &b_, {dim})[dim];
+  HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
+      ShapeUtil::ChangeElementType(rotated0->shape(), S32), dim));
+  HloInstruction* selection_boundary =
+      b_.AddInstruction(HloInstruction::CreateBroadcast(
+          iota->shape(),
+          b_.AddInstruction(HloInstruction::CreateBinary(
+              shard_offset->shape(), HloOpcode::kSubtract,
+              b_.AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32>(amount))),
+              shard_offset)),
+          {}));
+  HloInstruction* pred = b_.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::ChangeElementType(iota->shape(), PRED), iota,
+      selection_boundary, Comparison::Direction::kLt));
+  SetPartitionedHlo(hlo, [&] {
+    return b_.AddInstruction(HloInstruction::CreateTernary(
+        rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
+  });
+  return Status::OK();
+}
+
+std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
+    HloInstruction* input, int64 dim, int64 amount) {
+  string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
+  return HloInstruction::CreateCustomCall(input->shape(), {input},
+                                          kSPMDOpRotateRight, opaque);
+}
+
 Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SPMDFullToShardShape") {
     // This op switches from auto partitioning to manual partitioning.
@@ -235,6 +400,10 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
 
   if (hlo->custom_call_target() == "TopK") {
     return HandleCustomCallTopK(hlo);
+  }
+
+  if (hlo->custom_call_target() == kSPMDOpRotateRight) {
+    return HandleCustomCallSPMDInternal_RotateRight(hlo);
   }
 
   return DefaultAction(hlo);

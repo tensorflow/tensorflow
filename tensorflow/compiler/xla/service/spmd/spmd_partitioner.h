@@ -74,7 +74,8 @@ class SpmdBuilder : public HloComputation::Builder {
     visiting_hlo_ = hlo;
   }
 
-  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+  HloInstruction* AddInstruction(
+      std::unique_ptr<HloInstruction> instruction) override;
 
   const std::vector<HloInstruction*>& derived_instructions(
       HloInstruction* hlo) {
@@ -462,6 +463,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // CustomCall handlers per call target.
   Status HandleCustomCallTopK(HloInstruction* hlo);
+  // Convenient custom ops defined by the partitioner itself.
+  Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
   PartitionedHlo& GetPartitionedHlo(const HloInstruction* hlo) {

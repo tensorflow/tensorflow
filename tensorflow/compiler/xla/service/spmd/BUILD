@@ -28,6 +28,7 @@ cc_library(
     ],
     hdrs = [
         "convolution_handler.h",
+        "custom_call_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],
@@ -48,6 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",
