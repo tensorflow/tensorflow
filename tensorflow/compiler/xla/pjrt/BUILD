@@ -370,6 +370,21 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tracked_tfrt_cpu_device_buffer",
+    srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
+    hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
