@@ -147,7 +147,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
   "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
   # Test dependencies
-  "${PIP_CMD}" install --user 'grpcio ~= 1.34.0'
+  "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
   "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -204,7 +204,7 @@ function install_ubuntu_16_python_pip_deps {
   ${PIP_CMD} install --user --upgrade 'tb-nightly ~= 2.4.0.a'
   ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
   # Test dependencies
-  ${PIP_CMD} install --user 'grpcio ~= 1.34.0'
+  ${PIP_CMD} install --user 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
   ${PIP_CMD} install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -247,7 +247,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a'
   ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0'
   # Test dependencies
-  ${PIP_CMD} install 'grpcio ~= 1.34.0'
+  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install 'portpicker ~= 1.3.1'
   ${PIP_CMD} install 'scipy ~= 1.5.2'
   ${PIP_CMD} install --upgrade certifi
@@ -294,7 +294,7 @@ function install_macos_pip_deps_no_venv {
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a' --user
   ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0' --user
   # Test dependencies
-  ${PIP_CMD} install 'grpcio ~= 1.34.0' --user
+  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0' --user
   ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
   ${PIP_CMD} install 'scipy ~= 1.5.2' --user
   ${PIP_CMD} install --upgrade certifi --user
