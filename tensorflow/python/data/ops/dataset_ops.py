@@ -394,7 +394,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
-    if tf_compat.forward_compatible(2021, 4, 12):
+    if tf_compat.forward_compatible(2021, 4, 25):
       if context.executing_eagerly():
         options = self._options_tensor_to_options(self._options())
         options._set_mutable(False)  # pylint: disable=protected-access
@@ -422,7 +422,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     else:
       dataset = self
 
-    if tf_compat.forward_compatible(2021, 4, 12):
+    if tf_compat.forward_compatible(2021, 4, 25):
       return _FinalizeDataset(dataset, dataset._has_captured_ref())  # pylint: disable=protected-access
 
     options = dataset.options()
@@ -4919,7 +4919,7 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, options):
     # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    if tf_compat.forward_compatible(2021, 4, 12):
+    if tf_compat.forward_compatible(2021, 4, 25):
       options_pb = dataset_options_pb2.Options()
       options_pb.CopyFrom(options._to_proto())
       with ops.colocate_with(input_dataset._variant_tensor):
