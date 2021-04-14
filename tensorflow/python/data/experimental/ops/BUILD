@@ -119,10 +119,8 @@ py_library(
     srcs = ["get_single_element.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
     ],
 )
 

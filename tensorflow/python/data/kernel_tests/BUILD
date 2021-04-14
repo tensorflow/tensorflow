@@ -348,6 +348,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "get_single_element_test",
+    size = "small",
+    srcs = ["get_single_element_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:grouping",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
