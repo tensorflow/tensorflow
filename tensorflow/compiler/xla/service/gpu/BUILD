@@ -1438,6 +1438,7 @@ tf_cc_test(
     ],
     tags = [
         "gpu",
+        "no_rocm",
     ],
     deps = [
         ":nvptx_compiler_impl",
