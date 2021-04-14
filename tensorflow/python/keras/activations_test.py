@@ -39,7 +39,7 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
   def test_serialization(self):
     all_activations = [
         'softmax', 'relu', 'elu', 'tanh', 'sigmoid', 'hard_sigmoid', 'linear',
-        'softplus', 'softsign', 'selu', 'gelu', 'relu6'
+        'softplus', 'softsign', 'selu', 'gelu'
     ]
     for name in all_activations:
       fn = activations.get(name)
