@@ -182,7 +182,6 @@ filegroup(
         "//:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@ruy//:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
@@ -232,13 +231,7 @@ filegroup(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "@aws//:LICENSE",
-            "@aws-c-common//:LICENSE",
-            "@aws-c-event-stream//:LICENSE",
-            "@aws-checksums//:LICENSE",
-        ],
+        "//conditions:default": [],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
