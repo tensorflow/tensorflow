@@ -34,6 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
@@ -41,7 +42,9 @@ template <typename T, typename Tindex>
 struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t) {
+                    const Tensor& dense_shape_t,
+                    typename AsyncOpKernel::DoneCallback done) {
+    (void)done;  // Unused (only used in GPU implementation)
     const int kOutputIndicesOutput = 0;
     const int kOutputValuesOutput = 1;
     const int kEmptyRowIndicatorOutput = 2;
@@ -185,6 +188,57 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
 
 }  // namespace functor
 
+namespace {
+
+template <typename Device, typename T, typename Tindex>
+void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
+                               AsyncOpKernel::DoneCallback done = nullptr) {
+  // Note that setting this empty lambda as the default parameter value directly
+  // can cause strange compiler/linker errors, so we do it like this instead.
+  if (!done) {
+    done = [] {};
+  }
+
+  const int kIndicesInput = 0;
+  const int kValuesInput = 1;
+  const int kDenseShapeInput = 2;
+  const int kDefaultValueInput = 3;
+
+  const Tensor& indices_t = context->input(kIndicesInput);
+  const Tensor& values_t = context->input(kValuesInput);
+  const Tensor& dense_shape_t = context->input(kDenseShapeInput);
+  const Tensor& default_value_t = context->input(kDefaultValueInput);
+
+  OP_REQUIRES_ASYNC(
+      context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
+      errors::InvalidArgument("dense_shape must be a vector, saw: ",
+                              dense_shape_t.shape().DebugString()),
+      done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
+                    errors::InvalidArgument("indices must be a matrix, saw: ",
+                                            indices_t.shape().DebugString()),
+                    done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(values_t.shape()),
+                    errors::InvalidArgument("values must be a vector, saw: ",
+                                            values_t.shape().DebugString()),
+                    done);
+  OP_REQUIRES_ASYNC(
+      context, TensorShapeUtils::IsScalar(default_value_t.shape()),
+      errors::InvalidArgument("default_value must be a scalar, saw: ",
+                              default_value_t.shape().DebugString()),
+      done);
+  // TODO(ebrevdo): add shape checks between values, indices,
+  // dense_shape.  Also add check that dense rank > 0.
+
+  using FunctorType = functor::SparseFillEmptyRows<Device, T, Tindex>;
+  OP_REQUIRES_OK_ASYNC(context,
+                       FunctorType()(context, default_value_t, indices_t,
+                                     values_t, dense_shape_t, done),
+                       done);
+}
+
+}  // namespace
+
 template <typename Device, typename T, typename Tindex>
 class SparseFillEmptyRowsOp : public OpKernel {
  public:
@@ -192,34 +246,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    const int kIndicesInput = 0;
-    const int kValuesInput = 1;
-    const int kDenseShapeInput = 2;
-    const int kDefaultValueInput = 3;
-
-    const Tensor& indices_t = context->input(kIndicesInput);
-    const Tensor& values_t = context->input(kValuesInput);
-    const Tensor& dense_shape_t = context->input(kDenseShapeInput);
-    const Tensor& default_value_t = context->input(kDefaultValueInput);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
-                errors::InvalidArgument("dense_shape must be a vector, saw: ",
-                                        dense_shape_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
-                errors::InvalidArgument("indices must be a matrix, saw: ",
-                                        indices_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t.shape()),
-                errors::InvalidArgument("values must be a vector, saw: ",
-                                        values_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(default_value_t.shape()),
-                errors::InvalidArgument("default_value must be a scalar, saw: ",
-                                        default_value_t.shape().DebugString()));
-    // TODO(ebrevdo): add shape checks between values, indices,
-    // dense_shape.  Also add check that dense rank > 0.
-
-    OP_REQUIRES_OK(context, functor::SparseFillEmptyRows<Device, T, Tindex>()(
-                                context, default_value_t, indices_t, values_t,
-                                dense_shape_t));
+    SparseFillEmptyRowsOpImpl<Device, T, Tindex>(context);
   }
 };
 
@@ -235,6 +262,52 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// The GPU implementation is async because it requires waiting for a
+// host->device memcpy before the output is allocated (similar to
+// SegmentSumGPUOp).
+template <typename T, typename Tindex>
+class SparseFillEmptyRowsGPUOp : public AsyncOpKernel {
+ public:
+  explicit SparseFillEmptyRowsGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    SparseFillEmptyRowsOpImpl<GPUDevice, T, Tindex>(context, done);
+  }
+};
+
+#define REGISTER_KERNELS(T, Tindex)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")    \
+                              .Device(DEVICE_GPU)        \
+                              .HostMemory("dense_shape") \
+                              .TypeConstraint<T>("T"),   \
+                          SparseFillEmptyRowsGPUOp<T, Tindex>)
+
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                            \
+  template <>                                                                  \
+  Status SparseFillEmptyRows<GPUDevice, T, Tindex>::operator()(                \
+      OpKernelContext* context, const Tensor& default_value_t,                 \
+      const Tensor& indices_t, const Tensor& values_t,                         \
+      const Tensor& dense_shape_t, typename AsyncOpKernel::DoneCallback done); \
+  extern template struct SparseFillEmptyRows<GPUDevice, T, Tindex>;
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
+#undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_KERNELS_TINDEX(T) REGISTER_KERNELS(T, int64)
+TF_CALL_POD_TYPES(REGISTER_KERNELS_TINDEX)
+#undef REGISTER_KERNELS_TINDEX
+
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 
@@ -337,6 +410,31 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                 \
+  template <>                                                       \
+  Status SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>::operator()( \
+      OpKernelContext* context,                                     \
+      typename TTypes<Tindex>::ConstVec reverse_index_map,          \
+      typename TTypes<T>::ConstVec grad_values,                     \
+      typename TTypes<T>::Vec d_values,                             \
+      typename TTypes<T>::Scalar d_default_value);                  \
+  extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+TF_CALL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
+#undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, int64)
+TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+#undef REGISTER_GPU_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNELS
 }  // namespace tensorflow
