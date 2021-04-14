@@ -21,26 +21,27 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-Status SparseSoftmaxCrossEntropyWithLogits(
-    AbstractContext* ctx, AbstractTensorHandle* const features,
-    AbstractTensorHandle* const labels,
-    absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx,
+                                           AbstractTensorHandle* const features,
+                                           AbstractTensorHandle* const labels,
+                                           AbstractTensorHandle** loss,
+                                           AbstractTensorHandle** backprop,
+                                           const char* name);
 
 Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
                 AbstractTensorHandle* const features,
-                absl::Span<AbstractTensorHandle*> backprops, const char* name);
+                AbstractTensorHandle** backprops, const char* name);
 
 Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
-            absl::Span<AbstractTensorHandle*> activations, const char* name);
+            AbstractTensorHandle** activations, const char* name);
 
 Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
-               AbstractTensorHandle* const bias,
-               absl::Span<AbstractTensorHandle*> output, const char* name,
-               const char* data_format = "NHWC");
+               AbstractTensorHandle* const bias, AbstractTensorHandle** output,
+               const char* name, const char* data_format = "NHWC");
 
 Status BiasAddGrad(AbstractContext* ctx,
                    AbstractTensorHandle* const out_backprop,
-                   absl::Span<AbstractTensorHandle*> output, const char* name,
+                   AbstractTensorHandle** output, const char* name,
                    const char* data_format = "NHWC");
 
 }  // namespace ops
