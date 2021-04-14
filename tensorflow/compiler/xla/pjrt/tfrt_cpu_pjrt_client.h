@@ -77,8 +77,6 @@ class TfrtCpuDevice final : public PjRtDevice {
     return max_inflight_computations_semaphore_;
   }
 
-  WorkerThread* execute_thread() const { return execute_thread_.get(); }
-
  private:
   int id_;
   PjRtClient* client_ = nullptr;
@@ -87,9 +85,6 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
-
-  // A worker thread, used for replicated computation launches.
-  std::unique_ptr<WorkerThread> execute_thread_;
 };
 
 class TfrtCpuExecutable;
@@ -181,6 +176,16 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
+  tfrt::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
+    absl::MutexLock lock(&mu_);
+    return last_collective_launch_event_.CopyRef();
+  }
+
+  void SetLastCollectiveLaunchEvent(tfrt::AsyncValueRef<CpuEvent> event) {
+    absl::MutexLock lock(&mu_);
+    last_collective_launch_event_ = std::move(event);
+  }
+
  private:
   int process_index_;
   // Includes all devices, including non-addressable devices.
@@ -197,6 +202,20 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
   std::unique_ptr<tensorflow::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+
+  // Launching collectives are prone to deadlock when we use fixed-sized
+  // threadpools since ExecuteHelper will block until all replicas reach the
+  // barrier. We ensure that
+  // 1. Threadpool size is at least as large as device_count so one collective
+  //    launch over all devices can succeed.
+  // 2. Gang-schedule each collective by conservatively ensuring a total order
+  //    of collectives and launching only one collective at a time to avoid
+  //    having no active threads to make progress
+  // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
+  // collectives.
+  mutable absl::Mutex mu_;
+  tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
+      ABSL_GUARDED_BY(mu_);
 };
 
 class TfrtCpuBuffer final : public PjRtBuffer {
@@ -536,6 +555,7 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
+      tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
       TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;

@@ -65,9 +65,8 @@ static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent(
 
 TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
     : id_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
-      execute_thread_(std::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                     "py_xla_execute")) {}
+      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+}
 
 absl::string_view TfrtCpuDevice::device_kind() const {
   return kCpuPlatformName;
@@ -135,7 +134,9 @@ TfrtCpuClient::TfrtCpuClient(
           tensorflow::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
-                                      eigen_intraop_pool_->NumThreads())) {
+                                      eigen_intraop_pool_->NumThreads())),
+      last_collective_launch_event_(
+          tfrt::MakeAvailableAsyncValueRef<CpuEvent>(host_ctx_.get())) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -1215,11 +1216,11 @@ CreateResultShapedBuffer(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-TfrtCpuExecutable::ExecuteHelper(absl::Span<PjRtBuffer* const> argument_handles,
-                                 int replica, int partition,
-                                 const RunId& run_id,
-                                 const ExecuteOptions& options,
-                                 TfrtCpuDevice* device) {
+TfrtCpuExecutable::ExecuteHelper(
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    const RunId& run_id, const ExecuteOptions& options,
+    tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
+    TfrtCpuDevice* device) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
   auto* host_context = client_->GetHostContext();
 
@@ -1365,6 +1366,12 @@ TfrtCpuExecutable::ExecuteHelper(absl::Span<PjRtBuffer* const> argument_handles,
   run_options.set_device_assignment(device_assignment.get());
   run_options.set_intra_op_thread_pool(client_->eigen_intraop_device());
 
+  // Schedule only one collective at a time.
+  bool is_a_collective_launch = !!last_collective_launch_event;
+  if (is_a_collective_launch) {
+    input_deps.push_back(std::move(last_collective_launch_event));
+  }
+
   if (input_deps.empty()) {
     // Synchronously call generated function.
     execute_event = GetOrCreateReadyEvent(host_context);
@@ -1375,6 +1382,13 @@ TfrtCpuExecutable::ExecuteHelper(absl::Span<PjRtBuffer* const> argument_handles,
     // heuristics to decide what computation is expensive.
     // Asynchronously call generated function.
     execute_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>(host_context);
+
+    // We only created enough threads for one collective to complete.
+    // The next collective launch will not be scheduled onto threadpool until
+    // this one completes.
+    if (is_a_collective_launch) {
+      client_->SetLastCollectiveLaunchEvent(execute_event.CopyRef());
+    }
     std::vector<tfrt::RCReference<tfrt::AsyncValue>> input_deps_avs =
         GetAsyncValues(input_deps);
     EnqueueWorkWhenReady(
@@ -1488,9 +1502,17 @@ TfrtCpuExecutable::Execute(
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
-    results[0] =
-        ExecuteHelper(argument_handles[0], replica, partition, run_id, options);
+    results[0] = ExecuteHelper(
+        argument_handles[0], replica, partition, run_id, options,
+        /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>());
   } else {
+    // Gang schedule collectives to ensure that collectives with the same RunId
+    // are run at the same time. We conservatively run only one collective at a
+    // time, because we may not have enough threads to run arbitrary number of
+    // collectives concurrently.
+    tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event =
+        client_->GetLastCollectiveLaunchEvent();
+
     absl::Mutex mu;
     int running = num_addressable_devices;
     int failed = 0;
@@ -1499,21 +1521,20 @@ TfrtCpuExecutable::Execute(
     for (int i = 0; i < num_addressable_devices; ++i) {
       const int replica = addressable_device_logical_ids_[i].replica;
       const int partition = addressable_device_logical_ids_[i].partition;
-      PjRtDevice* device = addressable_devices_[i];
-      down_cast<TfrtCpuDevice*>(device)->execute_thread()->Schedule(
-          [&, replica, partition, i] {
-            results[i] = ExecuteHelper(argument_handles[i], replica, partition,
-                                       run_id, options);
+      tfrt::EnqueueWork(client_->GetHostContext(), [&, replica, partition, i] {
+        results[i] =
+            ExecuteHelper(argument_handles[i], replica, partition, run_id,
+                          options, last_collective_launch_event.CopyRef());
 
-            absl::MutexLock lock(&mu);
-            --running;
-            if (!results[i].ok()) {
-              if (failed == 0) {
-                first_failure_status = results[i].status();
-              }
-              ++failed;
-            }
-          });
+        absl::MutexLock lock(&mu);
+        --running;
+        if (!results[i].ok()) {
+          if (failed == 0) {
+            first_failure_status = results[i].status();
+          }
+          ++failed;
+        }
+      });
     }
 
     auto done_running_or_failed = [&]() {
@@ -1563,7 +1584,8 @@ TfrtCpuExecutable::ExecuteSharded(
               << device->DebugString();
       return ExecuteHelper(
           argument_handles, addressable_device_logical_ids_[i].replica,
-          addressable_device_logical_ids_[i].partition, RunId(), options);
+          addressable_device_logical_ids_[i].partition, RunId(), options,
+          /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>());
     }
   }
   return InvalidArgument(
@@ -1591,9 +1613,11 @@ TfrtCpuExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  return ExecuteHelper(argument_handles,
-                       /*replica=*/0,
-                       /*partition=*/0, RunId(), options,
-                       down_cast<TfrtCpuDevice*>(device));
+  return ExecuteHelper(
+      argument_handles,
+      /*replica=*/0,
+      /*partition=*/0, RunId(), options,
+      /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
+      down_cast<TfrtCpuDevice*>(device));
 }
 }  // namespace xla
