@@ -109,12 +109,27 @@ Status CopyAssociatedFunctions(Graph* g,
   return Status::OK();
 }
 
+// Replaces the single edge feeding into {dst,dst_input} with a new
+// src/src_output specified by {with,with_output}.
+StatusOr<Node*> ReplaceEdge(Graph* g, Node* dst, int dst_input, Node* with,
+                            int with_output) {
+  NodeDef replace_def = dst->def();
+  *replace_def.mutable_input(dst_input) = with->name();
+  TF_ASSIGN_OR_RETURN(Node * replace_node, ReplaceNode(g, dst, replace_def));
+  const Edge* usage_edge;
+  TF_RETURN_IF_ERROR(replace_node->input_edge(dst_input, &usage_edge));
+  g->RemoveEdge(usage_edge);
+  g->AddEdge(with, with_output, replace_node, dst_input);
+  return replace_node;
+}
+
 // Replaces usages of the given `src_output` index of the given `src` node with
 // the given `replacement` node (assumes the :0 output of `replacement`).
 Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
                                      Node* replacement) {
   VLOG(1) << "Replace usages of output " << src_output << " of node "
-          << src->DebugString() << " with " << replacement->DebugString();
+          << (VLOG_IS_ON(3) ? src->DebugString() : src->name()) << " with "
+          << (VLOG_IS_ON(3) ? replacement->DebugString() : replacement->name());
   // Collect all usages of the specified src output (src->out_edges() iterator
   // will not be stable under modifications).
   struct OutEdgeInfo {
@@ -133,17 +148,10 @@ Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
     // Make a copy of `usage_node`, and change its input to const node.
     Node* usage_node = g->FindNodeId(usages[i].dst_node_id);
     VLOG(2) << "  Replace usage by " << usage_node->DebugString();
-    NodeDef replace_def = usage_node->def();
-    *replace_def.mutable_input(usages[i].dst_input) = replacement->name();
-    TF_ASSIGN_OR_RETURN(Node * replace_node,
-                        ReplaceNode(g, usage_node, replace_def));
-    const Edge* usage_edge;
-    TF_RETURN_IF_ERROR(
-        replace_node->input_edge(usages[i].dst_input, &usage_edge));
-    g->RemoveEdge(usage_edge);
     // Note: Replacement output index is presumed to be 0.
-    g->AddEdge(replacement, 0, replace_node, usages[i].dst_input);
-
+    TF_ASSIGN_OR_RETURN(
+        Node * replace_node,
+        ReplaceEdge(g, usage_node, usages[i].dst_input, replacement, 0));
     // Later entries in `usages` might have `usage_node` as dst node, but
     // `usage_node` is removed. Replace such entries with `replace_node`.
     for (int j = i + 1, end = usages.size(); j < end; j++) {
@@ -172,6 +180,7 @@ Status ReplaceArgUsageWithConstNode(
 
   for (const auto& iter : const_input_index_to_node) {
     int arg_index = iter.first;
+    VLOG(2) << "Replace usages of _Arg " << arg_index;
     NodeDef const_def = iter.second->def();
     const_def.set_name(g->NewName(const_def.name()));
     Status s;
@@ -184,14 +193,44 @@ Status ReplaceArgUsageWithConstNode(
   return Status::OK();
 }
 
+// Replaces the single input to _Retval nodes with an index in the keys of
+// const_input_index_to_node with the single output of the corresponding _Arg
+// node.
+Status ReplaceRetvalInputWithArg(
+    Graph* g,
+    const absl::flat_hash_map<int, const Node*>& const_input_index_to_node) {
+  absl::flat_hash_map<int, Node*> arg_nodes;
+  absl::flat_hash_map<int, Node*> ret_nodes;
+  for (Node* n : g->op_nodes()) {
+    if (n->IsRetval() || n->IsArg()) {
+      int index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      if (n->IsRetval()) {
+        ret_nodes[index] = n;
+      } else {
+        arg_nodes[index] = n;
+      }
+    }
+  }
+
+  for (const auto& iter : const_input_index_to_node) {
+    int arg_index = iter.first;
+    VLOG(2) << "Bind _Retval " << arg_index << " to _Arg " << arg_index;
+    TF_RETURN_IF_ERROR(
+        ReplaceEdge(g, ret_nodes[arg_index], 0, arg_nodes[arg_index], 0)
+            .status());
+  }
+  return Status::OK();
+}
+
 // For a node's function attr (e.g. then/else branch for "If" nodes), rewrites
 // the function to replace _Arg nodes in `const_input_index_to_node` with Const
 // inputs.
 Status PropagateConstIntoFuncAttr(
     Node* n, const string& attr_name,
     const absl::flat_hash_map<int, const Node*>& const_input_index_to_node,
-    const FunctionLibraryDefinition* lookup_fld,
-    FunctionLibraryDefinition* fld) {
+    const FunctionLibraryDefinition* lookup_fld, FunctionLibraryDefinition* fld,
+    bool passthrough_arg_to_retval = false) {
   VLOG(1) << "Propagate const into " << attr_name << " of node " << n->name();
   // Instantiate the function.
   NameAttrList func_attr;
@@ -209,6 +248,10 @@ Status PropagateConstIntoFuncAttr(
   Graph* func_graph = fbody->graph;
   TF_RETURN_IF_ERROR(
       ReplaceArgUsageWithConstNode(func_graph, const_input_index_to_node));
+  if (passthrough_arg_to_retval) {
+    TF_RETURN_IF_ERROR(
+        ReplaceRetvalInputWithArg(func_graph, const_input_index_to_node));
+  }
 
   // Save rewritten function.
   FunctionDef replace_fdef;
@@ -280,7 +323,7 @@ xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
   // TODO(b/184727356): Also traverse If/Case nodes.
   // Begin walking back from the output node.
   while (IsConstTraversableOpType(e->src())) {
-    VLOG(2) << e->DebugString();
+    VLOG(3) << e->DebugString();
 
     if (e->src()->IsWhileNode()) {
       NameAttrList body_attr;
@@ -328,6 +371,7 @@ xla::StatusOr<bool> IsLoopInvariant(
   TF_ASSIGN_OR_RETURN(const Edge* reachable, TraverseUnmodifiedPathBackward(
                                                  e, lookup_fld, fallback_fld));
   if (reachable->src()->id() == loop_body->arg_nodes[index]->id()) {
+    VLOG(2) << "Index " << index << " is loop invariant.";
     return true;
   }
   VLOG(2) << "Index " << index << " not loop invariant: "
@@ -377,7 +421,8 @@ Status PropagateConstIntoAndAroundWhileNode(
     TF_ASSIGN_OR_RETURN(input_edge, TraverseUnmodifiedPathBackward(
                                         input_edge, lookup_fld, fld));
     if (!input_edge->src()->IsConstant()) {
-      VLOG(2) << "Input " << i << " is not Const";
+      VLOG(2) << "Input " << i << " is not Const; is "
+              << input_edge->src()->type_string();
       continue;
     }
 
@@ -400,7 +445,8 @@ Status PropagateConstIntoAndAroundWhileNode(
   // corresponding const node.
   for (const auto& attr_name : std::vector<string>{"cond", "body"}) {
     TF_RETURN_IF_ERROR(PropagateConstIntoFuncAttr(
-        while_node, attr_name, const_input_index_to_node, lookup_fld, fld));
+        while_node, attr_name, const_input_index_to_node, lookup_fld, fld,
+        /*passthrough_arg_to_retval=*/attr_name == "body"));
   }
 
   // Rewrite usages of the output edges corresponding to loop-invariant const
