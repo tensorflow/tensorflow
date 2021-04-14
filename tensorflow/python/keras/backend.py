@@ -1102,6 +1102,7 @@ def track_tf_optimizer(tf_optimizer):
   optimizers.add(tf_optimizer)
 
 
+@keras_export('keras.__internal__.backend.track_variable', v1=[])
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
@@ -1180,6 +1181,7 @@ def _get_variables(graph=None):
   return variables
 
 
+@keras_export('keras.__internal__.backend.initialize_variables', v1=[])
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
   variables = _get_variables(get_graph())

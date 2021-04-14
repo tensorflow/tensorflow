@@ -262,6 +262,7 @@ def reduce_weighted_loss(weighted_losses,
   return loss
 
 
+@keras_export('keras.__internal__.losses.compute_weighted_loss', v1=[])
 def compute_weighted_loss(losses,
                           sample_weight=None,
                           reduction=ReductionV2.SUM_OVER_BATCH_SIZE,
