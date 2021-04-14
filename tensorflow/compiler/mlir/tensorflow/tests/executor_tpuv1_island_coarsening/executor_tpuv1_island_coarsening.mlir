@@ -196,6 +196,24 @@ func @fuse_in_chain_special_ops_consumers() {
   return
 }
 
+// Check that we can bring in special TPU output ops out of order.
+// CHECK-LABEL: func @fuse_in_special_ops_out_of_order
+func @fuse_in_special_ops_out_of_order() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.SomeOp"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %some_out:2, %some_control = tf_executor.island wraps "tf.SomeOp"(%const_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
+    %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%some_out#1) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    %replicated_out:2, %ireplicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%some_out#0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}
+
 // Check that we do not fuse identity producers with use outside cluster
 // CHECK-LABEL: func @do_not_fuse_identity_with_outside_use
 func @do_not_fuse_identity_with_outside_use(%arg0: tensor<4x4xf32>) {
