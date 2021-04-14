@@ -391,6 +391,7 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":semaphore",
+        ":tracked_tfrt_cpu_device_buffer",
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
