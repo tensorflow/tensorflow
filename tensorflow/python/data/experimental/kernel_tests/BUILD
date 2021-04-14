@@ -159,6 +159,9 @@ tf_py_test(
     size = "small",
     srcs = ["data_service_ops_ft_test.py"],
     shard_count = 10,
+    tags = [
+        "notsan",  # TODO(b/185278546): Re-enable after bug fix.
+    ],
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
