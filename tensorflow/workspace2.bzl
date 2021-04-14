@@ -127,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "b061db5b4121ae9dae08a2e1a1f3906ee00d37ce9c034db5f4306e636dbbe44e",
-        strip_prefix = "XNNPACK-6e8c0ce93ccabd084852c2b3c3bd1658956f7c45",
+        sha256 = "5d35210ad504daa901a85fe0df4f699cdaf11428371192ef4cf5d9b2aca0549d",
+        strip_prefix = "XNNPACK-ec56b7ee14e4b186bfb95f96a69784c14fdea016",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/6e8c0ce93ccabd084852c2b3c3bd1658956f7c45.zip",
-            "https://github.com/google/XNNPACK/archive/6e8c0ce93ccabd084852c2b3c3bd1658956f7c45.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/ec56b7ee14e4b186bfb95f96a69784c14fdea016.zip",
+            "https://github.com/google/XNNPACK/archive/ec56b7ee14e4b186bfb95f96a69784c14fdea016.zip",
         ],
     )
 
