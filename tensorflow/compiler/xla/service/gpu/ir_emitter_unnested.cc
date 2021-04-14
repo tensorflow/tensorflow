@@ -1944,10 +1944,12 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
 
   bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
+  LaunchDimensionsConfig launch_config{unroll_factor, few_waves, row_vectorized};
+
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor, few_waves, row_vectorized}));
+                          launch_config));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
@@ -1957,12 +1959,12 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     // For multioutput fusion, we need to emit each operand and the root.
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, output_element_arrays,
-                            launch_dimensions, &b_, {unroll_factor})
+                            launch_dimensions, &b_, launch_config)
             .EmitLoop(context.name, index_type));
   } else {
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, output_element_arrays[0],
-                            launch_dimensions, &b_, {unroll_factor})
+                            launch_dimensions, &b_, launch_config)
             .EmitLoop(context.name, index_type));
   }
 
