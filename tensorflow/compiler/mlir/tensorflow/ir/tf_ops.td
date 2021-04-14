@@ -915,6 +915,73 @@ An op that enqueues a list of input batch tensors to TPUEmbedding.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+// Multiple variadic operands with different sizes are not supported by the
+// dialect generator, so we manually added the op.
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let description = [{
+inputs: A TensorList of gradients with which to update embedding tables.
+    This argument has the same length and shapes as the return value of
+    RecvTPUEmbeddingActivations, but contains gradients of the model's loss
+    with respect to the embedding activations. The embedding tables are updated
+    from these gradients via the optimizer specified in the TPU embedding
+    configuration given to tpu.initialize_system.
+learning_rates: A TensorList of float32 scalars, one for each dynamic learning
+    rate tag: see the comments in
+    //third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
+    Multiple tables can share the same dynamic learning rate tag as specified
+    in the configuration. If the learning rates for all tables are constant,
+    this list should be empty.
+config: Serialized TPUEmbeddingConfiguration proto.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+    Variadic<TF_Tensor>:$learning_rates,
+    StrAttr:$config
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
+// Multiple variadic operands with different sizes are not supported by the
+// dialect generator, so we manually added the op.
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let description = [{
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+
+gradients: A TensorList of gradients with which to update embedding tables.
+learning_rates: A TensorList of learning rates used for updating the embedding
+    tables via the optimizer. The length of the TensorList must be equal to the
+    number of dynamic learning rate tags specified in the
+    TPUEmbeddingConfiguration proto.
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements. Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_INT32) for embedding lookup or weights (DT_FLOAT) to
+    apply to the output of the embedding lookup operation.
+config: Serialized TPUEmbeddingConfiguration proto.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$gradients,
+    Variadic<TF_Tensor>:$learning_rates,
+    TF_VariantTensor:$deduplication_data,
+    StrAttr:$config
+  );
+
+  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
+}
+
 // Updated the op description text from the auto-generated op definition.
 def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
   let summary = [{
@@ -1121,6 +1188,23 @@ def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
   TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
 }
 
+def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
+  let summary = [{
+    Creates a dataset that emits each dim-0 slice of `components` once.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   let summary = [{
     Reduces the input dataset to a singleton using a reduce function.
@@ -1256,6 +1340,77 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
+}
+
+def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments]> {
+  let summary = [{
+Batches all the inputs tensors to the computation done by the function.
+  }];
+
+  let description = [{
+So, for example, in the following code
+
+  ```python
+
+  # This input will be captured.
+  y = tf.placeholder_with_default(1.0, shape=[])
+
+  @tf.Defun(tf.float32)
+  def computation(a):
+    return tf.matmul(a, a) + y
+
+  b = gen_batch_ops.batch_function(
+          f=computation
+          in_tensors=[a],
+          captured_tensors=computation.captured_inputs,
+          Tout=[o.type for o in computation.definition.signature.output_arg],
+          num_batch_threads=1,
+          max_batch_size=10,
+          batch_timeout_micros=100000,  # 100ms
+          allowed_batch_sizes=[3, 10],
+          batching_queue="")
+  ```
+
+If more than one session.run call is simultaneously trying to compute `b`
+the values of `a` will be gathered, non-deterministically concatenated
+along the first axis, and only one thread will run the computation.
+
+Assumes that all arguments of the function are Tensors which will be batched
+along their first dimension.
+
+Arguments that are captured, are not batched. The session.run call which does
+the concatenation, will use the values of the captured tensors available to it.
+Therefore, typical uses of captured tensors should involve values which remain
+unchanged across session.run calls. Inference is a good example of this.
+
+SparseTensor is not supported. The return value of the decorated function
+must be a Tensor or a list/tuple of Tensors.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$in_tensors,
+    Variadic<TF_Tensor>:$captured_tensors,
+
+    SymbolRefAttr:$f,
+    I64Attr:$num_batch_threads,
+    I64Attr:$max_batch_size,
+    I64Attr:$batch_timeout_micros,
+    DefaultValuedAttr<I64Attr, "10">:$max_enqueued_batches,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$allowed_batch_sizes,
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    StrAttr:$batching_queue,
+    DefaultValuedAttr<BoolAttr, "false">:$enable_large_batch_splitting,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$out_tensors
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedOperandTypeListAttr Tcaptured = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
