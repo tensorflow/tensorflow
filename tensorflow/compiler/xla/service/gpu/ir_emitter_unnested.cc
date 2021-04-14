@@ -942,10 +942,10 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
     return Status::OK();
   };
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(
+          input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
@@ -1066,10 +1066,10 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
     return Status::OK();
   };
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(
+          input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -1356,73 +1356,6 @@ Status VerifyBatchNormForThunkEmission(
   }
 
   return Status::OK();
-}
-
-// Determine if we enable the row optimized codegen.  When we have a
-// fusion with only point-wise operations, scalar broadcasting and row
-// broadcasting, we can trigger a kernel that vectorize the row loads.
-// This speed up the kernel, in particular on A100.
-bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
-  bool row_vectorized =
-      fusion.getFusionResults().size() == 1 &&  // Not tested with MOF.
-      absl::c_all_of(GetHloOperands(fusion),
-                     [](const mlir::Value& value) {
-                       // Only tested when the inputs are row-major. So only
-                       // enable that case. Maybe it would works if only the
-                       // inner dimensions is contiguous.
-                       if (auto op = value.getDefiningOp()) {
-                         return IsMonotonicWithDim0Major(value.getDefiningOp());
-                       }
-                       // Reuse TypeToShape to not duplicate the layout
-                       // convertion code.
-                       return LayoutUtil::IsMonotonicWithDim0Major(
-                           TypeToShape(value.getType()).layout());
-                     }) &&
-      // Only tested when the output is row-major.
-      absl::c_all_of(GetOutputOps(fusion), IsMonotonicWithDim0Major);
-
-  // Check that the operations in the fusion are supported.  Each
-  // supported operation (or category) must be manually vetted as XLA
-  // only unrolls and relies on LLVM to vectorize. But this is brittle.
-  // Currently tested and supported operations:
-  // Elementwise, scalar and row broadcasting.
-  //
-  // We also detect at the same time if there is a row broadcasting
-  // operation.
-  bool some_row_broadcasting = false;
-  for (mlir::Operation& op : fusion.region().front()) {
-    if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                  mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
-      continue;
-    }
-    HloOpcode opcode = *MhloToHloOpcode(&op);
-    if (HloInstruction::IsOpElementwise(opcode)) {
-      continue;
-    }
-
-    if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      if (broadcast.broadcast_dimensions().size() == 0) {
-        continue;
-      }
-      std::vector<int64> broadcast_dimensions;
-      for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
-        broadcast_dimensions.push_back(int_value.getSExtValue());
-      }
-
-      auto rank = TypeToShape(broadcast.getResult().getType()).rank();
-      if (broadcast_dimensions.size() == 1 &&
-          broadcast_dimensions.back() == (rank - 1)) {
-        some_row_broadcasting = true;
-        continue;
-      }
-    }
-    VLOG(2) << "Row vectorization not enabled due to this op: "
-            << MlirToString(&op);
-    return false;
-  }
-  // Trigger only when there is a row broadcasting.
-  return row_vectorized && some_row_broadcasting;
 }
 }  // namespace
 
@@ -1947,12 +1880,11 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     return true;
   }();
 
-  bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor, few_waves, row_vectorized}));
+                          unroll_factor, few_waves));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
@@ -2051,7 +1983,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
           LaunchDimensions launch_dimensions,
           CalculateLaunchDimensions(element_shape,
                                     ir_emitter_context_->gpu_device_info(),
-                                    {unroll_factor, /*few_waves=*/false}));
+                                    unroll_factor, /*few_waves=*/false));
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
       TF_RETURN_IF_ERROR(
@@ -5793,7 +5725,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
+                          unroll_factor));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 

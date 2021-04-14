@@ -631,13 +631,11 @@ HloModule Test
 // CHECK:       iota.in_bounds-after:                             ; preds = %[[VAL_12]], %[[VAL_14:.*]]
 // CHECK:         ret void
 // CHECK:       iota.in_bounds-true:                              ; preds = %[[VAL_14]]
-// CHECK:         %[[VAL_15:.*]] = mul nuw nsw i32 %[[VAL_10]], 1
-// CHECK:         %[[VAL_16:.*]] = add nuw nsw i32 0, %[[VAL_15]]
-
-// CHECK:         %[[VAL_17:.*]] = uitofp i32 %[[VAL_16]] to float
-// CHECK:         %[[VAL_18:.*]] = bitcast [2 x [10 x float]]* %[[VAL_2]] to float*
-// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds float, float* %[[VAL_18]], i32 %[[VAL_6]]
-// CHECK:         store float %[[VAL_17]], float* %[[VAL_19]], align 4
+// CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_6]], 10
+// CHECK:         %[[VAL_16:.*]] = uitofp i32 %[[VAL_15]] to float
+// CHECK:         %[[VAL_17:.*]] = bitcast [2 x [10 x float]]* %[[VAL_2]] to float*
+// CHECK:         %[[VAL_18:.*]] = getelementptr inbounds float, float* %[[VAL_17]], i32 %[[VAL_6]]
+// CHECK:         store float %[[VAL_16]], float* %[[VAL_18]], align 4
 // CHECK:         br label %[[VAL_13]]
 // CHECK:       }
 ENTRY main {
