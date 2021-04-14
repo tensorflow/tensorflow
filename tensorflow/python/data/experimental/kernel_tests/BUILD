@@ -397,6 +397,7 @@ tf_py_test(
     name = "make_saveable_from_iterator_test",
     size = "small",
     srcs = ["make_saveable_from_iterator_test.py"],
+    tags = ["no_tap"],  # TODO(b/185378115): test timeout
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
