@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm_rocdl_path.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -97,11 +99,11 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     std::cout << ptx << std::endl;
 #else
     int isa_version = 908;
-    std::string arch_str = "gfx908",
+    std::string arch_str = "gfx908";
     std::string libdevice_dir = tensorflow::RocdlRoot();
     xla::gpu::GpuVersion gpu_version{std::make_pair(isa_version, arch_str)};
     TF_ASSIGN_OR_RETURN(
-      std::string ptx,
+      std::vector<uint8_t> ptx,
       xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
                                     hlo_module->config(), libdevice_dir));
 #endif
