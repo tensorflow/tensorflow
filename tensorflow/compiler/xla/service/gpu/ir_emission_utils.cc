@@ -614,7 +614,7 @@ bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
                                       mlir::mhlo::ReduceOp first_reduce) {
   CHECK_EQ(1, first_reduce.getNumResults());
   Shape first_reduce_operand_shape =
-      TypeToShape(first_reduce.operands()[0].getType());
+      TypeToShape(first_reduce.inputs()[0].getType());
   CHECK_EQ(1, inst.getNumResults());
   auto inst_shape = TypeToShape(inst.getResult(0).getType());
 
@@ -623,7 +623,7 @@ bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
     auto first_reduce_init_shape =
         TypeToShape(first_reduce.init_values()[0].getType());
 
-    auto inst_operand_shape = TypeToShape(inst.operands()[0].getType());
+    auto inst_operand_shape = TypeToShape(inst.inputs()[0].getType());
     auto inst_init_shape = TypeToShape(inst.init_values()[0].getType());
 
     // Shapes, layouts and dimensions must be the same for all reduces

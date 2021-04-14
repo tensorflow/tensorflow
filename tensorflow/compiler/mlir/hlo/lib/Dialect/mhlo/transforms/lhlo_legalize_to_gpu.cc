@@ -72,7 +72,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
-    for (auto input : reduce_op.operands()) {
+    for (auto input : reduce_op.inputs()) {
       auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return failure();
@@ -133,7 +133,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto accumulator = rewriter.create<memref::SubViewOp>(
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
-      auto input_buffer = *reduce_op.operands().begin();
+      Value input_buffer = reduce_op.inputs().front();
       auto input_type_rank =
           input_buffer.getType().cast<MemRefType>().getRank();
 

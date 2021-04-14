@@ -625,7 +625,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
       InferFusibilityOpInterface
     ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_TensorOrTuple>:$inputs,
     Variadic<HLO_TensorOrTuple>:$init_values,
     I64ElementsAttr:$dimensions
   );
@@ -633,7 +633,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [
-    OpBuilder<(ins "ValueRange":$operands, "ValueRange":$init_values,
+    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
   let extraClassDeclaration = [{
