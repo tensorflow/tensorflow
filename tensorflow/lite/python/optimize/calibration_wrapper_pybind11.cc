@@ -40,8 +40,8 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
         std::string error;
         auto* wrapper = ::CalibrationWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), registerers_by_name, registerers_by_func, &error);
-        if (PyErr_Occurred()) {
-          throw py::error_already_set();
+        if (!wrapper) {
+          throw std::invalid_argument(error);  // throws ValueError in Python
         }
         return wrapper;
       }))
