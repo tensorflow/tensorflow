@@ -851,6 +851,77 @@ the output of `avg_pool`.}]>:$grad,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments, NoSideEffect]> {
+  let summary = [{
+Batches all the inputs tensors to the computation done by the function.
+  }];
+
+  let description = [{
+So, for example, in the following code
+
+  ```python
+
+  # This input will be captured.
+  y = tf.placeholder_with_default(1.0, shape=[])
+
+  @tf.Defun(tf.float32)
+  def computation(a):
+    return tf.matmul(a, a) + y
+
+  b = gen_batch_ops.batch_function(
+          f=computation
+          in_tensors=[a],
+          captured_tensors=computation.captured_inputs,
+          Tout=[o.type for o in computation.definition.signature.output_arg],
+          num_batch_threads=1,
+          max_batch_size=10,
+          batch_timeout_micros=100000,  # 100ms
+          allowed_batch_sizes=[3, 10],
+          batching_queue="")
+  ```
+
+If more than one session.run call is simultaneously trying to compute `b`
+the values of `a` will be gathered, non-deterministically concatenated
+along the first axis, and only one thread will run the computation.
+
+Assumes that all arguments of the function are Tensors which will be batched
+along their first dimension.
+
+Arguments that are captured, are not batched. The session.run call which does
+the concatenation, will use the values of the captured tensors available to it.
+Therefore, typical uses of captured tensors should involve values which remain
+unchanged across session.run calls. Inference is a good example of this.
+
+SparseTensor is not supported. The return value of the decorated function
+must be a Tensor or a list/tuple of Tensors.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{The tensors to be batched.}]>:$in_tensors,
+    Arg<Variadic<TF_Tensor>, [{The tensors which are captured in the function, and don't need
+to be batched.}]>:$captured_tensors,
+
+    SymbolRefAttr:$f,
+    I64Attr:$num_batch_threads,
+    I64Attr:$max_batch_size,
+    I64Attr:$batch_timeout_micros,
+    DefaultValuedAttr<I64Attr, "10">:$max_enqueued_batches,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$allowed_batch_sizes,
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    StrAttr:$batching_queue,
+    DefaultValuedAttr<BoolAttr, "false">:$enable_large_batch_splitting
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{The output tensors.}]>:$out_tensors
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedOperandTypeListAttr Tcaptured = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = "Multiplies slices of two tensors in batches.";
 
@@ -5032,6 +5103,32 @@ shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.}]>:$outpu
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_GeneratorDatasetOp : TF_Op<"GeneratorDataset", [AttrSizedOperandSegments, NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Creates a dataset that invokes a function to generate elements.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$init_func_other_args,
+    Variadic<TF_Tensor>:$next_func_other_args,
+    Variadic<TF_Tensor>:$finalize_func_other_args,
+
+    SymbolRefAttr:$init_func,
+    SymbolRefAttr:$next_func,
+    SymbolRefAttr:$finalize_func,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Tnext_func_args = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedOperandTypeListAttr Tfinalize_func_args = TF_DerivedOperandTypeListAttr<2>;
+  TF_DerivedOperandTypeListAttr Tinit_func_args = TF_DerivedOperandTypeListAttr<0>;
 }
 
 def TF_GreaterOp : TF_Op<"Greater", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -9268,6 +9365,20 @@ Creates a dataset by applying related optimizations to `input_dataset`.
   );
 }
 
+def TF_OptionalFromValueOp : TF_Op<"OptionalFromValue", [NoSideEffect]> {
+  let summary = "Constructs an Optional variant from a tuple of tensors.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components
+  );
+
+  let results = (outs
+    TF_VariantTensor:$optional
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_OptionalGetValueOp : TF_Op<"OptionalGetValue", [NoSideEffect]> {
   let summary = [{
 Returns the value stored in an Optional variant or raises an error if none exists.
@@ -9296,6 +9407,16 @@ Returns true if and only if the given Optional variant has a value.
 
   let results = (outs
     TF_BoolTensor:$has_value
+  );
+}
+
+def TF_OptionalNoneOp : TF_Op<"OptionalNone", [NoSideEffect]> {
+  let summary = "Creates an Optional variant with no value.";
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_VariantTensor:$optional
   );
 }
 
@@ -9646,6 +9767,28 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasFolder = 1;
+}
+
+def TF_PrefetchDatasetOp : TF_Op<"PrefetchDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that asynchronously prefetches elements from `input_dataset`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<TF_Int64Tensor, [{The maximum number of elements to buffer in an iterator over
+this dataset.}]>:$buffer_size,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<I64Attr, "0">:$slack_period,
+    DefaultValuedAttr<BoolAttr, "true">:$legacy_autotune,
+    DefaultValuedAttr<I64Attr, "0">:$buffer_size_min
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
 }
 
 def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -10434,7 +10577,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   ];
 }
 
-def TF_RangeDatasetOp : TF_Op<"RangeDataset", []> {
+def TF_RangeDatasetOp : TF_Op<"RangeDataset", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Creates a dataset with a range of values. Corresponds to python's xrange.
   }];
@@ -13448,6 +13591,32 @@ def TF_SendOp : TF_Op<"Send", []> {
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let arguments = (ins
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of gradients with which to update embedding tables.
+This argument has the same length and shapes as the return value of
+RecvTPUEmbeddingActivations, but contains gradients of the model's loss
+with respect to the embedding activations. The embedding tables are updated
+from these gradients via the optimizer specified in the TPU embedding
+configuration given to tpu.initialize_system.}]>:$inputs,
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of float32 scalars, one for each dynamic learning
+rate tag: see the comments in
+//third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
+Multiple tables can share the same dynamic learning rate tag as specified
+in the configuration. If the learning rates for all tables are constant,
+this list should be empty.}]>:$learning_rates,
+
+    StrAttr:$config
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_SerializeIteratorOp : TF_Op<"SerializeIterator", []> {
@@ -16858,6 +17027,24 @@ to the indices.}]>:$output
   ];
 }
 
+def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Creates a dataset that emits each dim-0 slice of `components` once.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components,
+
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_TensorStridedSliceUpdateOp : TF_Op<"TensorStridedSliceUpdate", [NoSideEffect]> {
   let summary = "Assign `value` to the sliced l-value reference of `input`.";
 
@@ -18630,6 +18817,39 @@ embedding table in the model.}]>:$outputs
   );
 
   TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
+}
+
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+  let summary = "An op that performs gradient updates of embedding tables.";
+
+  let description = [{
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of gradients with which to update embedding tables.}]>:$gradients,
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of learning rates used for updating the embedding
+tables via the optimizer. The length of the TensorList must be equal to the
+number of dynamic learning rate tags specified in the
+TPUEmbeddingConfiguration proto.}]>:$learning_rates,
+    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
+data. The tensor is an XLA nested tuple containing N elements (where N is
+the ratio of the number of embedding to tensor cores per TPU chip). Each
+element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
+
+    StrAttr:$config
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
 }
 
 def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {
