@@ -17,11 +17,15 @@
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-  
+
 * `tf.keras`:
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+
+* `tf.lite`:
+    *   The recommended Android NDK version for building TensorFlow Lite has
+        been changed from r18b to r19c.
 
 ## Bug Fixes and Other Changes
 

@@ -79,6 +79,7 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -4597,7 +4598,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4635,7 +4642,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reorder_op",
     prefix = "sparse_reorder_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4696,7 +4706,7 @@ tf_kernel_library(
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/core/platform:stream_executor",
     ]),
@@ -4708,6 +4718,7 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([

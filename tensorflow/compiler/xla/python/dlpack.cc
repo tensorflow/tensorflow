@@ -249,7 +249,7 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
-  PyBuffer* buffer = py::cast<PyBuffer*>(py_buffer);
+  TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
   auto pack = std::make_unique<DLPackTensor>();
   if (buffer->buffer()->on_device_shape().IsTuple()) {
     return Unimplemented(
@@ -318,7 +318,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   return capsule;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
+StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
@@ -367,8 +367,8 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
-                                    Traceback::Get());
+  return PyBuffer::Make(std::move(client), std::move(pjrt_buffer),
+                        Traceback::Get());
 }
 
 }  // namespace xla

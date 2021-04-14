@@ -52,6 +52,8 @@ PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
 
 void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
   absl::MutexLock lock(&mu_);
+  // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
+  garbage_count_.fetch_add(100, std::memory_order_relaxed);
   for (py::object& o : garbage) {
     python_garbage_.push_back(std::move(o));
   }
@@ -60,6 +62,10 @@ void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
 void PythonRefManager::AddGarbage(
     absl::Span<std::pair<PyCodeObject*, int> const> garbage) {
   absl::MutexLock lock(&mu_);
+  // We don't care about collecting stack frame objects often. We grab a lot of
+  // tracebacks and the code objects are most likely live for the entire
+  // process.
+  garbage_count_.fetch_add(1, std::memory_order_relaxed);
   for (const auto& o : garbage) {
     python_garbage_.push_back(py::reinterpret_steal<py::object>(
         reinterpret_cast<PyObject*>(o.first)));
@@ -71,6 +77,7 @@ void PythonRefManager::CollectGarbage() {
   std::deque<pybind11::object> garbage;
   {
     absl::MutexLock lock(&mu_);
+    garbage_count_ = 0;
     garbage.swap(python_garbage_);
   }
   // We defer deleting garbage until the lock is released. It's possible that

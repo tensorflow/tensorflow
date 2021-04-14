@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_FAKE_SESSION_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_FAKE_SESSION_H_
 
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -26,8 +27,7 @@ namespace test_util {
 // FakeSession is for testing only.
 class FakeSession : public tensorflow::Session {
  public:
-  FakeSession() {}
-  ~FakeSession() override = default;
+  FakeSession();
 
   ::tensorflow::Status Create(const tensorflow::GraphDef& graph) override;
   ::tensorflow::Status Extend(const tensorflow::GraphDef& graph) override;
@@ -63,6 +63,12 @@ class FakeSession : public tensorflow::Session {
       tensorflow::RunMetadata* run_metadata,
       const tensorflow::thread::ThreadPoolOptions& thread_pool_options)
       override;
+
+ private:
+  void InitVariables();
+  void BuildDeviceManager();
+
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr_;
 };
 
 }  // namespace test_util

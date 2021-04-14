@@ -295,8 +295,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def train_fn(iterator):
 
       def step_fn(inputs):
-        _, inputs = inputs
-        return math_ops.reduce_sum(inputs)
+        input0, input1 = inputs
+        return array_ops.size(input0), math_ops.reduce_sum(input1)
 
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))

@@ -26,6 +26,7 @@ import re
 # The timeline target is usually imported as part of BUILD target
 # "platform_test", which includes also includes the "platform"
 # dependency.  This is why the logging import here is okay.
+from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -448,6 +449,8 @@ class Timeline(object):
     else:
       _, op, inputs = self._parse_op_label(nodestats.timeline_label)
     args = {'name': node_name, 'op': op}
+    if build_info.build_info['is_rocm_build']:
+      args['kernel'] = nodestats.timeline_label.split('@@')[0]
     for i, iname in enumerate(inputs):
       args['input%d' % i] = iname
     self._chrome_trace.emit_region(start, duration, pid, tid, 'Op', op, args)

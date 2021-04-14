@@ -297,7 +297,6 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
 
 @keras_parameterized.run_all_keras_modes
-@keras_parameterized.run_all_keras_modes
 class CategoryEncodingOutputTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):

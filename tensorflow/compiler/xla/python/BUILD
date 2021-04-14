@@ -108,6 +108,7 @@ py_test(
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_test_lib",
     ] + xla_py_test_deps(),
 )
 
@@ -278,6 +279,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -418,6 +420,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -560,6 +563,9 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//tensorflow:with_tpu_support": [
+            "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        ],
         "//conditions:default": [],
     }),
 )

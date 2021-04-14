@@ -10,6 +10,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

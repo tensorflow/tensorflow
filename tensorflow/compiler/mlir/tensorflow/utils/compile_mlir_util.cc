@@ -662,12 +662,10 @@ Status CompileGraphToXlaHlo(
   return status;
 }
 
-Status GraphToModule(const Graph& graph,
-                     llvm::ArrayRef<std::string> control_rets,
-                     const FunctionLibraryDefinition& flib_def,
-                     const GraphDebugInfo& debug_info,
-                     mlir::MLIRContext* context,
-                     mlir::OwningModuleRef* module) {
+xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
+    const Graph& graph, llvm::ArrayRef<std::string> control_rets,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   RegisterDialects(registry);
   context->appendDialectRegistry(registry);
@@ -680,13 +678,7 @@ Status GraphToModule(const Graph& graph,
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   config.enable_shape_inference = false;
-  auto module_or =
-      ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
-  if (!module_or.ok()) return module_or.status();
-
-  *module = std::move(module_or.ValueOrDie());
-
-  return Status::OK();
+  return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
 Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
@@ -700,9 +692,9 @@ Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
                          llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                              custom_legalization_passes) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
-  TF_RETURN_IF_ERROR(GraphToModule(graph, control_rets, flib_def, debug_info,
-                                   &context, &module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningModuleRef module,
+      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
 }
@@ -717,9 +709,9 @@ Status CompileGraphToXlaHlo(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
-  TF_RETURN_IF_ERROR(GraphToModule(graph, control_rets, flib_def, debug_info,
-                                   &context, &module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningModuleRef module,
+      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return CompileGraphToXlaHlo(module.get(), args, device_type, use_tuple_args,
                               /*use_return_tuple=*/true,
                               shape_representation_fn, compilation_result,

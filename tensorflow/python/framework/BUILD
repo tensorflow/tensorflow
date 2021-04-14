@@ -19,7 +19,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cc_shared_object(
@@ -309,6 +309,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
+        "//tensorflow/python/types:doc_typealias",
     ],
 )
 

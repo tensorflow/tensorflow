@@ -68,6 +68,7 @@ from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.ragged import ragged_ops as _ragged_ops
 from tensorflow.python.ops.signal import signal
+from tensorflow.python.ops.structured import structured_ops as _structured_ops
 from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2

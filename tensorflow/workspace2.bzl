@@ -127,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "b7cfab9fe1b5ce6b92d732261f8d044b1c21bcc0ef31b7d3ee31edec9aa5e7de",
-        strip_prefix = "XNNPACK-f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4",
+        sha256 = "5d35210ad504daa901a85fe0df4f699cdaf11428371192ef4cf5d9b2aca0549d",
+        strip_prefix = "XNNPACK-ec56b7ee14e4b186bfb95f96a69784c14fdea016",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4.zip",
-            "https://github.com/google/XNNPACK/archive/f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/ec56b7ee14e4b186bfb95f96a69784c14fdea016.zip",
+            "https://github.com/google/XNNPACK/archive/ec56b7ee14e4b186bfb95f96a69784c14fdea016.zip",
         ],
     )
 
@@ -181,11 +181,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "53e1c2f9e9f735e9ee7a8dd3e00d5159da16c914f92f6700ceb7e98857ce9ebe",
-        strip_prefix = "oneDNN-3d1e248f293cb962eb73bfc1298a0c66a3ad3298",
+        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
+        strip_prefix = "oneDNN-2.2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/3d1e248f293cb962eb73bfc1298a0c66a3ad3298.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/3d1e248f293cb962eb73bfc1298a0c66a3ad3298.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
         ],
     )
 
@@ -347,12 +347,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "e0b1c0345fe4338b936e17da8e1bd88366cd210e576834546977f040c12a8f68",
-        strip_prefix = "sqlite-amalgamation-3340100",
+        sha256 = "a629d0b1cc301347109e8ad211ff46af371b6ef73c41b7698e9cf1fb37bf4b95",
+        strip_prefix = "sqlite-amalgamation-3350300",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2021/sqlite-amalgamation-3340100.zip",
-            "https://www.sqlite.org/2021/sqlite-amalgamation-3340100.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/sqlite.org/2021/sqlite-amalgamation-3350300.zip",
+            "https://sqlite.org/2021/sqlite-amalgamation-3350300.zip",
         ],
     )
 
@@ -623,12 +623,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
-        strip_prefix = "curl-7.69.1",
+        sha256 = "3b4378156ba09e224008e81dcce854b7ce4d182b1f9cfb97fe5ed9e9c18c6bd3",
+        strip_prefix = "curl-7.76.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.69.1.tar.gz",
-            "https://curl.haxx.se/download/curl-7.69.1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.76.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.76.0.tar.gz",
         ],
     )
 

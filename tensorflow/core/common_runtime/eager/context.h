@@ -283,6 +283,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<Rendezvous*(int64)> RendezvousCreator() {
     if (reuse_rendezvous_for_functions_) {
       return [this](int64 step_id) {
+        mutex_lock l(global_rendezvous_mu_);
         global_rendezvous_for_functions_->Ref();
         return global_rendezvous_for_functions_.get();
       };
@@ -654,7 +655,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // Whether to use same rendezvous instance across function/eager executions.
   bool reuse_rendezvous_for_functions_ = false;
-  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_;
+  mutable mutex global_rendezvous_mu_;
+  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
+      TF_GUARDED_BY(global_rendezvous_mu_);
 
   Env* const env_;
 

@@ -153,6 +153,10 @@ create_python_test_dir "${PY_TEST_DIR}"
   --gpu ${EXTRA_PIP_FLAGS}
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
+  WHL_PATH=$(ls ${PY_TEST_DIR}/tf-nightly*.whl)
+  # Test the whl pip package.
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${WHL_PATH}
   exit 0
 fi
 

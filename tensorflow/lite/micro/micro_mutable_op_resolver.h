@@ -238,6 +238,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseFloorDiv);
   }
 
+  TfLiteStatus AddFloorMod() {
+    return AddBuiltin(BuiltinOperator_FLOOR_MOD, tflite::Register_FLOOR_MOD(),
+                      ParseFloorMod);
+  }
+
   TfLiteStatus AddFullyConnected(
       const TfLiteRegistration& registration = Register_FULLY_CONNECTED()) {
     return AddBuiltin(BuiltinOperator_FULLY_CONNECTED, registration,
@@ -394,6 +399,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddReshape() {
     return AddBuiltin(BuiltinOperator_RESHAPE,
                       tflite::ops::micro::Register_RESHAPE(), ParseReshape);
+  }
+
+  TfLiteStatus AddResizeBilinear() {
+    return AddBuiltin(BuiltinOperator_RESIZE_BILINEAR,
+                      Register_RESIZE_BILINEAR(), ParseResizeBilinear);
   }
 
   TfLiteStatus AddResizeNearestNeighbor() {

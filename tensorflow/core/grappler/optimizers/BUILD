@@ -15,6 +15,7 @@ load(
 )
 
 package(
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

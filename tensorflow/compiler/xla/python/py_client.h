@@ -104,7 +104,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return pjrt_client_->addressable_device_count();
   }
   int device_count() const { return pjrt_client_->device_count(); }
-  int task_id() const { return pjrt_client_->task_id(); }
+  int process_index() const { return pjrt_client_->process_index(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
@@ -112,7 +112,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // Returns a vector of live PyBuffer objects. PyBuffer objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
+  std::vector<pybind11::object> LiveBuffers();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   Status Defragment();

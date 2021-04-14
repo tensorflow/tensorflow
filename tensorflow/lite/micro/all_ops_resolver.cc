@@ -41,6 +41,7 @@ AllOpsResolver::AllOpsResolver() {
   AddEthosU();
   AddFloor();
   AddFloorDiv();
+  AddFloorMod();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
@@ -71,6 +72,7 @@ AllOpsResolver::AllOpsResolver() {
   AddRelu();
   AddRelu6();
   AddReshape();
+  AddResizeBilinear();
   AddResizeNearestNeighbor();
   AddRound();
   AddRsqrt();

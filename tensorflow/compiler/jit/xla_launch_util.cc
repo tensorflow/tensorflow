@@ -607,6 +607,9 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_args, Device* device) {
   CHECK(absl::c_is_sorted(must_be_constant_idxs));
+  VLOG(2) << "Must be const args: {"
+          << absl::StrJoin(must_be_constant_idxs, ",") << "} out of "
+          << inputs.size() << " args";
   std::vector<XlaCompiler::Argument> out;
   out.resize(inputs.size());
 

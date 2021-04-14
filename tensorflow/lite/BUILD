@@ -330,6 +330,7 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
     deps = [
@@ -349,6 +350,7 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         ":version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -359,6 +361,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -375,6 +378,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
+        ":kernel_api",
         ":macros",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",

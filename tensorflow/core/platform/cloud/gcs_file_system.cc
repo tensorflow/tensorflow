@@ -74,7 +74,7 @@ constexpr uint64 HTTP_CODE_PRECONDITION_FAILED = 412;
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that overrides the maximum age of entries in the
-// Stat cache. A value of 0 (the default) means nothing is cached.
+// Stat cache. A value of 0 means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
 constexpr uint64 kStatCacheDefaultMaxAge = 5;
 // The environment variable that overrides the maximum number of entries in the

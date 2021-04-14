@@ -423,6 +423,11 @@ target_link_libraries(tensorflow-lite
     ruy
     ${TFLITE_TARGET_DEPENDENCIES}
 )
+
+if (NOT BUILD_SHARED_LIBS)
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
+endif()
+
 target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}

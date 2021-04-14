@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
@@ -73,9 +74,7 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
                                 llvm::Optional<tensorflow::Session*> session) {
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
-  std::vector<std::string> wrapped_ops = {
-      mlir::TF::FakeQuantWithMinMaxVarsOp::getOperationName().str(),
-      mlir::TF::FakeQuantWithMinMaxVarsPerChannelOp::getOperationName().str()};
+  auto wrapped_ops = mlir::TFL::AllTfFakeQuantOps();
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreateRaiseCustomOpsPass(wrapped_ops));
 
@@ -197,9 +196,6 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(mlir::tf_saved_model::CreateFreezeAssetsPass(
         model_flags.saved_model_dir()));
   }
-
-  pass_manager->addNestedPass<mlir::FuncOp>(
-      mlir::TFL::CreateLowerCustomOpsPass());
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.

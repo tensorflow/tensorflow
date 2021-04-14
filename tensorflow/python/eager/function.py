@@ -3186,7 +3186,10 @@ class Function(object):
                  include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
-      inputs = (args, kwargs) if kwargs else args
+      # We always use both args and kwargs to form input even if one is empty.
+      # This reduces ambiguity, for example, when args contains a dict and
+      # kwargs is empty.
+      inputs = (args, kwargs)
       input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
                                                     include_tensor_ranks_only)
       hashable_input_signature = _make_input_signature_hashable(input_signature)

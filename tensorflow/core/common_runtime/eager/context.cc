@@ -854,10 +854,13 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
-  // Reset the global function rendezvous, which otherwise stores a failure
-  // state.
-  global_rendezvous_for_functions_ =
-      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  {
+    // Reset the global function rendezvous, which otherwise stores a failure
+    // state.
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
   return sg.as_summary_status();
 }
 
