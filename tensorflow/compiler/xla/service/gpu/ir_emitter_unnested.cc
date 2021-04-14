@@ -945,7 +945,7 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
                          ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
-                          unroll_factor)
+                          {unroll_factor})
           .EmitLoop(ir_name,
                     GetIndexTypeForKernelFromMlir(
                         pad_to_static, launch_dimensions.launch_bound(), &b_)));
@@ -1070,7 +1070,7 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
-                          unroll_factor)
+                          {unroll_factor})
           .EmitLoop(ir_name, GetIndexTypeForKernelFromMlir(
                                  slice_to_dynamic,
                                  launch_dimensions.launch_bound(), &b_)));
@@ -1957,12 +1957,12 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     // For multioutput fusion, we need to emit each operand and the root.
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, output_element_arrays,
-                            launch_dimensions, &b_, unroll_factor)
+                            launch_dimensions, &b_, {unroll_factor})
             .EmitLoop(context.name, index_type));
   } else {
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, output_element_arrays[0],
-                            launch_dimensions, &b_, unroll_factor)
+                            launch_dimensions, &b_, {unroll_factor})
             .EmitLoop(context.name, index_type));
   }
 
@@ -2055,7 +2055,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
                              ir_emitter_context_->llvm_module());
       TF_RETURN_IF_ERROR(
           ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
-                              &b_, unroll_factor)
+                              &b_, {unroll_factor})
               .EmitLoop(IrName(mlir::GetNameFromLoc(fusion_op.getLoc())),
                         GetIndexTypeForKernelFromMlir(
                             fusion_op, launch_dimensions.launch_bound(), &b_)));
