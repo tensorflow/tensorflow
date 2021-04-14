@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -49,6 +52,7 @@ namespace TFTPU {
 namespace {
 
 constexpr char kDeviceAttr[] = "device";
+constexpr char kHostFunctionAttr[] = "host_func";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 struct TPUExtractOutsideCompilation
@@ -56,6 +60,59 @@ struct TPUExtractOutsideCompilation
           TPUExtractOutsideCompilation> {
   void runOnOperation() override;
 };
+
+// Build a function containing `ops` with `inputs` and `outputs` using
+// `builder`.  The `ops` are cloned and modified to use the function arguments
+// as inputs.
+FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
+                     llvm::ArrayRef<Value> inputs,
+                     llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+  llvm::SmallVector<Type, 4> operand_types;
+  operand_types.reserve(inputs.size());
+  for (Value v : inputs) operand_types.emplace_back(v.getType());
+  llvm::SmallVector<Type, 4> output_types;
+  output_types.reserve(outputs.size());
+  for (Value v : outputs) output_types.emplace_back(v.getType());
+
+  auto func_type = builder->getFunctionType(operand_types, output_types);
+
+  FuncOp outlined_func =
+      FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
+
+  // Create function body.
+  Block* outlined_func_block = outlined_func.addEntryBlock();
+
+  // Clone the operations and remap the inputs to use the function arguments.
+  BlockAndValueMapping mapping;
+  mapping.map(inputs, outlined_func.getArguments());
+  builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
+  for (Operation* op : ops) {
+    builder->clone(*op, mapping);
+  }
+
+  // Set the returned values to use cloned ops results using mapping.
+  llvm::SmallVector<Value, 4> results_after_mapping;
+  for (Value result : outputs) {
+    results_after_mapping.push_back(mapping.lookupOrDefault(result));
+  }
+
+  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  return outlined_func;
+}
+
+// Encapsulates `func` in a module and serializes that module.
+// `serialized_func_module` is set to the serialized module.
+void EncapsulateFuncAndSerialize(FuncOp func,
+                                 std::string* serialized_func_module) {
+  // Create a new module to hold func and all referenced functions.
+  OwningModuleRef module_for_func =
+      ModuleOp::create(mlir::UnknownLoc::get(func.getContext()));
+  SymbolTable symbol_table(module_for_func.get());
+
+  symbol_table.insert(func);
+  *serialized_func_module =
+      tensorflow::SerializeMlirModule(module_for_func.get());
+}
 
 // Returns whether `op` or ops nested in `op` are outside compiled.
 bool HasOutsideCompilationNested(Operation* op) {
@@ -404,6 +461,7 @@ void ReplaceExternalOutputUsage(
     const llvm::SmallSetVector<Value, 4>& external_outputs,
     TF::_XlaHostComputeMlirOp host_compute) {
   bool has_dynamic_outputs = HasDynamicOutputs(external_outputs.getArrayRef());
+
   auto replace_output_usage = [&](OpOperand& operand) {
     // Don't replace output usages if in host computation (defining op and user
     // in same region).
@@ -455,6 +513,12 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   }
 
   std::string serialized_func_module;
+  if (HasDynamicOutputs(external_outputs.getArrayRef())) {
+    FuncOp shape_op = BuildFunction(clustered_ops.getArrayRef(),
+                                    external_operands.getArrayRef(),
+                                    external_outputs.getArrayRef(), &builder);
+    EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
+  }
 
   builder.setInsertionPoint(&op);
   auto host_compute =
