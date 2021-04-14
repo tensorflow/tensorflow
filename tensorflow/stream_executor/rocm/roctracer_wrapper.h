@@ -60,24 +60,22 @@ namespace wrap {
 
 #endif  // PLATFORM_GOOGLE
 
-// clang-format off
-#define FOREACH_ROCTRACER_API(DO_FUNC)					\
-  DO_FUNC(roctracer_default_pool_expl)					\
-  DO_FUNC(roctracer_disable_domain_activity)				\
-  DO_FUNC(roctracer_disable_domain_callback)				\
-  DO_FUNC(roctracer_disable_op_activity)				\
-  DO_FUNC(roctracer_disable_op_callback)				\
-  DO_FUNC(roctracer_enable_domain_activity_expl)			\
-  DO_FUNC(roctracer_enable_domain_callback)				\
-  DO_FUNC(roctracer_enable_op_activity)				\
-  DO_FUNC(roctracer_enable_op_callback)				\
-  DO_FUNC(roctracer_error_string)					\
-  DO_FUNC(roctracer_flush_activity_expl)				\
-  DO_FUNC(roctracer_get_timestamp)					\
-  DO_FUNC(roctracer_op_string)						\
-  DO_FUNC(roctracer_open_pool_expl)					\
+#define FOREACH_ROCTRACER_API(DO_FUNC)           \
+  DO_FUNC(roctracer_default_pool_expl)           \
+  DO_FUNC(roctracer_disable_domain_activity)     \
+  DO_FUNC(roctracer_disable_domain_callback)     \
+  DO_FUNC(roctracer_disable_op_activity)         \
+  DO_FUNC(roctracer_disable_op_callback)         \
+  DO_FUNC(roctracer_enable_domain_activity_expl) \
+  DO_FUNC(roctracer_enable_domain_callback)      \
+  DO_FUNC(roctracer_enable_op_activity)          \
+  DO_FUNC(roctracer_enable_op_callback)          \
+  DO_FUNC(roctracer_error_string)                \
+  DO_FUNC(roctracer_flush_activity_expl)         \
+  DO_FUNC(roctracer_get_timestamp)               \
+  DO_FUNC(roctracer_op_string)                   \
+  DO_FUNC(roctracer_open_pool_expl)              \
   DO_FUNC(roctracer_set_properties)
-// clang-format on
 
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 

@@ -1106,7 +1106,6 @@ Status RocmTracer::DisableActivityTracing() {
   }
   ClearPendingActivityRecordsCount();
 
-
   activity_tracing_enabled_ = false;
 
   return Status::OK();

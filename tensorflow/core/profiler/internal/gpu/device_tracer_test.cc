@@ -290,7 +290,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   });
   EXPECT_GE(total_events, 5);
 }
-#else // TENSORFLOW_USE_ROCM
+#else   // TENSORFLOW_USE_ROCM
 TEST_F(DeviceTracerTest, TraceToXSpace) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
@@ -343,7 +343,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   });
   EXPECT_GE(total_events, 5);
 }
-#endif // TENSORFLOW_USE_ROCM
+#endif  // TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
 TEST_F(DeviceTracerTest, CudaRuntimeResource) {
