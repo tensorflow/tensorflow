@@ -1409,6 +1409,8 @@ tf_cc_test(
     ],
     tags = [
         "gpu",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
+        # positives in msan.
     ],
     deps = [
         ":nvptx_compiler_impl",
