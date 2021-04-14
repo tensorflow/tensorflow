@@ -123,6 +123,12 @@ static Status DoGemmWithAlgorithm(
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
 
+  // Ignore the "algorithm" field on the ROCm platform. This is because
+  // autotuning for GEMM is not yet available on the ROCm platform
+  // The "algorithm" field does not get populated in the "normal" flow
+  // on the ROCm platform, but atleast one unittest directly populates it
+  // and hence the need for this check
+#if !defined(TENSORFLOW_USE_ROCM)
   if (algorithm) {
     // Autotuning is disabled for batch_size != 1.
     CHECK_EQ(1, batch_size);
@@ -137,6 +143,7 @@ static Status DoGemmWithAlgorithm(
         /*leading dim of output=*/output_matrix.num_rows, computation_type,
         *algorithm, output_profile_result);
   }
+#endif  // !defined(TENSORFLOW_USE_ROCM)
 
   if (batch_size != 1) {
     int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
