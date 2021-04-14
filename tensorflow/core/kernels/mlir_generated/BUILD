@@ -131,6 +131,7 @@ tf_kernel_library(
         "gpu_op_tan.cc",
         "gpu_op_tanh.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_reciprocal.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -175,6 +176,7 @@ tf_kernel_library(
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":gpu_reciprocal_kernels",
     ]),
 )
 
@@ -651,6 +653,22 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_reciprocal_kernels",
+    op = "reciprocal",
+    tile_size = "256",
+    types = [
+        # TODO(b/162572921): Enable when it works for complex types.
+        # "c64",
+        # "c128",
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
 )
 
 gpu_kernel_library(
