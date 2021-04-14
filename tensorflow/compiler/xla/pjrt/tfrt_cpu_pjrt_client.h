@@ -77,6 +77,8 @@ class TfrtCpuDevice final : public PjRtDevice {
     return max_inflight_computations_semaphore_;
   }
 
+  WorkerThread* execute_thread() const { return execute_thread_.get(); }
+
  private:
   int id_;
   PjRtClient* client_ = nullptr;
@@ -85,6 +87,9 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
+
+  // A worker thread, used for replicated computation launches.
+  std::unique_ptr<WorkerThread> execute_thread_;
 };
 
 class TfrtCpuExecutable;
@@ -507,21 +512,15 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) override {
-    return Unimplemented("Execute not implemented.");
-  }
+      const ExecuteOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override {
-    return Unimplemented("ExecuteSharded not implemented.");
-  }
+      const ExecuteOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override {
-    return Unimplemented("ExecutePortable not implemented.");
-  }
+      const ExecuteOptions& options) override;
 
   void Delete() override;
 
@@ -537,9 +536,7 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      TfrtCpuDevice* device = nullptr) {
-    return Unimplemented("ExecuteHelper not implemented.");
-  }
+      TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
 
