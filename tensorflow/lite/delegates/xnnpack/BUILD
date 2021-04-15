@@ -741,9 +741,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # TODO(b/185256952): enable after this is fixed.
-    ],
     deps = [
         ":quantized_conv_2d_tester",
         ":test_main",
@@ -759,9 +756,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # TODO(b/185256952): enable after this is fixed.
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
