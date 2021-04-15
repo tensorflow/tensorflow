@@ -39,11 +39,14 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
   echo "The top-level downloads directory: ${DOWNLOADS_DIR} does not exist."
   exit 1
 fi
-
 if [[ ${2} == "hifi4" ]]; then
   LIBRARY_URL="http://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_hifi4_02_11_2021.zip"
   LIBRARY_DIRNAME="xa_nnlib_hifi4"
   LIBRARY_MD5="8b934f61ffe0a966644849602810fb1b"
+elif [[ ${2} == "visionp6_ao" ]]; then
+  LIBRARY_URL="http://github.com/foss-xtensa/tflmlib_vision/raw/tflm/archive/xi_annlib_vision_p6_21_04_14.zip"
+  LIBRARY_DIRNAME="xi_annlib_vision_p6"
+  LIBRARY_MD5="8c8e4f18559bd2bf96881df836a44e40"
 else
   echo "Attempting to download an unsupported xtensa variant: ${2}"
   exit 1
