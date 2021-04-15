@@ -192,6 +192,18 @@ py_library(
 )
 
 py_library(
+    name = "lookup_ops",
+    srcs = [
+        "lookup_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cardinality",
+        "//tensorflow/python:lookup_ops",
+    ],
+)
+
+py_library(
     name = "map_defun",
     srcs = ["map_defun.py"],
     srcs_version = "PY3",

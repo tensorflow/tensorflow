@@ -337,6 +337,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "lookup_ops_test",
+    size = "small",
+    srcs = ["lookup_ops_test.py"],
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
+
+tf_py_test(
     name = "make_batched_features_dataset_test",
     size = "small",
     srcs = ["make_batched_features_dataset_test.py"],
