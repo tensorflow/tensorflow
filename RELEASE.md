@@ -4,6 +4,13 @@
 
 ## Breaking Changes
 
+* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+  the API only works in graph mode and is not customizable. The function is
+  still accessible under
+  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
+  recommended to use the
+  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+  instead.
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
