@@ -181,17 +181,29 @@ absl::optional<std::string> DumpToFileInDirImpl(
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
     std::vector<string> matches;
-    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.0000.*");
+    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.*");
     auto status = env->GetMatchingPaths(pattern, &matches);
     if (!status.ok()) {
       LOG(ERROR) << "Could not get matching paths for pattern " << pattern
                  << ": " << status;
     }
-    if (matches.size() > opts.dump_max_hlo_modules) {
-      LOG(ERROR) << "Have already dumped " << matches.size()
-                 << " modules, more than the limit of "
-                 << opts.dump_max_hlo_modules;
-      return absl::nullopt;
+    static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
+    absl::flat_hash_set<int64> dumped_module_ids;
+    for (const string& match : matches) {
+      int64 dumped_module_id;
+      if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
+        dumped_module_ids.insert(dumped_module_id);
+      }
+    }
+    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
+      int64 module_id;
+      if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
+          !dumped_module_ids.contains(module_id)) {
+        LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
+                   << " modules, more than the limit of "
+                   << opts.dump_max_hlo_modules;
+        return absl::nullopt;
+      }
     }
   }
 
