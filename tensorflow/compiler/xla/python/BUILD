@@ -574,6 +574,7 @@ cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/types:optional",
     ],

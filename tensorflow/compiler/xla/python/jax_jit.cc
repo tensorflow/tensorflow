@@ -196,8 +196,7 @@ H AbslHashValue(H h, const CallSignature& s) {
   for (const auto& name : s.static_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
-  h = H::combine(std::move(h), s.device);
-  h = H::combine(std::move(h), s.jax_enable_x64);
+  h = H::combine(std::move(h), s.device, s.jax_enable_x64);
 
   // We do not hash extra_jit_context since its current hash function costs
   // ~300ns and we don't expect a large number of different contexts.
@@ -331,6 +330,90 @@ struct CacheEntry {
   std::vector<py::object> keepalive;
 };
 
+// A CompiledFunctionCache represents a cache of compiled functions that can be
+// shared between one or more CompiledFunction objects. This allows the capacity
+// of an LRU cache to be shared between many jit-compiled functions, rather than
+// necessarily having a unique cache for each function with its own
+// capacity limit. We assume the cache is protected by the GIL.
+class CompiledFunctionCache {
+ public:
+  static constexpr int kDefaultCapacity = 4096;
+  explicit CompiledFunctionCache(int capacity);
+
+  // Cache entries are shared_ptr<>s because it's possible the cache entry
+  // might be evicted before we finish tracing/compiling.
+  typedef xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> Cache;
+
+  // The lifetime of the returned cache lasts at least as long as the lifetime
+  // of `function`, so if the caller holds a strong reference to `function`, the
+  // `Cache` remains valid.
+  // We include as part of the cache key `donate_argnums` (and any other fields
+  // that aren't subsumed by the CallSignature we compute for each call).
+  Cache* Lookup(py::handle function, absl::Span<const int> donate_argnums);
+
+  int Size() const { return lru_list_.Size(); }
+  int Capacity() const { return lru_list_.Capacity(); }
+  void Clear() { lru_list_.Clear(); }
+
+ private:
+  struct Key {
+    py::handle function;  // Does not hold a reference.
+
+    // Other fields that are part of the arguments to `jit`, but are not
+    // otherwise part of CallSignature.
+    std::vector<int> donate_argnums;
+
+    bool operator==(const Key& other) const {
+      return std::tie(function, donate_argnums) ==
+             std::tie(other.function, other.donate_argnums);
+    }
+  };
+  template <typename H>
+  friend H AbslHashValue(H h, const Key& key) {
+    h = H::combine(std::move(h), key.function.ptr());
+    h = H::combine_contiguous(std::move(h), key.donate_argnums.data(),
+                              key.donate_argnums.size());
+    return h;
+  }
+
+  struct Value {
+    explicit Value(Cache::LRUList* lru_list) : cache(lru_list) {}
+    Cache cache;
+
+    // A weak reference to the key function. We use the weak reference to
+    // register a callback that is triggered when the key function is destroyed.
+    // We use a weak pointer because we want to allow caching across multiple
+    // calls to `jax.jit(f)` if `f` remains alive, but we do not want the cache
+    // to keep `f` alive if all other references are dropped.
+    py::weakref weakref;
+  };
+
+  Cache::LRUList lru_list_;
+  absl::flat_hash_map<Key, std::unique_ptr<Value>> functions_;
+};
+
+CompiledFunctionCache::CompiledFunctionCache(int capacity)
+    : lru_list_(capacity) {}
+
+CompiledFunctionCache::Cache* CompiledFunctionCache::Lookup(
+    py::handle function, absl::Span<const int> donate_argnums) {
+  Key key;
+  key.function = function;
+  key.donate_argnums =
+      std::vector<int>(donate_argnums.begin(), donate_argnums.end());
+  auto insert = functions_.emplace(key, nullptr);
+  std::unique_ptr<Value>& entry = insert.first->second;
+  if (insert.second) {
+    entry = std::make_unique<Value>(&lru_list_);
+    entry->weakref = py::weakref(
+        function,
+        py::cpp_function([this, key{std::move(key)}](py::handle weakref) {
+          functions_.erase(key);
+        }));
+  }
+  return &entry->cache;
+}
+
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
 // the correct underlying `PyExecutable`. This class is thread-safe.
@@ -338,7 +421,9 @@ class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss,
                    py::function get_device, std::vector<int> static_argnums,
-                   std::vector<py::str> static_argnames, int cache_size);
+                   std::vector<py::str> static_argnames,
+                   std::vector<int> donate_argnums,
+                   std::shared_ptr<CompiledFunctionCache> cache);
   ~CompiledFunction();
 
   // This function will:
@@ -356,8 +441,8 @@ class CompiledFunction {
     return inspect->attr("signature")(fun_);
   }
 
-  int cache_size() const { return executables_.Size(); }
-  void ClearCache() { executables_.Clear(); }
+  int cache_size() const { return executables_->Size(); }
+  void ClearCache() { executables_->Clear(); }
 
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
@@ -398,9 +483,11 @@ class CompiledFunction {
   // jax.jit has been committed to it.
   py::function get_device_;
 
-  // Cache entries are shared_ptr<>s because it's possible the cache entry
-  // might be evicted before we finish tracing/compiling. Protected by the GIL.
-  xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> executables_;
+  // Keeps the shared LRU cache alive as long as the CompiledFunction is alive.
+  std::shared_ptr<CompiledFunctionCache> cache_;
+
+  // The part of cache_ specific to this CompiledFunction.
+  CompiledFunctionCache::Cache* executables_;
 
   // The logic if the following:
   // - if `device` or `backend` are not specified to `jax.jit`, we will use
@@ -419,17 +506,19 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
                                    py::function get_device,
                                    std::vector<int> static_argnums,
                                    std::vector<py::str> static_argnames,
-                                   int cache_size)
+                                   std::vector<int> donate_argnums,
+                                   std::shared_ptr<CompiledFunctionCache> cache)
     : fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
       static_argnums_(std::move(static_argnums)),
       static_argnames_(std::move(static_argnames)),
       get_device_(std::move(get_device)),
-      executables_(cache_size) {
+      cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
   for (py::str& s : static_argnames) {
     PyUnicode_InternInPlace(&s.ptr());
   }
+  executables_ = cache_->Lookup(fun_, donate_argnums);
 }
 
 CompiledFunction::~CompiledFunction() = default;
@@ -678,7 +767,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.extra_jit_context =
       tls.extra_jit_context.value_or(global_state.extra_jit_context);
 
-  std::shared_ptr<CacheEntry> cache_entry = executables_.GetOrCreateIfAbsent(
+  std::shared_ptr<CacheEntry> cache_entry = executables_->GetOrCreateIfAbsent(
       arguments.signature,
       [](const CallSignature& key) { return std::make_shared<CacheEntry>(); });
 
@@ -916,15 +1005,21 @@ py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
                                 py::function get_device,
                                 std::vector<int> static_argnums,
                                 std::vector<py::str> static_argnames,
-                                int cache_size) {
+                                std::vector<int> donate_argnums,
+                                std::shared_ptr<CompiledFunctionCache> cache) {
   py::object obj = py::reinterpret_steal<py::object>(JaxCompiledFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(JaxCompiledFunction_Type), nullptr,
       nullptr));
   JaxCompiledFunctionObject* buf =
       reinterpret_cast<JaxCompiledFunctionObject*>(obj.ptr());
+  if (!cache) {
+    cache = std::make_shared<CompiledFunctionCache>(
+        CompiledFunctionCache::kDefaultCapacity);
+  }
   new (&buf->fun) CompiledFunction(
       std::move(fun), std::move(cache_miss), std::move(get_device),
-      std::move(static_argnums), std::move(static_argnames), cache_size);
+      std::move(static_argnums), std::move(static_argnames),
+      std::move(donate_argnums), std::move(cache));
   return obj;
 }
 
@@ -940,6 +1035,14 @@ py::object property_readonly(Func&& get) {
 
 void BuildJaxjitSubmodule(py::module& m) {
   py::module jitlib = m.def_submodule("jax_jit", "Jax C++ jit library");
+
+  py::class_<CompiledFunctionCache, std::shared_ptr<CompiledFunctionCache>>
+      cache(jitlib, "CompiledFunctionCache");
+  cache.def(py::init<int>(),
+            py::arg("capacity") = CompiledFunctionCache::kDefaultCapacity);
+  cache.def("size", &CompiledFunctionCache::Size);
+  cache.def("capacity", &CompiledFunctionCache::Capacity);
+  cache.def("clear", &CompiledFunctionCache::Clear);
 
   // We need to use heap-allocated type objects because we want to add
   // additional methods dynamically.
@@ -1048,15 +1151,18 @@ void BuildJaxjitSubmodule(py::module& m) {
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,
          std::vector<int> static_argnums, std::vector<py::str> static_argnames,
-         int cache_size) -> py::object {
+         std::vector<int> donate_argnums,
+         std::shared_ptr<CompiledFunctionCache> cache) -> py::object {
         return MakeCompiledFunction(
             std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(static_argnums), std::move(static_argnames), cache_size);
+            std::move(static_argnums), std::move(static_argnames),
+            std::move(donate_argnums), std::move(cache));
       },
       py::arg("fun"), py::arg("cache_miss"), py::arg("get_device"),
       py::arg("static_argnums"),
       py::arg("static_argnames") = std::vector<py::str>(),
-      py::arg("cache_size") = 4096);
+      py::arg("donate_argnums") = std::vector<int>(),
+      py::arg("cache") = nullptr);
 
   // This function is not yet a full replacement for the Python one, because:
   // (a) it does not support abstract types,
