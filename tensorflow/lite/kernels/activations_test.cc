@@ -2206,6 +2206,28 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
                                      }));
 }
 
+TEST(QuantizedActivationsOpTest, LogSoftmaxInt8LargeNegativeNumber) {
+  const float kLogSoftmaxQuantizedTolerance = 0.06355;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_LOG_SOFTMAX,
+      /*input=*/{TensorType_INT8, {2, 4}, -10, 10},
+      /*output=*/{TensorType_INT8, {}, 0, 0, 16. / 256, 127});
+  m.SetInput<int8_t>({
+      -9.9, -9.9, 0, 0,  //
+      7.8, -2, 2, 1,     //
+  });
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-10.5625, -10.5625, -0.6875, -0.6875, -0.004, -9.8125, -5.75, -6.75},
+          kLogSoftmaxQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         -42, -42, 116, 116,  //
+                                         127, -30, 35, 19,    //
+                                     }));
+}
+
 const auto kPReluKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_PRELU_REF()},
     {"GenericOptimized", ops::builtin::Register_PRELU()},
