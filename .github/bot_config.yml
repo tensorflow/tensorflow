@@ -15,9 +15,9 @@
 
 # A list of assignees
 assignees:
-   - amahendrakar
-   - ravikyram
-   - Saduf2019
+   - tilakrayal
+   - usharanipagadala
+   - saikumarchalla
 # A list of assignees for compiler folder
 compiler_assignees:
    - joker-eph
@@ -67,7 +67,11 @@ cuda_comment: >
    
    | :-------------: | :-------------: |
    
-   | 2.1.0 - 2.2.0  | 10.1 |
+   | 2.5.0  | 11.2 |
+   
+   | 2.4.0  | 11.0 |
+    
+   | 2.1.0 - 2.3.0  | 10.1 |
    
    | 1.13.1 - 2.0  | 10.0  |
    

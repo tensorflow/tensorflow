@@ -772,15 +772,26 @@ class TextFileInitializer(TableInitializerBase):
   def _shared_name(self):
     if self._vocab_size:
       # Keep the shared_name:
-      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%d_%s_%s" % (
-          self._filename_arg, self._vocab_size, self._key_index,
-          self._value_index)
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>_<offset>
+      if self._offset:
+        shared_name = "hash_table_%s_%d_%s_%s_%s" % (
+            self._filename_arg, self._vocab_size, self._key_index,
+            self._value_index, self._offset)
+      else:
+        shared_name = "hash_table_%s_%d_%s_%s" % (
+            self._filename_arg, self._vocab_size, self._key_index,
+            self._value_index)
     else:
       # Keep the shared_name
-      # <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
-                                             self._key_index, self._value_index)
+      # <table_type>_<filename>_<key_index>_<value_index>_<offset>
+      if self._offset:
+        shared_name = "hash_table_%s_%s_%s_%s" % (
+            self._filename_arg, self._key_index, self._value_index,
+            self._offset)
+      else:
+        shared_name = "hash_table_%s_%s_%s" % (
+            self._filename_arg, self._key_index, self._value_index)
+
     return shared_name
 
 
@@ -1205,6 +1216,20 @@ class StaticVocabularyTable(LookupInterface):
 
   The hash function used for generating out-of-vocabulary buckets ID is
   Fingerprint64.
+
+  Note that the out-of-vocabulary bucket IDs always range from the table `size`
+  up to `size + num_oov_buckets - 1` regardless of the table values, which could
+  cause unexpected collisions:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(
+  ...     keys=tf.constant(["emerson", "lake", "palmer"]),
+  ...     values=tf.constant([1, 2, 3], dtype=tf.int64))
+  >>> table = tf.lookup.StaticVocabularyTable(
+  ...     init,
+  ...     num_oov_buckets=1)
+  >>> input_tensor = tf.constant(["emerson", "lake", "palmer", "king"])
+  >>> table[input_tensor].numpy()
+  array([1, 2, 3, 3])
   """
 
   def __init__(self,
@@ -1730,21 +1755,34 @@ def index_to_string_table_from_tensor(vocabulary_list,
     return StaticHashTableV1(init, default_value)
 
 
+@tf_export("lookup.experimental.MutableHashTable")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
+
+  `MutableHashTable` requires additional memory during checkpointing and restore
+  operations to create temporary key and value tensors.
 
   Example usage:
 
-  ```python
-  table = tf.lookup.MutableHashTable(key_dtype=tf.string, value_dtype=tf.int64,
-                                     default_value=-1)
-  sess.run(table.insert(keys, values))
-  out = table.lookup(query_keys)
-  print(out.eval())
-  ```
+  >>> table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.string,
+  ...                                                 value_dtype=tf.int64,
+  ...                                                 default_value=-1)
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9], dtype=tf.int64)
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> table.insert(keys_tensor, vals_tensor)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1])
+  >>> table.remove(tf.constant(['c']))
+  >>> table.lookup(keys_tensor).numpy()
+  array([ 7, 8, -1])
+  >>> sorted(table.export()[0].numpy())
+  [b'a', b'b']
+  >>> sorted(table.export()[1].numpy())
+  [7, 8]
   """
 
   def __init__(self,
@@ -1988,16 +2026,21 @@ class MutableHashTable(LookupInterface):
 
 @tf_export("lookup.experimental.DenseHashTable")
 class DenseHashTable(LookupInterface):
-  """A generic mutable hash table implementation using tensors as backing store.
+  """A mutable hash table with faster lookups and higher memory usage.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
 
-  It uses "open addressing" with quadratic reprobing to resolve collisions.
-  Compared to `MutableHashTable` the insert, remove and lookup operations in a
-  `DenseHashTable` are typically faster, but memory usage can be higher.
-  However, `DenseHashTable` does not require additional memory for
-  temporary tensors created during checkpointing and restore operations.
+  Compared to `MutableHashTable`, `DenseHashTable` offers generally faster
+  `insert`, `remove` and `lookup` operations, in exchange for a higher overall
+  memory footprint.
+
+  It uses "open addressing" with quadratic reprobing to resolve collisions. This
+  requires specifying two keys in the key space, `empty_key` and `deleted_key`,
+  that can never inserted into the table.
+
+  Unlike `MutableHashTable`, `DenseHashTable` does not require additional memory
+  for temporary tensors created during checkpointing and restore operations.
 
   Example usage:
 

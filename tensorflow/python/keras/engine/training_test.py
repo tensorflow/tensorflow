@@ -14,17 +14,12 @@
 # ==============================================================================
 """Tests for training routines."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import io
 import sys
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -1014,7 +1009,7 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_logging(self):
-    mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
+    mock_stdout = io.StringIO()
     model = sequential.Sequential()
     model.add(layers_module.Dense(10, activation='relu'))
     model.add(layers_module.Dense(1, activation='sigmoid'))
@@ -3741,9 +3736,6 @@ class TestFunctionTracing(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_no_tracing_between_epoch(self):
-    if sys.version_info[0] < 3:
-      self.skipTest('self.assertLogs() call is not available in Python 2.')
-
     model, x, y = self._seq_model_and_data()
 
     logging.set_verbosity(1)
@@ -3756,9 +3748,6 @@ class TestFunctionTracing(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_evaluate_no_cached_data(self):
-    if sys.version_info[0] < 3:
-      self.skipTest('self.assertLogs() call is not available in Python 2.')
-
     model, x, y = self._seq_model_and_data()
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'

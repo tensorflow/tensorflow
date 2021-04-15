@@ -185,7 +185,7 @@ class OptimizationOptions(options.OptionsBase):
       ty=bool,
       docstring=
       "Whether to parallelize stateless map transformations. If None, defaults "
-      "to False.")
+      "to True.")
 
   map_vectorization = options.create_option(
       name="map_vectorization",

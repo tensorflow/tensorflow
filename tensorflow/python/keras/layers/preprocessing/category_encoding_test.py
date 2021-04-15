@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras text category_encoding preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -300,7 +296,6 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
 @keras_parameterized.run_all_keras_modes
 class CategoryEncodingOutputTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest

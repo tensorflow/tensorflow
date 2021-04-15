@@ -289,6 +289,19 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
+  let summary = "Marks device cluster inputs-output pairs that read/write to the same variable as aliases";
+
+  let description = [{
+This pass analyzes the inputs and outputs to device cluster and marks those
+input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
+and write to the same resource. This aliasing information can then be propagated
+to XLA compiler for input/output buffer space optimizations.
+  }];
+
+  let constructor = "TFDevice::CreateMarkInputOutputAliasesPass()";
+}
+
 def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
   let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
 

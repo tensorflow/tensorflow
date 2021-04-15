@@ -77,6 +77,7 @@ bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
+  std::vector<HloInstruction*> fusion_instrs;
   for (auto opnd : consumer->operands()) {
     HloInstruction* predecessor = opnd->LatestNonGteAncestor();
     // Find out the input fusion instructions whose only consumer is `consumer`.
@@ -84,13 +85,11 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
     // there is no back edge.
     if (IsReduceInputFusion(*predecessor) &&
         IsConsumerTheOnlyNonRootUser(*predecessor, *consumer)) {
-      fusion_instr_set.insert(predecessor);
+      if (fusion_instr_set.insert(predecessor).second) {
+        fusion_instrs.push_back(predecessor);
+      }
     }
   }
-
-  std::vector<HloInstruction*> fusion_instrs;
-  fusion_instrs.insert(fusion_instrs.end(), fusion_instr_set.begin(),
-                       fusion_instr_set.end());
 
   std::sort(fusion_instrs.begin(), fusion_instrs.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {

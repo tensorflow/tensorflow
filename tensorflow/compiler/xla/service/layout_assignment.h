@@ -304,7 +304,8 @@ class LayoutAssignment : public HloModulePass {
       ComputationLayout* entry_computation_layout,
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = InstructionCanChangeLayout,
-      ChannelLayoutConstraints* channel_constraints = nullptr);
+      ChannelLayoutConstraints* channel_constraints = nullptr,
+      bool reverse_computation_order = false);
   ~LayoutAssignment() override {}
   absl::string_view name() const override { return "layout-assignment"; }
 
@@ -453,6 +454,8 @@ class LayoutAssignment : public HloModulePass {
   // A copy of entry_computation_layout_ used to reset it to the initial values
   // during the multiple passes done by the layout assignment operation.
   ComputationLayout saved_entry_computation_layout_;
+  // If set true, reverse the computation traversal order when assigning layout.
+  bool reverse_computation_order_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,

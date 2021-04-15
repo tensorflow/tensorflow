@@ -14,10 +14,6 @@
 # ==============================================================================
 """Adapter module that convert different input data objects into tf.dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import functools
@@ -26,7 +22,6 @@ import math
 import random
 
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -59,8 +54,7 @@ keras_data_adapter_gauge = monitoring.BoolGauge(
     "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
 
-@six.add_metaclass(abc.ABCMeta)
-class DataAdapter(object):
+class DataAdapter(object, metaclass=abc.ABCMeta):
   """Base class for input data adapter.
 
   In TF 2.0, tf.data is the preferred API for user to feed in data. In order
@@ -448,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
@@ -507,15 +501,21 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
 class DatasetCreatorAdapter(DataAdapter):
   """Adapter that handles dataset functions."""
 
-  def __init__(self, x, *args, **kwargs):
-    super(DatasetCreatorAdapter, self).__init__(x, *args, **kwargs)
+  def __init__(self, x, y, steps=None, distribution_strategy=None, **kwargs):
+    super(DatasetCreatorAdapter, self).__init__(x, **kwargs)
 
     if not isinstance(x, dataset_creator.DatasetCreator):
       raise TypeError("The input of a `DatasetCreatorAdapter` should be a "
                       "`DatasetCreator` but it received type {}.".format(
                           type(x)))
+    if steps is None:
+      raise ValueError("When using a "
+                       "`tf.keras.utils.experimental.DatasetCreator`, "
+                       "`steps_per_epoch` argument must be provided in "
+                       "`Model.fit`.")
     self.dataset_creator = x
-    self.strategy = kwargs.get("distribution_strategy", None)
+    self.steps = steps
+    self.strategy = distribution_strategy
 
   @staticmethod
   def can_handle(x, y=None):
@@ -533,7 +533,8 @@ class DatasetCreatorAdapter(DataAdapter):
     return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -1329,9 +1330,6 @@ class DataHandler(object):
           "`steps_per_execution > 1`, you must specify the number of steps "
           "to run.")
 
-  def resolve_logs(self, logs):
-    return logs
-
 
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
@@ -1348,7 +1346,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
@@ -1359,9 +1358,6 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access
-
-  def resolve_logs(self, logs):
-    return logs.fetch()
 
 
 def get_data_handler(*args, **kwargs):

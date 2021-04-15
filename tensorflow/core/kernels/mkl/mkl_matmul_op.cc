@@ -157,8 +157,19 @@ class MklMatMulOp : public OpKernel {
     VLOG(2) << "MKL DNN SGEMM called";
 #ifndef ENABLE_ONEDNN_OPENMP
     MklDnnThreadPool eigen_tp(ctx);
-    dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha, a,
-                                    lda, b, ldb, beta, c, ldc, &eigen_tp);
+    // With threadpool , the runtime overhead is comparable to the kernel
+    // execution for small kernel sizes. For such sizes, it may be better to run
+    // the kernel single threaded. Here we are coming up with a cost model based
+    // on L1 sizes. If we find that matrices are small enough, we will execute
+    // single threaded. This may need tuning.
+    if (ExecuteSingleThreadedGemm(m, n, k)) {
+      // For now, call single-threaded gemm.
+      dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
+                                      a, lda, b, ldb, beta, c, ldc, nullptr);
+    } else {
+      dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
+                                      a, lda, b, ldb, beta, c, ldc, &eigen_tp);
+    }
 #else
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
@@ -188,7 +199,7 @@ class MklMatMulOp : public OpKernel {
           .Label(mkl_op_registry::kMklNameChangeOpLabel), \
       MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
-// TODO(inteltf) Consider template specialization when adding/removing
+// TODO(intel-tf): Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);

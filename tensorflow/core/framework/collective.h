@@ -91,6 +91,13 @@ struct CollGroupParams {
 struct CollImplDetails {
   string collective_name;
   std::vector<std::vector<int>> subdiv_permutations;
+  // subdiv_offsets and max_subdivs_per_device are used together as follows:
+  // When subdiv_offsets is provided (non-empty) it is used as is. When
+  // subdiv_offsets is not provided subdivisons are generated dynamically
+  // constrained by max_subdivs_per_device. When subdiv_offsets is empty AND
+  // max_subdivs_per_device = 0 an internal default kMaxSubdivsPerDeviceDefault
+  // is used.
+  int max_subdivs_per_device = 0;  // Upper bound on subdivisions per device.
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>

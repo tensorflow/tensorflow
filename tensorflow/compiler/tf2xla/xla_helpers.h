@@ -165,6 +165,16 @@ struct XlaCompilationResult {
 
   // The XLA computation built from the tensorflow subgraph.
   std::shared_ptr<xla::XlaComputation> computation;
+
+  // Meta-info about encountered CollectiveReduceV2Ops.
+  struct CollectiveReduceV2OpInfo {
+    int group_key;
+    int group_size;
+  };
+
+  // Group keys of the collectives encountered during the translation.
+  // Mapping from group keys to group sizes.
+  absl::optional<CollectiveReduceV2OpInfo> collective_reduce_info;
 };
 
 }  // end namespace tensorflow

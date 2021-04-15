@@ -6,16 +6,16 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [Memory Management in TensorFlow Lite Micro](#memory-management-in-tensorflow-lite-micro)
+      * [Tensor Arena](#tensor-arena)
+         * [Head Section](#head-section)
+            * [Offline planned tensor allocations](#offline-planned-tensor-allocations)
+         * [Temporary Section](#temporary-section)
+         * [Tail Section](#tail-section)
+      * [Recording Memory APIs](#recording-memory-apis)
+         * [Allocation Section Details](#allocation-section-details)
 
-*   [Memory Management in TensorFlow Lite Micro](#memory-management-in-tensorflow-lite-micro)
-    *   [Tensor Arena](#tensor-arena)
-        *   [Head Section](#head-section)
-        *   [Temporary Section](#temporary-section)
-        *   [Tail Section](#tail-section)
-    *   [Recording Memory APIs](#recording-memory-apis)
-        *   [Allocation Section Details](#allocation-section-details)
-
-<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:21:02 PM PDT -->
+<!-- Added by: freddan80, at: Mon 29 Mar 2021 01:47:42 PM CEST -->
 
 <!--te-->
 
@@ -60,6 +60,45 @@ This allocation length of this section is managed by the
 a model and tries to reuse as many buffers as possible to create the smallest
 length for the head. The Tensor buffers for this section can be accessed via a
 `TfLiteEvalTensor` or `TfLiteTensor` instance on the `tflite::MicroInterpreter`.
+
+#### Offline planned tensor allocations
+
+All, or a subset of, tensors can be allocated using an offline planner. An
+offline planner performs tensor allocation on e.g. a host PC. The offline tensor
+allocation plan is added to model metadata. See format below.
+
+For each non-constant tensor in the `tensors:[Tensor]` list of the subgraph, a
+byte offset to the start of the head section of the memory arena is given. -1
+indicates that the tensor will be allocated at runtime by the
+`tflite::GreedyMemoryPlanner`. The offline plan is permitted to overlap buffers
+if it knows that the data will not be used at the same time.
+
+The offline tensor allocation plan will be encoded in the `metadata:[Metadata]`
+field of the model, using the following encoding:
+
+| Metadata component | Value |
+|-|-|
+| name:string | “OfflineMemoryAllocation” |
+| buffer:unit | Index of buffer containing offline tensor allocation data |
+
+The buffer contents for the offline tensor allocation is a list of 32-bit
+integers of the following format:
+
+| Offset | Value |
+|-|-|
+| 0 | Offline allocation format version |
+| 1 | Subgraph index to which this allocation applies |
+| 2 | Number offsets following: n |
+| 3 | Byte offset of tensor #0 or -1 to allocate at runtime |
+| 4 | Byte offset of tensor #1 or -1 to allocate at runtime |
+| ... | ... |
+| 3+(n-1) | Byte offset of tensor #(n-1) or -1 to allocate at runtime |
+
+The `tflite::GreedyMemoryPlanner` treats the provided offline tensor allocation
+plan as constant fixed offset to the start of the head section and will attempt
+to fit any other tensors (such as scratch tensors added a runtime using the
+`RequestScratchBufferInArena` API of `TfLiteContext`) around those fixed
+offsets.
 
 ### Temporary Section
 

@@ -30,12 +30,14 @@ class ParallelBatchDatasetParams : public DatasetParams {
                              int64 num_parallel_calls, bool drop_remainder,
                              DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
+                             const bool parallel_copy,
                              const std::string& deterministic, string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         batch_size_(batch_size),
         num_parallel_calls_(num_parallel_calls),
         drop_remainder_(drop_remainder),
+        parallel_copy_(parallel_copy),
         deterministic_(deterministic) {
     input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = kOpVersion;
@@ -62,7 +64,8 @@ class ParallelBatchDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{ParallelBatchDatasetOp::kOutputTypes, output_dtypes_},
+    *attr_vector = {{ParallelBatchDatasetOp::kParallelCopy, parallel_copy_},
+                    {ParallelBatchDatasetOp::kOutputTypes, output_dtypes_},
                     {ParallelBatchDatasetOp::kOutputShapes, output_shapes_},
                     {ParallelBatchDatasetOp::kDeterministic, deterministic_}};
     return Status::OK();
@@ -76,6 +79,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
   int64 batch_size_;
   int64 num_parallel_calls_;
   bool drop_remainder_;
+  bool parallel_copy_;
   std::string deterministic_;
 };
 
@@ -91,6 +95,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams1() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -105,6 +110,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams2() {
       /*drop_remainder=*/true,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -119,6 +125,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams3() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({-1})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -133,6 +140,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams4() {
       /*drop_remainder=*/true,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({3})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -147,6 +155,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams5() {
       /*drop_remainder=*/true,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({12})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -161,6 +170,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams6() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({-1})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -175,6 +185,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams7() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -188,6 +199,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams8() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
@@ -201,11 +213,27 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams9() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
 
-// Test Case 10: test ParallelBatchDataset with an invalid batch size.
+// Test Case 10: test ParallelBatchDataset with `parallel_copy` = true and a
+// batch size that can evenly split the input dataset.
+ParallelBatchDatasetParams ParallelBatchDatasetParams10() {
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 12, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*parallel_copy=*/true,
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
+}
+
+// Test Case 11: test ParallelBatchDataset with an invalid batch size.
 ParallelBatchDatasetParams InvalidBatchSizeParallelBatchDatasetParams() {
   return ParallelBatchDatasetParams(
       RangeDatasetParams(0, 10, 1),
@@ -214,6 +242,7 @@ ParallelBatchDatasetParams InvalidBatchSizeParallelBatchDatasetParams() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({3})},
+      /*parallel_copy=*/false,
       /*deterministic=*/DeterminismPolicy::kNondeterministic,
       /*node_name=*/kNodeName);
 }
@@ -250,6 +279,10 @@ std::vector<GetNextTestCase<ParallelBatchDatasetParams>> GetNextTestCases() {
            CreateTensors<int64>(TensorShape({4}),
                                 {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/ParallelBatchDatasetParams9(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/ParallelBatchDatasetParams10(),
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({4}),
                                 {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})}};
@@ -298,6 +331,8 @@ DatasetOutputShapesTestCases() {
           {/*dataset_params=*/ParallelBatchDatasetParams8(),
            /*expected_output_shapes=*/{PartialTensorShape({4})}},
           {/*dataset_params=*/ParallelBatchDatasetParams9(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/ParallelBatchDatasetParams10(),
            /*expected_output_shapes=*/{PartialTensorShape({4})}}};
 }
 
@@ -324,6 +359,8 @@ CardinalityTestCases() {
           {/*dataset_params=*/ParallelBatchDatasetParams8(),
            /*expected_cardinality=*/3},
           {/*dataset_params=*/ParallelBatchDatasetParams9(),
+           /*expected_cardinality=*/3},
+          {/*dataset_params=*/ParallelBatchDatasetParams10(),
            /*expected_cardinality=*/3}};
 }
 
@@ -355,6 +392,8 @@ IteratorOutputShapesTestCases() {
           {/*dataset_params=*/ParallelBatchDatasetParams8(),
            /*expected_output_shapes=*/{PartialTensorShape({4})}},
           {/*dataset_params=*/ParallelBatchDatasetParams9(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/ParallelBatchDatasetParams10(),
            /*expected_output_shapes=*/{PartialTensorShape({4})}}};
 }
 
@@ -414,6 +453,11 @@ IteratorSaveAndRestoreTestCases() {
            CreateTensors<int64>(TensorShape({4}),
                                 {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/ParallelBatchDatasetParams9(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/ParallelBatchDatasetParams10(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({4}),

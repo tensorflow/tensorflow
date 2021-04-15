@@ -333,6 +333,14 @@ CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
 
 port::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
+
+  // Peek at the last error to give more information in cases of errors.
+  cudaError_t cerr = cudaPeekAtLastError();
+  if (cerr != cudaSuccess) {
+    LOG(WARNING) << "There was an error before creating cudnn handle: "
+                 << cudaGetErrorName(cerr) << " : " << cudaGetErrorString(cerr);
+  }
+
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
@@ -3382,22 +3390,19 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
   // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
+  float alpha = 1.0;
   // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
+  float beta = 0.0;
 
   // CUDNN Operation
-  auto op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  op_builder.setxDesc(tensor_x).setyDesc(tensor_y).setwDesc(tensor_w).setcDesc(
-      conv_desc);
-  if (cudnn_type == CUDNN_DATA_DOUBLE) {
-    op_builder.setAlpha(dalpha).setBeta(dbeta);
-  } else {
-    op_builder.setAlpha(falpha).setBeta(fbeta);
-  }
-  auto op = op_builder.build();
+  auto op = cudnn_frontend::OperationBuilder(conv_mode)
+                .setxDesc(tensor_x)
+                .setyDesc(tensor_y)
+                .setwDesc(tensor_w)
+                .setcDesc(conv_desc)
+                .setAlpha(alpha)
+                .setBeta(beta)
+                .build();
   RETURN_MSG_IF_CUDNN_ERROR(op);
 
   // CUDNN OperationGraph

@@ -68,7 +68,7 @@ class Conv3dOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_), GetShape(filter_)});
   }
 
-  void SetFilter(std::initializer_list<float> f) { PopulateTensor(filter_, f); }
+  void SetFilter(std::vector<float> f) { PopulateTensor(filter_, f); }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
 
@@ -225,13 +225,13 @@ TEST(Conv3dOpModel, DilationTest) {
                   /*dilation_height=*/2);
 
   m.SetInput(CreateRangeVector<float>(96));
-  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
-               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  m.SetFilter(CreateRangeVector<float>(32));
   m.Invoke();
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 1, 3, 2));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({52, 8, 60, 8, 68, 8, 244, 8, 252, 8, 260, 8}));
+              ElementsAreArray({7248, 7592, 7728, 8104, 8208, 8616, 18768,
+                                19880, 19248, 20392, 19728, 20904}));
 }
 
 TEST(Conv3dOpModel, BiasTest) {
@@ -250,6 +250,23 @@ TEST(Conv3dOpModel, BiasTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 1, 2, 2));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({53, 10, 69, 10, 245, 10, 261, 10}));
+}
+
+TEST(Conv3dOpModel, NoIm2ColTensorTest) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 2, 2, 2, 4}},
+                  {TensorType_FLOAT32, {1, 1, 1, 4, 4}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  m.SetInput(CreateRangeVector<float>(32));
+  m.SetFilter(CreateRangeVector<float>(16));
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 2, 4));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({56,  62,  68,  74,  152, 174, 196, 218, 248, 286, 324,
+                        362, 344, 398, 452, 506, 440, 510, 580, 650, 536, 622,
+                        708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
 }
 
 }  // namespace

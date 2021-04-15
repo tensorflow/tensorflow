@@ -39,6 +39,7 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
+from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
@@ -760,6 +761,66 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # The number of debug ops should be equal to that of quantized ops.
     self.assertEqual(num_debug_ops, num_debug_quantize_ops)
 
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    func, calib_gen = self._getIntegerQuantizeModel()
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calib_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
+  @test_util.run_v2_only
+  def testOpVersion(self):
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[5, 5], dtype=tf.float32)])
+    def custom_resize(image):
+      # Add "batch" and "channels" dimensions
+      image = image[tf.newaxis, ..., tf.newaxis]
+      # ResizeBilinear version 3.
+      resize1 = tf.compat.v1.image.resize_bilinear(
+          image, [2, 2], half_pixel_centers=True)
+      # ResizeBilinear version 1.
+      resize2 = tf.compat.v1.image.resize_bilinear(image, [2, 2])
+      return resize1 + resize2
+
+    concrete_func = custom_resize.get_concrete_function()
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+    model_object = schema_fb.Model.GetRootAsModel(tflite_model, 0)
+    model = schema_fb.ModelT.InitFromObj(model_object)
+
+    for operator in model.operatorCodes:
+      if operator.builtinCode == schema_fb.BuiltinOperator.RESIZE_BILINEAR:
+        # half_pixel_centers is supported by ResizeBilinear version 3.
+        self.assertEqual(operator.version, 3)
+        break
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
@@ -1313,6 +1374,51 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
 
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Conv2D(16, (3, 3), activation='relu')
+    ])
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+    k_conv_name = 'sequential/conv2d/Conv2D1'
+    k_num_filters = 16
+    quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    def calib_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+
+    quantized_converter.representative_dataset = calib_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = k_num_filters
+    if disable_per_channel:
+      expected_num_params = 1
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -1559,25 +1665,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(
-      ('LSTM_BatchSize_None', tf.keras.layers.LSTM, None),
-      ('SimpleRNN_BatchSize_None', tf.keras.layers.SimpleRNN, None),
-      ('GRU_BatchSize_None', tf.keras.layers.GRU, None),
-      ('LSTM_BatchSize_One', tf.keras.layers.LSTM, 1),
-      ('SimpleRNN_BatchSize_One', tf.keras.layers.SimpleRNN, 1),
-      ('GRU_BatchSize_One', tf.keras.layers.GRU, 1))
+  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
+                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
+                                  ('GRU', tf.keras.layers.GRU))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer, batch_size):
-    # This test will run with `batch_size=1` and `batch_size=None`.
-    # When `batch_size=1`, the model will convert to fused RNN, and when
-    # `batch_size=None`, it will convert to unfused RNN
-    # (similar for tests below).
+  def testKerasRNN(self, rnn_layer):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Input(
-            batch_size=batch_size, shape=(10, 10), name='input'),
+        tf.keras.layers.Input(shape=(10, 10), name='input'),
         rnn_obj,
     ])
 
@@ -1611,16 +1708,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
-  @parameterized.named_parameters(('BatchSize_None', None),
-                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self, batch_size):
+  def testKerasBidirectionalRNNReturnSequence(self):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(
-        tf.keras.layers.Input(
-            batch_size=batch_size, shape=(10, 10), name='input'))
+    model.add(tf.keras.layers.Input(shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(units=10, return_sequences=True),
@@ -1638,16 +1731,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
-  @parameterized.named_parameters(('BatchSize_None', None),
-                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self, batch_size):
+  def testKerasBidirectionalRNN(self):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(
-        tf.keras.layers.Input(
-            batch_size=batch_size, shape=(10, 10), name='input'))
+    model.add(tf.keras.layers.Input(shape=(10, 10), name='input'))
     model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
@@ -2169,6 +2258,57 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual(9.0, actual_value)
 
+  @parameterized.named_parameters(('EnableLoweringTensorListOps', True),
+                                  ('DisableLoweringTensorListOps', False))
+  @test_util.run_v2_only
+  def testTensorListWithStaticSize(self, lower_tensor_list_ops):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(),
+                                     'simple_mutable_variable')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          ta = tf.TensorArray(
+              tf.float32, size=3, dynamic_size=False, clear_after_read=False)
+          ta = ta.write(0, 10.0)
+          ta = ta.write(1, 20.0)
+          ta = ta.write(2, 30.0)
+
+          out_tensor = ta.read(0) + ta.read(2)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    if not lower_tensor_list_ops:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
+    converter._experimental_lower_tensor_list_ops = lower_tensor_list_ops
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(40.0, actual_value)
+
   @test_util.run_v2_only
   def testTensorListWithDynamicSize(self):
 
@@ -2315,6 +2455,55 @@ class CalibrateAndQuantizeWithCustomOpTest(lite_v2_test_util.ModelTest):
     with self.assertRaisesRegex(
         ValueError, 'Looking up symbol \'' + bogus_name + '\' failed'):
       converter.convert()
+
+
+class IntermediatesTest(lite_v2_test_util.ModelTest):
+
+  def _run(self, experimental_preserve_all_tensors):
+
+    @tf.function
+    def f(x):
+      y = tf.add(x, x, name='y')
+      z = tf.add(y, y, name='z')
+      w = tf.add(z, z, name='w')
+      return w
+
+    # NOTE this is exactly representable as a float as are the intermeidates of
+    # f. So direct comparison is ok below.
+
+    input_data = np.array(2.0, np.float32)
+    concrete_func = f.get_concrete_function(input_data)
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+    interpreter = Interpreter(
+        model_content=tflite_model,
+        experimental_preserve_all_tensors=experimental_preserve_all_tensors)
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(interpreter.get_input_details()[0]['index'],
+                           input_data)
+    interpreter.invoke()
+    out = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])
+    tensors = {
+        t['name']: interpreter.get_tensor(t['index'])
+        for t in interpreter.get_tensor_details()
+    }
+    return (tensors, out)
+
+  def testPreserve(self):
+    tensors, result = self._run(experimental_preserve_all_tensors=True)
+    # All intermediates should be true and result be true.
+    self.assertAllClose(tensors['x'], 2.0)
+    self.assertAllClose(tensors['y'], 4.0)
+    self.assertAllClose(tensors['z'], 8.0)
+    self.assertAllClose(result, 16.0)
+
+  def testNoPreserve(self):
+    tensors, result = self._run(experimental_preserve_all_tensors=False)
+    # One of them should be wrong if preserve is not true, but result should be
+    # ok. Input should still be ok for repeated invocation.
+    self.assertAllClose(tensors['x'], 2.0)
+    self.assertTrue(tensors['y'] != 4.0 or tensors['z'] != 8.0)
+    self.assertAllClose(result, 16.0)
 
 
 if __name__ == '__main__':

@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Utils related to keras metrics.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utils related to keras metrics."""
 
 import functools
 import weakref
@@ -381,9 +377,8 @@ def update_confusion_matrix_variables(variables_to_update,
     num_labels = 1
   else:
     num_labels = gen_math_ops.Prod(input=pred_shape[1:], axis=0)
-  thresh_label_tile = control_flow_ops.cond(
-      one_thresh, lambda: num_labels,
-      lambda: math_ops.cast(1, dtype=dtypes.int32))
+  thresh_label_tile = array_ops.where_v2(one_thresh, num_labels,
+                                         array_ops.ones([], dtype=dtypes.int32))
 
   # Reshape predictions and labels, adding a dim for thresholding.
   if multi_label:

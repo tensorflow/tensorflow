@@ -412,7 +412,7 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
-                                      OwningRewritePatternList *patterns) {
+                                      RewritePatternSet *patterns) {
   patterns
       ->insert<BufferizeConstantOp, BufferizeDimOp,
                BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(

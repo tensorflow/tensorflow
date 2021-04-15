@@ -113,7 +113,7 @@ from tensorflow.lite.testing.op_tests.pool import make_l2_pool_tests, make_avg_p
 from tensorflow.lite.testing.op_tests.prelu import make_prelu_tests
 from tensorflow.lite.testing.op_tests.range import make_range_tests
 from tensorflow.lite.testing.op_tests.rank import make_rank_tests
-from tensorflow.lite.testing.op_tests.reduce import make_mean_tests, make_sum_tests, make_reduce_prod_tests, make_reduce_max_tests, make_reduce_min_tests, make_reduce_any_tests
+from tensorflow.lite.testing.op_tests.reduce import make_mean_tests, make_sum_tests, make_reduce_prod_tests, make_reduce_max_tests, make_reduce_min_tests, make_reduce_any_tests, make_reduce_all_tests
 from tensorflow.lite.testing.op_tests.relu import make_relu_tests
 from tensorflow.lite.testing.op_tests.relu1 import make_relu1_tests
 from tensorflow.lite.testing.op_tests.relu6 import make_relu6_tests

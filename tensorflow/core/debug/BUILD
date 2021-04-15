@@ -34,7 +34,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Check that tensorflow/core:tensorflow does not depend on grpc.

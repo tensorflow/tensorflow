@@ -61,9 +61,9 @@ struct ShapeToDescriptorsPass
                       shape::CstrRequireOp>();
 
     // Setup conversion patterns.
-    OwningRewritePatternList patterns;
-    populateShapeRewritePatterns(&ctx, patterns);
-    populateShapeToStandardConversionPatterns(patterns, &ctx);
+    RewritePatternSet patterns(&getContext());
+    populateShapeRewritePatterns(patterns);
+    populateShapeToStandardConversionPatterns(patterns);
 
     // Apply conversion.
     auto module = getOperation();

@@ -2645,3 +2645,11 @@ func @testImagWrongType(%arg0: tensor<3 x complex<f64>>) -> tensor<4xi32> {
   %0 = "tfl.imag"(%arg0): (tensor<3 x complex<f64>>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
+
+// -----
+
+func @all(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK: "tfl.reduce_all"(%arg0, %arg1)
+  %0 = "tfl.reduce_all"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}

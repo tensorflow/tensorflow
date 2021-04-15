@@ -1914,9 +1914,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 This operation reduces one or more dimensions of each input array into scalars.
 The rank of each returned array is `rank(operand) - len(dimensions)`. The
 initial value used for every reduction is `init_value`, and it may be inserted
-anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, `0` for addition). The applied
-`computation` is always passed the `init_value` on the left-hand side.
+anywhere during computation by the back-end. It is required that `init_value` is
+an identity of the reduction function (for example, `0` for addition) or
+undefined behavior will occur. The applied `computation` is always passed the
+`init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly

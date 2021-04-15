@@ -7,17 +7,13 @@ load(
     "if_not_mobile",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(

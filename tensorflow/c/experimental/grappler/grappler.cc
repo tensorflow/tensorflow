@@ -77,16 +77,6 @@ tensorflow::Status ValidateTPOptimizerConfigs(
 
 #undef VALIDATE_MEMBER
 #undef VALIDATE_STRUCT_SIZE
-
-// A map containing the input graph as its key, and TF_GrapplerItem as the
-// value. Users can fetch GrapplerItem for additional info to transform the
-// graph.
-absl::flat_hash_map<TF_Buffer*, const TF_GrapplerItem*>* GrapplerItemMap() {
-  static absl::flat_hash_map<TF_Buffer*, const TF_GrapplerItem*>*
-      grappler_items =
-          new absl::flat_hash_map<TF_Buffer*, const TF_GrapplerItem*>;
-  return grappler_items;
-}
 }  // namespace
 
 namespace tensorflow {
@@ -99,18 +89,13 @@ Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   OwnedTFBuffer optimized_graph_buf(TF_NewBuffer());
   TF_RETURN_IF_ERROR(MessageToBuffer(item.graph, graph_buf.get()));
 
-  const auto it = GrapplerItemMap()->find(graph_buf.get());
-  if (it == GrapplerItemMap()->end())
-    GrapplerItemMap()->insert(
-        {graph_buf.get(), reinterpret_cast<const TF_GrapplerItem*>(&item)});
-
   optimizer_.optimize_func(c_optimizer_, graph_buf.get(),
+                           reinterpret_cast<const TF_GrapplerItem*>(&item),
                            optimized_graph_buf.get(), c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(
       BufferToMessage(optimized_graph_buf.get(), optimized_graph_def));
 
-  GrapplerItemMap()->erase(graph_buf.get());
   return Status::OK();
 }
 
@@ -193,17 +178,6 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
 
 }  // namespace grappler
 }  // namespace tensorflow
-
-const TF_GrapplerItem* TF_GetGrapplerItem(TF_Buffer* graph, TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
-  const auto it = GrapplerItemMap()->find(graph);
-  if (it != GrapplerItemMap()->end()) {
-    return it->second;
-  } else {
-    status->status = tensorflow::errors::NotFound("GrapplerItem is not found");
-    return nullptr;
-  }
-}
 
 void TF_GetNodesToPreserveListSize(const TF_GrapplerItem* item, int* num_values,
                                    size_t* storage_size, TF_Status* status) {

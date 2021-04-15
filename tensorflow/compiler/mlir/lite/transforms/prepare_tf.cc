@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -59,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -527,6 +530,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      // Ellipsis mask should have been lowered-away prior to invoking this
+      // function.
+      op->emitError() << "encountered a logical error";
+      return failure();
+    }
+
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
@@ -596,9 +606,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     uint64_t shrink_axis_mask = strided_slice_op.shrink_axis_mask();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
     // Enforce operator precedence.
     shrink_axis_mask &= ~ellipsis_mask;
+    new_axis_mask &= ~ellipsis_mask;
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.begin();
@@ -640,13 +652,17 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     if (begin_dim != 1) return failure();
 
-    const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
+    // The ellipsis fill might exceed the current output shape because we are
+    // also taking account of any to-be-inserted new axes.
+    const int ellipsis_filled_dim_size =
+        input_size - begin_shape[0] + 1 + absl::popcount(new_axis_mask);
 
     int64_t begin_mask = strided_slice_op.begin_mask();
     int64_t end_mask = strided_slice_op.end_mask();
     int64_t revised_begin_mask = 0;
     int64_t revised_end_mask = 0;
     int64_t revised_shrink_axis_mask = 0;
+    int64_t revised_new_axis_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
@@ -663,6 +679,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
+
       ++index;
       ++new_index;
     }
@@ -691,6 +711,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
 
       ++index;
       ++new_index;
@@ -716,9 +738,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type, revised_begin_mask),
         rewriter.getIntegerAttr(attribute_type, revised_end_mask),
         /*ellipsis_mask=*/rewriter.getI64IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.new_axis_mask()),
+        rewriter.getIntegerAttr(attribute_type, revised_new_axis_mask),
         rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
+
     return success();
   }
 
@@ -743,17 +765,17 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
+    // Handle ellipsis mask.
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      return RewriteEllipsisMask(strided_slice_op, rewriter);
+    }
+
     // Handle new axis mask.
     if (strided_slice_op.new_axis_mask() != 0) {
       // We currently don't handle simultaneous shrink_ and new_axis masks.
       if (!strided_slice_op.shrink_axis_mask()) {
         return RewriteNewAxisMask(strided_slice_op, rewriter);
       }
-    }
-
-    // Handle ellipsis mask.
-    if (strided_slice_op.ellipsis_mask() != 0) {
-      return RewriteEllipsisMask(strided_slice_op, rewriter);
     }
 
     auto ranked_input_type =
@@ -979,9 +1001,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
   explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
       : ::mlir::RewritePattern(
-            "tf.FusedBatchNormV3",
-            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}, 1,
-            context) {}
+            "tf.FusedBatchNormV3", 1, context,
+            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}) {}
 
   ::mlir::LogicalResult matchAndRewrite(
       ::mlir::Operation *fused_batch_norm,
@@ -1326,8 +1347,8 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns;
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  OwningRewritePatternList patterns(context);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
@@ -1432,9 +1453,10 @@ struct ConvertRfftToRfft2d : public RewritePattern {
 };
 
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns, phase_2_patterns;
-  auto func = getFunction();
   MLIRContext *ctx = &getContext();
+  OwningRewritePatternList patterns(ctx);
+  OwningRewritePatternList phase_2_patterns(ctx);
+  auto func = getFunction();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
@@ -1447,6 +1469,13 @@ void PrepareTFPass::runOnFunction() {
   }
 
   if (failed(ConvertTf2XlaOps(func, ctx))) {
+    signalPassFailure();
+    return;
+  }
+
+  // Before the tf.FakeQuant* ops being folded, tfl.quantize and tfl.dequantize
+  // ops are created to preserve the quantization parameters.
+  if (failed(ConvertFakeQuantOps(func, ctx))) {
     signalPassFailure();
     return;
   }
@@ -1464,7 +1493,7 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1474,7 +1503,7 @@ void PrepareTFPass::runOnFunction() {
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
     phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                             TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
