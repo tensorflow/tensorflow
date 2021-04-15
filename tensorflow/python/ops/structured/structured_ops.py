@@ -1,5 +1,4 @@
-#!/bin/bash
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,27 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Import all modules in the `structured` package that define exported symbols.
 
-cat <<EOF
-TENSORFLOW_COMPATIBLE_OPS = (
-EOF
+We don't import these modules from structured/__init__.py, since we want to
+avoid circular dependencies.
+"""
 
-# TODO(b/178456916): Leverage existing op compat definitions/specs in the
-# MLIR conversion pipeline in a better way.
-# TODO(b/180352158): Validate generated TF op names.
-grep 'patterns.add<Legalize' $1 | awk -F'<Legalize|>' '{printf "    \"%s\",\n", $2}'
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-cat <<EOF
-    # Rules at tensorflow/compiler/mlir/lite/transforms/legalize_tf.cc
-    "Assert",
-    "ConcatV2",
-    "MatMul",
-    "MatrixDiagV2",
-    "MatrixDiagV3",
-    "Pack",
-    "Split",
-    "SplitV",
-    "Unpack",
-    "RandomUniform",
-)
-EOF
+
+# pylint: disable=unused-import
+from tensorflow.python.ops.structured import structured_array_ops
+from tensorflow.python.ops.structured import structured_tensor

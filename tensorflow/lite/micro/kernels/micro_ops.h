@@ -46,6 +46,7 @@ TfLiteRegistration Register_FLOOR_DIV();
 TfLiteRegistration Register_FLOOR_MOD();
 TfLiteRegistration Register_L2_POOL_2D();
 TfLiteRegistration Register_LEAKY_RELU();
+TfLiteRegistration Register_LOG_SOFTMAX();
 TfLiteRegistration Register_QUANTIZE();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();

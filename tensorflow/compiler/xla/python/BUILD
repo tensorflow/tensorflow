@@ -108,6 +108,7 @@ py_test(
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_test_lib",
     ] + xla_py_test_deps(),
 )
 
@@ -562,6 +563,9 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//tensorflow:with_tpu_support": [
+            "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        ],
         "//conditions:default": [],
     }),
 )

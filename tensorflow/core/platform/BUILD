@@ -37,6 +37,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_chromiumos",
+    "if_google",
     "if_not_android",
     "if_windows",
     "tf_cc_test",
@@ -67,7 +68,13 @@ package(
 )
 
 # Authorized users go here.
-package_group(name = "friends")
+package_group(
+    name = "friends",
+    packages = if_google([
+        "@tf_runtime//...",
+        "//third_party/tf_runtime_google/...",
+    ]),
+)
 
 exports_files(
     [

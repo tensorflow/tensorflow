@@ -260,8 +260,8 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
   // CHECK:      %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
   // CHECK:      %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
-  // CHECK:      %[[WITNESS_MERGED:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
-  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[WITNESS_MERGED]]
+  // CHECK:      %[[COMBINED_WITNESS:.*]] = shape.assuming_all %[[WITNESS0]], %[[WITNESS1]]
+  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[COMBINED_WITNESS]]
   // CHECK-SAME: {
   // CHECK:        "some.op"
   // CHECK:        %[[RESULT0:.*]] = "some.producer"
@@ -297,11 +297,13 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)
 func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
     %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
-  // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
-  // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
-  // CHECK:      %[[WITNESS:.*]] = shape.cstr_broadcastable %[[SHAPE2]], %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE0]], %[[SHAPE1]]
-  // CHECK:      %[[ASSUMING_RESULT:.*]] = shape.assuming %[[WITNESS]]
+  // CHECK-DAG:  %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
+  // CHECK-DAG:  %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK-DAG:  %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
+  // CHECK-DAG:  %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
+  // CHECK-DAG:  %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE2]], %[[SHAPE0]], %[[SHAPE1]]
+  // CHECK-DAG:  %[[COMBINED_WITNESS:.*]] = shape.assuming_all %[[WITNESS0]], %[[WITNESS1]]
+  // CHECK:      %[[ASSUMING_RESULT:.*]] = shape.assuming %[[COMBINED_WITNESS]]
   // CHECK-SAME: {
   // CHECK:        %[[BCASTED_SHAPE01:.*]] = shape.broadcast %[[SHAPE0]], %[[SHAPE1]]
   // CHECK:        %[[BCASTED_SHAPE012:.*]] = shape.broadcast %[[SHAPE2]], %[[BCASTED_SHAPE01]]

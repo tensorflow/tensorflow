@@ -65,6 +65,7 @@ load(
     "if_android",
     "if_chromiumos",
     "if_cuda_or_rocm",
+    "if_google",
     "if_ios",
     "if_libtpu",
     "if_mobile",
@@ -153,7 +154,15 @@ exports_files([
 ])
 
 # Authorized users go here.
-package_group(name = "friends")
+package_group(
+    name = "friends",
+    packages = if_google([
+        "//learning/brain/...",
+        "//tensorflow/...",
+        "@tf_runtime//...",
+        "//third_party/tf_runtime_google/...",
+    ]),
+)
 
 # -----------------------------------------------------------------------------
 # Public targets

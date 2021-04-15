@@ -60,6 +60,10 @@ tf_class {
     argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_single_element"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "interleave"
     argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }

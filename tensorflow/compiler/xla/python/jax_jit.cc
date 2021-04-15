@@ -123,7 +123,7 @@ bool GetEnableX64() {
 
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const py::object& o) {
-    out->append(py::cast<std::string>(o));
+    out->append(py::cast<std::string>(py::str(o)));
   };
   auto treedef_formatter = [](std::string* out, const xla::PyTreeDef& d) {
     out->append(d.ToString());
@@ -359,7 +359,19 @@ class CompiledFunction {
   int cache_size() const { return executables_.Size(); }
   void ClearCache() { executables_.Clear(); }
 
+  const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
+  const py::function& get_device() const { return get_device_; }
+
+  // Helper function used by the tp_clear GC method.
+  void ClearPythonReferences() {
+    py::function fun, cache_miss, get_device;
+    // Swap values for nulls before they are destroyed. See the Python
+    // Py_CLEAR() documentation for a discussion of this topic.
+    std::swap(fun_, fun);
+    std::swap(cache_miss_, cache_miss);
+    std::swap(get_device_, get_device);
+  }
 
   py::handle AsPyHandle();
 
@@ -372,9 +384,9 @@ class CompiledFunction {
                           const py::tuple& out_and_fastpath_data);
   bool always_fallback_to_python_ = false;
 
-  const py::function fun_;  // The Python function to jit.
+  py::function fun_;  // The Python function to jit.
   // See JAX _cpp_jit in api.py for documentation.
-  const py::function cache_miss_;
+  py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyExecutable. In sorted order.
@@ -384,7 +396,7 @@ class CompiledFunction {
 
   // A function taking no arguments and returning the default device and whether
   // jax.jit has been committed to it.
-  const py::function get_device_;
+  py::function get_device_;
 
   // Cache entries are shared_ptr<>s because it's possible the cache entry
   // might be evicted before we finish tracing/compiling. Protected by the GIL.
@@ -811,6 +823,9 @@ int JaxCompiledFunction_tp_traverse(PyObject* self, visitproc visit,
   JaxCompiledFunctionObject* o =
       reinterpret_cast<JaxCompiledFunctionObject*>(self);
   Py_VISIT(o->dict);
+  Py_VISIT(o->fun.fun().ptr());
+  Py_VISIT(o->fun.cache_miss().ptr());
+  Py_VISIT(o->fun.get_device().ptr());
   return 0;
 }
 
@@ -818,6 +833,7 @@ int JaxCompiledFunction_tp_clear(PyObject* self) {
   JaxCompiledFunctionObject* o =
       reinterpret_cast<JaxCompiledFunctionObject*>(self);
   Py_CLEAR(o->dict);
+  o->fun.ClearPythonReferences();
   return 0;
 }
 

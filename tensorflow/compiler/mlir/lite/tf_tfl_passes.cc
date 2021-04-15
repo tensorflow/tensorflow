@@ -232,7 +232,8 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
 
     // This pass removes the asset file dependencies in hash table use cases.
     pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TF::CreateInitTextFileToImportPass());
+        mlir::TF::CreateInitTextFileToImportPass(
+            model_flags.saved_model_dir()));
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));

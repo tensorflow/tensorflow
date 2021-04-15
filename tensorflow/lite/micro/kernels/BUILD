@@ -282,6 +282,7 @@ cc_library(
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
+        "log_softmax.cc",
         "maximum_minimum.cc",
         "mul.cc",
         "neg.cc",
@@ -799,6 +800,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "log_softmax_test",
+    srcs = [
+        "log_softmax_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

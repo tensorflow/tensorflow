@@ -15,6 +15,7 @@ load(
 )
 load(
     "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_jni_binary",
     "tflite_jni_linkopts",
@@ -174,6 +175,59 @@ def tflite_flex_cc_library(
         }) + additional_deps,
         testonly = testonly,
         alwayslink = 1,
+    )
+
+def tflite_flex_shared_library(
+        name,
+        models = [],
+        additional_deps = [],
+        testonly = 0,
+        visibility = ["//visibility:private"]):
+    """A rule to generate a flex delegate shared library with only ops to run listed models.
+
+    The output library name is platform dependent:
+    - Linux/Android: `lib{name}.so`
+    - Mac: `lib{name}.dylib`
+    - Windows: `lib{name}.dll`
+
+    Args:
+      name: Name of the library.
+      models: TFLite models to interpret. The library will only include ops and kernels
+          to support these models. If empty, the library will include all Tensorflow
+          ops and kernels.
+      additional_deps: Dependencies for additional TF ops.
+      testonly: Mark this library as testonly if true.
+      visibility: visibility of the generated rules.
+    """
+    tflite_flex_cc_library(
+        name = "%s_flex_delegate" % name,
+        models = models,
+        additional_deps = additional_deps,
+        testonly = testonly,
+        visibility = visibility,
+    )
+
+    tflite_cc_shared_object(
+        name = name,
+        # Until we have more granular symbol export for the C++ API on Windows,
+        # export all symbols.
+        features = ["windows_export_all_symbols"],
+        linkopts = select({
+            "//tensorflow:macos": [
+                "-Wl,-exported_symbols_list,$(location //tensorflow/lite/delegates/flex:exported_symbols.lds)",
+            ],
+            "//tensorflow:windows": [],
+            "//conditions:default": [
+                "-Wl,-z,defs",
+                "-Wl,--version-script,$(location //tensorflow/lite/delegates/flex:version_script.lds)",
+            ],
+        }),
+        per_os_targets = True,
+        deps = [
+            "%s_flex_delegate" % name,
+            "//tensorflow/lite/delegates/flex:exported_symbols.lds",
+            "//tensorflow/lite/delegates/flex:version_script.lds",
+        ],
     )
 
 def tflite_flex_jni_library(

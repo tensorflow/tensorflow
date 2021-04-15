@@ -22,6 +22,7 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
@@ -163,6 +164,16 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+
+  absl::string_view platform_version() const override {
+#if defined(CUDART_VERSION)
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
+    return "cuda " STRINGIFY(CUDART_VERSION);
+#else   // defined(CUDART_VERSION)
+    return "<unknown>";
+#endif  // defined(CUDART_VERSION)
+  }
 };
 
 xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(

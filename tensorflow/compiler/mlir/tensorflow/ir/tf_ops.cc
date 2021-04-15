@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -270,120 +271,6 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
-namespace {
-
-ShapeAttr ParseShapeAttr(MLIRContext *context, StringRef spec, Location loc) {
-  auto emit_error = [&, spec]() {
-    emitError(loc, "invalid TensorFlow shape attribute: ") << spec;
-    return nullptr;
-  };
-
-  if (!spec.consume_front("shape<")) return emit_error();
-
-  if (spec.consume_front("*>"))
-    return mlir::TF::ShapeAttr::get(context, llvm::None);
-
-  SmallVector<int64_t, 4> shape;
-  while (!spec.consume_front(">")) {
-    int64_t dim;
-
-    if (spec.consume_front("?"))
-      dim = -1;
-    else if (spec.consumeInteger(10, dim) || dim < 0)
-      return emit_error();
-
-    spec.consume_front("x");
-
-    shape.push_back(dim);
-  }
-
-  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(shape));
-}
-
-void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
-  os << "shape";
-
-  os << "<";
-  if (attr.hasRank()) {
-    auto print_dim = [&](int64_t dim) {
-      if (dim > -1)
-        os << dim;
-      else
-        os << "?";
-    };
-    llvm::interleave(attr.getShape(), os, print_dim, "x");
-  } else {
-    os << "*";
-  }
-  os << ">";
-}
-
-// Parses a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-//
-// where the first element is a SymbolRefAttr and the second element is a
-// DictionaryAttr.
-FuncAttr ParseFuncAttr(MLIRContext *context, StringRef spec, Location loc) {
-  auto emit_error = [&, spec]() {
-    emitError(loc, "invalid TensorFlow func attribute: ") << spec;
-    return nullptr;
-  };
-
-  if (!spec.consume_front("func<")) return emit_error();
-
-  size_t func_name_num_read = 0;
-  Attribute func_name_attr =
-      mlir::parseAttribute(spec, context, func_name_num_read);
-  if (!func_name_attr || !func_name_attr.isa<SymbolRefAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_name_num_read);
-
-  if (!spec.consume_front(", ")) return emit_error();
-
-  size_t func_attrs_num_read = 0;
-  Attribute func_attrs_attr =
-      mlir::parseAttribute(spec, context, func_attrs_num_read);
-  if (!func_attrs_attr || !func_attrs_attr.isa<DictionaryAttr>())
-    return emit_error();
-  spec = spec.drop_front(func_attrs_num_read);
-
-  if (!spec.consume_front(">")) return emit_error();
-
-  return mlir::TF::FuncAttr::get(context, func_name_attr.cast<SymbolRefAttr>(),
-                                 func_attrs_attr.cast<DictionaryAttr>());
-}
-
-// Prints a #tf.func attribute of the following format:
-//
-//   #tf.func<@symbol, {attr = "value"}>
-void PrintFuncAttr(FuncAttr attr, DialectAsmPrinter &os) {
-  os << "func<" << attr.GetName() << ", " << attr.GetAttrs() << ">";
-}
-
-}  // namespace
-
-Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
-                                            Type type) const {
-  auto spec = parser.getFullSymbolSpec();
-  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
-
-  if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
-
-  if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
-
-  return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
-}
-
-void TensorFlowDialect::printAttribute(Attribute attr,
-                                       DialectAsmPrinter &os) const {
-  if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
-    PrintShapeAttr(shape_attr, os);
-  else if (auto func_attr = attr.dyn_cast<FuncAttr>())
-    PrintFuncAttr(func_attr, os);
-  else
-    llvm_unreachable("unexpected tensorflow attribute type");
-}
 
 // Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
