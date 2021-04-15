@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -47,7 +49,8 @@ struct CanonicalDebugOptions {
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()) {
+        dump_module_metadata(opts.xla_dump_module_metadata()),
+        dump_compress_protos(opts.xla_dump_compress_protos()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -146,11 +149,28 @@ struct CanonicalDebugOptions {
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
   bool dump_module_metadata;
+  bool dump_compress_protos;
 };
+
+Status WriteStringToFile(tensorflow::Env* env, const string& fname,
+                         const tensorflow::StringPiece& data, bool compressed) {
+  if (!compressed) {
+    return tensorflow::WriteStringToFile(env, fname, data);
+  }
+  std::unique_ptr<tensorflow::WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
+  tensorflow::io::ZlibOutputBuffer gz_file(file.get(),
+                                           gz_opts.input_buffer_size,
+                                           gz_opts.output_buffer_size, gz_opts);
+  TF_RETURN_IF_ERROR(gz_file.Init());
+  TF_RETURN_IF_ERROR(gz_file.Append(data));
+  return gz_file.Close();
+}
 
 absl::optional<std::string> DumpToFileInDirImpl(
     string_view filename, string_view contents,
-    const CanonicalDebugOptions& opts) {
+    const CanonicalDebugOptions& opts, bool compress = false) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
                << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
@@ -209,7 +229,7 @@ absl::optional<std::string> DumpToFileInDirImpl(
 
   string file_path =
       tensorflow::io::JoinPath(dir, SanitizeFileName(string(filename)));
-  auto status = tensorflow::WriteStringToFile(env, file_path, contents);
+  auto status = WriteStringToFile(env, file_path, contents, compress);
   if (!status.ok()) {
     LOG(ERROR) << "Could not write XLA debug data to " << file_path << ": "
                << status;
@@ -264,8 +284,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
     if (!tensorflow::SerializeToStringDeterministic(module_proto, &pb)) {
       pb = "Failed to serialize HLO module proto.";
     }
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrCat(filename, ".hlo.pb"), pb, opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
+        pb, opts, opts.dump_compress_protos));
   }
 
   auto render_graph = [&](RenderedGraphFormat format) {
