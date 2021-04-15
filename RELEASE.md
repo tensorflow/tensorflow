@@ -45,6 +45,9 @@
     *   Promoting `tf.data.experimental.get_single_element` API to
         `tf.data.Dataset.get_single_element` and deprecating the experimental
         endpoint.
+    *   Promoting `tf.data.experimental.group_by_window` API to
+        `tf.data.Dataset.group_by_window` and deprecating the experimental
+        endpoint.
 *  `tf.lite`:
   * Fix mean op reference quantization rounding issue.
 
