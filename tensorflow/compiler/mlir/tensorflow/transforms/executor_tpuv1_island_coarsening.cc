@@ -290,9 +290,7 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   // sort the islands at the end. We can do a bit better by only sorting ops
   // between the first island and the last island that was added to the merged
   // island. For this optimization, keep track of the first op after the last
-  // island that was added. We ignore the special TPU output ops here as it is
-  // ensured that their inputs are produced from within the merged island, so
-  // they would not violate dominance.
+  // island that was added.
   Operation* first_op_after = last_island_added->getNextNode();
 
   // Compute the result of the merged island, these are the values produced by
