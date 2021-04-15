@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 bool_flag(
@@ -131,6 +131,7 @@ tf_kernel_library(
         "gpu_op_tan.cc",
         "gpu_op_tanh.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_reciprocal.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -175,6 +176,7 @@ tf_kernel_library(
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":gpu_reciprocal_kernels",
     ]),
 )
 
@@ -183,7 +185,10 @@ tf_kernel_library(
     srcs = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "cpu_op_abs.cc",
+        "cpu_op_ceil.cc",
         "cpu_op_cos.cc",
+        "cpu_op_floor.cc",
+        "cpu_op_invert.cc",
         "cpu_op_rsqrt.cc",
         "cpu_op_sin.cc",
         "cpu_op_sqrt.cc",
@@ -195,7 +200,10 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_ceil_kernels",
         ":cpu_cos_kernels",
+        ":cpu_floor_kernels",
+        ":cpu_invert_kernels",
         ":cpu_rsqrt_kernels",
         ":cpu_sin_kernels",
         ":cpu_sqrt_kernels",
@@ -230,6 +238,7 @@ tf_kernel_library(
         "gpu_op_polygamma.cc",
         "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
+        "gpu_op_select.cc",
         "gpu_op_sub.cc",
         "gpu_op_zeta.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
@@ -261,6 +270,7 @@ tf_kernel_library(
         ":gpu_polygamma_kernels",
         ":gpu_pow_kernels",
         ":gpu_right_shift_kernels",
+        ":gpu_select_v2_kernels",
         ":gpu_sub_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
@@ -275,12 +285,22 @@ tf_kernel_library(
     srcs = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "cpu_op_add.cc",
+        "cpu_op_bitwise_and.cc",
+        "cpu_op_bitwise_or.cc",
+        "cpu_op_bitwise_xor.cc",
+        "cpu_op_left_shift.cc",
+        "cpu_op_right_shift.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":base_cpu_op",
         ":cpu_add_v2_kernels",
+        ":cpu_bitwise_and_kernels",
+        ":cpu_bitwise_or_kernels",
+        ":cpu_bitwise_xor_kernels",
+        ":cpu_left_shift_kernels",
+        ":cpu_right_shift_kernels",
         "//third_party/eigen3",
     ]),
 )
@@ -445,17 +465,16 @@ tf_cc_test(
 #     ],
 # )
 
-# TODO(b/160190568): Re-enable when it works again.
-# gpu_kernel_library(
-#     name = "gpu_relu_kernels",
-#     op = "relu",
-#     tile_size = "256",
-#     types = [
-#         "f16",
-#         "f32",
-#         "f64",
-#     ],
-# )
+gpu_kernel_library(
+    name = "gpu_relu_kernels",
+    op = "relu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
 
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
@@ -649,6 +668,22 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_reciprocal_kernels",
+    op = "reciprocal",
+    tile_size = "256",
+    types = [
+        # TODO(b/162572921): Enable when it works for complex types.
+        # "c64",
+        # "c128",
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
     tile_size = "256",
@@ -822,9 +857,11 @@ gpu_kernel_library(
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
         op = op,
-        output_types = ["i1"] * 8,
+        output_types = ["i1"] * 10,
         tile_size = "1024",
         types = [
+            "c64",
+            "c128",
             "f16",
             "f32",
             "f64",
@@ -1040,6 +1077,22 @@ gpu_kernel_library(
     # unroll_factors = "4",
 )
 
+gpu_kernel_library(
+    name = "gpu_select_v2_kernels",
+    op = "select_v2",
+    tile_size = "256",
+    types = [
+        "i1",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+)
+
 cpu_kernel_library(
     name = "cpu_abs_kernels",
     op = "abs",
@@ -1057,8 +1110,50 @@ cpu_kernel_library(
 )
 
 cpu_kernel_library(
+    name = "cpu_invert_kernels",
+    op = "invert",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        # TODO(b/172804967): Enable once fixed.
+        # "ui8",
+        # "ui16",
+        # "ui32",
+        # "ui64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_ceil_kernels",
+    op = "ceil",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
     name = "cpu_cos_kernels",
     op = "cos",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_floor_kernels",
+    op = "floor",
     tile_size = "256",
     types = [
         "f16",
@@ -1145,3 +1240,31 @@ cpu_kernel_library(
     ],
     unroll_factors = "4",
 )
+
+# Binary bitwise operations.
+[
+    cpu_kernel_library(
+        name = "cpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            # TODO(b/172804967): Enable once fixed.
+            # "ui8",
+            # "ui16",
+            # "ui32",
+            # "ui64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+        "left_shift",
+        "right_shift",
+    ]
+]

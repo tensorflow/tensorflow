@@ -60,3 +60,9 @@ message GemmBackendConfig {
 
   int64 batch_size = 8;
 }
+
+// Backend config for bitcast operation generated from MLIR MHLO dialect.
+message BitcastBackendConfig {
+  LayoutProto source_layout = 1;
+  LayoutProto result_layout = 2;
+}

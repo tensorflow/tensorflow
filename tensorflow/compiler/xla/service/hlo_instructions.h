@@ -1316,7 +1316,7 @@ class HloReduceWindowInstruction : public HloInstruction {
   // init values) this reduce has.
   int64 input_count() const { return operand_count() / 2; }
   // Returns the input tensors to be reduced.
-  absl::Span<HloInstruction* const> input_arrays() const {
+  absl::Span<HloInstruction* const> inputs() const {
     return absl::MakeSpan(operands()).subspan(0, input_count());
   }
   // Returns the init values of the reduction.
@@ -1324,9 +1324,9 @@ class HloReduceWindowInstruction : public HloInstruction {
     return absl::MakeSpan(operands()).subspan(input_count(), operand_count());
   }
   // Returns the shapes of input tensors to be reduced.
-  absl::InlinedVector<const Shape*, 2> input_array_shapes() const {
+  absl::InlinedVector<const Shape*, 2> input_shapes() const {
     absl::InlinedVector<const Shape*, 2> shapes;
-    for (const auto* op : input_arrays()) {
+    for (const auto* op : inputs()) {
       VLOG(2) << "Pushing input array shape for: " << op->ToString() << "\n";
       shapes.push_back(&op->shape());
       VLOG(2) << "Pushed shape: " << shapes.back()->ToString() << "\n";

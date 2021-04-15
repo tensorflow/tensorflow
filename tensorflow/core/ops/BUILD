@@ -34,7 +34,7 @@ package(
         "//visibility:public",
     ],
     features = ["-parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export the BUILD file so automated tooling can check licenses

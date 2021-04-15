@@ -16,15 +16,15 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install ROCm packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libnuma-dev gnupg sudo libelf1 build-essential \
-  && curl -sL http://repo.radeon.com/rocm/apt/4.0/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.0/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && curl -sL http://repo.radeon.com/rocm/apt/4.1/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.1/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
   && apt-get update && apt-get install -y --no-install-recommends \
     rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
     rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set ROCm environment variables and paths.
-ARG ROCM_PATH=/opt/rocm
+ARG ROCM_PATH=/opt/rocm-4.1.0
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl

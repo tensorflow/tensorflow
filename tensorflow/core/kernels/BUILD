@@ -79,7 +79,8 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -384,6 +385,7 @@ cc_library(
     hdrs = ["lookup_util.h"],
     deps = [
         ":initializable_lookup_table",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -517,6 +519,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
+    tags = ["no_cuda_asan"],  # TODO(b/183963619)
     deps = [
         ":gpu_prim_helpers",
         ":ops_testutil",
@@ -1159,39 +1162,6 @@ tf_kernel_library(
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
-
-tf_kernel_library(
-    name = "compare_and_bitpack_op",
-    srcs = ["compare_and_bitpack_op.cc"],
-    hdrs = ["compare_and_bitpack_op.h"],
-    gpu_srcs = [
-        "compare_and_bitpack_op.h",
-        "compare_and_bitpack_op_gpu.cu.cc",
-    ],
-    deps = ARRAY_DEPS,
-)
-
-# TODO(ebrevdo): Add benchmarks once the op is in the autogen array namespace.
-# tf_cuda_cc_test(
-#     name = "compare_and_bitpack_op_test",
-#     srcs = ["compare_and_bitpack_op_test.cc"],
-#     deps = [
-#         ":array",
-#         ":ops_testutil",
-#         ":ops_util",
-#         "//third_party/eigen3",
-#         "//tensorflow/cc:cc_ops",
-#         "//tensorflow/cc:cc_ops_internal",
-#         "//tensorflow/core:core_cpu",
-#         "//tensorflow/core:core_cpu_internal",
-#         "//tensorflow/core:framework",
-#         "//tensorflow/core:lib",
-#         "//tensorflow/core:protos_all_cc",
-#         "//tensorflow/core:test",
-#         "//tensorflow/core:test_main",
-#         "//tensorflow/core:testlib",
-#     ],
-# )
 
 tf_kernel_library(
     name = "reshape_op",
@@ -3302,7 +3272,6 @@ cc_library(
         ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
-        ":compare_and_bitpack_op",
         ":cross_op",
         ":cwise_op",
         ":fft_ops",
@@ -4629,7 +4598,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4667,7 +4642,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reorder_op",
     prefix = "sparse_reorder_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4728,7 +4706,7 @@ tf_kernel_library(
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/core/platform:stream_executor",
     ]),
@@ -4740,6 +4718,7 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -6036,6 +6015,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
         "//tensorflow/core/kernels/data:split_utils.h",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
         "//tensorflow/core/kernels/data:dataset_utils.h",
@@ -6367,6 +6347,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
         "//tensorflow/core/kernels/data:split_utils.cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:model_dataset_op.cc",

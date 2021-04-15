@@ -434,8 +434,9 @@ class Layer(base_layer.Layer):
       # disable it if it is specified.
       # TODO(b/142020079): Reenable it once the bug is fixed.
       if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
+        tf_logging.warning(
+            '`caching_device` does not work with mixed precision API. Ignoring '
+            'user specified `caching_device`.')
         caching_device = None
 
     variable = self._add_variable_with_custom_getter(
@@ -1291,11 +1292,12 @@ class Layer(base_layer.Layer):
         weight_index += num_tensors
       else:
         weight = weights[weight_index]
+        weight_shape = weight.shape if hasattr(weight, 'shape') else ()
         ref_shape = param.shape
-        if not ref_shape.is_compatible_with(weight.shape):
+        if not ref_shape.is_compatible_with(weight_shape):
           raise ValueError(
               'Layer weight shape %s not compatible with provided weight '
-              'shape %s' % (ref_shape, weight.shape))
+              'shape %s' % (ref_shape, weight_shape))
         weight_value_tuples.append((param, weight))
         weight_index += 1
 

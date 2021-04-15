@@ -261,7 +261,8 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations);
+    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    std::string* constant_name = nullptr);
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,

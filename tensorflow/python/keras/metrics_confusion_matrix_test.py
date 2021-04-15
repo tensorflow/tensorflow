@@ -1487,7 +1487,7 @@ class AUCTest(test.TestCase, parameterized.TestCase):
       result = auc_obj(labels, logits)
       self.assertEqual(self.evaluate(result), 0.5)
     except ImportError as e:
-      tf_logging.warn('Cannot test special functions: %s' % str(e))
+      tf_logging.warning('Cannot test special functions: %s' % str(e))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

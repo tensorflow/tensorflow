@@ -442,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
@@ -533,7 +533,8 @@ class DatasetCreatorAdapter(DataAdapter):
     return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -1329,9 +1330,6 @@ class DataHandler(object):
           "`steps_per_execution > 1`, you must specify the number of steps "
           "to run.")
 
-  def resolve_logs(self, logs):
-    return logs
-
 
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
@@ -1348,7 +1346,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
@@ -1359,9 +1358,6 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access
-
-  def resolve_logs(self, logs):
-    return logs.fetch()
 
 
 def get_data_handler(*args, **kwargs):

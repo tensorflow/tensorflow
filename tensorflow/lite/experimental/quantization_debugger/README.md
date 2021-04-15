@@ -95,19 +95,19 @@ for layer_name, metrics in quant_debugger.layer_statistics.items():
 NumericVerify/sequential/dense/MatMul;sequential/dense/BiasAdd3:77
 {'max_abs_error': 0.05089309,
  'mean_error': -0.00017149668,
- 'mean_square_error': 0.00040816222,
+ 'mean_squared_error': 0.00040816222,
  'num_elements': 256.0,
  'stddev': 0.02009948}
 NumericVerify/sequential/dense_1/MatMul;sequential/dense_1/BiasAdd3:81
 {'max_abs_error': 0.09744112,
  'mean_error': 0.0048679365,
- 'mean_square_error': 0.0036721828,
+ 'mean_squared_error': 0.0036721828,
  'num_elements': 10.0,
  'stddev': 0.055745363}
 NumericVerify/Identity2:85
 {'max_abs_error': 0.0036417267,
  'mean_error': -0.00068773015,
- 'mean_square_error': 3.439951e-06,
+ 'mean_squared_error': 3.439951e-06,
  'num_elements': 10.0,
  'stddev': 0.0016223773}
 

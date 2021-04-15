@@ -37,7 +37,7 @@ _DEFAULT_LAYER_DEBUG_METRICS = {
     'stddev': np.std,
     'mean_error': np.average,
     'max_abs_error': lambda diffs: np.max(np.abs(diffs)),
-    'mean_square_error': lambda diffs: np.average(diffs**2),
+    'mean_squared_error': lambda diffs: np.average(diffs**2),
 }
 
 _NUMERIC_VERIFY_OP_NAME = 'NumericVerify'

@@ -404,36 +404,6 @@ class _StateManagerImpl(StateManager):
     return self._cols_to_resources_map[feature_column][resource_name]
 
 
-class _StateManagerImplV2(_StateManagerImpl):
-  """Manages the state of DenseFeatures."""
-
-  def create_variable(self,
-                      feature_column,
-                      name,
-                      shape,
-                      dtype=None,
-                      trainable=True,
-                      use_resource=True,
-                      initializer=None):
-    if name in self._cols_to_vars_map[feature_column]:
-      raise ValueError('Variable already exists.')
-
-    # We explicitly track these variables since `name` is not guaranteed to be
-    # unique and disable manual tracking that the add_weight call does.
-    with trackable.no_manual_dependency_tracking_scope(self._layer):
-      var = self._layer.add_weight(
-          name=name,
-          shape=shape,
-          dtype=dtype,
-          initializer=initializer,
-          trainable=self._trainable and trainable,
-          use_resource=use_resource)
-    if isinstance(var, trackable.Trackable):
-      self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
-    self._cols_to_vars_map[feature_column][name] = var
-    return var
-
-
 def _transform_features_v2(features, feature_columns, state_manager):
   """Returns transformed features based on features columns passed in.
 

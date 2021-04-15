@@ -134,43 +134,17 @@ cc_library(
     ),
     copts = _COPTS_LIST,
     includes = _INCLUDES_LIST,
+    # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
+    linkopts = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": ["-lrt"],
+        "@org_tensorflow//tensorflow:linux_x86_64": ["-lrt"],
+        "@org_tensorflow//tensorflow:linux_ppc64le": ["-lrt"],
+        "//conditions:default": [],
+    }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         [],
     ),
-)
-
-cc_library(
-    name = "mkl_dnn_aarch64",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/common/*.hpp",
-        "src/cpu/*.cpp",
-        "src/cpu/*.hpp",
-        "src/cpu/rnn/*.cpp",
-        "src/cpu/rnn/*.hpp",
-        "src/cpu/matmul/*.cpp",
-        "src/cpu/matmul/*.hpp",
-        "src/cpu/gemm/**/*",
-    ]) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-    ],
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-    ],
-    linkopts = ["-lgomp"],
-    visibility = ["//visibility:public"],
 )

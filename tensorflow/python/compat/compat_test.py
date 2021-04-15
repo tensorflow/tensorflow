@@ -125,6 +125,7 @@ class CompatTest(test.TestCase):
       self.assertFalse(compat.forward_compatible(*ten_days_after))
     self.assertTrue(compat.forward_compatible(*one_day_after))
 
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   def testV2BehaviorLogging(self):
     with self.assertLogs(level='INFO') as logs:
       try:
@@ -166,6 +167,7 @@ class CompatTest(test.TestCase):
     with self.assertLogs(level='INFO') as logs:
       control_flow_v2_toggles.disable_control_flow_v2()
     self.assertIn('Disabling control flow v2', ''.join(logs.output))
+  # copybara:comment_end
 
 
 if __name__ == '__main__':

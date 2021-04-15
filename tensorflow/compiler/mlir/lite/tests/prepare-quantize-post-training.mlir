@@ -30,7 +30,6 @@ func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
     %1 = "quant.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
     return %1 : tensor<1x28x20xf32>
 // CHECK-DAG: %[[none:.*]] = constant unit
-// CHECK: %[[cst1:.*]] = constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[cell_input:.*]] = constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>

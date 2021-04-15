@@ -1360,18 +1360,6 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 // the zero-padding, both `height` and `width` of the input must be divisible by the
 // block size.
 //
-// Arguments:
-//	input: 4-D with shape `[batch, height, width, depth]`.
-//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
-//   the padding of the input with zeros across the spatial dimensions as follows:
-//
-//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
-//
-//   The effective spatial dimensions of the zero-padded input tensor will be:
-//
-//       height_pad = pad_top + height + pad_bottom
-//       width_pad = pad_left + width + pad_right
-//
 // The attr `block_size` must be greater than one. It indicates the block size.
 //
 //   * Non-overlapping blocks of size `block_size x block size` in the height and
@@ -1447,6 +1435,18 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, height, width, depth]`.
+//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+//   the padding of the input with zeros across the spatial dimensions as follows:
+//
+//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+//
+//   The effective spatial dimensions of the zero-padded input tensor will be:
+//
+//       height_pad = pad_top + height + pad_bottom
+//       width_pad = pad_left + width + pad_right
 //
 func SpaceToBatch(scope *Scope, input tf.Output, paddings tf.Output, block_size int64) (output tf.Output) {
 	if scope.Err() != nil {
@@ -10644,17 +10644,8 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 // `[1, ..., M]` correspond to the position within the grid, and the batch
 // dimension combines both the position within a spatial block and the original
 // batch position.  Prior to division into blocks, the spatial dimensions of the
-// input are optionally zero padded according to `paddings`.  See below for a
+// input are optionally zero padded according to `paddings`. See below for a
 // precise description.
-//
-// Arguments:
-//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-// where spatial_shape has `M` dimensions.
-//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
-//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
-//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
-//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
-//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 //
 // This operation is equivalent to the following steps:
 //
@@ -10759,6 +10750,15 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+// where spatial_shape has `M` dimensions.
+//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
+//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
+//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddings tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -17896,90 +17896,6 @@ func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, inp
 	return op.Output(0), op.Output(1)
 }
 
-// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
-type TPUPartitionedInputAttr func(optionalAttr)
-
-// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
-//
-// value: An integer describles which dimension is partitioned. -1 means
-// those inputs are replicated.
-// If not specified, defaults to 0
-func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
-	return func(m optionalAttr) {
-		m["partition_dim"] = value
-	}
-}
-
-// An op that groups a list of partitioned inputs together. This op
-//
-// Arguments:
-//	inputs: A list of partitioned inputs which must have the same shape.
-//
-// Returns A handle which represents the full shape of partitioned tensors.
-func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUPartitionedInput",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Compare values of `input` to `threshold` and pack resulting bits into a `uint8`.
-//
-// Each comparison returns a boolean `true` (if `input_value > threshold`)
-// or and `false` otherwise.
-//
-// This operation is useful for Locality-Sensitive-Hashing (LSH) and other
-// algorithms that use hashing approximations of cosine and `L2` distances;
-// codes can be generated from an input via:
-//
-// ```python
-// codebook_size = 50
-// codebook_bits = codebook_size * 32
-// codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
-//                            dtype=x.dtype,
-//                            initializer=tf.orthogonal_initializer())
-// codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
-// codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
-// # now codes has shape x.shape[:-1] + [codebook_size]
-// ```
-//
-// **NOTE**: Currently, the innermost dimension of the tensor must be divisible
-// by 8.
-//
-// Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
-// a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
-//
-// Arguments:
-//	input: Values to compare against `threshold` and bitpack.
-//	threshold: Threshold to compare against.
-//
-// Returns The bitpacked comparisons.
-func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CompareAndBitpack",
-		Input: []tf.Input{
-			input, threshold,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Tensor contraction according to Einstein summation convention.
 //
 // Implements generalized Tensor contraction and reduction. Each input Tensor must
@@ -19069,34 +18985,6 @@ func SparseSegmentSqrtNGrad(scope *Scope, grad tf.Output, indices tf.Output, seg
 		Type: "SparseSegmentSqrtNGrad",
 		Input: []tf.Input{
 			grad, indices, segment_ids, output_dim0,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the mean along sparse segments of a tensor.
-//
-// See `tf.sparse.segment_sum` for usage examples.
-//
-// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-// dimension, selecting a subset of dimension 0, specified by `indices`.
-//
-// Arguments:
-//
-//	indices: A 1-D tensor. Has same rank as `segment_ids`.
-//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMean",
-		Input: []tf.Input{
-			data, indices, segment_ids,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -22367,6 +22255,108 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType, optional ...CastAttr) (y 
 		Type: "Cast",
 		Input: []tf.Input{
 			x,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the mean along sparse segments of a tensor.
+//
+// See `tf.sparse.segment_sum` for usage examples.
+//
+// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+// dimension, selecting a subset of dimension 0, specified by `indices`.
+//
+// Arguments:
+//
+//	indices: A 1-D tensor. Has same rank as `segment_ids`.
+//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMean",
+		Input: []tf.Input{
+			data, indices, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// BatchMatMulV3Attr is an optional argument to BatchMatMulV3.
+type BatchMatMulV3Attr func(optionalAttr)
+
+// BatchMatMulV3AdjX sets the optional adj_x attribute to value.
+//
+// value: If `True`, adjoint the slices of `x`. Defaults to `False`.
+// If not specified, defaults to false
+func BatchMatMulV3AdjX(value bool) BatchMatMulV3Attr {
+	return func(m optionalAttr) {
+		m["adj_x"] = value
+	}
+}
+
+// BatchMatMulV3AdjY sets the optional adj_y attribute to value.
+//
+// value: If `True`, adjoint the slices of `y`. Defaults to `False`.
+// If not specified, defaults to false
+func BatchMatMulV3AdjY(value bool) BatchMatMulV3Attr {
+	return func(m optionalAttr) {
+		m["adj_y"] = value
+	}
+}
+
+// Multiplies slices of two tensors in batches.
+//
+// Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+// viewed as an element of a batch), and arranges the individual results
+// in a single output tensor of the same batch size. Each of the
+// individual slices can optionally be adjointed (to adjoint a matrix
+// means to transpose and conjugate it) before multiplication by setting
+// the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+//
+// The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+// and `[..., r_y, c_y]`.
+//
+// The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+//
+//     r_o = c_x if adj_x else r_x
+//     c_o = r_y if adj_y else c_y
+//
+// It is computed as:
+//
+//     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+//
+// *NOTE*: `BatchMatMulV3` supports broadcasting in the batch dimensions. More
+// about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+//
+//
+// Arguments:
+//	x: 2-D or higher with shape `[..., r_x, c_x]`.
+//	y: 2-D or higher with shape `[..., r_y, c_y]`.
+//	Tout: If not spcified, Tout is the same type to input type.
+//
+// Returns 3-D or higher with shape `[..., r_o, c_o]`
+func BatchMatMulV3(scope *Scope, x tf.Output, y tf.Output, Tout tf.DataType, optional ...BatchMatMulV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BatchMatMulV3",
+		Input: []tf.Input{
+			x, y,
 		},
 		Attrs: attrs,
 	}
@@ -33157,9 +33147,10 @@ func StatelessRandomGetKeyCounter(scope *Scope, seed tf.Output) (key tf.Output, 
 	return op.Output(0), op.Output(1)
 }
 
-// Asserts that compilation succeeded. This op produces no output and closes the
+// Asserts that compilation succeeded.
 //
-// device during failure to ensure all pending device interactions fail.
+// This op produces no output and closes the device during failure to ensure all
+// pending device interactions fail.
 //
 // 'compilation_status' is a serialized CompilationResultProto.
 //
@@ -51485,6 +51476,45 @@ func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, padd
 		Type: "FusedResizeAndPadConv2D",
 		Input: []tf.Input{
 			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
+type TPUPartitionedInputAttr func(optionalAttr)
+
+// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
+//
+// value: An integer describles which dimension is partitioned. -1 means
+// those inputs are replicated.
+// If not specified, defaults to 0
+func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
+	return func(m optionalAttr) {
+		m["partition_dim"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. This op
+//
+// Arguments:
+//	inputs: A list of partitioned inputs which must have the same shape.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInput",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
 		},
 		Attrs: attrs,
 	}

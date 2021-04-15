@@ -81,11 +81,8 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
     : ir_emitter_context_(ir_emitter_context),
       module_(ir_emitter_context->llvm_module()),
       b_(module_->getContext()),
-      bindings_(ir_emitter_context->hlo_module(),
-                &ir_emitter_context->buffer_assignment(), &b_, module_,
-                is_nested),
-      hlo_module_config_(hlo_module_config) {
-}
+      bindings_(&b_, module_, is_nested),
+      hlo_module_config_(hlo_module_config) {}
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -101,8 +98,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
-Status IrEmitter::EmitConstants(const HloComputation& computation,
-                                bool lookup_indices) {
+Status IrEmitter::EmitConstants(const HloComputation& computation) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() != HloOpcode::kConstant) {
       continue;
@@ -150,13 +146,6 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
     if (!should_emit_initializer) {
       auto base = static_cast<const uint8*>(literal.untyped_data());
       info.content.assign(base, base + literal.size_bytes());
-    }
-    if (lookup_indices) {
-      auto maybe_slice =
-          ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, {});
-      if (maybe_slice.ok()) {
-        info.allocation_index = maybe_slice.ValueOrDie().index();
-      }
     }
     ir_emitter_context_->constants().push_back(std::move(info));
   }

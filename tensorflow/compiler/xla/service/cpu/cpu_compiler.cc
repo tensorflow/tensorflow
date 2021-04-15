@@ -112,6 +112,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -289,6 +290,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                             /*allow_mixed_precision=*/false);
 
   pipeline.AddPass<OperandUpcaster>();
+  pipeline.AddPass<ResultCaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -663,7 +665,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
-  TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,
                   &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 

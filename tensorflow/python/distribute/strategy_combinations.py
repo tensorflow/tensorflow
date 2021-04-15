@@ -122,16 +122,16 @@ def _get_tpu_strategy_creator(steps_per_run,
 def _mirrored_strategy_with_collective_key_base(devices):
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
-  mirrored_lib.MirroredStrategy._use_merge_call = True  # pylint: disable=protected-access
-  mirrored_lib.MirroredStrategyV1._use_merge_call = True  # pylint: disable=protected-access
   return MirroredStrategy(devices)
 
 
 def _mirrored_strategy_with_no_merge_call(devices):
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
-  mirrored_lib.MirroredStrategy._use_merge_call = False  # pylint: disable=protected-access
-  return MirroredStrategy(devices)
+  out = MirroredStrategy(devices)
+  # Stub out merge call usage.
+  out.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
+  return out
 
 
 def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
@@ -162,7 +162,8 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
     with context.eager_mode():
       strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
 
-    strategy.extended._use_merge_call = use_merge_call  # pylint: disable=protected-access
+    if not use_merge_call:
+      strategy.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
@@ -467,6 +468,10 @@ tf_export(
     _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus",
     v1=[]).export_constant(__name__, "mirrored_strategy_with_two_gpus")
 tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "mirrored_strategy_with_two_gpus_no_merge_call")
+tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_cpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_cpu")
 tf_export(
@@ -475,6 +480,10 @@ tf_export(
 tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x2_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "multi_worker_mirrored_2x2_gpu_no_merge_call")
 tf_export(
     _TF_INTERNAL_API_PREFIX + "one_device_strategy",
     v1=[]).export_constant(__name__, "one_device_strategy")

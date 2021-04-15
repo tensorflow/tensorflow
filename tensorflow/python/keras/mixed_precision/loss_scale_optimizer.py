@@ -522,8 +522,19 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # LossScaleOptimizerV1.
       raise TypeError('"dynamic" argument to LossScaleOptimizer.__init__ must '
                       'be a bool, but got: %r' % (dynamic,))
+    if isinstance(inner_optimizer, LossScaleOptimizer):
+      raise TypeError('LossScaleOptimizer cannot wrap another '
+                      'LossScaleOptimizer, but got: %s' % (inner_optimizer,))
     self._raise_if_strategy_unsupported()
+    if getattr(inner_optimizer, '_is_wrapped_by_loss_scale_optimizer', False):
+      # TODO(reedwm): Maybe support this. The difficulty is that LSO has the
+      # same checkpoint format as the inner optimizer, so multiple LSOs wrapping
+      # the same optimizer causes the checkpointing logic to become confused.
+      raise ValueError('"inner_optimizer" is already wrapped by a '
+                       'LossScaleOptimizer. An optimizer can only be wrapped '
+                       'by a single LossScaleOptimizer')
     self._optimizer = inner_optimizer
+    self._optimizer._is_wrapped_by_loss_scale_optimizer = True
 
     # We don't call super().__init__, since we do not want to call OptimizerV2's
     # constructor.
@@ -1061,7 +1072,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
       loss_scale = keras_loss_scale_module.deserialize(loss_scale)
 
     if isinstance(loss_scale, (int, float)):
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(loss_scale))
@@ -1069,14 +1080,14 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
                                                  initial_scale=loss_scale)
     elif isinstance(loss_scale, loss_scale_module.FixedLossScale):
       ls_val = loss_scale._loss_scale_value  # pylint: disable=protected-access
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(ls_val))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=ls_val)
     elif loss_scale == 'dynamic':
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt)')
@@ -1096,7 +1107,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
         raise ValueError('When passing a DynamicLossScale to "loss_scale", '
                          'DynamicLossScale.multiplier must be 2. Got: %s'
                          % (loss_scale,))
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix +
           'Note that the non-experimental LossScaleOptimizer does not take a '
           'DynamicLossScale but instead takes the dynamic configuration '
@@ -1190,9 +1201,8 @@ class FakeOptimizerForRestoration(trackable.Trackable):
         slot_variable_position, slot_name, variable)
 
 
-# pylint: disable=protected-access
-mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
-                                                LossScaleOptimizerV1)
+mixed_precision.register_loss_scale_wrapper(optimizer_v2.OptimizerV2,
+                                            LossScaleOptimizerV1)
 
 
 def _multiply_gradient(gradient, scale):

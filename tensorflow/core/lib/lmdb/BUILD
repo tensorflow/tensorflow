@@ -2,7 +2,7 @@
 # lmdb test data packages alias.
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 alias(

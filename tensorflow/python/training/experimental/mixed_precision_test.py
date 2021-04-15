@@ -100,6 +100,24 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_register_loss_scale_wrapper(self):
+    class MyOptimizer:
+      pass
+
+    class MyLossScaleOptimizer(MyOptimizer):
+
+      def __init__(self, inner_optimizer, loss_scale):
+        self.inner_optimizer = inner_optimizer
+        self.loss_scale = loss_scale
+
+    mixed_precision.register_loss_scale_wrapper(MyOptimizer,
+                                                MyLossScaleOptimizer)
+    opt = MyOptimizer()
+    opt = enable_mixed_precision_graph_rewrite(opt, 123.)
+    self.assertIsInstance(opt, MyLossScaleOptimizer)
+    self.assertEqual(opt.loss_scale, 123.)
+
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt('Grappler rewrite doesn\'t apply to tfrt.')
@@ -147,7 +165,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_warn_if_session_already_exists(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
     with session.Session():
       enable_mixed_precision_graph_rewrite(
@@ -161,7 +179,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_do_not_warn_if_session_does_not_already_exist(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
     enable_mixed_precision_graph_rewrite(
         gradient_descent_v1.GradientDescentOptimizer(1.0))

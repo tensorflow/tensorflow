@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !GOOGLE_CUDA
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 #error This file must only be included when building with Cuda
 #endif
 
@@ -28,13 +28,10 @@ namespace tensorflow {
 namespace functor {
 template <typename T, typename Index>
 struct LaunchSparseToDense {
-  void operator()(OpKernelContext *c, AsyncOpKernel::DoneCallback done,
-                  AsyncOpKernel *op, bool validate_indices,
-                  const se::DeviceMemory<Index> &indices_data,
-                  const se::DeviceMemory<T> &values, const int num_elems,
-                  const int num_values, const se::DeviceMemory<Index> &shape,
-                  const int num_dims, const T default_value, int64 dense_size,
-                  se::DeviceMemory<T> *dense);
+  void operator()(OpKernelContext* c, AsyncOpKernel::DoneCallback done,
+                  AsyncOpKernel* op, bool validate_indices,
+                  const Tensor& indices, const Tensor& values,
+                  const Tensor& shape, const T default_value, Tensor* dense);
 };
 
 }  // namespace functor

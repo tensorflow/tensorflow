@@ -816,6 +816,7 @@ class _ProcFunc(object):
     pid = os.getpid()
     logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
                  test_env.task_type, test_env.task_id)
+    logging.info('TF_CONFIG: %r', os.environ['TF_CONFIG'])
 
     # The thread will be dedicated to checking messages from the parent process.
     threading.Thread(  # pylint: disable=unexpected-keyword-arg

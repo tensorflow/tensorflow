@@ -672,6 +672,45 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
   RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
 }
 
+TEST_F(RingReducerTest, AutomaticSubdivIgnoresMaxNumSubdivs) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is present it will override automatic generation of
+  // offsets even when max_subdivs_per_device is present.
+  // cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 4;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}}, {0});
+
+  cp->default_rank = 0;
+  // subdiv_offsets cleared, max_subdivs_per_device = 4 takes effect.
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 4;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp,
+                     {{0, 1, 2, 3}, {0, 1, 2, 3}, {0, 1, 2, 3}, {0, 1, 2, 3}},
+                     {0, 0, 0, 0});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivUsesDefault) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is NOT present and max_subdivs_per_device has a
+  // <= 0 value, the default setting of 2 is used.
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
+}
+
 // TODO(b/113171733): change to use TEST_P.
 #define DEF_TEST(B, T, W, D, S, L, A)                                         \
   TEST_F(RingReducerTest,                                                     \

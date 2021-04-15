@@ -4533,6 +4533,52 @@ ENTRY entry {
                   .memory_space() == kDefaultMemorySpace);
 }
 
+TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,4] parameter(0)
+  a = f32[2,4] negate(param0)
+  b = f32[2,4] negate(a)
+  c = f32[2,4] negate(b)
+  d = f32[2,4] negate(c)
+  e = f32[2,4] negate(d)
+  ROOT f = f32[2,4] add(e, b)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpaceAssignment::Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  // Make instruction c reserve 64 bytes in the alternate memory. This should
+  // prevent both b and c to put their outputs in the alternate memory.
+  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
+    if (instruction->name() == "c") {
+      return 100;
+    }
+    return 0;
+  };
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
+                    options);
+  auto get_memory_space = [&](absl::string_view instruction_name) {
+    return module->entry_computation()
+        ->GetInstructionWithName(instruction_name)
+        ->shape()
+        .layout()
+        .memory_space();
+  };
+  EXPECT_TRUE(get_memory_space("a") == kAlternateMemorySpace);
+  EXPECT_TRUE(get_memory_space("b") == kDefaultMemorySpace);
+  EXPECT_TRUE(get_memory_space("c") == kDefaultMemorySpace);
+  EXPECT_TRUE(get_memory_space("d") == kAlternateMemorySpace);
+  EXPECT_TRUE(get_memory_space("e") == kAlternateMemorySpace);
+}
+
 // A mock MemorySpaceAssignmentRepacker class that accepst a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
@@ -4823,6 +4869,57 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     buffer_interval_compare, &prefetch_interval_picker,
                     options);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       RepackExportsAliasedOffsetsForReservedScopedMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,4] parameter(0)
+  a = f32[2,4] negate(param0)
+  b = f32[2,4] negate(a)
+  c = f32[2,4] negate(b)
+  d = f32[2,4] negate(c)
+  e = f32[2,4] negate(d)
+  ROOT f = f32[2,4] add(e, b)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpaceAssignment::Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.max_repacks = 1;
+  // Make two instructions reserve scoped memory.
+  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
+    if (instruction->name() == "c" || instruction->name() == "d") {
+      return 100;
+    }
+    return 0;
+  };
+
+  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  bool repacker_ran = false;
+
+  // Expect that the first two value to repack has a colocations size of 2,
+  // corresponding to the scoped allocations.
+  auto check_fun =
+      [&](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
+              allocations) {
+        EXPECT_EQ(allocations.at(0)->colocations.size(), 2);
+        EXPECT_EQ(allocations.at(1)->colocations.size(), 2);
+        repacker_ran = true;
+      };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
+                    options);
+  EXPECT_TRUE(repacker_ran);
 }
 
 TEST_P(MemorySpaceAssignmentTest,

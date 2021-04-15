@@ -5,7 +5,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -17,7 +16,7 @@ package(
         ":friends",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -321,6 +320,24 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_quant_utils",
+    srcs = [
+        "utils/fake_quant_utils.cc",
+    ],
+    hdrs = [
+        "utils/fake_quant_utils.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "nms_utils",
     srcs = [
         "utils/nms_utils.cc",
@@ -475,6 +492,7 @@ cc_library(
     ],
     deps = [
         ":constant_utils",
+        ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",
         ":perception_ops_utils",
@@ -504,8 +522,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:tensor_list",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/numeric:bits",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -550,6 +570,7 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/modify_io_nodes.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
@@ -865,7 +886,7 @@ tf_cc_binary(
     deps = [
         ":flatbuffer_translate_registeration",
         # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -917,7 +938,7 @@ tf_cc_binary(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -964,6 +985,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":fake_quant_utils",
         ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
@@ -972,6 +994,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -980,7 +1003,6 @@ cc_library(
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
@@ -1014,7 +1036,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -1035,23 +1057,4 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
     ],
-)
-
-# Python Library to check TensorFlow op compatibility.
-py_library(
-    name = "tensorflow_lite_compatibility_tbl_generated",
-    srcs = [
-        "tensorflow_lite_compatibility_tbl_generated.py",
-    ],
-    srcs_version = "PY3",
-    visibility = internal_visibility_allowlist(),
-)
-
-genrule(
-    name = "tfl_compatibility_tbl_gen",
-    srcs = ["transforms/generated_legalize_tf.inc"],
-    outs = ["tensorflow_lite_compatibility_tbl_generated.py"],
-    cmd = "$(location generate_tfl_compatibility_tbl.sh) $(location transforms/generated_legalize_tf.inc) > \"$@\"",
-    compatible_with = get_compatible_with_cloud(),
-    tools = ["generate_tfl_compatibility_tbl.sh"],
 )

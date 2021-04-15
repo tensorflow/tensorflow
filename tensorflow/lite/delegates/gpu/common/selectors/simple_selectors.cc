@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reduce.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/resampler.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
@@ -90,6 +91,11 @@ absl::Status SelectGather(const GatherAttributes& attr,
   GPUOperation operation = CreateGather(op_def, attr);
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
+}
+
+std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def) {
+  GPUOperation operation = CreateResampler(op_def);
+  return absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 absl::Status SelectResize(const Resize2DAttributes& attr,

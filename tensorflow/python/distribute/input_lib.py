@@ -32,6 +32,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
@@ -1996,7 +1997,9 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
       self._devices = tuple(
           device_util.canonicalize_without_job_and_task(d) for d in devices)
     self._element_spec = element_spec
-    self._options = options
+    # `self._options` intentionally made not `None` for proper serialization.
+    self._options = (options if options is not None else
+                     distribute_lib.InputOptions())
     self._canonicalize_devices = canonicalize_devices
 
   @property

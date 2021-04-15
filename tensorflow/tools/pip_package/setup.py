@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.5.0'
+_VERSION = '2.6.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -120,14 +120,14 @@ if 'tf_nightly' in project_name:
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.5.0.dev'
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
 # BoringSSL support.
 # See https://github.com/tensorflow/tensorflow/issues/17882.
 if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio ~= 1.34.0')
+  REQUIRED_PACKAGES.append('grpcio >= 1.37.0, < 2.0')
 
 
 # Packages which are only needed for testing code.
@@ -284,6 +284,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.proto', 'tensorflow/python/framework')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -291,6 +292,7 @@ headers = (
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
@@ -343,6 +345,7 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

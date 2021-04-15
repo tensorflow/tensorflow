@@ -21,7 +21,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -124,7 +124,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -255,7 +255,6 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
-        "no_tfrt",  # TFRT doesn't support custom device yet.
     ],
     deps = [
         ":context",
@@ -393,12 +392,12 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:memory_checker",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/framework:memory_checker",
         "//third_party/py/numpy",
     ],
 )
@@ -421,6 +420,7 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/183962087)
     deps = [
         ":context",
         ":core",
@@ -928,7 +928,6 @@ tf_xla_py_test(
     tags = [
         "no_mac",
         "no_pip",
-        "no_tfrt",  # TODO(b/177333820)
         "no_windows",
     ],
     use_xla_device = False,
@@ -1061,7 +1060,6 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
-        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",

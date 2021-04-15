@@ -20,7 +20,7 @@ package(
         ":friends",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export a few files for use on Android.
@@ -43,6 +43,8 @@ exports_files([
     "optimize_dataset_op.h",
     "optional_ops.cc",
     "optional_ops.h",
+    "repeat_dataset_op.h",
+    "repeat_dataset_op.cc",
     "split_utils.h",
     "split_utils.cc",
     "stats_utils.cc",

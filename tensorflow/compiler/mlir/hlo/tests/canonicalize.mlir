@@ -1280,6 +1280,108 @@ func @not_fold_sqrt_neg_constants() -> tensor<4xf32> {
   return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @fold_if_true(
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: )
+func @fold_if_true(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT: mhlo.if
+  // CHECK: return %[[ARG0]]
+  %true = mhlo.constant dense<true> : tensor<i1>
+  %0 = "mhlo.if"(%true, %arg0, %arg1) ( {
+    ^bb0(%bbarg0: tensor<f32>):
+      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  },  {
+    ^bb0(%bbarg1: tensor<f32>):
+      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_if_false(
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: )
+func @fold_if_false(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT: mhlo.if
+  // CHECK: return %[[ARG1]]
+  %false = mhlo.constant dense<false> : tensor<i1>
+  %0 = "mhlo.if"(%false, %arg0, %arg1) ( {
+    ^bb0(%bbarg0: tensor<f32>):
+      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  },  {
+    ^bb0(%bbarg1: tensor<f32>):
+      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_case(
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: )
+func @fold_case(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT: mhlo.case
+  // CHECK: return %[[ARG1]]
+  %c1 = mhlo.constant dense<1> : tensor<i32>
+  %0 = "mhlo.case"(%c1, %arg0, %arg1, %arg2) ( {
+    ^bb0(%bbarg0: tensor<f32>):
+      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%bbarg1: tensor<f32>):
+      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+  },  {
+    ^bb0(%bbarg2: tensor<f32>):
+      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_case_negative_index(
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: )
+func @fold_case_negative_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT: mhlo.case
+  // CHECK: return %[[ARG2]]
+  %m1000 = mhlo.constant dense<-1000> : tensor<i32>
+  %0 = "mhlo.case"(%m1000, %arg0, %arg1, %arg2) ( {
+    ^bb0(%bbarg0: tensor<f32>):
+      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%bbarg1: tensor<f32>):
+      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+  },  {
+    ^bb0(%bbarg2: tensor<f32>):
+      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_case_oob_index(
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
+//  CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: )
+func @fold_case_oob_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT: mhlo.case
+  // CHECK: return %[[ARG2]]
+  %c1000 = mhlo.constant dense<1000> : tensor<i32>
+  %0 = "mhlo.case"(%c1000, %arg0, %arg1, %arg2) ( {
+    ^bb0(%bbarg0: tensor<f32>):
+      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%bbarg1: tensor<f32>):
+      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+  },  {
+    ^bb0(%bbarg2: tensor<f32>):
+      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: @tensor_flow_scatter_v1_update
 func @tensor_flow_scatter_v1_update() -> tensor<3x3xi32> {
   %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>

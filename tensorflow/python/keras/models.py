@@ -578,6 +578,9 @@ def _reset_build_compile_trackers(model):
   model.optimizer = None
 
 
+@keras_export(
+    'keras.__internal__.models.in_place_subclassed_model_state_restoration',
+    v1=[])
 def in_place_subclassed_model_state_restoration(model):
   """Restores the original state of a model after it was "reset".
 
@@ -610,6 +613,7 @@ def in_place_subclassed_model_state_restoration(model):
     _reset_build_compile_trackers(model)
 
 
+@keras_export('keras.__internal__.models.clone_and_build_model', v1=[])
 def clone_and_build_model(
     model, input_tensors=None, target_tensors=None, custom_objects=None,
     compile_clone=True, in_place_reset=False, optimizer_iterations=None,
