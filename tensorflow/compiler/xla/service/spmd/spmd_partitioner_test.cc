@@ -6944,7 +6944,8 @@ HloModule module
 ENTRY %module {
   %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
     sharding={devices=[4,2,1,1]0,1,2,3,4,5,6,7}
-  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+  %constant = s32[4] constant({0, 1, 2, 3}), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} broadcast(%constant), dimensions={2},
     sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
   %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
     sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}

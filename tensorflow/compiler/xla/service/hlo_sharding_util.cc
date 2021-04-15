@@ -1254,6 +1254,42 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
              : HloSharding::Tile(reshape_tiles, source.metadata());
 }
 
+absl::optional<int64> GetDimensionForIota(const HloInstruction* maybe_iota) {
+  if (auto* iota = DynCast<HloIotaInstruction>(maybe_iota)) {
+    return iota->iota_dimension();
+  }
+
+  if (maybe_iota->shape().element_type() != S32) {
+    return absl::nullopt;
+  }
+  if (maybe_iota->IsConstant()) {
+    std::vector<bool> is_iota_dim(maybe_iota->shape().rank(), true);
+    maybe_iota->literal().EachCell<int32>(
+        [&](absl::Span<const int64> indices, int32 val) {
+          for (int64 i = 0; i < indices.size(); ++i) {
+            if (val != indices[i]) {
+              is_iota_dim[i] = false;
+            }
+          }
+        });
+    for (int64 i = 0; i < is_iota_dim.size(); ++i) {
+      if (is_iota_dim[i] && maybe_iota->shape().dimensions(i) > 1) {
+        return i;
+      }
+    }
+    return absl::nullopt;
+  }
+
+  if (maybe_iota->opcode() == HloOpcode::kBroadcast) {
+    auto operand_dim = GetDimensionForIota(maybe_iota->operand(0));
+    if (operand_dim) {
+      return maybe_iota->dimensions(*operand_dim);
+    }
+    return absl::nullopt;
+  }
+  return absl::nullopt;
+}
+
 absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
     const HloInstruction& hlo) {
   const auto& dnums = hlo.gather_dimension_numbers();
@@ -1282,25 +1318,24 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
           op->shape().dimensions_size() > index_dim
               ? op->shape().dimensions(index_dim)
               : 1;
-      if (auto* iota = DynCast<HloIotaInstruction>(op)) {
-        if (iota->iota_dimension() != index_dim) {
+      if (absl::optional<int64> maybe_iota_dim = GetDimensionForIota(op)) {
+        if (*maybe_iota_dim != index_dim) {
           for (int j = 0; j < num_indices_from_element; ++j) {
-            index_parallel_in_dim[concatenated_dims + j] =
-                iota->iota_dimension();
+            index_parallel_in_dim[concatenated_dims + j] = *maybe_iota_dim;
           }
         }
       }
       concatenated_dims += num_indices_from_element;
     }
-  } else if (auto* iota = DynCast<HloIotaInstruction>(indices)) {
-    if (iota->iota_dimension() != index_dim) {
+  } else if (absl::optional<int64> maybe_iota_dim =
+                 GetDimensionForIota(indices)) {
+    if (*maybe_iota_dim != index_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64 num_indices_from_element =
-          iota->shape().dimensions_size() > index_dim
-              ? iota->shape().dimensions(index_dim)
+          indices->shape().dimensions_size() > index_dim
+              ? indices->shape().dimensions(index_dim)
               : 1;
-      index_parallel_in_dim.assign(num_indices_from_element,
-                                   iota->iota_dimension());
+      index_parallel_in_dim.assign(num_indices_from_element, *maybe_iota_dim);
     }
   }
   absl::InlinedVector<int64, 1> indices_parallel_dims;
