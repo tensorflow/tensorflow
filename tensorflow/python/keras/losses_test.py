@@ -87,11 +87,12 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_logit),
         backend.eval(output_from_softmax),
         atol=1e-5)
-    
+
     axis=0
     output_from_logit_axis = losses.categorical_crossentropy(
         target, logits, from_logits=True, axis=axis)
-    output_from_softmax_axis = losses.categorical_crossentropy(target, softmax_output, axis=axis)
+    output_from_softmax_axis = losses.categorical_crossentropy(target,
+        softmax_output, axis=axis)
 
     np.testing.assert_allclose(
         backend.eval(output_from_logit_axis),
@@ -180,13 +181,14 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     axis=0
     output_from_logit_axis = losses.binary_crossentropy(
         target, logits, from_logits=True, axis=axis)
-    output_from_sigmoid_axis = losses.binary_crossentropy(target, sigmoid_output, axis=axis)
+    output_from_sigmoid_axis = losses.binary_crossentropy(target,
+        sigmoid_output, axis=axis)
 
     np.testing.assert_allclose(
         backend.eval(output_from_logit_axis),
         backend.eval(output_from_sigmoid_axis),
-        atol=1e-5)    
-    
+        atol=1e-5)
+
   def test_get_bce(self):
     bce_fn = losses.get('bce')
     self.assertEqual(bce_fn, losses.binary_crossentropy)
@@ -1804,7 +1806,7 @@ class HuberLossTest(test.TestCase):
 class BinaryTruePositivesViaControlFlow(losses.Loss):
 
   def __init__(self, reduction=losses_utils.ReductionV2.AUTO):
-    super(BinaryTruePositivesViaControlFlow, self).__init__(reduction=reduction)
+    super().__init__(reduction=reduction)
 
   def call(self, y_true, y_pred):
     y_true = math_ops.cast(y_true, dtypes.bool)
