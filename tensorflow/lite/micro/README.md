@@ -69,8 +69,8 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Optimized Kernel Implementations](docs/optimized_kernel_implementations.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
-*   [Pre-allocated tensors](docs/preallocated_tensors.md)
 
 # RFCs
 
-1. [TensorFlow Lite for Microcontrollers Port of 16x8 Quantized Operators](docs/rfc/001-rfc-16x8-quantization-port.md)
+1. [Pre-allocated tensors](docs/rfc/001_preallocated_tensors.md)
+1. [TensorFlow Lite for Microcontrollers Port of 16x8 Quantized Operators](docs/rfc/002_16x8_quantization_port.md)

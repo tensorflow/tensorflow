@@ -31,7 +31,8 @@ func @main() -> tensor<f32> {
 // -----
 
 // One resource, one read. _is_initialized is true, should be promoted.
-// CHECK: func @main(%[[ARG:.*]]: tensor<f32> {tf.resource_name = "x"})
+// CHECK-LABEL: func @main
+// CHECK-SAME: ({{%.+}}: tensor<f32> {tf.resource_name = "x"})
 func @main() -> tensor<f32> {
   // CHECK-NOT: "tf.VarHandleOp"
   %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = true} : () -> tensor<!tf.resource<tensor<f32>>>

@@ -570,6 +570,7 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/modify_io_nodes.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",

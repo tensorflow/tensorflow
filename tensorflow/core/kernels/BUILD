@@ -79,6 +79,7 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -4597,7 +4598,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(

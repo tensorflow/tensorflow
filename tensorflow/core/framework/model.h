@@ -686,6 +686,12 @@ class Model {
                 double model_input_time,
                 CancellationManager* cancellation_manager);
 
+  // Collects the output time and if `gradients` is not `nullptr`, the output
+  // time gradient w.r.t. tunable parameters of the subtree rooted in the given
+  // node.
+  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
+                    ParameterGradients* gradients);
+
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
@@ -741,12 +747,6 @@ class Model {
   void OptimizeGradientDescent(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager);
-
-  // Collects the output time and if `gradients` is not `nullptr`, the output
-  // time gradient w.r.t. tunable parameters of the subtree rooted in the given
-  // node.
-  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
-                    ParameterGradients* gradients);
 
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and

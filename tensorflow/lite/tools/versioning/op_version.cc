@@ -383,6 +383,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ABS:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return op_sig.options.abs.input_quantized ? 3 : 4;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_UINT8) {
+        return 2;
+      }
+      return 1;
     case BuiltinOperator_RELU:
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -868,6 +876,12 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     case BuiltinOperator_GATHER: {
       auto gather_option = op->builtin_options_as_GatherOptions();
       op_sig.options.gather.batch_dims = gather_option->batch_dims();
+    } break;
+
+    case BuiltinOperator_ABS: {
+      if (subgraph->tensors()->Get(op->inputs()->Get(0))->quantization()) {
+        op_sig.options.abs.input_quantized = true;
+      }
     } break;
 
     default:

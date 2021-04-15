@@ -984,7 +984,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     auto loc = reduce_op.getLoc();
     lmhlo::ReduceOp::Adaptor adaptor(args);
     auto operand_shape =
-        adaptor.operands()[0].getType().template dyn_cast<ShapedType>();
+        adaptor.inputs()[0].getType().template dyn_cast<ShapedType>();
     if (!operand_shape || !operand_shape.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects known-rank args");
       return failure();
@@ -1019,7 +1019,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
-        /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(), maps,
+        /*inputs=*/adaptor.inputs(), /*outputBuffers=*/adaptor.out(), maps,
         types);
     rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
                                 linalg_op.region().end());
@@ -1423,7 +1423,7 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     if (op.getNumOperands() != 2) {
       return op.emitError("expects exactly two operands");
     }
-    Value src = adaptor.operands()[0];
+    Value src = adaptor.inputs()[0];
     auto src_type = src.getType().cast<ShapedType>();
     int src_rank = src_type.getRank();
     if (!src_rank) {
@@ -1458,11 +1458,11 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     indexing_maps.emplace_back(AffineMap::get(src_rank, /*symbolCount=*/0,
                                               exprs, rewriter.getContext()));
 
-    SmallVector<Value, 2> inputs = {adaptor.operands()[0]};
+    SmallVector<Value, 2> inputs = {adaptor.inputs()[0]};
     Type result_type = op.getResult(0).getType();
     auto shaped_type = result_type.cast<ShapedType>();
     SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
-        rewriter, loc, adaptor.operands()[0], result_type.cast<ShapedType>(),
+        rewriter, loc, adaptor.inputs()[0], result_type.cast<ShapedType>(),
         reduction_dims);
     auto init_tensor = GetInitTensor(rewriter, loc, shaped_type, dyn_shape);
     Value filled_tensor =

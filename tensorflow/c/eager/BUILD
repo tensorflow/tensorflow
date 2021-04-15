@@ -672,6 +672,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
+        "@com_google_absl//absl/strings",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -680,7 +681,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "@com_google_absl//absl/strings",
+        # copybara:uncomment_begin
+        # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+        # copybara:uncomment_end
     ],
 )
 

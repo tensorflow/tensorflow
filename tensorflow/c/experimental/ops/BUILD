@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/c/eager:tracing_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

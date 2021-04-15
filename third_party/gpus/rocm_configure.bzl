@@ -333,6 +333,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
             ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
             ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
             ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
+            ("roctracer64", rocm_config.rocm_toolkit_path + "/roctracer"),
             ("rocsolver", rocm_config.rocm_toolkit_path + "/rocsolver"),
         ]
     ]
@@ -460,6 +461,7 @@ def _create_dummy_repository(repository_ctx):
             "%{hipfft_or_rocfft_lib}": _lib_name("hipfft"),
             "%{hiprand_lib}": _lib_name("hiprand"),
             "%{hipsparse_lib}": _lib_name("hipsparse"),
+            "%{roctracer_lib}": _lib_name("roctracer64"),
             "%{rocsolver_lib}": _lib_name("rocsolver"),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
@@ -673,6 +675,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_lib}": rocm_libs["MIOpen"].file_name,
             "%{rccl_lib}": rocm_libs["rccl"].file_name,
             "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
+            "%{roctracer_lib}": rocm_libs["roctracer64"].file_name,
             "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{rocm_headers}": ('":rocm-include",\n' +

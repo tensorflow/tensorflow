@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 36.
+// Next ID to use: 37.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -240,4 +240,9 @@ message TocoFlags {
   // not, translate to tfl.batch_matmul.
   // WARNING: Experimental interface, subject to change.
   optional bool unfold_batchmatmul = 35 [default = true];
+
+  // Whether to lower static Tensor List ops to builtin ops. If not, use Flex
+  // tensor list ops.
+  // WARNING: Experimental interface, subject to change.
+  optional bool lower_tensor_list_ops = 36 [default = true];
 }

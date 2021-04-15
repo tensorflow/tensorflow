@@ -3667,8 +3667,8 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
   };
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
-      if (hlo->sharding().IsTileMaximal()) {
-        // No need to optimize for tile-maximal sharding.
+      if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
+        // No need to optimize for tile-maximal or manual sharding.
         continue;
       }
       if (hlo->opcode() == HloOpcode::kSlice) {

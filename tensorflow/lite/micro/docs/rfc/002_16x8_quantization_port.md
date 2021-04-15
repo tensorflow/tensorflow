@@ -3,7 +3,7 @@
 
 | Status        | Proposed                                                    |
 :-------------- |:----------------------------------------------------------- |
-| **RFC #1**    | [46767](https://github.com/tensorflow/tensorflow/pull/46767)|
+| **RFC #2**    | [46767](https://github.com/tensorflow/tensorflow/pull/46767)|
 | **Author(s)** | Daniel Situnayake (dan@edgeimpulse.com)                     |
 | **Sponsor**   | Pete Warden (petewarden@google.com)                         |
 | **Updated**   | 2021-01-28                                                  |

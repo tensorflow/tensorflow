@@ -439,6 +439,26 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Inv`.
+
+template <typename T>
+T baseline_inv(T x) {
+  return 1 / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(), baseline_inv,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Inv, DT_FLOAT, DT_FLOAT, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Inv, DT_DOUBLE, DT_DOUBLE, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Inv, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_inv,
+                        test::OpsTestConfig())
+
 /// Test `tf.Invert`.
 
 /// Reference implementation.
@@ -628,6 +648,26 @@ GENERATE_DEFAULT_TEST(Real, DT_COMPLEX64, DT_FLOAT, baseline_real,
 
 GENERATE_DEFAULT_TEST(Real, DT_COMPLEX128, DT_DOUBLE, baseline_real,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
+
+/// Test `tf.Reciprocal`.
+
+template <typename T>
+T baseline_reciprocal(T x) {
+  return 1 / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(),
+    baseline_reciprocal, test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_FLOAT, DT_FLOAT, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_DOUBLE, DT_DOUBLE, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Reciprocal, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_reciprocal, test::OpsTestConfig())
 
 /// Test `tf.Rsqrt`.
 

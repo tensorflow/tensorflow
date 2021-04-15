@@ -142,6 +142,13 @@ func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_leaky_relu
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.greater_equal
+// CHECK: tosa.select
 func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.leaky_relu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
@@ -735,6 +742,25 @@ func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
 
 // -----
 
+// CHECK-LABEL: test_one_hot
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.tile
+// CHECK: tosa.reshape
+// CHECK: tosa.tile
+// CHECK: tosa.reshape
+// CHECK: tosa.scatter
+// CHECK: tosa.reshape
+// CHECK: tosa.transpose
+// CHECK: tosa.reshape
+func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<4x4x2xf32> {
+  %0 = constant dense<2> : tensor<i32>
+  %1 = "tfl.one_hot"(%arg0, %0, %arg1, %arg2) {axis = -1 : i32} : (tensor<4x4xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<4x4x2xf32>
+  return %1 : tensor<4x4x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_fakequant_with_min_max_args
 // CHECK-DAG: "tosa.const"() {value = dense<16383.75> : tensor<f32>}
 // CHECK-DAG: "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
@@ -744,8 +770,6 @@ func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
 // CHECK: tosa.reshape
 // CHECK: tosa.add
 // CHECK: tosa.cast
-// CHECK: tosa.rescale
-// CHECK: tosa.rescale
 // CHECK: tosa.cast
 // CHECK: tosa.reshape
 // CHECK: tosa.sub
@@ -901,7 +925,53 @@ func @test_fakequant_relu6(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639
 // -----
 
 // CHECK-LABEL: test_fakequant_leaky_relu
-func @test_fakequant_leaky_relu(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015563514083623886:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015563514083623886:-1>> {
-  %0 = "tfl.leaky_relu"(%arg0)  {alpha = 0.368738383 : f32}  : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015563514083623886:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015563514083623886:-1>>
-  return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.015563514083623886:-1>>
+// CHECK: tosa.const
+// CHECK: tosa.rescale
+// CHECK: tosa.reshape
+// CHECK: tosa.greater_equal
+// CHECK: tosa.rescale
+// CHECK: tosa.rescale
+// CHECK: tosa.select
+func @test_fakequant_leaky_relu(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>) -> tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>> {
+  %0 = "tfl.leaky_relu"(%arg0) {alpha = 0.948724806 : f32} : (tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>) -> tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>
+  return %0 : tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: test_fakequant_resize_bilinear
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.resize
+// CHECK: tosa.reshape
+// CHECK: tosa.greater_equal
+// CHECK: tosa.abs
+// CHECK: tosa.reshape
+// CHECK: tosa.arithmetic_right_shift
+// CHECK: tosa.negate
+// CHECK: tosa.select
+// CHECK: tosa.cast
+
+func @test_fakequant_resize_bilinear(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+// CHECK-LABEL: test_gather_nd
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reduce_sum
+// CHECK: tosa.reshape
+// CHECK: tosa.gather
+// CHECK: tosa.reshape
+func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[[0], [5], [3], [12], [2], [4], [3]], [[11], [1], [11], [10], [3], [12], [8]], [[5], [3], [1], [11], [3], [10], [0]], [[0], [8], [4], [7], [3], [12], [2]], [[7], [6], [11], [4], [2], [10], [11]], [[11], [1], [11], [1], [1], [11], [8]]]> : tensor<6x7x1xi32>} : () -> tensor<6x7x1xi32>
+  %1 = "tfl.gather_nd"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<6x7x1xi32>) -> tensor<6x7x21x3xf32>
+  return %1 : tensor<6x7x21x3xf32>
 }

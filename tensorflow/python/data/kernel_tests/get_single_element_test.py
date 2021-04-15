@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
@@ -54,30 +53,30 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
       x_2d = array_ops.reshape(x, [1, 1])
       return sparse_tensor.SparseTensor(x_2d, x_1d, x_1d)
 
-    dataset = dataset_ops.Dataset.range(100).skip(
-        skip).map(lambda x: (x * x, make_sparse(x))).take(take)
+    dataset = dataset_ops.Dataset.range(100).skip(skip).map(
+        lambda x: (x * x, make_sparse(x))).take(take)
     if error is None:
-      dense_val, sparse_val = self.evaluate(
-          get_single_element.get_single_element(dataset))
+      dense_val, sparse_val = self.evaluate(dataset.get_single_element())
       self.assertEqual(skip * skip, dense_val)
       self.assertAllEqual([[skip]], sparse_val.indices)
       self.assertAllEqual([skip], sparse_val.values)
       self.assertAllEqual([skip], sparse_val.dense_shape)
     else:
       with self.assertRaisesRegex(error, error_msg):
-        self.evaluate(get_single_element.get_single_element(dataset))
+        self.evaluate(dataset.get_single_element())
 
   @combinations.generate(test_base.default_test_combinations())
   def testWindow(self):
     """Test that `get_single_element()` can consume a nested dataset."""
+
     def flat_map_func(ds):
       batched = ds.batch(2)
-      element = get_single_element.get_single_element(batched)
+      element = batched.get_single_element()
       return dataset_ops.Dataset.from_tensors(element)
 
     dataset = dataset_ops.Dataset.range(10).window(2).flat_map(flat_map_func)
-    self.assertDatasetProduces(
-        dataset, [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+    self.assertDatasetProduces(dataset,
+                               [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
 
   @combinations.generate(test_base.default_test_combinations())
   def testSideEffect(self):
@@ -92,7 +91,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @function.defun
     def fn():
-      _ = get_single_element.get_single_element(dataset_fn())
+      _ = dataset_fn().get_single_element()
       return "hello"
 
     self.evaluate(counter_var.initializer)
@@ -119,8 +118,8 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @function.defun
     def fn():
-      _ = get_single_element.get_single_element(dataset1_fn())
-      _ = get_single_element.get_single_element(dataset2_fn())
+      _ = dataset1_fn().get_single_element()
+      _ = dataset2_fn().get_single_element()
       return "hello"
 
     self.evaluate(counter_var.initializer)

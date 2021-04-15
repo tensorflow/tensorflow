@@ -378,6 +378,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
+        ":kernel_api",
         ":macros",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",

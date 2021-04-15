@@ -143,7 +143,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         local_sum = math_ops.reduce_sum(y, axis=axes, keepdims=True)
         local_squared_sum = math_ops.reduce_sum(math_ops.square(y), axis=axes,
                                                 keepdims=True)
-        batch_size = math_ops.cast(array_ops.shape_v2(y)[0], dtypes.float32)
+        batch_size = math_ops.cast(array_ops.shape_v2(y)[axes[0]],
+                                   dtypes.float32)
         # TODO(b/163099951): batch the all-reduces once we sort out the ordering
         # issue for NCCL. We don't have a mechanism to launch NCCL in the same
         # order in each replica nowadays, so we limit NCCL to batch all-reduces.
@@ -153,7 +154,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         global_batch_size = replica_ctx.all_reduce(reduce_util.ReduceOp.SUM,
                                                    batch_size)
 
-        axes_vals = [(array_ops.shape_v2(y))[i] for i in range(1, len(axes))]
+        axes_vals = [(array_ops.shape_v2(y))[axes[i]]
+                     for i in range(1, len(axes))]
         multiplier = math_ops.cast(math_ops.reduce_prod(axes_vals),
                                    dtypes.float32)
         multiplier = multiplier * global_batch_size

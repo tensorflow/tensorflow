@@ -401,11 +401,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_RESHAPE(), ParseReshape);
   }
 
-  TfLiteStatus AddResizeBilinear() {
-    return AddBuiltin(BuiltinOperator_RESIZE_BILINEAR,
-                      Register_RESIZE_BILINEAR(), ParseResizeBilinear);
-  }
-
   TfLiteStatus AddResizeNearestNeighbor() {
     return AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
                       tflite::ops::micro::Register_RESIZE_NEAREST_NEIGHBOR(),

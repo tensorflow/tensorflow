@@ -450,7 +450,8 @@ Status ConvertEdgeShapesToTensorShapes(
   return Status::OK();
 }
 
-// Get the TF fingerprint with the information from the TPUCompileOp.
+// Get the TF fingerprint with the information from the TPUCompileOp or
+// _TPUCompileMlirOp.
 Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
@@ -459,16 +460,19 @@ Status MaybeRegisterFingerprint(
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
   int num_dynamic_shapes = -1;
+  tensorflow::uint64 fingerprint = 0;
+
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == "TPUCompile") {
+    if (node->type_string() == "TPUCompile" ||
+        node->type_string() == "_TPUCompileMlir") {
       num_dynamic_shapes = node->attrs().Find("NumDynamicShapes")->i();
       if (num_dynamic_shapes <= 0) {
         break;
       }
       int visited = 0;
-      // TPUCompileOp takes Shape nodes as inputs. The number of Shape nodes
-      // matches the number of dynamic shaped inputs. The Shape nodes come from
-      // the input nodes:
+      // TPUCompileOp/_TPUCompileMlirOp take Shape nodes as inputs.
+      // The number of Shape nodes matches the number of dynamic shaped inputs.
+      // The Shape nodes come from the input nodes:
       //   [TPU Input] --> [Input Shape] --> [TPUCompileOp]
       for (auto in_node : node->in_nodes()) {
         if (in_node->type_string() != "Shape") {
@@ -487,6 +491,14 @@ Status MaybeRegisterFingerprint(
       }
       std::string metadata = node->attrs().Find("metadata")->s();
       metadata_proto.ParseFromString(metadata);
+
+      if (node->type_string() == "_TPUCompileMlir") {
+        std::string mlir_module = node->attrs().Find("mlir_module")->s();
+        fingerprint = tensorflow::Fingerprint64(mlir_module);
+      } else {
+        fingerprint = metadata_proto.function_library_fingerprint();
+      }
+
       break;
     }
   }
@@ -507,11 +519,9 @@ Status MaybeRegisterFingerprint(
     VLOG(2) << status.error_message();
     return Status::OK();
   }
-
-  VLOG(2) << "library_fingerprint: "
-          << metadata_proto.function_library_fingerprint();
-  uint64 tf_fingerprint = tpu::CreateFingerprintWithNameAndShapes(
-      metadata_proto.function_library_fingerprint(), arg_shapes);
+  uint64 tf_fingerprint =
+      tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+  VLOG(2) << "fingerprint: " << fingerprint;
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
 
   ResourceMgr* rm = GetTPUConfigResourceMgr();

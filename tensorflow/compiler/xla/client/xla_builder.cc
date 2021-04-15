@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -299,7 +300,7 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
   return GetProgramShape(root.handle());
 }
 
-void XlaBuilder::IsConstantVisitor(const int64 op_handle,
+void XlaBuilder::IsConstantVisitor(const int64 op_handle, int depth,
                                    absl::flat_hash_set<int64>* visited,
                                    bool* is_constant) const {
   if (visited->contains(op_handle) || !*is_constant) {
@@ -308,11 +309,21 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
 
   const HloInstructionProto& instr =
       *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+  HloInstructionProto to_print(instr);
+  to_print.clear_shape();
   const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
+  const string indent =
+      absl::StrJoin(std::vector<absl::string_view>(depth, "  "), "");
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << indent << "Visiting:";
+    for (const auto& l : absl::StrSplit(to_print.DebugString(), '\n')) {
+      VLOG(2) << indent << l;
+    }
+  }
   switch (opcode) {
     default:
       for (const int64 operand_id : instr.operand_ids()) {
-        IsConstantVisitor(operand_id, visited, is_constant);
+        IsConstantVisitor(operand_id, depth + 1, visited, is_constant);
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
@@ -349,9 +360,24 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     case HloOpcode::kParameter:
       *is_constant = false;
       break;
+    case HloOpcode::kGetTupleElement: {
+      const HloInstructionProto& operand_instr =
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+      if (HloOpcodeString(HloOpcode::kTuple) == operand_instr.opcode()) {
+        IsConstantVisitor(operand_instr.operand_ids(instr.tuple_index()),
+                          depth + 1, visited, is_constant);
+      } else {
+        for (const int64 operand_id : instr.operand_ids()) {
+          IsConstantVisitor(operand_id, depth + 1, visited, is_constant);
+        }
+      }
+    }
   }
-  if (!*is_constant) {
-    VLOG(1) << "Non-constant: " << instr.name() << " " << instr.opcode();
+  if (VLOG_IS_ON(1) && !*is_constant) {
+    VLOG(1) << indent << "Non-constant: ";
+    for (const auto& l : absl::StrSplit(to_print.DebugString(), '\n')) {
+      VLOG(1) << indent << l;
+    }
   }
   visited->insert(op_handle);
 }
@@ -3337,11 +3363,7 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
     // dimension.
     XlaOp static_size =
         ConstantR0<int32>(this, operand_shape->dimensions(dimension));
-
-    *instr.mutable_shape() = shape.ToProto();
-    instr.add_dimensions(dimension);
-    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
-                          {operand, static_size});
+    return SetDimensionSizeInternal(shape, operand, static_size, dimension);
   });
 }
 
@@ -3364,7 +3386,8 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-      HloOpcode::kConstant) {
+          HloOpcode::kConstant &&
+      shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(auto literal,
                         Literal::CreateFromProto(val_proto->literal(), true));
     if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
@@ -3387,7 +3410,7 @@ StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
 
   bool is_constant = true;
   absl::flat_hash_set<int64> visited;
-  IsConstantVisitor(operand.handle(), &visited, &is_constant);
+  IsConstantVisitor(operand.handle(), /*depth=*/0, &visited, &is_constant);
   return is_constant;
 }
 
@@ -3412,11 +3435,13 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       LookUpInstruction(root_op));
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "Build constant subgraph for:\n" << OpToString(root_op);
+  }
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
                     GetNextId());
-  entry.set_root_id(root->id());
   ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
@@ -3424,15 +3449,29 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
+  absl::flat_hash_map<int64, int64> substitutions;
   absl::flat_hash_set<int64> related_calls;  // Related computations.
   std::queue<int64> worklist;
   worklist.push(root->id());
   related_ops.insert(root->id());
+
   while (!worklist.empty()) {
     int64 handle = worklist.front();
     worklist.pop();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
                         LookUpInstructionByHandle(handle));
+
+    auto default_behavior = [&related_ops, &worklist, &related_calls,
+                             instr_proto]() {
+      for (int64 id : instr_proto->operand_ids()) {
+        if (related_ops.insert(id).second) {
+          worklist.push(id);
+        }
+      }
+      for (int64 called_id : instr_proto->called_computation_ids()) {
+        related_calls.insert(called_id);
+      }
+    };
 
     if (instr_proto->opcode() ==
             HloOpcodeString(HloOpcode::kGetDimensionSize) ||
@@ -3471,32 +3510,66 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
           const_instr;  // Add to the result constant graph.
-    } else {
-      for (int64 id : instr_proto->operand_ids()) {
+
+    } else if (instr_proto->opcode() ==
+               HloOpcodeString(HloOpcode::kGetTupleElement)) {
+      // Look through GTE(Tuple(..), i).
+      TF_ASSIGN_OR_RETURN(
+          const HloInstructionProto* maybe_tuple_instr,
+          LookUpInstructionByHandle(instr_proto->operand_ids(0)));
+
+      if (maybe_tuple_instr->opcode() == HloOpcodeString(HloOpcode::kTuple)) {
+        int64 id = maybe_tuple_instr->operand_ids(instr_proto->tuple_index());
+        // Enqueue any dependencies of `id`.
         if (related_ops.insert(id).second) {
           worklist.push(id);
         }
+        substitutions[handle] = id;
+
+      } else {
+        default_behavior();
       }
-      for (int64 called_id : instr_proto->called_computation_ids()) {
-        related_calls.insert(called_id);
-      }
+
+    } else {
+      default_behavior();
     }
   }
 
+  // Resolve any substitutions for the root id.
+  int64 root_id = root->id();
+  auto it = substitutions.find(root_id);
+  while (it != substitutions.end()) {
+    root_id = it->second;
+    it = substitutions.find(root_id);
+  }
+  entry.set_root_id(root_id);
+
   // Add related ops to the computation.
   for (int64 id : related_ops) {
+    if (substitutions.find(id) != substitutions.end()) {
+      // Skip adding this instruction; we will replace references to it with the
+      // substitution instruction's id.
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
                         LookUpInstructionByHandle(id));
 
-    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize) ||
+        InstrIsSetBound(instr_src)) {
       continue;
     }
-    if (InstrIsSetBound(instr_src)) {
-      continue;
-    }
-    auto* instr = entry.add_instructions();
-
+    HloInstructionProto* instr = entry.add_instructions();
     *instr = *instr_src;
+    // Replace operands in case we have substitutions mapped.
+    instr->clear_operand_ids();
+    for (int64 operand_id : instr_src->operand_ids()) {
+      auto it = substitutions.find(operand_id);
+      while (it != substitutions.end()) {
+        operand_id = it->second;
+        it = substitutions.find(operand_id);
+      }
+      instr->add_operand_ids(operand_id);
+    }
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
         StrCat(instr->name(), ".", entry.id(), ".", instr->id());
@@ -3516,6 +3589,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     }
   }
   *module->add_computations() = std::move(entry);
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "Constant computation:\n" << module->DebugString();
+  }
   return std::move(computation);
 }
 
