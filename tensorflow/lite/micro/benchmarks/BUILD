@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:recording_allocators",
     ],
 )
 
@@ -49,7 +50,6 @@ cc_binary(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro:recording_allocators",
         "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro/kernels:fully_connected",
     ],
