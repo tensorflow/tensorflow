@@ -99,7 +99,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                ContextDevicePlacementPolicy default_device_placement_policy,
                bool async, /*const*/ DeviceMgr* device_mgr,
                bool device_mgr_owned, /*const*/ Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
+               DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+               bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 
@@ -142,6 +143,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterFunction(AbstractFunction* f) override;
 
   bool UsesTFRT() override;
+
+  bool RunEagerOpAsFunction() const;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
@@ -734,6 +737,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Function that will be invoked in destructor to deallocate resources related
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
+  bool run_eager_op_as_function_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

@@ -78,6 +78,26 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+
+
+def enable_run_eager_op_as_function():
+  """Execute elementary eager ops (non-function) wrapped in a call op.
+
+  This should be functionally equivalent to running the eager op's kernel
+  directly (the default) but reduces the number of codepaths for executing
+  TF2 programs in the runtime, thereby improving consistency (in terms of
+  optimizations and rewrites for instance) and maintainability.
+  """
+  # Must be called before context is actually built.
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+
+
+def run_eager_op_as_function_enabled():
+  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
 # Expose it as internally public APIs for Keras use cases in b/171080602.
 tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
 
@@ -420,6 +440,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -522,6 +543,8 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
+            opts, self._run_eager_op_as_function)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
