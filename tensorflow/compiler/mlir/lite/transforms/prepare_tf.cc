@@ -586,6 +586,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
     revised_begin_mask |= strided_slice_op.new_axis_mask();
     revised_end_mask |= strided_slice_op.new_axis_mask();
 
+    // Enforce operator precedence.
+    uint64_t revised_shrink_axis_mask =
+        strided_slice_op.shrink_axis_mask() & ~strided_slice_op.new_axis_mask();
+
     auto attribute_type = rewriter.getIntegerType(64);
     rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         op, strided_slice_op.getType(), reshape, strided_slice_op.begin(),
@@ -595,8 +599,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.ellipsis_mask()),
         rewriter.getI64IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.shrink_axis_mask()));
+        rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
     return success();
   }
 
@@ -772,10 +775,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // Handle new axis mask.
     if (strided_slice_op.new_axis_mask() != 0) {
-      // We currently don't handle simultaneous shrink_ and new_axis masks.
-      if (!strided_slice_op.shrink_axis_mask()) {
-        return RewriteNewAxisMask(strided_slice_op, rewriter);
-      }
+      return RewriteNewAxisMask(strided_slice_op, rewriter);
     }
 
     auto ranked_input_type =

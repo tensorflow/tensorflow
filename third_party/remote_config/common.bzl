@@ -11,7 +11,7 @@ def auto_config_fail(msg):
     no_color = "\033[0m"
     fail("%sConfiguration Error:%s %s\n" % (red, no_color, msg))
 
-def which(repository_ctx, program_name):
+def which(repository_ctx, program_name, allow_failure = False):
     """Returns the full path to a program on the execution platform.
 
     Args:
@@ -24,12 +24,23 @@ def which(repository_ctx, program_name):
     if is_windows(repository_ctx):
         if not program_name.endswith(".exe"):
             program_name = program_name + ".exe"
-        return execute(
+        out = execute(
             repository_ctx,
             ["C:\\Windows\\System32\\where.exe", program_name],
-        ).stdout.replace("\\", "\\\\").rstrip()
+            empty_stdout_fine = allow_failure,
+        ).stdout
+        if out != None:
+            out = out.replace("\\", "\\\\").rstrip()
+        return out
 
-    return execute(repository_ctx, ["which", program_name]).stdout.rstrip()
+    out = execute(
+        repository_ctx,
+        ["which", program_name],
+        empty_stdout_fine = allow_failure,
+    ).stdout
+    if out != None:
+        out = out.replace("\\", "\\\\").rstrip()
+    return out
 
 def get_python_bin(repository_ctx):
     """Gets the python bin path.
@@ -45,12 +56,12 @@ def get_python_bin(repository_ctx):
         return python_bin
 
     # First check for an explicit "python3"
-    python_bin = which(repository_ctx, "python3")
+    python_bin = which(repository_ctx, "python3", True)
     if python_bin != None:
         return python_bin
 
     # Some systems just call pythone3 "python"
-    python_bin = which(repository_ctx, "python")
+    python_bin = which(repository_ctx, "python", True)
     if python_bin != None:
         return python_bin
 

@@ -5794,7 +5794,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Reducer",
             "include/mlir/Reducer/Passes.h.inc",
         ),
     ],

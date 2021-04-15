@@ -114,7 +114,7 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* /*executor*/, MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal.shape());
 
@@ -129,7 +129,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 
   // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
-  gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
+  gpu::OutfeedManager* outfeed_manager =
+      gpu::GetOrCreateOutfeedManager(executor);
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
   // Now wait till all the buffers are written.

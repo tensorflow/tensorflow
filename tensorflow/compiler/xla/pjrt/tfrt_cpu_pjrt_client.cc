@@ -336,7 +336,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
                       JitCompile(computation, argument_layout_pointers,
                                  build_options, execution_options));
   auto cpu_executable_ptr =
-      down_cast<cpu::CpuExecutable*>(cpu_executable.get());
+      tensorflow::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
 
   // `buffer_table[result_slice.index()]` points to result buffer:
   // If output is a tuple, it points to the buffer index table.
@@ -406,9 +406,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
   auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers),
       std::move(empty_definition_events), std::move(on_delete_callback));
-  return std::unique_ptr<PjRtBuffer>(
-      std::make_unique<TfrtCpuBuffer>(shape, std::move(tracked_device_buffer),
-                                      this, down_cast<TfrtCpuDevice*>(device)));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
+      shape, std::move(tracked_device_buffer), this,
+      tensorflow::down_cast<TfrtCpuDevice*>(device)));
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(
@@ -417,8 +417,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(
       "TfrtCpuClient::CreateUninitializedBuffer");
   VLOG(1) << "TfrtCpuClient::CreateUninitializedBuffer: shape: "
           << shape.DebugString() << " device: " << device->DebugString();
-  return AllocateDestinationBuffer(shape, /*definition_events=*/{},
-                                   down_cast<TfrtCpuDevice*>(device), this);
+  return AllocateDestinationBuffer(
+      shape, /*definition_events=*/{},
+      tensorflow::down_cast<TfrtCpuDevice*>(device), this);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
@@ -485,9 +486,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
   auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers), std::move(definition_events),
       std::move(on_delete_callback));
-  return std::unique_ptr<PjRtBuffer>(
-      std::make_unique<TfrtCpuBuffer>(shape, std::move(tracked_device_buffer),
-                                      this, down_cast<TfrtCpuDevice*>(device)));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
+      shape, std::move(tracked_device_buffer), this,
+      tensorflow::down_cast<TfrtCpuDevice*>(device)));
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
@@ -509,10 +510,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     definition_events.push_back(definition_event.CopyRef());
     avs.push_back(std::move(definition_event));
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TfrtCpuBuffer> output_buffer,
-      AllocateDestinationBuffer(shape, std::move(definition_events),
-                                down_cast<TfrtCpuDevice*>(device), this));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TfrtCpuBuffer> output_buffer,
+                      AllocateDestinationBuffer(
+                          shape, std::move(definition_events),
+                          tensorflow::down_cast<TfrtCpuDevice*>(device), this));
 
   if (!shape.IsTuple()) {
     TfrtCpuBuffer::ScopedHold device_buffer(
@@ -1086,7 +1087,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       std::make_shared<TrackedTfrtCpuDeviceBuffer>(
           on_device_shape_.IsTuple(), std::move(dst_buffers),
           std::move(definition_events)),
-      client(), down_cast<TfrtCpuDevice*>(dst_device)));
+      client(), tensorflow::down_cast<TfrtCpuDevice*>(dst_device)));
 }
 
 Status TfrtCpuBuffer::BlockHostUntilReady() {
@@ -1230,7 +1231,7 @@ TfrtCpuExecutable::ExecuteHelper(
     const int device_id = (*device_assignment_)(replica, partition);
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(device_id));
-    device = down_cast<TfrtCpuDevice*>(pjrt_device);
+    device = tensorflow::down_cast<TfrtCpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
   } else {
     CHECK(device_assignment_ == nullptr);
@@ -1270,7 +1271,7 @@ TfrtCpuExecutable::ExecuteHelper(
   input_deps.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
-    auto* tfrt_buffer = down_cast<TfrtCpuBuffer*>(handle);
+    auto* tfrt_buffer = tensorflow::down_cast<TfrtCpuBuffer*>(handle);
     if (tfrt_buffer->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -1331,7 +1332,8 @@ TfrtCpuExecutable::ExecuteHelper(
         std::move(empty_definition_events)));
   }
 
-  auto* cpu_executable = down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
+  auto* cpu_executable =
+      tensorflow::down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
   TF_ASSIGN_OR_RETURN(
       std::vector<std::shared_ptr<MaybeOwningCpuMemory>> buffer_table,
       CreateBufferTable(cpu_executable->buffer_assignment(), tracked_buffers));
@@ -1618,6 +1620,6 @@ TfrtCpuExecutable::ExecutePortable(
       /*replica=*/0,
       /*partition=*/0, RunId(), options,
       /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
-      down_cast<TfrtCpuDevice*>(device));
+      tensorflow::down_cast<TfrtCpuDevice*>(device));
 }
 }  // namespace xla

@@ -434,3 +434,55 @@ function test_xml_summary_exit {
   test_xml_summary
   exit "${RETVAL}"
 }
+
+# CPU size
+MAC_CPU_MAX_WHL_SIZE=190M
+LINUX_CPU_MAX_WHL_SIZE=170M
+WIN_CPU_MAX_WHL_SIZE=113M
+# GPU size
+LINUX_GPU_MAX_WHL_SIZE=435M
+WIN_GPU_MAX_WHL_SIZE=252M
+
+function test_tf_whl_size() {
+  WHL_PATH=${1}
+  # First, list all wheels with their sizes:
+  echo "Found these wheels: "
+  find $WHL_PATH -type f -exec ls -lh {} \;
+  echo "===================="
+  # Check CPU whl size.
+  if [[ "$WHL_PATH" == *"_cpu"* ]]; then
+    # Check MAC CPU whl size.
+    if [[ "$WHL_PATH" == *"-macos"* ]] && [[ $(find $WHL_PATH -type f -size +${MAC_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Mac CPU whl size has exceeded ${MAC_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Linux CPU whl size.
+    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux CPU whl size has exceeded ${LINUX_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows CPU whl size.
+    if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows CPU whl size has exceeded ${WIN_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  # Check GPU whl size
+  elif [[ "$WHL_PATH" == *"_gpu"* ]]; then
+    # Check Linux GPU whl size.
+    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux GPU whl size has exceeded ${LINUX_GPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows GPU whl size.
+    if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows GPU whl size has exceeded ${WIN_GPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  fi
+}
+

@@ -105,9 +105,16 @@ func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_leaky_relu
-func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %2 = "tf.LeakyRelu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-  return %2 : tensor<13x21x3xf32>
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.greater_equal
+// CHECK: tosa.select
+func @test_leaky_relu(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = "tf.LeakyRelu"(%arg0) {alpha = 0.5 : f32} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
 }
 
 // -----
@@ -764,23 +771,103 @@ func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
 
 // -----
 
+// CHECK-LABEL: test_left_shift
+// CHECK: tosa.logical_left_shift
+func @test_left_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> tensor<4x4xi32> {
+  %0 = "tf.LeftShift"(%arg0, %arg1) : (tensor<4x4xi32>, tensor<1x1xi32>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_right_shift
+// CHECK: tosa.arithmetic_right_shift
+func @test_right_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> tensor<4x4xi32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4x4xi32>, tensor<1x1xi32>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_one_hot
+// CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<[0, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 1, 1]} : (tensor<f32>) -> tensor<1x1x1xf32>
+// CHECK: %[[VAR2:.*]] = "tosa.tile"(%[[VAR1]]) {multiples = [16, 1, 1]} : (tensor<1x1x1xf32>) -> tensor<16x1x1xf32>
+// CHECK: %[[VAR3:.*]] = "tosa.reshape"(%arg2) {new_shape = [1, 1, 1]} : (tensor<f32>) -> tensor<1x1x1xf32>
+// CHECK: %[[VAR4:.*]] = "tosa.tile"(%[[VAR3]]) {multiples = [16, 2, 1]} : (tensor<1x1x1xf32>) -> tensor<16x2x1xf32>
+// CHECK: %[[VAR5:.*]] = "tosa.reshape"(%arg0) {new_shape = [16, 1]} : (tensor<4x4xi32>) -> tensor<16x1xi32>
+// CHECK: %[[VAR6:.*]] = "tosa.scatter"(%[[VAR4]], %[[VAR5]], %[[VAR2]]) : (tensor<16x2x1xf32>, tensor<16x1xi32>, tensor<16x1x1xf32>) -> tensor<16x2x1xf32>
+// CHECK: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [16, 1, 2]} : (tensor<16x2x1xf32>) -> tensor<16x1x2xf32>
+// CHECK: %[[VAR8:.*]] = "tosa.transpose"(%[[VAR7]], %[[VAR0]]) : (tensor<16x1x2xf32>, tensor<3xi32>) -> tensor<16x2x1xf32>
+// CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [4, 4, 2]} : (tensor<16x2x1xf32>) -> tensor<4x4x2xf32>
+func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<4x4x2xf32> {
+  %0 = "tf.Const"()  {value = dense<2> : tensor<i32>}  : () -> tensor<i32>
+  %1 = "tf.OneHot"(%arg0, %0, %arg1, %arg2) {axis = -1 : i64} : (tensor<4x4xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<4x4x2xf32>
+  return %1 : tensor<4x4x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_fakequant_with_min_max_args
-// CHECK-DAG: "tosa.const"() {value = dense<16383.75> : tensor<f32>}
-// CHECK-DAG: "tosa.const"() {value = dense<-1.000000e+00> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<-2.00003052> : tensor<f32>} 
+// CHECK-DAG: "tosa.const"() {value = dense<1.99996948> : tensor<f32>}
 // CHECK-DAG: "tosa.const"() {value = dense<6.10360876E-5> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<16383.75> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<5.000000e-01> : tensor<f32>}
 // CHECK: tosa.reshape
-// CHECK: tosa.mul
+// CHECK: tosa.minimum
 // CHECK: tosa.reshape
-// CHECK: tosa.add
-// CHECK: tosa.cast
-// CHECK: tosa.rescale
-// CHECK: tosa.rescale
-// CHECK: tosa.cast
+// CHECK: tosa.maximum
 // CHECK: tosa.reshape
 // CHECK: tosa.sub
 // CHECK: tosa.reshape
 // CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.add
+// CHECK: tosa.floor
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.add
 func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.FakeQuantWithMinMaxArgs"(%arg0)  {max = 2.000000e+00 : f32, min = -2.000000e+00 : f32, narrow_range = false, num_bits = 16 : i64}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %2 : tensor<13x21x3xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.transpose
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.gather
+// CHECK: tosa.reshape
+// CHECK: tosa.transpose
+func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<7x7x21x3xf32> {
+  %0 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Const"() {device = "", value = dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]> : tensor<7x7xi32>} : () -> tensor<7x7xi32>
+  %2 = "tf.GatherV2"(%arg0, %1, %0) {batch_dims = 0 : i64, device = ""} : (tensor<13x21x3xf32>, tensor<7x7xi32>, tensor<i32>) -> tensor<7x7x21x3xf32>
+  %3 = "tf.Identity"(%2) {device = ""} : (tensor<7x7x21x3xf32>) -> tensor<7x7x21x3xf32>
+  return %2 : tensor<7x7x21x3xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_nd
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reduce_sum
+// CHECK: tosa.reshape
+// CHECK: tosa.gather
+// CHECK: tosa.reshape
+func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
+  %0 = "tf.Const"() {device = "", value = dense<[[[0], [5], [3], [12], [2], [4], [3]], [[11], [1], [11], [10], [3], [12], [8]], [[5], [3], [1], [11], [3], [10], [0]], [[0], [8], [4], [7], [3], [12], [2]], [[7], [6], [11], [4], [2], [10], [11]], [[11], [1], [11], [1], [1], [11], [8]]]> : tensor<6x7x1xi32>} : () -> tensor<6x7x1xi32>
+  %1 = "tf.GatherNd"(%arg0, %0) {device = ""} : (tensor<13x21x3xf32>, tensor<6x7x1xi32>) -> tensor<6x7x21x3xf32>
+  %2 = "tf.Identity"(%1) {device = ""} : (tensor<6x7x21x3xf32>) -> tensor<6x7x21x3xf32>
+  return %1 : tensor<6x7x21x3xf32>
 }
