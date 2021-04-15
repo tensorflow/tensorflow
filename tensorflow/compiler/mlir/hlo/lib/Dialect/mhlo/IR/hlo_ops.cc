@@ -146,6 +146,46 @@ static void ReplaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
 }
 
 #include "mhlo_canonicalize.inc"
+
+// Common shape function helper for RngNormal and RngUniform.
+static LogicalResult rngInferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  if (operands.size() != 3)
+    return emitOptionalError(location, "expected 3 operands");
+
+  SmallVector<int64_t> shapeVector;
+  Value shapeOperand = operands[2];
+  auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
+  Type elementType = getElementTypeOrSelf(operands[1]);
+
+  // Match constant shape arguments.
+  DenseIntElementsAttr shape;
+  if (!matchPattern(shapeOperand, m_Constant(&shape))) {
+    if (!shapeOperandType.hasRank()) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    if (shapeOperandType.getRank() != 1)
+      return emitOptionalError(location, "shape operand required to be 1D");
+    int size = shapeOperandType.getDimSize(0);
+    if (size == ShapedType::kDynamicSize) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    shapeVector.resize(size, ShapedType::kDynamicSize);
+    inferredReturnShapes.emplace_back(shapeVector, elementType);
+    return success();
+  }
+
+  shapeVector.reserve(shape.size());
+  for (const APInt& fp : shape.getIntValues())
+    shapeVector.push_back(fp.getSExtValue());
+  inferredReturnShapes.emplace_back(shapeVector, elementType);
+  return success();
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -1842,28 +1882,52 @@ static TensorType GetReduceResultType(Type operand_ty,
 }
 
 void ReduceOp::build(OpBuilder& builder, OperationState& state,
-                     ValueRange operands, ValueRange init_values,
+                     ValueRange inputs, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
-  result_ty.reserve(operands.size());
+  result_ty.reserve(inputs.size());
 
-  for (Value operand : operands) {
+  for (Value input : inputs) {
     result_ty.push_back(
-        GetReduceResultType(operand.getType(), dimensions, &builder));
+        GetReduceResultType(input.getType(), dimensions, &builder));
   }
-  build(builder, state, result_ty, operands, init_values, dimensions);
+  build(builder, state, result_ty, inputs, init_values, dimensions);
 }
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (dimensions().getNumElements() == 0) {
-    for (Value input : this->operands()) {
+    for (Value input : this->inputs()) {
       results.push_back(input);
     }
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// RngNormalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngNormalOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// RngUniformOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngUniformOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//

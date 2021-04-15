@@ -60,6 +60,7 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
@@ -1607,7 +1608,7 @@ class TestDistributionStrategyWithDatasetsFile(test.TestCase,
     self.input_file_name = os.path.join(self.get_temp_dir(), 'input.tfrecord')
     inputs = np.zeros((20, 3), dtype=np.float32)
     input_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
-    input_dataset = input_dataset.map(parsing_ops.serialize_tensor)
+    input_dataset = input_dataset.map(io_ops.serialize_tensor)
     writer = writers.TFRecordWriter(self.input_file_name)
     writer.write(input_dataset)
 

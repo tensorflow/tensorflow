@@ -686,7 +686,7 @@ def as_dtype(type_value):
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
       enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-        a string type name, or a `numpy.dtype`.
+        a string type name, or a [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
 
   Returns:
     A `DType` corresponding to `type_value`.

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import copy
 import warnings
 
@@ -202,9 +203,19 @@ class CapturableResource(base.Trackable):
     """
     self._resource_handle = None
     self._resource_device = device
-    self._destruction_context = (
+    self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
         else ops.get_default_graph().as_default)
+
+  @property
+  def _destruction_context(self):
+    return getattr(self, "_self_destruction_context",
+                   # no-op context
+                   contextlib.suppress)
+
+  @_destruction_context.setter
+  def _destruction_context(self, destruction_context):
+    self._self_destruction_context = destruction_context
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -273,12 +284,10 @@ class CapturableResource(base.Trackable):
         # cycle, the __del__ for `ScopedTFFunction` can be collected before
         # this method is called. In that case, we can't do much but
         # continue.
-        try:
-          self._destroy_resource()
-
-        except defun.FunctionAlreadyGarbageCollectedError:
-          pass
-    except TypeError:
+        self._destroy_resource()
+    except Exception:  # pylint: disable=broad-except
+      # Silence all error logs that occur when attempting to destroy this
+      # resource.
       pass
 
 

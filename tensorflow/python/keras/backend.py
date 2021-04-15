@@ -1102,6 +1102,7 @@ def track_tf_optimizer(tf_optimizer):
   optimizers.add(tf_optimizer)
 
 
+@keras_export('keras.__internal__.backend.track_variable', v1=[])
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
@@ -1180,6 +1181,7 @@ def _get_variables(graph=None):
   return variables
 
 
+@keras_export('keras.__internal__.backend.initialize_variables', v1=[])
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
   variables = _get_variables(get_graph())
@@ -3697,7 +3699,7 @@ _VALUE_SET_CODE_STRING = """
 def get_value(x):
   """Returns the value of a variable.
 
-  `backend.get_value` is the compliment of `backend.set_value`, and provides
+  `backend.get_value` is the complement of `backend.set_value`, and provides
   a generic interface for reading from variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3758,7 +3760,7 @@ def batch_get_value(tensors):
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
-  `backend.set_value` is the compliment of `backend.get_value`, and provides
+  `backend.set_value` is the complement of `backend.get_value`, and provides
   a generic interface for assigning to variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3769,7 +3771,7 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value, dtype=dtype(x))
+  value = np.asarray(value, dtype=dtype_numpy(x))
   if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
@@ -3811,7 +3813,7 @@ def batch_set_value(tuples):
         assign_ops = []
         feed_dict = {}
         for x, value in tuples:
-          value = np.asarray(value, dtype=dtype(x))
+          value = np.asarray(value, dtype=dtype_numpy(x))
           tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
           if hasattr(x, '_assign_placeholder'):
             assign_placeholder = x._assign_placeholder
@@ -3839,7 +3841,7 @@ set_value.__doc__ = set_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
 @keras_export('keras.backend.print_tensor')
 @dispatch.add_dispatch_support
 @doc_controls.do_not_generate_docs
-def print_tensor(x, message=''):
+def print_tensor(x, message='', summarize=3):
   """Prints `message` and the tensor value when evaluated.
 
   Note that `print_tensor` returns a new tensor identical to `x`
@@ -3857,17 +3859,23 @@ def print_tensor(x, message=''):
   Args:
       x: Tensor to print.
       message: Message to print jointly with the tensor.
+      summarize: The first and last `summarize` elements within each dimension
+          are recursively printed per Tensor. If None, then the first 3 and last
+          3 elements of each dimension are printed for each tensor. If set to
+          -1, it will print all elements of every tensor.
 
   Returns:
       The same tensor `x`, unchanged.
   """
   if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
     with get_graph().as_default():
-      op = logging_ops.print_v2(message, x, output_stream=sys.stdout)
+      op = logging_ops.print_v2(
+          message, x, output_stream=sys.stdout, summarize=summarize)
       with ops.control_dependencies([op]):
         return array_ops.identity(x)
   else:
-    logging_ops.print_v2(message, x, output_stream=sys.stdout)
+    logging_ops.print_v2(
+        message, x, output_stream=sys.stdout, summarize=summarize)
     return x
 
 # GRAPH MANIPULATION
@@ -4045,7 +4053,7 @@ class GraphExecutionFunction:
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(
-            np.asarray(self.feed_dict[key], dtype=key.dtype.base_dtype.name))
+            np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
 
     # Refresh callable if anything has changed.
     if (self._callable_fn is None or feed_arrays != self._feed_arrays or

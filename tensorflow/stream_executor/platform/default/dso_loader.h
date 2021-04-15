@@ -51,6 +51,7 @@ port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 
@@ -85,6 +86,7 @@ port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader

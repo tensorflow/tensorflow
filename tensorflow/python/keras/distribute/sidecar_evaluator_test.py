@@ -34,6 +34,13 @@ from tensorflow.python.training.tracking import util as tracking_util
 _BATCH_SIZE = 32
 
 
+class DictMetric(keras.metrics.MeanSquaredError):
+
+  def result(self):
+    res = super().result()
+    return {'mean_squared_error_1': res, 'mean_squared_error_2': res}
+
+
 class SidecarEvaluatorTest(test.TestCase):
 
   def createTestModel(self, compile_model):
@@ -42,7 +49,8 @@ class SidecarEvaluatorTest(test.TestCase):
       model.compile(
           gradient_descent.SGD(),
           loss='mse',
-          metrics=keras.metrics.CategoricalAccuracy())
+          metrics=[keras.metrics.CategoricalAccuracy(),
+                   DictMetric()])
     return model
 
   def assertSummaryEventsWritten(self, log_dir):
@@ -64,7 +72,9 @@ class SidecarEvaluatorTest(test.TestCase):
           event_pb_written = True
     self.assertCountEqual(event_tags, [
         'evaluation_categorical_accuracy_vs_iterations',
-        'evaluation_loss_vs_iterations'
+        'evaluation_loss_vs_iterations',
+        'evaluation_mean_squared_error_1_vs_iterations',
+        'evaluation_mean_squared_error_2_vs_iterations',
     ])
 
     # Verifying at least one non-zeroth step is written to summary.
@@ -119,13 +129,14 @@ class SidecarEvaluatorTest(test.TestCase):
 
     # Create a new model used for evaluation.
     eval_model = self.createTestModel(compile_model=True)
-    # Have an sidecar_evaluator evaluate once.
-    sidecar_evaluator_lib.SidecarEvaluator(
+    # Have a sidecar_evaluator evaluate once.
+    sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
         max_evaluations=1,
-        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)]).start()
+        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)])
+    sidecar_evaluator.start()
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't
     # work.
@@ -153,14 +164,26 @@ class SidecarEvaluatorTest(test.TestCase):
 
     # Create a new model used for evaluation.
     eval_model = self.createTestModel(compile_model=True)
-    # Have an sidecar_evaluator evaluate once.
+    # Have a sidecar_evaluator evaluate once.
     sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
         max_evaluations=1,
         callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)])
-    sidecar_evaluator.start()
+    with self.assertLogs() as cm:
+      sidecar_evaluator.start()
+
+    metrics_logging = [
+        line for line in cm.output if 'End of evaluation' in line
+    ]
+    self.assertLen(metrics_logging, 1)
+    expected_logged_metrics = [
+        'loss', 'categorical_accuracy', 'mean_squared_error_1',
+        'mean_squared_error_2'
+    ]
+    for metric_name in expected_logged_metrics:
+      self.assertRegex(metrics_logging[0], f'{metric_name}=')
 
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't

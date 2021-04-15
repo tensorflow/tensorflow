@@ -1423,3 +1423,20 @@ func @reduce_window_invalid(%arg0: tensor<4x2xf32>, %arg1: tensor<4x3xi32>, %ini
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x3xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
+
+// -----
+
+func @rng_normal_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+  %cst = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+1 {{tensor<7xf32>}}
+  %0 = "mhlo.rng_normal"(%arg0, %arg1, %cst) : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<12xf32>
+  return
+}
+
+// -----
+
+func @rng_uniform_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<7xi64>) {
+  // expected-error @+1 {{tensor<?x?x?x?x?x?x?xf32>}}
+  %0 = "mhlo.rng_uniform"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<7xi64>) -> tensor<?xf32>
+  return
+}

@@ -236,11 +236,18 @@ class SidecarEvaluator(object):
       self.model.evaluate(
           self.data, steps=self.steps, callbacks=self.callbacks, verbose=2)
 
+      return_metrics = {}
+      for metric in self.model.metrics:
+        result = metric.result()
+        if isinstance(result, dict):
+          return_metrics.update(result)
+        else:
+          return_metrics[metric.name] = result
+
       logging.info(
           'End of evaluation. Metrics: %s', ' '.join([
-              '{}={}'.format(metric.name,
-                             metric.result().numpy())
-              for metric in self.model.metrics
+              '{}={}'.format(name, value.numpy())
+              for name, value in return_metrics.items()
           ]))
 
       # TODO(rchao): Make the max evaluation robust in case users save the

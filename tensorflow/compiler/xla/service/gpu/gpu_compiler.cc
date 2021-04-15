@@ -579,7 +579,7 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
-          /*must_not_live_out=*/{}, DummyCanShareBufferFunction));
+          /*must_not_live_out=*/{}, GetCanShareBuffer()));
 
   return std::make_tuple(std::move(hlo_module), std::move(assignment));
 }

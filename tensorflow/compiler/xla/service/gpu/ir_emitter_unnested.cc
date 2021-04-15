@@ -646,10 +646,10 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
     HloFunctionImporter::SetLayoutForMlir(fused_copy, output_shape);
     b.create<mlir::memref::TensorStoreOp>(loc, fused_copy, copy.output());
   } else if (auto reduce = mlir::dyn_cast<mlir::lmhlo::ReduceOp>(input.op)) {
-    std::vector<mlir::Value> operands = load_memrefs(reduce.operands());
+    std::vector<mlir::Value> inputs = load_memrefs(reduce.inputs());
     std::vector<mlir::Value> init_values = load_memrefs(reduce.init_values());
-    auto fused_reduce = b.create<mlir::mhlo::ReduceOp>(
-        loc, operands, init_values, reduce.dimensions());
+    auto fused_reduce = b.create<mlir::mhlo::ReduceOp>(loc, inputs, init_values,
+                                                       reduce.dimensions());
     fused_reduce.body().takeBody(reduce.body());
     CHECK_EQ(fused_reduce.getNumResults(), reduce.out().size());
     std::vector<Shape> output_shapes;

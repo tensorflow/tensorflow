@@ -259,7 +259,7 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
   func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string custom_option_buffer;
-  if (failed(CreateNgramsCustomOption(func, attr.GetAttrs(),
+  if (failed(CreateNgramsCustomOption(func, attr.getAttrs(),
                                       custom_option_buffer))) {
     return failure();
   }
@@ -286,7 +286,7 @@ LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
   }
 
   auto hash_seed =
-      attr.GetAttrs().get("hash_seed").dyn_cast_or_null<ArrayAttr>();
+      attr.getAttrs().get("hash_seed").dyn_cast_or_null<ArrayAttr>();
   if (!hash_seed) {
     return func.emitError()
            << "'hash_seed' attribute is not set or not an array";
@@ -301,7 +301,7 @@ LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
            << "Output 2nd dimension should be the num of hash seeds.";
   }
 
-  auto buckets = attr.GetAttrs().get("buckets").dyn_cast_or_null<IntegerAttr>();
+  auto buckets = attr.getAttrs().get("buckets").dyn_cast_or_null<IntegerAttr>();
   if (!buckets) {
     return func.emitError() << "'buckets' attribute is not set or not int";
   }
@@ -339,7 +339,7 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
   func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string custom_option_buffer;
-  if (failed(CreateSgnnProjectionCustomOption(func, attr.GetAttrs(),
+  if (failed(CreateSgnnProjectionCustomOption(func, attr.getAttrs(),
                                               custom_option_buffer))) {
     return failure();
   }

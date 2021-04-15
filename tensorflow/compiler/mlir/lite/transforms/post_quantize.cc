@@ -51,6 +51,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   bool emit_quant_adaptor_ops_;
 };
 
+// TODO(fengliuai): migrate to use modify_io_nodes pass.
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();

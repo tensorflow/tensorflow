@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DatasetInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DistributeOptions"
     mtype: "<type \'type\'>"
   }
@@ -153,6 +157,10 @@ tf_module {
     argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
+    name: "index_table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'-1\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
+  }
+  member_method {
     name: "latency_stats"
     argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
@@ -211,6 +219,10 @@ tf_module {
   member_method {
     name: "snapshot"
     argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "take_while"

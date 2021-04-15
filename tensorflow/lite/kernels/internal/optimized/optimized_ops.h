@@ -4122,10 +4122,6 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
   const int32_t clamp_max = std::numeric_limits<T>::max();
   const int32_t clamp_min = std::numeric_limits<T>::min();
 
-  int32_t zero_point_offset = 0;
-  if (std::is_same<T, int8_t>::value) {
-    zero_point_offset = 128;
-  }
   for (int i = 0; i < excluding_last_dim; ++i) {
     T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
@@ -4134,10 +4130,10 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_q8 = std::numeric_limits<T>::max();
+    const int32_t max_uint8 = std::numeric_limits<uint8>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_q8 - max_val];
+    const float* table_offset = &params.table[max_uint8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4147,8 +4143,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
-        params.scale;
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.
@@ -7899,6 +7894,55 @@ inline int ArgMaxVector(const float* input_data, int size) {
   return max_index;
 }
 
+template <>
+inline int ArgMaxVector(const int8_t* input_data, int size) {
+  int32_t max_index = 0;
+  int8_t max_value = input_data[0];
+  int32_t i = 0;
+#ifdef USE_NEON
+  constexpr int VECTOR_SIZE = 16;
+  if (size >= VECTOR_SIZE) {
+    int8x16_t max_value_s8x16;
+    for (; i <= size - VECTOR_SIZE; i += VECTOR_SIZE) {
+      max_value_s8x16 = vld1q_s8(input_data + i);
+      int8_t max_from_vec;
+#ifdef __aarch64__
+      max_from_vec = vmaxvq_s8(max_value_s8x16);
+#else   // 32 bit
+      int8x8_t max_val_s8x8 =
+          vpmax_s8(vget_low_s8(max_value_s8x16), vget_high_s8(max_value_s8x16));
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_from_vec = vget_lane_s8(max_val_s8x8, 0);
+#endif  // __aarch64__
+      if (max_from_vec > max_value) {
+        max_value = max_from_vec;
+        max_index = i;
+      }
+    }
+  }
+  for (int start_idx = max_index; start_idx < max_index + VECTOR_SIZE;
+       start_idx++) {
+    if (input_data[start_idx] == max_value) {
+      max_index = start_idx;
+      break;
+    }
+  }
+
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const float curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+
+  return max_index;
+}
+
 // Specializes ArgMinMax function with axis=dims-1.
 // In this case, ArgMinMax reduction is applied on contiguous memory.
 template <typename T1, typename T2, bool is_arg_max>
@@ -7953,7 +7997,8 @@ inline void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
 
   // Call specialized function when axis=dims-1. So far, only float32 is
   // optimized so reroute to specialized function only when T1 is float32.
-  if (inner_size == 1 && std::is_same<T1, float>::value) {
+  if (inner_size == 1 &&
+      (std::is_same<T1, float>::value || std::is_same<T1, int8_t>::value)) {
     if (is_arg_max) {
       ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/true>(
           {outer_size, axis_size}, input1_data, {outer_size}, output_data);
