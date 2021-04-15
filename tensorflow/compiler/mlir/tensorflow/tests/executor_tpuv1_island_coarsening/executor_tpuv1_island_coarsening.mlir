@@ -156,6 +156,36 @@ func @fuse_in_partitioned_output_op() {
   return
 }
 
+// Check that we bring in special TPU producer ops of first island.
+// CHECK-LABEL: func @fuse_in_special_tpu_operand_producer_of_first_island
+func @fuse_in_special_tpu_operand_producer_of_first_island() {
+  tf_executor.graph {
+// CHECK: island wraps "tf.Const"
+// CHECK-NEXT: island
+// CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.AddV2"
+    %outputs_0, %control_0 = tf_executor.island wraps "tf.Const"() {value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%outputs_0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%replicated_out, %replicated_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in special TPU consumer ops of first island.
+// CHECK-LABEL: func @fuse_in_special_tpu_consumer_of_first_island
+func @fuse_in_special_tpu_consumer_of_first_island() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_0) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}
+
 // Check that we bring in chain of TPUReplicatedInput, Identity and TPUPartitionedInput operand producers.
 // CHECK-LABEL: func @fuse_in_chain_special_ops_producers
 func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {

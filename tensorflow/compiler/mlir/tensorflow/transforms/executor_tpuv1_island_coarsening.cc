@@ -210,6 +210,15 @@ void AddSpecialTpuOutputOps(IslandOp candidate_island,
   }
 }
 
+// Looks at the inputs/outputs of `island` to bring in special TPU input/output
+// ops that may not have `_tpu_replicate` attribute.
+void AddSpecialTpuOps(IslandOp island, SmallVectorImpl<IslandOp>& islands,
+                      SmallPtrSetImpl<Operation*>& wrapped_ops) {
+  assert(island.WrapsSingleOp());
+  AddSpecialTpuInputOps(&island.GetBody().front(), islands, wrapped_ops);
+  AddSpecialTpuOutputOps(island, islands, wrapped_ops);
+}
+
 // Looks for an IslandOp that wraps a single operation tagged with the
 // _tpu_replicate attribute, and merges it with all the following operations in
 // the block. Sets the `changed` boolean to true if any island is merged.
@@ -237,12 +246,12 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
                           << *island.getOperation() << "\n");
 
   // Collect the islands to merge together in this new cluster
-  SmallVector<IslandOp, 16> islands{island};
-  SmallPtrSet<Operation*, 16> wrapped_ops{&island.GetBody().front()};
-  IslandOp last_island_added = island;
+  SmallVector<IslandOp, 16> islands;
+  SmallPtrSet<Operation*, 16> wrapped_ops;
+  IslandOp last_island_added;
 
-  for (Operation& candidate_op : llvm::make_early_inc_range(llvm::make_range(
-           std::next(op->getIterator()), op->getBlock()->end()))) {
+  for (Operation& candidate_op : llvm::make_early_inc_range(
+           llvm::make_range(op->getIterator(), op->getBlock()->end()))) {
     IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
     if (!candidate_island || !candidate_island.WrapsSingleOp()) continue;
     // Check if we have an operation with the expected attribute.
@@ -270,14 +279,7 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     islands.push_back(candidate_island);
     last_island_added = candidate_island;
 
-    // Look at captured operands to bring-in tf.ReplicatedInput /
-    // tf.PartitionedInput ops in the island as well. TODO: also pull in
-    // tf.Const, some optimizations can benefit from this.
-    AddSpecialTpuInputOps(&candidate_wrapped_op, islands, wrapped_ops);
-
-    // Look at results to bring-in tf.ReplicatedOutput / tf.PartitionedOutput
-    // ops in the island as well.
-    AddSpecialTpuOutputOps(candidate_island, islands, wrapped_ops);
+    AddSpecialTpuOps(candidate_island, islands, wrapped_ops);
   }
 
   // If no other island was found to merge with the existing one, just
