@@ -1720,7 +1720,11 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
 @dispatch.add_dispatch_support
-def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0, axis=-1):
+def binary_crossentropy(y_true,
+                        y_pred,
+                        from_logits=False,
+                        label_smoothing=0,
+                        axis=-1):
   """Computes the binary crossentropy loss.
 
   Standalone usage:
