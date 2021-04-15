@@ -137,6 +137,7 @@ message TypeSpecProto {
     VARIABLE_SPEC = 9;        // tf.VariableSpec
     ROW_PARTITION_SPEC = 10;  // RowPartitionSpec from ragged/row_partition.py
     reserved 11;
+    REGISTERED_TYPE_SPEC = 12;
   }
   TypeSpecClass type_spec_class = 1;
 
