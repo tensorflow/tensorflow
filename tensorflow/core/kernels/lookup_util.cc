@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -413,6 +414,132 @@ Status InitializeTableFromTextFile(
     return Status::OK();
   }
   return s;
+}
+
+class DatasetIterator : public InitializableLookupTable::InitTableIterator {
+ public:
+  explicit DatasetIterator(data::DatasetBase* dataset) : dataset_(dataset) {}
+
+  ~DatasetIterator() override {}
+
+  Status Init(OpKernelContext* ctx) {
+    data::IteratorContext::Params params(ctx);
+    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(params.flr);
+    params.function_handle_cache = function_handle_cache_.get();
+    params.resource_mgr = &resource_mgr_;
+    cancellation_manager_ =
+        absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+    params.cancellation_manager = cancellation_manager_.get();
+    iterator_ctx_ = absl::make_unique<data::IteratorContext>(std::move(params));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(), nullptr,
+                                              "LookupTable", &iterator_));
+    Next();
+    return Status::OK();
+  }
+
+  void Next() override {
+    bool end_of_input;
+    tensors_.clear();
+    status_ = iterator_->GetNext(iterator_ctx_.get(), &tensors_, &end_of_input);
+    if (status_.ok() && end_of_input) {
+      status_ = errors::OutOfRange("end of iterator");
+    }
+  }
+
+  bool Valid() const override { return status_.ok(); }
+
+  const Tensor& keys() const override { return tensors_[0]; }
+
+  const Tensor& values() const override { return tensors_[1]; }
+
+  Status status() const override { return status_; }
+
+  int64 total_size() const override {
+    int64 size = dataset_->Cardinality();
+    if (size < 0) {
+      return 0;
+    }
+    return size;
+  }
+
+ private:
+  data::DatasetBase* dataset_;  // not owned.
+  std::unique_ptr<data::IteratorContext> iterator_ctx_;
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
+  ResourceMgr resource_mgr_;
+  std::unique_ptr<CancellationManager> cancellation_manager_;
+  std::unique_ptr<data::IteratorBase> iterator_;
+  std::vector<Tensor> tensors_;
+  Status status_;
+};
+
+std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
+    OpKernelContext* ctx, data::DatasetBase* dataset) {
+  dataset->Ref();
+  auto unref_dataset = [dataset] { dataset->Unref(); };
+  return absl::make_unique<InitializerSerializer>(
+      [dataset, resource_manager = ctx->resource_manager()](
+          GraphDefBuilder* builder, Node* table, Node** out) {
+        data::DatasetBase::DatasetGraphDefBuilder db(builder);
+        data::SerializationContext::Params params;
+        params.serialize_data_tensors = true;
+        params.resource_mgr = resource_manager;
+        data::SerializationContext serialization_ctx(params);
+        Node* dataset_node;
+        TF_RETURN_IF_ERROR(
+            db.AddInputDataset(&serialization_ctx, dataset, &dataset_node));
+        *out = ops::BinaryOp("InitializeTableFromDataset", table, dataset_node,
+                             builder->opts());
+        if (*out == nullptr) {
+          return errors::Internal(
+              "Failed to create InitializeTableFromDataset op: ",
+              builder->opts().StatusToString());
+        }
+        return Status::OK();
+      },
+      /*cleanup=*/std::move(unref_dataset));
+}
+
+void InitializeTableFromDataset(OpKernelContext* ctx,
+                                data::DatasetBase* dataset,
+                                InitializableLookupTable* table,
+                                AsyncOpKernel::DoneCallback done) {
+  // Construct the cleanup before `iter` below so that `iter` is destroyed
+  // before calling `done`.
+  auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
+  // Assert that the dataset types match up to that expected in the table.
+  const auto& dataset_types = dataset->output_dtypes();
+  OP_REQUIRES(
+      ctx, dataset_types.size() == 2,
+      errors::InvalidArgument("Dataset should have two output types only"));
+  OP_REQUIRES(ctx, dataset_types[0] == table->key_dtype(),
+              errors::InvalidArgument(
+                  "Key dtype expected: ", table->key_dtype(),
+                  " but obtained: ", dataset_types[0], " from the dataset"));
+  OP_REQUIRES(ctx, dataset_types[1] == table->value_dtype(),
+              errors::InvalidArgument(
+                  "Value dtype expected: ", table->value_dtype(),
+                  " but obtained: ", dataset_types[1], " from the dataset"));
+  // Assert that the dataset output shapes are scalars.
+  const auto& dataset_shapes = dataset->output_shapes();
+  OP_REQUIRES(
+      ctx, dataset_shapes.size() == 2,
+      errors::InvalidArgument("Dataset should have two output shapes only"));
+  OP_REQUIRES(ctx, dataset_shapes[0].IsCompatibleWith(PartialTensorShape({})),
+              errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                      dataset_shapes[0].DebugString()));
+  OP_REQUIRES(ctx, dataset_shapes[1].IsCompatibleWith(PartialTensorShape({})),
+              errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                      dataset_shapes[1].DebugString()));
+  DatasetIterator iter(dataset);
+  OP_REQUIRES_OK(ctx, iter.Init(ctx));
+  Status s =
+      table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
+  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+    LOG(INFO) << "Table already initialized from dataset.";
+    return;
+  }
+  ctx->SetStatus(s);
 }
 
 }  // namespace lookup
