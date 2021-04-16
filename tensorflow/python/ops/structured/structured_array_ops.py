@@ -96,6 +96,51 @@ def expand_dims_v2(input, axis, name=None):  # pylint: disable=redefined-builtin
   return _expand_dims_impl(input, axis, name=name)
 
 
+@dispatch.dispatch_for_types(array_ops.gather, StructuredTensor)
+def gather(params,
+           indices,
+           validate_indices=None,
+           name=None,
+           axis=None,
+           batch_dims=0):
+  """tf.gather for structured tensors.
+
+  Does not support (yet) checks on illegal axis values, et cetera.
+
+  Indices must be a ragged or dense tensor.
+  Args:
+    params: a structured tensor to be gathered
+    indices: a ragged tensor or tensor to gather by.
+    validate_indices: whether to validate the indices
+    name: the name of the op(s).
+    axis: the axis in params to gather on.
+    batch_dims: the number of batch dimensions.
+
+  Returns:
+    the params reorganized according to indices.
+  """
+  if name is None:
+    name = 'gather'
+  with ops.name_scope(name):
+    if axis is None:
+      axis = batch_dims
+    ndims_name = params.shape.rank
+    axis = array_ops.get_positive_axis(axis, ndims_name)
+    indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        indices, name='indices')
+
+    def leaf_op(p):
+      return array_ops.gather(
+          p,
+          indices,
+          validate_indices=validate_indices,
+          axis=axis,
+          batch_dims=batch_dims,
+          name=None)
+
+    return _extend_op_single(params, leaf_op)
+
+
 @dispatch.dispatch_for_types(array_ops.concat, StructuredTensor)
 def concat(values, axis, name: str = 'concat'):
   """tf.concat for structured tensors.
@@ -230,6 +275,7 @@ def _expand_st_row_partitions(st, axis):
         1, nvals, nrows=nvals, validate=False),) + st.row_partitions[axis - 1:]
 
 
+# TODO(martinz): consider allowing values to be nested.
 def _extend_op(values, leaf_op, empty_st_op=None):
   """Extend an op from RaggedTensor and Tensor to StructuredTensor.
 
@@ -275,6 +321,22 @@ def _extend_op(values, leaf_op, empty_st_op=None):
     return StructuredTensor.from_fields(new_fields, shape=empty_result.shape)
   else:
     return leaf_op(values)
+
+
+def _extend_op_single(value, leaf_op, empty_st_op=None):
+  """Extend an op to a value instead of a list of values."""
+
+  def to_list_op(element_op):
+    if element_op is None:
+      return None
+
+    def list_op(values):
+      [value] = values
+      return element_op(value)
+
+    return list_op
+
+  return _extend_op([value], to_list_op(leaf_op), to_list_op(empty_st_op))
 
 
 def empty_st_op_like_zeros(leaf_op):
