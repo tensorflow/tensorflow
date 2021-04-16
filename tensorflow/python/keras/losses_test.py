@@ -89,8 +89,8 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         atol=1e-5)
 
     axis=0
-    output_from_logit_axis = losses.categorical_crossentropy(
-        target, logits, from_logits=True, axis=axis)
+    output_from_logit_axis = losses.categorical_crossentropy(target,
+        logits, from_logits=True, axis=axis)
     output_from_softmax_axis = losses.categorical_crossentropy(target,
         softmax_output, axis=axis)
 
@@ -178,8 +178,8 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         atol=1e-5)
 
     axis=0
-    output_from_logit_axis = losses.binary_crossentropy(
-        target, logits, from_logits=True, axis=axis)
+    output_from_logit_axis = losses.binary_crossentropy(target,
+        logits, from_logits=True, axis=axis)
     output_from_sigmoid_axis = losses.binary_crossentropy(target,
         sigmoid_output, axis=axis)
 
