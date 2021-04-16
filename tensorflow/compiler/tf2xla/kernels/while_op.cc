@@ -285,6 +285,10 @@ XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
   }
+  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
+                                     &propagate_compile_time_consts_));
+  }
   if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
                     &original_node_name_)
            .ok())
@@ -321,10 +325,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // with the const args.
   std::vector<bool> compile_time_const_arg_indices(ctx->num_inputs());
   int num_compile_time_const_args = 0;
-  OP_REQUIRES_OK(ctx, ConvertLoopInvariantsToConst(
-                          ctx, body_name_attr_, cond_name_attr_, &arguments,
-                          &compile_time_const_arg_indices,
-                          &num_compile_time_const_args, compiler->client()));
+  if (propagate_compile_time_consts_) {
+    OP_REQUIRES_OK(ctx, ConvertLoopInvariantsToConst(
+                            ctx, body_name_attr_, cond_name_attr_, &arguments,
+                            &compile_time_const_arg_indices,
+                            &num_compile_time_const_args, compiler->client()));
+  }
 
   VLOG(1) << "Compiling body";
 
