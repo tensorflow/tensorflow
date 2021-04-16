@@ -74,7 +74,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // currently not the case (see b/177478741).
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {
       "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedInput", "tf.TPUReplicatedOutput"};
+      "tf.TPUReplicatedOutput"};
   pm.addNestedPass<FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
