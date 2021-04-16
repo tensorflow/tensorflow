@@ -191,6 +191,8 @@ class Conv(Layer):
           'of groups. Received groups={}, but the input has {} channels '
           '(full input shape is {}).'.format(self.groups, input_channel,
                                              input_shape))
+    if self.filters == 0:
+      raise ValueError("filters should not be zero")
     kernel_shape = self.kernel_size + (input_channel // self.groups,
                                        self.filters)
 
@@ -969,6 +971,8 @@ class Conv1DTranspose(Conv1D):
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
+    if self.filters == 0:
+      raise ValueError("filters should not be zero")
     input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=3, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
@@ -1240,6 +1244,8 @@ class Conv2DTranspose(Conv2D):
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
+    if self.filters == 0:
+      raise ValueError("filters should not be zero")
     input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
@@ -1550,6 +1556,8 @@ class Conv3DTranspose(Conv3D):
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined, found None: ' + str(input_shape))
+    if self.filters == 0:
+      raise ValueError("filters should not be zero")
     input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (self.filters, input_dim)
     self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
@@ -1814,6 +1822,8 @@ class SeparableConv(Conv):
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
+    if self.filters == 0:
+      raise ValueError("filters should not be zero")
     input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
