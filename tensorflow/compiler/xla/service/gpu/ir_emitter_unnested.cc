@@ -533,11 +533,6 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
       new IrEmitterUnnested(hlo_module_config, ir_emitter_context));
 }
 
-Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
-  bindings_.UnbindAllLocalIrValues();
-  return DfsHloVisitor::Postprocess(hlo);
-}
-
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     absl::string_view name, absl::Span<const BufferAllocation* const> args) {
   // Compute the kernel name. The opcode string may contain "-" which cannot be
@@ -3323,128 +3318,18 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
-// Figures out how to access the buffers for all subshapes of hlo's operands and
-// for hlo itself (i.e. all the buffers produced by HLO).
-//
-// Returns a vector of `HloBufferSlice`s, one for each HLO subshape `hlo` needs
-// to access (including one or more for itself).
-//
-// This function conservatively assumes that we'll touch all sub-buffers of
-// every operand and of the output.
-static std::vector<HloBufferSlice> GetHloBufferSlices(
-    const HloInstruction* hlo, const BufferAssignment& buffer_assn) {
-  std::vector<HloBufferSlice> result;
-  absl::flat_hash_set<std::pair<const HloInstruction*, ShapeIndex>>
-      inserted_buffer_slices;
-
-  // Tries to find a slice plus an array of indices i1, ..., iN such that the
-  // sub-buffer for instr at index can be found at slice[i1]...[iN].
-  auto find_slice_for = [&](const HloInstruction* instr,
-                            const ShapeIndex& index)
-      -> optional<std::pair<BufferAllocation::Slice, ShapeIndex>> {
-    // Simple, common case: Is the buffer for instr known at runtime?  If so,
-    // we're done.
-    auto slice = buffer_assn.GetUniqueSlice(instr, index);
-    if (slice.ok()) {
-      return {{slice.ValueOrDie(), ShapeIndex()}};
-    }
-
-    // If that didn't work, walk up any bitcasts that we might see.  These must
-    // appear before any GTE instructions, because it's illegal to bitcast to a
-    // tuple type.
-    const HloInstruction* parent = instr;
-    while (parent->IsEffectiveBitcast()) {
-      parent = parent->operand(0);
-
-      auto slice = buffer_assn.GetUniqueSlice(parent, {});
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), ShapeIndex()}};
-      }
-    }
-
-    // Check whether instr is a GTE instruction.  If it is, see if we can get a
-    // buffer for its parent, and continue walking up parents until we find a
-    // defined buffer or we hit something that's not a GTE.
-    ShapeIndex gte_indices;
-    while (parent->opcode() == HloOpcode::kGetTupleElement) {
-      gte_indices.push_front(parent->tuple_index());
-      parent = parent->operand(0);
-
-      auto slice = buffer_assn.GetUniqueSlice(parent, {});
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), gte_indices}};
-      }
-    }
-
-    // Finally, if we don't know the buffer for instr at index, see if we know
-    // the buffer for instr at index without its last element.  If so, we can
-    // dynamically find the buffer for instr by dereferencing a pointer in that
-    // buffer.  Continue looking this way until we run out of elements in
-    // 'index'.
-    //
-    // We can almost always get a buffer without resorting to this.  The only
-    // exception is for cases where the relevant sub-buffer is truly unknowable,
-    // for example the sub-buffer of a tuple-shaped select.
-    ShapeIndex new_index = index;
-    while (!new_index.empty()) {
-      gte_indices.push_front(new_index.back());
-      new_index.pop_back();
-      auto slice = buffer_assn.GetUniqueSlice(instr, new_index);
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), gte_indices}};
-      }
-    }
-
-    return nullopt;
-  };
-
-  // Adds entries for all subshapes of instr to `slices`.
-  auto add_slices_for = [&](const HloInstruction* instr) {
-    ShapeUtil::ForEachSubshape(
-        instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
-          if (!inserted_buffer_slices.insert({instr, index}).second) {
-            // HLOs can have duplicate operands; don't bother redoing work.
-            return;
-          }
-          auto maybe_slice = find_slice_for(instr, index);
-          if (maybe_slice.has_value()) {
-            HloBufferSlice hlo_buffer_slice;
-            hlo_buffer_slice.instr = instr;
-            hlo_buffer_slice.hlo_index = index;
-            hlo_buffer_slice.buffer_slice = maybe_slice->first;
-            hlo_buffer_slice.gte_index = maybe_slice->second;
-            result.push_back(hlo_buffer_slice);
-          } else {
-            VLOG(1) << "Couldn't find buffer for " << instr->ToString()
-                    << " at index " << index.ToString();
-          }
-        });
-  };
-
-  add_slices_for(hlo);
-  for (const HloInstruction* operand : hlo->operands()) {
-    // Conservatively assume we'll need the buffers for all subshapes of the
-    // operand.
-    add_slices_for(operand);
-  }
-
-  return result;
-}
-
-std::unique_ptr<KernelThunk>
-IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
+std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
-    absl::Span<const BufferSlice* const> slices,
-    std::function<void(const BufferSlice*, llvm::Value*)>
-        bind_slice_to_ir_value) {
+    absl::Span<const BufferSlice> slices,
+    std::vector<llvm_ir::IrArray>* ir_arrays) {
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in slices,
   // plus the XLA temp buffer (if we have it).  We always include the temp
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
   std::unordered_set<const BufferAllocation*> buffers_needed;
-  for (auto* slice : slices) {
-    buffers_needed.insert(slice->buffer_slice.allocation());
+  for (const auto& slice : slices) {
+    buffers_needed.insert(slice.buffer_slice.allocation());
   }
   absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : ir_emitter_context_->allocations()) {
@@ -3504,16 +3389,24 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     }
   }
 
+  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
+  for (const auto& slice : slices) {
+    if (slice.written) {
+      buffers_written.insert(slice.buffer_slice);
+    }
+  }
+
+  ir_arrays->clear();
+
   // For each buffer our kernel might want to touch, bind it to a value derived
   // from our kernel args.
-  for (auto* slice : slices) {
-    const BufferAllocation::Slice& buffer_slice = slice->buffer_slice;
-    const ShapeIndex& gte_index = slice->gte_index;
+  for (const auto& slice : slices) {
+    const BufferAllocation::Slice& buffer_slice = slice.buffer_slice;
 
     llvm::Value* loc;
-    if (!slice->constant_name.empty()) {
+    if (!slice.constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
-          slice->constant_name);
+          slice.constant_name);
       CHECK_NE(loc, nullptr);
     } else {
       CHECK(!buffer_slice.allocation()->is_constant());
@@ -3521,59 +3414,17 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
                         {b_.getInt64(buffer_slice.offset())});
     }
 
-    // If gte_index is nonempty, we have to dereference `loc` to get to the
-    // value we're ultimately interested in.
-    llvm::Type* int8_double_pointer =
-        llvm::PointerType::get(b_.getInt8PtrTy(), /*AddressSpace=*/0);
-    for (int64 idx : gte_index) {
-      loc = b_.CreatePointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
-      loc = Load(InBoundsGEP(loc, {b_.getInt64(idx)}));
+    llvm_ir::IrArray ir_array(CastToTypedValue(slice.shape, loc, &b_),
+                              slice.shape);
+    if (!buffers_written.contains(slice.buffer_slice)) {
+      ir_array.MarkInvariantOverWholeProgram(&loc->getContext());
     }
 
-    bind_slice_to_ir_value(slice, loc);
-  }
-
-  // Bind the temp buffer so that nested subcomputations can find it if they
-  // need.
-  if (temp_buffer.has_value()) {
-    bindings_.SetTempBufferBase(kernel_args.at(*temp_buffer));
-  } else {
-    bindings_.SetTempBufferBase(
-        llvm::ConstantPointerNull::get(b_.getInt8PtrTy()));
+    ir_arrays->push_back(ir_array);
   }
 
   return absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
                                         std::string(kernel->getName()));
-}
-
-std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
-    absl::string_view name, Thunk::ThunkInfo thunk_info,
-    absl::Span<const MlirBufferSlice> slices,
-    std::vector<llvm_ir::IrArray>* ir_arrays) {
-  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
-  std::vector<const BufferSlice*> slice_ptrs;
-  slice_ptrs.reserve(slices.size());
-  for (auto& slice : slices) {
-    slice_ptrs.push_back(&slice);
-    if (slice.written) {
-      buffers_written.insert(slice.buffer_slice);
-    }
-  }
-
-  ir_arrays->clear();
-  return BuildKernelThunkFromBufferSlices(
-      name, thunk_info, slice_ptrs,
-      [&](const BufferSlice* slice, llvm::Value* value) {
-        const auto& mlir_slice = static_cast<const MlirBufferSlice&>(*slice);
-
-        llvm_ir::IrArray ir_array(
-            CastToTypedValue(mlir_slice.shape, value, &b_), mlir_slice.shape);
-        if (!buffers_written.contains(slice->buffer_slice)) {
-          ir_array.MarkInvariantOverWholeProgram(&value->getContext());
-        }
-
-        ir_arrays->push_back(ir_array);
-      });
 }
 
 StatusOr<std::unique_ptr<KernelThunk>>
@@ -3582,7 +3433,7 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  std::vector<MlirBufferSlice> slices;
+  std::vector<BufferSlice> slices;
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
@@ -3603,7 +3454,7 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     auto operands = GetHloOperands(op);
     auto outputs = GetHloOutputs(op);
 
-    std::vector<MlirBufferSlice> slices;
+    std::vector<BufferSlice> slices;
     for (auto operand : operands) {
       slices.emplace_back();
       auto& slice = slices.back();
