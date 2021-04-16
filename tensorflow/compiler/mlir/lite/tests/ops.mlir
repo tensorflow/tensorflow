@@ -1043,6 +1043,16 @@ func @testPad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 
 // -----
 
+// CHECK-LABEL: testPad5D
+func @testPad5D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  // CHECK: "tfl.pad"(%arg0, %arg1)
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
 // test Pad with invalid paddings size
 func @testPadWithInvalidPaddingsDim(tensor<2x1x3xf32>, tensor<2x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x2xi32>):
@@ -1075,10 +1085,10 @@ func @testPadUnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32
 
 // -----
 
-func @testPadUnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
-^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
-  // expected-error @+1 {{'tfl.pad' op failed to verify that the first dim size of the padding argument must be at most 4}}
-  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32>
+func @testPadUnsupportedPaddings(tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<6x3xi32>):
+  // expected-error @+1 {{'tfl.pad' op failed to verify that the first dim size of the padding argument must be at most 5}}
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -1105,6 +1115,17 @@ func @testPadV2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   %cst = constant dense<2.0> : tensor<f32>
   // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
+// CHECK-LABEL: testPadV25D
+func @testPadV25D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  %cst = constant dense<2.0> : tensor<f32>
+  // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -1167,11 +1188,11 @@ func @testPadV2UnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f
 
 // -----
 
-func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
-^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<6x3xi32>):
   %cst = constant dense<2.0> : tensor<f32>
-  // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 4}}
-  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
+  // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 5}}
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<6x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
