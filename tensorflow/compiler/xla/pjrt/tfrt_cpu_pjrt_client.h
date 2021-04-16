@@ -554,6 +554,12 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   bool MustDonateParameter(int parameter) const;
 
+  // Checks that the input buffers passed in by the user have the correct size
+  // on device for the compiled program.
+  Status CheckBufferCompatibilities(
+      absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
+          input_buffers) const;
+
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
@@ -576,6 +582,10 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   BufferAllocation::Index result_buffer_index_;
   // Buffer allocation indices corresponding to each result buffer leaf buffer.
   absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices_;
+
+  // Size on device of each leaf buffer of the compiled program, cached here
+  // for performance reasons.
+  std::vector<int64_t> input_buffer_sizes_in_bytes_;
 
   // A set of parameters that have any aliased buffers and thus must be donated
   // when executing the computation.
