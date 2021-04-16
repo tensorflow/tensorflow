@@ -73,3 +73,4 @@ DEFINE_FOR_ALL_REDUCERS(double);
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
