@@ -195,7 +195,7 @@ upper_tabs:
       - title: "Overview"
         path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
-        path: /lite/microcontrollers/get_started
+        path: /lite/microcontrollers/get_started_low_level
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
       - title: "Build and convert models"
