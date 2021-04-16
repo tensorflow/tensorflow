@@ -22,7 +22,6 @@ limitations under the License.
 
 using std::vector;
 using tensorflow::ops::AddV2;
-using tensorflow::ops::Conj;
 using tensorflow::ops::Div;
 using tensorflow::ops::DivNoNan;
 using tensorflow::ops::MatMul;
@@ -34,6 +33,20 @@ using tensorflow::ops::SqrtGrad;
 namespace tensorflow {
 namespace gradients {
 namespace {
+
+static Status SafeConj(AbstractContext* ctx, AbstractTensorHandle* const input,
+                       AbstractTensorHandle** output, const char* name) {
+  auto dtype = input->DataType();
+  if (DataTypeIsFloating(BaseType(dtype)) ||
+      DataTypeIsInteger(BaseType(dtype))) {
+    return tensorflow::ops::Identity(ctx, input, output, name);
+  } else if (!DataTypeIsComplex(BaseType(dtype)) &&
+             BaseType(dtype) != DT_VARIANT) {
+    return errors::InvalidArgument(
+        "Expected numeric or variant tensor, got dtype ", dtype);
+  }
+  return tensorflow::ops::Conj(ctx, input, output, name);
+}
 
 class AddGradientFunction : public GradientFunction {
  public:
@@ -63,7 +76,7 @@ class ExpGradientFunction : public GradientFunction {
                  absl::Span<AbstractTensorHandle*> grad_inputs) override {
     AbstractTensorHandle* conj_output;
     std::string name = "Conj_Exp_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx, exp_.get(), &conj_output, name.c_str()));
+    TF_RETURN_IF_ERROR(SafeConj(ctx, exp_.get(), &conj_output, name.c_str()));
     AbstractTensorHandlePtr conj_output_releaser(conj_output);
 
     name = "Mul_Exp_Grad";
@@ -131,13 +144,13 @@ class MatMulGradientFunction : public GradientFunction {
     AbstractTensorHandle* conj_output;
     std::string name = "Conj_A_MatMul_Grad";
     TF_RETURN_IF_ERROR(
-        Conj(ctx, forward_inputs_[0], &conj_output, name.c_str()));
+        SafeConj(ctx, forward_inputs_[0], &conj_output, name.c_str()));
 
     AbstractTensorHandlePtr A(conj_output);
 
     name = "Conj_B_MatMul_Grad";
     TF_RETURN_IF_ERROR(
-        Conj(ctx, forward_inputs_[1], &conj_output, name.c_str()));
+        SafeConj(ctx, forward_inputs_[1], &conj_output, name.c_str()));
 
     AbstractTensorHandlePtr B(conj_output);
 
@@ -332,7 +345,7 @@ class Log1pGradientFunction : public GradientFunction {
 
     // Calculate conjugate of X
     std::string name = "Conj_Log1p_Grad_X";
-    TF_RETURN_IF_ERROR(Conj(ctx, X, &temp_output, name.c_str()));
+    TF_RETURN_IF_ERROR(SafeConj(ctx, X, &temp_output, name.c_str()));
 
     AbstractTensorHandlePtr Conj_X(temp_output);
 
