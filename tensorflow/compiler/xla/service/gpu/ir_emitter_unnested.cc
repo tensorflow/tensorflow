@@ -1292,7 +1292,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
     // we can just use it, otherwise copy the bias values into the output buffer
     // first.
     if (bias != output) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
+      ThunkSequence thunks;
 
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo(),
@@ -1521,7 +1521,7 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
   TF_ASSIGN_OR_RETURN(auto info_buffer,
                       GetAllocationSliceForMlir(cholesky_op.info()));
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   if (operand_buffer != a_buffer) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
@@ -1674,7 +1674,7 @@ Status IrEmitterUnnested::EmitTriangularSolveFromMlir(MlirEmitterInput input) {
   TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
                       ConvertTranspose(triangular_solve_op.transpose_a()));
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
   // aren't the same buffer.
@@ -1944,7 +1944,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
                                             /*is_fusion=*/true));
     auto* root = fused_computation->root_instruction();
 
-    std::vector<std::unique_ptr<Thunk>> thunks;
+    ThunkSequence thunks;
     // The initialization from 'operand' is using different loop bounds, so
     // emit it in a separate kernel. Treat it like a loop fusion, writing to
     // the output buffer.
@@ -2241,7 +2241,7 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.emplace_back();
   TF_ASSIGN_OR_RETURN(thunks.back(),
                       BuildInitializerThunkForMlir(
@@ -2540,7 +2540,7 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
 }
 
 Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(mlir_input.op);
 
@@ -2907,7 +2907,7 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   MlirEmitterContext context;
   context.SetOperation(sort_op);
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   const Shape& keys_shape = context.operand_shapes[0];
   int64 dimension_to_sort = sort_op.dimension();
@@ -3234,7 +3234,7 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
 
   // All-gather with one replica is simply the identity function. Buffer
   // assignment expects a copy, so that's what we do.
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   for (int64 i = 0; i < buffers.size(); i++) {
     const Shape shape = TypeToShape(op.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
@@ -5307,7 +5307,7 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   VLOG(10) << "Emitting reduction to vector " << MlirToString(unnested_hlo);
 
   // Build an initializer thunk to initialize each reduction output.
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   for (int i = 0; i < num_reduces; ++i) {
     mlir::Operation* output_instruction =
         GetReduceFromUnnestedMlir(unnested_hlo, i);
