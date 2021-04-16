@@ -32,9 +32,11 @@ from tensorflow.python.platform import test
 
 class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  # TODO(b/121264236)
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph"]))
+  def setUp(self):
+    super(PrefetchWithSlackTest, self).setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchWithSlackOption(self):
     """Determines slack_period based on num devices attached to iterator."""
     dataset = dataset_ops.Dataset.range(10)
@@ -43,19 +45,16 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
-    dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+        dataset, [self._devices[1], self._devices[2]])
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual(i, self.evaluate(elem_on_1))
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPrefetchWithSlackOptionWithoutIterator(self):
@@ -100,6 +99,4 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3}))
   test.main()
