@@ -2902,6 +2902,13 @@ def _convert_cwise(pfor_input, op_type, op_func):
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
 
+@RegisterPFor("XlaSharding")
+def _convert_xla_sharding(pfor_input):
+  t = pfor_input.stacked_input(0)
+  sharding = pfor_input.get_attr("sharding")
+  return wrap(xla.sharding(t, sharding=sharding), True)
+
+
 @RegisterPFor("LeakyRelu")
 def _convert_leaky_relu(pfor_input):
   t = pfor_input.stacked_input(0)
