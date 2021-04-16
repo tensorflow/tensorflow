@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+
 #include <algorithm>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -54,16 +56,12 @@ ThunkSchedule::ThunkSchedule(
     : thunks_(std::move(thunks)),
       stream_assignment_(std::move(stream_assignment)),
       thunk_to_hlo_(std::move(thunk_to_hlo)) {
-  for (auto& thunk : *thunks_) {
-    thunk_total_order_.push_back(thunk.get());
-  }
-
   absl::flat_hash_map<const HloInstruction*, Thunk*> hlo_to_thunk;
-  for (const auto& thunk : *thunks_) {
+  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
     InsertOrDie(&hlo_to_thunk, thunk_to_hlo_.at(thunk.get()), thunk.get());
   }
 
-  for (const Thunk* thunk : thunk_total_order_) {
+  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
     const auto* dst = thunk_to_hlo_.at(thunk);
     CHECK(stream_assignment_->HasStreamAssigned(*dst));
     for (const auto* src : dst->operands()) {
@@ -82,16 +80,12 @@ ThunkSchedule::ThunkSchedule(
 }
 
 ThunkSchedule::ThunkSchedule(std::unique_ptr<ThunkSequence> thunks)
-    : thunks_(std::move(thunks)) {
-  for (auto& thunk : *thunks_) {
-    thunk_total_order_.push_back(thunk.get());
-  }
-}
+    : thunks_(std::move(thunks)) {}
 
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
-  for (int i = 0; i < thunk_total_order_.size(); ++i) {
-    InsertOrDie(&thunk_to_total_order, thunk_total_order_[i], i);
+  for (int i = 0; i < thunks_->size(); ++i) {
+    InsertOrDie(&thunk_to_total_order, thunks_->at(i).get(), i);
   }
 
   int stream_count = stream_assignment_->StreamCount();
@@ -116,7 +110,8 @@ void ThunkSchedule::RemoveRedundantDependencyEdges() {
   // S1 thunk depends on a S2 thunk ordered <=last_dependency[S1][S2], that is a
   // redundant dependency edge.
   Array2D<int> last_dependency(stream_count, stream_count, -1);
-  for (const Thunk* dst : thunk_total_order_) {
+  for (const std::unique_ptr<Thunk>& dst_thunk : TotalOrder()) {
+    const Thunk* dst = dst_thunk.get();
     if (!depends_on_.contains(dst)) {
       continue;
     }
@@ -153,20 +148,21 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
 }
 
 string ThunkSchedule::ToString() const {
-  if (thunk_total_order_.empty()) {
+  if (thunks_->empty()) {
     return "No thunks.";
   }
 
-  const Thunk* thunk_with_longest_kind = *absl::c_max_element(
-      thunk_total_order_, [](const Thunk* a, const Thunk* b) {
+  auto thunk_with_longest_kind = absl::c_max_element(
+      TotalOrder(),
+      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
         return ThunkKindToString(a->kind()).length() <
                ThunkKindToString(b->kind()).length();
       });
   int64 max_thunk_kind_len =
-      ThunkKindToString(thunk_with_longest_kind->kind()).length();
+      ThunkKindToString(thunk_with_longest_kind->get()->kind()).length();
 
   string result = "Total order:\n";
-  for (Thunk* thunk : thunk_total_order_) {
+  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
     // Write out the thunk kind, padded out to max_thunk_kind_len.
     absl::string_view kind_str = ThunkKindToString(thunk->kind());
     absl::StrAppend(&result, kind_str,
