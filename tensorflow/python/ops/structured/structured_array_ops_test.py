@@ -273,8 +273,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
                                       row_partitions=row_partitions)
     # NOTE: zeros_like is very robust. There aren't arguments that
     # should cause this operation to fail.
-    actual = structured_array_ops.zeros_like_object(st, dtype)
+    actual = array_ops.zeros_like(st, dtype)
     self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.zeros_like_v2(st, dtype)
+    self.assertAllEqual(actual2, expected)
 
   @parameterized.named_parameters([
       dict(
@@ -312,8 +315,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval(values)
     # NOTE: zeros_like is very robust. There aren't arguments that
     # should cause this operation to fail.
-    actual = structured_array_ops.zeros_like_object(st, dtype)
+    actual = array_ops.zeros_like(st, dtype)
     self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.zeros_like_v2(st, dtype)
+    self.assertAllEqual(actual2, expected)
 
   @parameterized.named_parameters([
       dict(

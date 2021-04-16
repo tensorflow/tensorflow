@@ -122,38 +122,48 @@ def concat(values, axis, name: str = 'concat'):
 
 
 # pylint: disable=protected-access
-def zeros_like_object(st, dtype=None):
+@dispatch.dispatch_for_types(array_ops.zeros_like, StructuredTensor)
+def zeros_like(tensor, dtype=None, name=None, optimize=True):
+  """Implementation of zeros_like for StructuredTensor for TF v1."""
+  del optimize
+  return zeros_like_v2(tensor, dtype=dtype, name=name)
+
+
+# pylint: disable=protected-access
+@dispatch.dispatch_for_types(array_ops.zeros_like_v2, StructuredTensor)
+def zeros_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-builtin
   """Replace every object with a zero.
 
   Example:
   >>> st = StructuredTensor.from_pyval([{"x":[3]}, {"x":[4,5]}])
-  >>> zeros_like_object(st)
+  >>> tf.zeros_like(st)
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0.0, 0.0], dtype=float32)>
   >>> st = StructuredTensor.from_pyval([[{"x":[3]}], [{"x":[4,5]}, {"x":[]}]])
-  >>> zeros_like_object(st, dtype=tf.int32)
+  >>> tf.zeros_like(st, dtype=tf.int32)
   <tf.RaggedTensor [[0], [0, 0]]>
 
   Args:
-    st: a structured tensor.
+    input: a structured tensor.
     dtype: the dtype of the resulting zeros. (default is tf.float32)
-
+    name: a name for the op.
   Returns:
     a tensor of zeros of the same shape.
   """
   if dtype is None:
     dtype = dtypes.float32
-  if not st._row_partitions:
-    if st._nrows is not None:
-      return array_ops.zeros([st._nrows], dtype)  # vector.
-    else:
-      return array_ops.zeros([], dtype)  # scalar.
-  # 2D and up.
-  last_row_partition = st._row_partitions[-1]
+  with ops.name_scope(name, 'zeros_like', [input]) as name:
+    if not input._row_partitions:
+      if input._nrows is not None:
+        return array_ops.zeros([input._nrows], dtype)  # vector.
+      else:
+        return array_ops.zeros([], dtype)  # scalar.
+    # 2D and up.
+    last_row_partition = input._row_partitions[-1]
 
-  result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
-      array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
-      st._row_partitions)
-  return result
+    result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
+        array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
+        input._row_partitions)
+    return result
 
 
 def _expand_dims_impl(st, axis, name=None):  # pylint: disable=redefined-builtin
@@ -271,7 +281,7 @@ def empty_st_op_like_zeros(leaf_op):
 
   def empty_st_op(values):
     as_zeros = [
-        zeros_like_object(value, dtype=dtypes.int32) for value in values
+        zeros_like_v2(value, dtype=dtypes.int32) for value in values
     ]
     result = leaf_op(as_zeros)
     return _structured_tensor_like(result)
