@@ -1216,4 +1216,14 @@ REGISTER_OP("RegisterDataset")
     .Attr("external_state_policy: int")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("InitializeTableFromDataset")
+    .Input("table_handle: resource")
+    .Input("dataset: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
+      return Status::OK();
+    });
+
 }  // namespace tensorflow
