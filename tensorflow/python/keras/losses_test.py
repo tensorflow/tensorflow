@@ -172,7 +172,6 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     output_from_logit = losses.binary_crossentropy(
         target, logits, from_logits=True)
     output_from_sigmoid = losses.binary_crossentropy(target, sigmoid_output)
-
     np.testing.assert_allclose(
         backend.eval(output_from_logit),
         backend.eval(output_from_sigmoid),
