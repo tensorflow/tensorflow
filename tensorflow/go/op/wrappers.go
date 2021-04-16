@@ -8119,7 +8119,7 @@ func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 	}
 }
 
-// Returns the gradient of `QuantizeAndDequantizeV4`.
+// Quantizes then dequantizes a tensor.
 //
 // This is almost identical to QuantizeAndDequantizeV2, except that it returns a
 // gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
