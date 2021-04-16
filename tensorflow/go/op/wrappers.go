@@ -470,7 +470,7 @@ func TensorScatterSub(scope *Scope, tensor tf.Output, indices tf.Output, updates
 //
 // This operation creates a new tensor by adding sparse `updates` to the passed
 // in `tensor`.
-// This operation is very similar to `tf.scatter_nd_add`, except that the updates
+// This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
 // are added onto an existing tensor (as opposed to a variable). If the memory
 // for the existing tensor cannot be re-used, a copy is made and updated.
 //
