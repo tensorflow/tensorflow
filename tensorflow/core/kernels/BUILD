@@ -5754,10 +5754,6 @@ cc_library(
 )
 
 # Android libraries -----------------------------------------------------------
-
-# Changes to the Android srcs here should be replicated in
-# tensorflow/contrib/makefile/tf_op_files.txt
-# LINT.IfChange
 filegroup(
     name = "mobile_srcs",
     srcs = [
@@ -6510,7 +6506,6 @@ filegroup(
     ],
     visibility = ["//visibility:public"],
 )
-# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 cc_library(
     name = "portable_tensorflow_kernels",
