@@ -930,7 +930,7 @@ class BinaryCrossentropyTest(test.TestCase):
     #                = [ 5.11, 0]
     # Reduced loss = 5.11 * 1.2 / 2
 
-    self.assertAlmostEqual(self.evaluate(loss), 3.0666, 3)
+    self.assertAlmostEqual(self.evaluate(loss), 3.188477, 3)
 
     # Test with logits.
     y_true = ragged_factory_ops.constant([[1, 0, 1], [0, 1]])
