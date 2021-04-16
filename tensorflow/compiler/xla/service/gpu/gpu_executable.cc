@@ -163,7 +163,8 @@ Status GpuExecutable::ExecuteThunks(
       [&] { return absl::StrCat(module_name_, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
+      thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
