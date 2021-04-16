@@ -462,15 +462,25 @@ ANeuralNetworksOperandType ConvertTensorTypeToNNType(
   return nn_operand_type;
 }
 
-constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
+// NNAPI in API 31 hard-code the preferred alignment/padding with 64 bytes.
+constexpr size_t kDefaultByteAlignmentForNNAPI = 64;
 
-static size_t getNumPaddingBytes(size_t byte_size) {
+static size_t GetNumPaddingBytes(size_t byte_size) {
   size_t num_padding_bytes = 0;
   if (byte_size % kDefaultByteAlignmentForNNAPI) {
     num_padding_bytes = kDefaultByteAlignmentForNNAPI -
                         (byte_size % kDefaultByteAlignmentForNNAPI);
   }
   return num_padding_bytes;
+}
+
+static size_t GetNNTensorSize(size_t tensor_size, bool allow_padding) {
+  size_t padding_bytes = GetNumPaddingBytes(tensor_size);
+  size_t nn_tensor_size = tensor_size;
+  if (allow_padding) {
+    nn_tensor_size += padding_bytes;
+  }
+  return nn_tensor_size;
 }
 
 // Return NNAPI device handle with the provided null-terminated device name.
@@ -3851,6 +3861,17 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
   std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution>
       execution_unique_ptr(execution, NNFreeExecution(nnapi_));
 
+  // Allow padding bytes for execution inputs & outputs if applicable.
+  const bool allow_padding =
+      nnapi_->android_sdk_version > kMinSdkVersionForNNAPI13;
+  if (allow_padding) {
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(
+        context,
+        nnapi_->ANeuralNetworksExecution_enableInputAndOutputPadding(
+            execution,
+            /*enable=*/true),
+        "setting allow padding for execution intputs and outputs", nnapi_errno);
+  }
   // Set compilation timeout if applicable.
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
@@ -3897,7 +3918,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
           tensor_size = NumElements(&context->tensors[i]) * type_size;
         }
         total_input_byte_size += tensor_size;
-        total_input_byte_size += getNumPaddingBytes(tensor_size);
+        total_input_byte_size += GetNumPaddingBytes(tensor_size);
       }
     }
     if (total_input_byte_size > nn_input_memory_->get_byte_size()) {
@@ -3911,7 +3932,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         continue;
       }
       total_output_byte_size += context->tensors[i].bytes;
-      total_output_byte_size += getNumPaddingBytes(context->tensors[i].bytes);
+      total_output_byte_size += GetNumPaddingBytes(context->tensors[i].bytes);
     }
     if (total_output_byte_size > nn_output_memory_->get_byte_size()) {
       nn_output_memory_.reset(
@@ -3958,6 +3979,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         continue;
       }
       int tensor_size = 0;
+      int padding_bytes = 0;
       if (ann_type_equivalent != kTfLiteNoType) {
         const auto num_elements = NumElements(tensor);
         uint8_t* input_ptr = nn_input_memory_->get_data_ptr() + input_offset;
@@ -3999,28 +4021,31 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         TF_LITE_ENSURE_OK(
             context, GetSizeOfType(context, ann_type_equivalent, &type_size));
         tensor_size = NumElements(tensor) * type_size;
+        padding_bytes = GetNumPaddingBytes(tensor_size);
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context,
             nnapi_->ANeuralNetworksExecution_setInputFromMemory(
                 execution, relative_input_index, input_nn_operand_type_ptr,
-                nn_input_memory_->get_handle(), input_offset, tensor_size),
+                nn_input_memory_->get_handle(), input_offset,
+                GetNNTensorSize(tensor_size, allow_padding)),
             "associating NNAPI execution input with a memory object", tensor,
             nnapi_errno);
       } else {
         // copy data to pre-allocated shared memory.
         memcpy(nn_input_memory_->get_data_ptr() + input_offset,
                tensor->data.raw, tensor->bytes);
+        tensor_size = tensor->bytes;
+        padding_bytes = GetNumPaddingBytes(tensor_size);
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context,
             nnapi_->ANeuralNetworksExecution_setInputFromMemory(
                 execution, relative_input_index, input_nn_operand_type_ptr,
-                nn_input_memory_->get_handle(), input_offset, tensor->bytes),
+                nn_input_memory_->get_handle(), input_offset,
+                GetNNTensorSize(tensor_size, allow_padding)),
             "associating NNAPI execution input with a memory object", tensor,
             nnapi_errno);
-        tensor_size = tensor->bytes;
       }
-      input_offset += tensor_size;
-      input_offset += getNumPaddingBytes(tensor_size);
+      input_offset += tensor_size + padding_bytes;
       relative_input_index++;
     }
   }
@@ -4057,15 +4082,16 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
           nnapi_errno);
 
     } else {
+      int padding_bytes = GetNumPaddingBytes(tensor->bytes);
       RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
           context,
           nnapi_->ANeuralNetworksExecution_setOutputFromMemory(
               execution, relative_output_index, output_nn_operand_type_ptr,
-              nn_output_memory_->get_handle(), output_offset, tensor->bytes),
+              nn_output_memory_->get_handle(), output_offset,
+              GetNNTensorSize(tensor->bytes, allow_padding)),
           "associating NNAPI execution output to a memory object", tensor,
           nnapi_errno);
-      output_offset += tensor->bytes;
-      output_offset += getNumPaddingBytes(tensor->bytes);
+      output_offset += tensor->bytes + padding_bytes;
     }
     relative_output_index++;
   }
@@ -4136,7 +4162,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     memcpy(tensor->data.raw, nn_output_memory_->get_data_ptr() + output_offset,
            tensor->bytes);
     output_offset += tensor->bytes;
-    output_offset += getNumPaddingBytes(tensor->bytes);
+    output_offset += GetNumPaddingBytes(tensor->bytes);
   }
 
   // copy output of all output tensors in feedback_loops_ into the
@@ -4742,7 +4768,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
         tensor_size = NumElements(&context->tensors[i]) * type_size;
       }
       total_input_byte_size += tensor_size;
-      total_input_byte_size += getNumPaddingBytes(tensor_size);
+      total_input_byte_size += GetNumPaddingBytes(tensor_size);
     }
   }
 
@@ -4757,7 +4783,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
       continue;
     }
     total_output_byte_size += context->tensors[i].bytes;
-    total_output_byte_size += getNumPaddingBytes(context->tensors[i].bytes);
+    total_output_byte_size += GetNumPaddingBytes(context->tensors[i].bytes);
   }
 
   // Add state output tensors as model outputs.

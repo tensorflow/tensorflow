@@ -708,4 +708,7 @@ typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
     const ANeuralNetworksEvent* const* dependencies, uint32_t num_dependencies,
     uint64_t duration, ANeuralNetworksEvent** event);
 
+typedef int (*ANeuralNetworksExecution_enableInputAndOutputPadding_fn)(
+    ANeuralNetworksExecution* execution, bool enable);
+
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

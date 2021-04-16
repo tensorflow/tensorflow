@@ -1657,6 +1657,50 @@ struct NnApi {
       const ANeuralNetworksEvent* const* dependencies,
       uint32_t num_dependencies, uint64_t duration,
       ANeuralNetworksEvent** event);
+
+  /**
+   * Specifies whether the {@link ANeuralNetworksExecution} is able to accept
+   * padded input and output buffers and memory objects.
+   *
+   * By default, the input and output buffers and memory objects of {@link
+   * ANeuralNetworksExecution} do not allow padding.
+   *
+   * Setting the execution to accept padded input and output buffers and memory
+   * objects enables the length argument of {@link
+   * ANeuralNetworksExecution_setInput},
+   * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+   * ANeuralNetworksExecution_setOutput}, and {@link
+   * ANeuralNetworksExecution_setOutputFromMemory} to be greater than the raw
+   * size of the operand (i.e. the size of an element multiplied by the number
+   * of elements). The extra bytes at the end of the buffer or memory region may
+   * be used by the driver to access data in chunks, for efficiency.
+   *
+   * This method must not be called after {@link
+   * ANeuralNetworksExecution_setInput},
+   * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+   * ANeuralNetworksExecution_setOutput}, or {@link
+   * ANeuralNetworksExecution_setOutputFromMemory}.
+   *
+   * See {@link ANeuralNetworksExecution} for information on multithreaded
+   * usage.
+   *
+   * @param execution The execution to be modified.
+   * @param enable 'true' if the execution is to be able to accept padded input
+   * and output buffers and memory objects, 'false' if not.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+   *         ANEURALNETWORKS_BAD_STATE if {@link
+   * ANeuralNetworksExecution_setInput},
+   *         {@link ANeuralNetworksExecution_setInputFromMemory},
+   *         {@link ANeuralNetworksExecution_setOutput}, or
+   *         {@link ANeuralNetworksExecution_setOutputFromMemory} has been
+   * called on the execution.
+   *
+   * Available since API level 31.
+   */
+  int (*ANeuralNetworksExecution_enableInputAndOutputPadding)(
+      ANeuralNetworksExecution* execution, bool enable);
 };
 
 /**
