@@ -166,6 +166,11 @@ class Conv1DTest(keras_parameterized.TestCase):
       fn(inpt2)
       self.assertEqual(outp1_shape, layer(inpt1).shape)
 
+  def test_conv1d_zero_filters(self):
+    kwargs = {'filters': 0, 'kernel_size': 2}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv1D(**kwargs)  
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv2DTest(keras_parameterized.TestCase):
@@ -295,6 +300,11 @@ class Conv2DTest(keras_parameterized.TestCase):
 
   def test_conv2d_zero_kernel_size(self):
     kwargs = {'filters': 2, 'kernel_size': 0}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv2D(**kwargs)
+
+  def test_conv2d_zero_filters(self):
+    kwargs = {'filters': 0, 'kernel_size': 2}
     with self.assertRaises(ValueError):
       keras.layers.Conv2D(**kwargs)
 
@@ -433,6 +443,11 @@ class Conv3DTest(keras_parameterized.TestCase):
             input_shape=(None, 3, None, None, None),
             input_data=input_data)
 
+  def test_conv3d_zero_filters(self):
+    kwargs = {'filters': 0, 'kernel_size': 2}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv3D(**kwargs)
+
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class GroupedConvTest(keras_parameterized.TestCase):
@@ -518,6 +533,11 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
         test.is_gpu_available(cuda_only=True)):
       self._run_test(kwargs, expected_output_shape)
 
+  def test_conv1d_transpose_zero_filters(self):
+    kwargs = {'filters': 0, 'kernel_size': 2}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv1DTranspose(**kwargs)
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv3DTransposeTest(keras_parameterized.TestCase):
@@ -551,6 +571,11 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
+  def test_conv3d_transpose_zero_filters(self):
+    kwargs = {'filters': 0, 'kernel_size': 2}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv3DTranspose(**kwargs)
+ 
 
 @keras_parameterized.run_all_keras_modes
 class ConvSequentialTest(keras_parameterized.TestCase):
