@@ -32,8 +32,6 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager.context import get_config
@@ -49,6 +47,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import object_identity
@@ -6448,7 +6447,7 @@ def configure_and_create_distributed_session(distribution_strategy):
       master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
       session = session_module.Session(config=session_config, target=master)
     else:
-      worker_context = dc_context.get_current_worker_context()
+      worker_context = dc.get_current_worker_context()
       if worker_context:
         dc_session_config = worker_context.session_config
         # Merge the default session config to the one from distribute
@@ -6466,8 +6465,7 @@ def configure_and_create_distributed_session(distribution_strategy):
   if distribution_strategy.extended._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
-        distribution_strategy,
-        mode='independent_worker')
+        distribution_strategy)
   else:
     _create_session(distribution_strategy)
 

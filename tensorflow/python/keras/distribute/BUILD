@@ -50,6 +50,7 @@ py_library(
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -1005,5 +1006,21 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
+    name = "distribute_coordinator_utils",
+    srcs = [
+        "distribute_coordinator_utils.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )
