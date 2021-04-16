@@ -1073,7 +1073,7 @@ def _wrap_and_tile_variants(tensor, length):
 
 def _fallback_converter(pfor_input, warn=True):
   if warn:
-    logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1995,7 +1995,7 @@ def _convert_conv2d_backprop_filter(pfor_input):
   dilations = pfor_input.get_attr("dilations")
   if inputs_stacked:
     # TODO(agarwal): Implement this efficiently.
-    logging.warn("Conv2DBackpropFilter uses a while_loop. Fix that!")
+    logging.warning("Conv2DBackpropFilter uses a while_loop. Fix that!")
 
     def while_body(i, ta):
       inp_i = inputs[i, ...]
