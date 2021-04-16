@@ -336,33 +336,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   def _graph(self, _):
     raise ValueError("The _graph property is read-only")
 
-  # TODO(b/183496844): Move implementation to FinalizeDatasetOp C++.
-  def _has_captured_ref(self):
-    """Whether this dataset uses a function that captures ref variables.
-
-    Returns:
-      A boolean, which if true indicates that the dataset or one of its inputs
-      uses a function that captures ref variables.
-    """
-    if context.executing_eagerly():
-      # RefVariables are not supported in eager mode
-      return False
-
-    def is_tensor_or_parent_ref(tensor):
-      if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
-        return True
-      # If the captured tensor is an eager tensor, we cannot trace its inputs.
-      if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
-        return False
-      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
-
-    for fn in self._functions():
-      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
-        return True
-
-    return any(
-        [input_dataset._has_captured_ref() for input_dataset in self._inputs()])  # pylint: disable=protected-access
-
   # TODO(jsimsa): Change this to be the transitive closure of functions used
   # by this dataset and its inputs.
   def _functions(self):
@@ -423,7 +396,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       dataset = self
 
     if tf_compat.forward_compatible(2021, 4, 25):
-      return _FinalizeDataset(dataset, dataset._has_captured_ref())  # pylint: disable=protected-access
+      return _FinalizeDataset(dataset)  # pylint: disable=protected-access
 
     options = dataset.options()
 
@@ -446,18 +419,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs(autotune)
-    # pylint: enable=protected-access
-    if self._has_captured_ref():
-      if graph_rewrites.enabled or graph_rewrites.default:
-        warnings.warn(
-            "tf.data graph rewrites are not compatible with tf.Variable. "
-            "The following rewrites will be disabled: %s. To enable "
-            "rewrites, use resource variables instead by calling "
-            "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(graph_rewrites.enabled + graph_rewrites.default))
-    elif (graph_rewrites.enabled or graph_rewrites.default or
-          (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
-           is not False)):
+    if (graph_rewrites.enabled or graph_rewrites.default or
+        (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
+         is not False)):
       dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
                                  graph_rewrites.disabled,
                                  graph_rewrites.default, graph_rewrite_configs)
@@ -3010,9 +2974,6 @@ class DatasetV1Adapter(DatasetV1):
   def _as_variant_tensor(self):
     return self._dataset._variant_tensor  # pylint: disable=protected-access
 
-  def _has_captured_ref(self):
-    return self._dataset._has_captured_ref()  # pylint: disable=protected-access
-
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
 
@@ -4941,12 +4902,12 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 class _FinalizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts on the options set on the input dataset."""
 
-  def __init__(self, input_dataset, has_captured_ref):
+  def __init__(self, input_dataset):
     self._input_dataset = input_dataset
     with ops.colocate_with(input_dataset._variant_tensor):
       variant_tensor = gen_dataset_ops.finalize_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
-          has_captured_ref=has_captured_ref, **self._flat_structure)
+          **self._flat_structure)
     super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
