@@ -221,6 +221,35 @@
         the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
         FallbackEnabled mode when an analysis of the graph determines
         that the graph does not have unsupported features.
+*   Deterministic Op Functionality:
+    *   Add determinism-unimplemented exception-throwing to the segment-sum ops.
+        When the environment variable `TF_DETERMINISTIC_OPS` is set to `"true"`
+        or `"1"` (when op-determinism is expected), an attempt to run the
+        folowing ops on a GPU will throw `tf.errors.UnimplementedError` (with an
+        understandable message) when `data` is a floating-point type, including
+        complex types (if supported): `tf.math.segment_prod`,
+        `tf.math.segment_sum`, `tf.math.unsorted_segment_mean`,
+        `tf.math.unsorted_segment_sqrt_n`, `tf.math.unsorted_segment_prod`,
+        `tf.math.unsorted_segment_sum`, and therefore also
+        `tf.convert_to_tensor` when `value` is of type `tf.IndexedSlices` (such
+        as in the backprop though `tf.gather` into a dense embedding). See
+        issue [39751](https://github.com/tensorflow/tensorflow/issues/39751)
+        which this change addresses, but does not solve. This exception-throwing
+        behavior can be disabled by setting the environment variable
+        `TF_DISABLE_SEGMENT_REDUCTION_OP_DETERMINISM_EXCEPTIONS` to `"true"` or
+        `"1"`. For more information about these changes, see the description in
+        pull request
+        [47772](https://github.com/tensorflow/tensorflow/pull/47772).
+    *   In previous versions of TensorFlow, when a GPU was available,
+        `tf.sparse.sparse_dense_matmul` introduced truly random noise in the
+        forward path for data of type `tf.float32` but not for data of type
+        `tf.float64` (for which there was no GPU implementation). In this
+        current release, GPU support for other floating-point types
+        (`tf.float16`, `tf.float64`, `tf.complex64`, and `tf.complex128`) has
+        been added for this op. If you were relying on the determinism of the
+        `tf.float64` CPU implementation being automatically selected because of
+        the absense of the `tf.float64` GPU implementation, you with either
+        need to force the op to run on the CPU or use a different data type.
 
 * Other
     *   Adding show_debug_info to mlir.convert_graph_def and
