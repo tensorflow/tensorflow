@@ -37,6 +37,7 @@ class SequentialThunk : public Thunk {
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 
   const ThunkSequence& thunks() const { return thunks_; }
+  std::string ToStringExtra(int indent) const override;
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
