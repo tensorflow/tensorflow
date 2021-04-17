@@ -3767,6 +3767,15 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
     }
 
     int64 computation_id = imported_computation.id();
+    for (int64 i = 0; i < imported_computation.instructions_size(); ++i) {
+      ImportedInstruction imported_instruction;
+      imported_instruction.computation_id = computation_id;
+      imported_instruction.instruction_index = i;
+      handle_to_imported_index_.insert(
+          {imported_computation.instructions(i).id(),
+           ImportedInstruction{.computation_id = computation_id,
+                               .instruction_index = i}});
+    }
     embedded_.insert({computation_id, std::move(imported_computation)});
   }
 }
