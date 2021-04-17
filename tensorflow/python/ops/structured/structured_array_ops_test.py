@@ -19,10 +19,13 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
@@ -30,6 +33,7 @@ from tensorflow.python.ops.structured import structured_array_ops
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import nest
 
 
 # TODO(martinz):create StructuredTensorTestCase.
@@ -42,14 +46,24 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     if not (isinstance(a, structured_tensor.StructuredTensor) or
             isinstance(b, structured_tensor.StructuredTensor)):
       return super(StructuredArrayOpsTest, self).assertAllEqual(a, b, msg)
+
     if not isinstance(a, structured_tensor.StructuredTensor):
       a = structured_tensor.StructuredTensor.from_pyval(a)
-      self._assertStructuredEqual(a, b, msg, False)
     elif not isinstance(b, structured_tensor.StructuredTensor):
       b = structured_tensor.StructuredTensor.from_pyval(b)
-      self._assertStructuredEqual(a, b, msg, False)
-    else:
-      self._assertStructuredEqual(a, b, msg, True)
+
+    try:
+      nest.assert_same_structure(a, b, expand_composites=True)
+    except (TypeError, ValueError) as e:
+      self.assertIsNone(e, (msg + ": " if msg else "") + str(e))
+    a_tensors = [x for x in nest.flatten(a, expand_composites=True)
+                 if isinstance(x, ops.Tensor)]
+    b_tensors = [x for x in nest.flatten(b, expand_composites=True)
+                 if isinstance(x, ops.Tensor)]
+    self.assertLen(a_tensors, len(b_tensors))
+    a_arrays, b_arrays = self.evaluate((a_tensors, b_tensors))
+    for a_array, b_array in zip(a_arrays, b_arrays):
+      self.assertAllEqual(a_array, b_array, msg)
 
   def _assertStructuredEqual(self, a, b, msg, check_shape):
     if check_shape:
@@ -492,6 +506,47 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     with self.assertRaisesRegex(ValueError, "List cannot be empty"):
       structured_array_ops._extend_op([], leaf_op)
 
+  def testRandomShuffle2021(self):
+    original = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}}])  # pyformat: disable
+    random_seed.set_seed(1066)
+    result = random_ops.random_shuffle(original, seed=2021)
+    expected = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},])  # pyformat: disable
+    self.assertAllEqual(result, expected)
+
+  def testRandomShuffle2022Eager(self):
+    original = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}}])  # pyformat: disable
+    expected = StructuredTensor.from_pyval([
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}}])  # pyformat: disable
+    random_seed.set_seed(1066)
+    result = structured_array_ops.random_shuffle(original, seed=2022)
+    self.assertAllEqual(result, expected)
+
+  def testRandomShuffleScalarError(self):
+    original = StructuredTensor.from_pyval(
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}})  # pyformat: disable
+
+    with self.assertRaisesRegex(ValueError, "scalar"):
+      random_ops.random_shuffle(original)
+
   def testStructuredTensorArrayLikeNoRank(self):
     """Test when the rank is unknown."""
     @def_function.function
@@ -778,6 +833,7 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
           axis=axis,
           name=None,
           batch_dims=batch_dims)
+
 
 if __name__ == "__main__":
   googletest.main()
