@@ -982,7 +982,9 @@ tf_py_test(
     deps = [
         ":sidecar_evaluator",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
