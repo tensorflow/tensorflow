@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/cumsum.h"
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
@@ -23,9 +24,24 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-static const int kInputTensor = 0;
-static const int kAxisTensor = 1;
-static const int kOutputTensor = 0;
+constexpr int kInputTensor = 0;
+constexpr int kAxisTensor = 1;
+constexpr int kOutputTensor = 0;
+
+constexpr int kCumSumIntegerShift = 20;
+
+// only used with INT8 tensors
+struct OpData {
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t input_multiplier;
+  int32_t output_multiplier;
+  int input_shift;
+  int output_shift;
+  int left_shift;
+};
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -34,7 +50,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxisTensor);
 
-  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32);
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, axis->type, kTfLiteInt32);
 
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
@@ -45,6 +62,34 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   TF_LITE_ENSURE(context, HaveSameShapes(input, output));
+
+  if (output->type == kTfLiteInt8) {
+    node->user_data =
+        context->AllocatePersistentBuffer(context, sizeof(OpData));
+    OpData* data = static_cast<OpData*>(node->user_data);
+
+    // 8bit -> 8bit general quantized path, with general rescalings
+    data->input_offset = -input->params.zero_point;
+    data->output_offset = output->params.zero_point;
+    data->left_shift = kCumSumIntegerShift;
+    const double twice_max_input_scale =
+        2 * static_cast<double>(input->params.scale);
+    const double real_input_multiplier =
+        static_cast<double>(input->params.scale) / twice_max_input_scale;
+    const double real_output_multiplier =
+        twice_max_input_scale /
+        ((1 << data->left_shift) * static_cast<double>(output->params.scale));
+
+    QuantizeMultiplierSmallerThanOneExp(
+        real_input_multiplier, &data->input_multiplier, &data->input_shift);
+
+    QuantizeMultiplierSmallerThanOneExp(
+        real_output_multiplier, &data->output_multiplier, &data->output_shift);
+
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, kTfLiteActNone, output, &data->output_activation_min,
+        &data->output_activation_max));
+  }
 
   return kTfLiteOk;
 }
@@ -62,7 +107,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  auto* params = static_cast<TfLiteCumsumParams*>(node->builtin_data);
+  auto* cs_params = static_cast<TfLiteCumsumParams*>(node->builtin_data);
   auto input_shape = tflite::micro::GetTensorShape(input);
 
   int32_t axis = *tflite::micro::GetTensorData<int32_t>(axis_tensor);
@@ -76,14 +121,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       reference_ops::CumSum(tflite::micro::GetTensorData<float>(input),
-                            input_shape, axis, params->exclusive,
-                            params->reverse,
+                            input_shape, axis, cs_params->exclusive,
+                            cs_params->reverse,
                             tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
+
+    case kTfLiteInt8: {
+      auto* data = static_cast<OpData*>(node->user_data);
+      ArithmeticParams params;
+      params.left_shift = data->left_shift;
+      params.input1_offset = data->input_offset;
+      params.input1_multiplier = data->input_multiplier;
+      params.input1_shift = data->input_shift;
+      params.output_offset = data->output_offset;
+      params.output_multiplier = data->output_multiplier;
+      params.output_shift = data->output_shift;
+      SetActivationParams(data->output_activation_min,
+                          data->output_activation_max, &params);
+      reference_ops::CumSum(params, tflite::micro::GetTensorData<int8_t>(input),
+                            input_shape, axis, cs_params->exclusive,
+                            cs_params->reverse,
+                            tflite::micro::GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
+
     default: {
-      TF_LITE_KERNEL_LOG(
-          context, "Unsupported input type, CUMSUM only supports FLOAT32.");
+      TF_LITE_KERNEL_LOG(context,
+                         "CUMSUM only supports FLOAT32 and INT8, got %s.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }
