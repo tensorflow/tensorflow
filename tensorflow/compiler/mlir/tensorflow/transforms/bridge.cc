@@ -133,7 +133,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
-  pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
