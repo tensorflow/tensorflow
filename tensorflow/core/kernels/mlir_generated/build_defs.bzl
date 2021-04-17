@@ -237,8 +237,10 @@ def _gen_kernel_library(
         output_types = types
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
+        amdhsa_obj = []
         if rocm_gpu_architectures():
             if int(rocm_version_number()) < 40100:
+                amdhsa_obj = ["--amdhsa-code-object-version=3"]
                 extra_args = extra_args + ["--amdhsa-code-object-version=3"]
         for (type, output_type) in zip(types, output_types):
             # Disable unrolling for integer types while LLVM does not vectorize these.
@@ -285,7 +287,6 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 srcs = ["build_test.sh"],
-                tags = ["no_rocm"],
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
@@ -295,8 +296,7 @@ def _gen_kernel_library(
                         output_type = output_type,
                     ),
                     "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
-                    "--amdhsa-code-object-version=3"
-                ],
+                ] + amdhsa_obj,
                 size = "medium",
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(

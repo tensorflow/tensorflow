@@ -463,7 +463,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 
@@ -1276,7 +1276,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 

@@ -530,9 +530,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }

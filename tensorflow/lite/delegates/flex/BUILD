@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
-load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
@@ -18,6 +18,8 @@ package(
 
 exports_files([
     "delegate.h",
+    "exported_symbols.lds",
+    "version_script.lds",
 ])
 
 cc_library(
@@ -73,6 +75,15 @@ tf_cc_test(
 tflite_flex_cc_library(
     name = "delegate",
     visibility = ["//visibility:public"],
+)
+
+# Shared lib target for convenience, pulls in the standard set of TensorFlow
+# ops and kernels. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite_flex.so`
+#   - Mac: `libtensorflowlite_flex.dylib`
+#   - Windows: `libtensorflowlite_flex.dll`
+tflite_flex_shared_library(
+    name = "tensorflowlite_flex",
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow

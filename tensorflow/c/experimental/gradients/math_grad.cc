@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
 using std::vector;
-using tensorflow::ops::Add;
+using tensorflow::ops::AddV2;
 using tensorflow::ops::Conj;
 using tensorflow::ops::Div;
 using tensorflow::ops::DivNoNan;
@@ -355,8 +355,8 @@ class Log1pGradientFunction : public GradientFunction {
 
     name = "Add_Log1p_Grad_X";
     // Calculate 1 + Conj(X)
-    TF_RETURN_IF_ERROR(Add(ctx, Ones_X.get(), Conj_X.get(),
-                           absl::MakeSpan(temp_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(AddV2(ctx, Ones_X.get(), Conj_X.get(),
+                             absl::MakeSpan(temp_outputs), name.c_str()));
 
     AbstractTensorHandlePtr Conj_XP1(temp_outputs[0]);
 

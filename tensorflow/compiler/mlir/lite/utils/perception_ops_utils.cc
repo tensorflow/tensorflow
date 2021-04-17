@@ -103,7 +103,7 @@ LogicalResult ConvertMaxUnpoolingFunc::VerifySignature() {
 
 LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
     std::string& custom_option_buffer) {
-  auto attrs = attr_.GetAttrs();
+  auto attrs = attr_.getAttrs();
   TfLitePoolParams pool_params;
 
   llvm::SmallVector<int32_t, 2> pool_size;

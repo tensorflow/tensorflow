@@ -1429,6 +1429,11 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
 // ConstOp
 //===----------------------------------------------------------------------===//
 
+void ConstOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "cst");
+}
+
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 

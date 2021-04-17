@@ -186,6 +186,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",

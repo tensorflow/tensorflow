@@ -2923,7 +2923,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
   const bool is_matmul = IsAnyMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
   const bool is_sub = IsSub(*node);
-  const bool is_any_div = IsAnyDiv(*node);
+  const bool is_any_div = IsAnyDiv(*node) && !IsFloorDiv(*node);
   // Simplify arithmetic operations with ones or zeros.
   if (use_shape_info &&
       (is_mul || is_matmul || is_add || is_sub || is_any_div) &&

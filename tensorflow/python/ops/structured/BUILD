@@ -16,6 +16,14 @@ py_library(
     srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
+        ":structured_ops",
+    ],
+)
+
+py_library(
+    name = "structured_ops",
+    srcs = ["structured_ops.py"],
+    deps = [
         ":structured_array_ops",
         ":structured_tensor",
     ],

@@ -45,6 +45,7 @@ else:
     del x, kwargs
     return lambda x: x
 
+
 # pylint: enable=g-import-not-at-top
 
 
@@ -326,9 +327,13 @@ class Interpreter(object):
         must be an instance of OpResolverType. By default, we use the built-in
         op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
         in C++.
-      experimental_preserve_all_tensors: If true, then intermediate tensors
-        used during computation are preserved for inspection. Otherwise, reading
-        intermediate tensors provides undefined values.
+      experimental_preserve_all_tensors: If true, then intermediate tensors used
+        during computation are preserved for inspection, and if the passed op
+        resolver type is AUTO or BUILTIN, the type will be changed to
+        BUILTIN_WITHOUT_DEFAULT_DELEGATES so that no Tensorflow Lite default
+        delegates are applied. If false, getting intermediate tensors could
+        result in undefined values or None, especially when the graph is
+        successfully modified by the Tensorflow Lite default delegate.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -336,7 +341,12 @@ class Interpreter(object):
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 
-    op_resolver_id = _get_op_resolver_id(experimental_op_resolver_type)
+    actual_resolver_type = experimental_op_resolver_type
+    if experimental_preserve_all_tensors and (
+        experimental_op_resolver_type == OpResolverType.AUTO or
+        experimental_op_resolver_type == OpResolverType.BUILTIN):
+      actual_resolver_type = OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+    op_resolver_id = _get_op_resolver_id(actual_resolver_type)
     if op_resolver_id is None:
       raise ValueError('Unrecognized passed in op resolver type: {}'.format(
           experimental_op_resolver_type))
@@ -351,8 +361,7 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
               model_path, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func,
-              experimental_preserve_all_tensors))
+              custom_op_registerers_by_func, experimental_preserve_all_tensors))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -369,8 +378,7 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func,
-              experimental_preserve_all_tensors))
+              custom_op_registerers_by_func, experimental_preserve_all_tensors))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:

@@ -19,7 +19,6 @@
 import collections
 import copy
 import csv
-import io
 import json
 import os
 import re
@@ -2739,21 +2738,17 @@ class CSVLogger(Callback):
     self.writer = None
     self.keys = None
     self.append_header = True
-    self.file_flags = ''
-    self._open_args = {'newline': '\n'}
     super(CSVLogger, self).__init__()
 
   def on_train_begin(self, logs=None):
     if self.append:
       if file_io.file_exists_v2(self.filename):
-        with open(self.filename, 'r' + self.file_flags) as f:
+        with gfile.GFile(self.filename, 'r') as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
     else:
       mode = 'w'
-    self.csv_file = io.open(self.filename,
-                            mode + self.file_flags,
-                            **self._open_args)
+    self.csv_file = gfile.GFile(self.filename, mode)
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}

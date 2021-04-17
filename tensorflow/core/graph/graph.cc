@@ -887,12 +887,11 @@ void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
     t = *ret.first;
   }
 
-  node_name_to_out_type_.emplace(name, t);
+  node_name_to_out_type_.emplace(string(name), t);
 }
 
 void Graph::NodeType(StringPiece name, FullTypeDef** result) {
   *result = nullptr;
-  // TODO(mdan): How to aovid the key copy?
   auto it = node_name_to_out_type_.find(string(name));
   if (it == node_name_to_out_type_.end()) {
     *result = nullptr;

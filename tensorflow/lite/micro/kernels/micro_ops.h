@@ -47,6 +47,7 @@ TfLiteRegistration Register_FLOOR_MOD();
 TfLiteRegistration Register_L2_POOL_2D();
 TfLiteRegistration Register_LEAKY_RELU();
 TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPACE_TO_BATCH_ND();

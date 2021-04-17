@@ -630,7 +630,6 @@ def _create_local_rocm_repository(repository_ctx):
             )
         )
 
-
     rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []

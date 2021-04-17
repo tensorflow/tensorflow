@@ -75,3 +75,24 @@ func @canonical_cluster(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32
   return %0#0, %0#1 : tensor<i32>, tensor<i32>
 }
 
+
+// Verifies handling op a cluster op whose results are used for resource assignment.
+// CHECK-LABEL: func @cluster_result_for_resource_update
+func @cluster_result_for_resource_update(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+
+  // CHECK: %[[RESULT:.*]] = "tf_device.cluster"
+  %0:2 = "tf_device.cluster"() ( {
+    // CHECK: "tf.Equal"
+    %1 = "tf.Equal"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    // CHECK: "tf.Assert"
+    "tf.Assert"(%1, %arg0) : (tensor<i1>, tensor<i32>) -> ()
+    // CHECK: tf_device.return %arg1
+    tf_device.return %arg0, %arg1 : tensor<i32>, tensor<i32>
+  }) : () -> (tensor<i32>, tensor<i32>)
+  // CHECK: "tf.AssignVariableOp"({{.*}}, %[[RESULT]]
+  "tf.AssignVariableOp"(%resource, %0#1) {dtype = i32} : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<i32>) -> ()
+
+  // CHECK: return %arg0, %[[RESULT]]
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}
