@@ -230,6 +230,13 @@ class Conv(Layer):
     tf_op_name = self.__class__.__name__
     if tf_op_name == 'Conv1D':
       tf_op_name = 'conv1d'  # Backwards compat.
+    
+    output_shapes = self.compute_output_shape(input_shape).as_list()
+    output_shapes = list(filter((None).__ne__, output_shapes))
+    if not all(output_shapes):
+      raise ValueError('One of the dimensions in output tensor is less than or'
+      ' equal to zero. Please check the input shape. '
+      ' Recieved input: %s'%input_shape)
 
     self._convolution_op = functools.partial(
         nn_ops.convolution_v2,
