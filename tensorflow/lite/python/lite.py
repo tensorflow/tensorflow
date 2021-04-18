@@ -527,8 +527,7 @@ class TFLiteConverterBase(object):
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
-      return _mlir_quantize(calibrated, disable_per_channel,
-                            input_data_type=inference_input_type,
+      return _mlir_quantize(calibrated, input_data_type=inference_input_type,
                             output_data_type=inference_output_type)
     else:
       return calibrate_quantize.calibrate_and_quantize(
