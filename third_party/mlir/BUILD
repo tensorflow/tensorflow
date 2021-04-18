@@ -5764,6 +5764,7 @@ cc_binary(
         "tools/mlir-reduce/Passes/*.cpp",
     ]) + ["lib/Reducer/Tester.cpp"],
     includes = ["include"],
+    local_defines = ["MLIR_INCLUDE_TESTS"],
     stamp = 0,
     deps = [
         ":AllPassesAndDialects",
@@ -5774,5 +5775,6 @@ cc_binary(
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir/test:TestDialect",
     ],
 )
