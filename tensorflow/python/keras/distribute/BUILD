@@ -245,7 +245,9 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_metrics_test",
     srcs = ["custom_training_loop_metrics_test.py"],
-    disable_mlir_bridge = False,
+    # TODO(b/168036682): Enable once dynamic padding is supported with MLIR
+    # bridge. Requires lowering for XlaSetDynamicDimensionSize op.
+    disable_mlir_bridge = True,
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",

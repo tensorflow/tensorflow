@@ -3138,18 +3138,6 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// XlaSetDynamicDimensionSizeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  inferredReturnTypes.assign({operands.front().getType()});
-  return success();
-}
-
 }  // namespace TF
 }  // namespace mlir
 

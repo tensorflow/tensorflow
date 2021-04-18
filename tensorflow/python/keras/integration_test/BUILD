@@ -106,7 +106,9 @@ tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
-    disable_mlir_bridge = False,
+    # TODO(b/168036682): Enable once dynamic padding is supported with MLIR
+    # bridge. Requires lowering for XlaSetDynamicDimensionSize op.
+    disable_mlir_bridge = True,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
