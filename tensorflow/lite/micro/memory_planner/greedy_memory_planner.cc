@@ -21,6 +21,8 @@ namespace tflite {
 
 namespace {
 
+// Returns a character representing a numbered buffer
+// for GreedyMemoryPlanner::PrintMemoryPlan()
 char GetOrdinalCharacter(int i) {
   if (i < 10) {
     return '0' + i;
@@ -332,12 +334,14 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
   CalculateOffsetsIfNeeded();
 
   for (int i = 0; i < buffer_count_; ++i) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
     char s[] = {GetOrdinalCharacter(i), 0};
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "%s (id=%d): size=%d, offset=%d, first_used=%d last_used=%d", s, i,
         requirements_[i].size, buffer_offsets_[i],
         requirements_[i].first_time_used, requirements_[i].last_time_used);
+#endif
   }
 
   constexpr int kLineWidth = 80;
@@ -386,8 +390,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
     }
     line[kLineWidth] = 0;
 
-    char padding[] = {t < 100 ? ' ' : '\0', t < 10 ? ' ' : '\0', '\0'};
-    TF_LITE_REPORT_ERROR(error_reporter, "%s%d: %s (%dk)", padding, t,
+    TF_LITE_REPORT_ERROR(error_reporter, "%s%d: %s (%dk)", t < 10 ? " " : "", t,
                          (const char*)line, (memory_use + 1023) / 1024);
   }
 }
