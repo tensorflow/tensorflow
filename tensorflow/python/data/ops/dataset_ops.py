@@ -2517,6 +2517,72 @@ name=None))
     """
     return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
+  def group_by_window(self,
+                      key_func,
+                      reduce_func,
+                      window_size=None,
+                      window_size_func=None):
+    """Groups windows of elements by key and reduces them.
+
+    This transformation maps each consecutive element in a dataset to a key
+    using `key_func` and groups the elements by key. It then applies
+    `reduce_func` to at most `window_size_func(key)` elements matching the same
+    key. All except the final window for each key will contain
+    `window_size_func(key)` elements; the final window may be smaller.
+
+    You may provide either a constant `window_size` or a window size determined
+    by the key through `window_size_func`.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> window_size = 5
+    >>> key_func = lambda x: x%2
+    >>> reduce_func = lambda key, dataset: dataset.batch(window_size)
+    >>> dataset = dataset.group_by_window(
+    ...           key_func=key_func,
+    ...           reduce_func=reduce_func,
+    ...           window_size=window_size)
+    >>> for elem in dataset.as_numpy_iterator():
+    ...   print(elem)
+    [0 2 4 6 8]
+    [1 3 5 7 9]
+
+    Args:
+      key_func: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to a
+        scalar `tf.int64` tensor.
+      reduce_func: A function mapping a key and a dataset of up to `window_size`
+        consecutive elements matching that key to another dataset.
+      window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements matching the same key to combine in a single batch,
+        which will be passed to `reduce_func`. Mutually exclusive with
+        `window_size_func`.
+      window_size_func: A function mapping a key to a `tf.int64` scalar
+        `tf.Tensor`, representing the number of consecutive elements matching
+        the same key to combine in a single batch, which will be passed to
+        `reduce_func`. Mutually exclusive with `window_size`.
+
+    Returns:
+      A `tf.data.Dataset`
+
+    Raises:
+      ValueError: if neither or both of {`window_size`, `window_size_func`} are
+        passed.
+    """
+    if (window_size is not None and window_size_func or
+        not (window_size is not None or window_size_func)):
+      raise ValueError("Must pass either window_size or window_size_func.")
+
+    if window_size is not None:
+
+      def constant_window_func(unused_key):
+        return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
+
+      window_size_func = constant_window_func
+
+    assert window_size_func is not None
+
+    return _GroupByWindowDataset(self, key_func, reduce_func, window_size_func)
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
@@ -5148,6 +5214,78 @@ class _UnbatchDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._structure
+
+
+class _GroupByWindowDataset(UnaryDataset):
+  """A `Dataset` that groups its input and performs a windowed reduction."""
+
+  def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
+    """See `group_by_window()` for details."""
+    self._input_dataset = input_dataset
+    self._make_key_func(key_func, input_dataset)
+    self._make_reduce_func(reduce_func, input_dataset)
+    self._make_window_size_func(window_size_func)
+    variant_tensor = ged_ops.group_by_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._key_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._window_size_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        reduce_func=self._reduce_func.function,
+        window_size_func=self._window_size_func.function,
+        **self._flat_structure)
+    super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _make_window_size_func(self, window_size_func):
+    """Make wrapping defun for window_size_func."""
+
+    def window_size_func_wrapper(key):
+      return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
+
+    self._window_size_func = StructuredFunctionWrapper(
+        window_size_func_wrapper,
+        self._transformation_name(),
+        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
+    if not self._window_size_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int64)):
+      raise ValueError(
+          "`window_size_func` must return a single tf.int64 scalar tensor.")
+
+  def _make_key_func(self, key_func, input_dataset):
+    """Make wrapping defun for key_func."""
+
+    def key_func_wrapper(*args):
+      return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
+
+    self._key_func = StructuredFunctionWrapper(
+        key_func_wrapper, self._transformation_name(), dataset=input_dataset)
+    if not self._key_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int64)):
+      raise ValueError(
+          "`key_func` must return a single tf.int64 scalar tensor.")
+
+  def _make_reduce_func(self, reduce_func, input_dataset):
+    """Make wrapping defun for reduce_func."""
+    nested_dataset = DatasetSpec(input_dataset.element_spec)
+    input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
+    self._reduce_func = StructuredFunctionWrapper(
+        reduce_func,
+        self._transformation_name(),
+        input_structure=input_structure)
+    if not isinstance(self._reduce_func.output_structure, DatasetSpec):
+      raise TypeError("`reduce_func` must return a `Dataset` object.")
+    # pylint: disable=protected-access
+    self._element_spec = (self._reduce_func.output_structure._element_spec)
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+  def _functions(self):
+    return [self._key_func, self._reduce_func, self._window_size_func]
+
+  def _transformation_name(self):
+    return "Dataset.group_by_window()"
 
 
 def _collect_resource_inputs(op):

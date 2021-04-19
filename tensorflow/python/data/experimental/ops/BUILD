@@ -136,6 +136,7 @@ py_library(
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
