@@ -6186,6 +6186,7 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         ":android_extended_ops_headers",
+        "as_string_op.cc",
         "base64_ops.cc",
         "batchtospace_op.cc",
         "bincount_op.cc",

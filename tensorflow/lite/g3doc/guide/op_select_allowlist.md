@@ -38,6 +38,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.ApproximateEqual`
 *   `raw_ops.ArgMax`
 *   `raw_ops.ArgMin`
+*   `raw_ops.AsString`
 *   `raw_ops.Assert`
 *   `raw_ops.Assign`
 *   `raw_ops.AssignAdd`
