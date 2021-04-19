@@ -307,6 +307,14 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testAddWithI64Broadcasting
+func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
+^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
+  // CHECK: "tfl.add"(%arg0, %arg1)
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  return %0#0 : tensor<2x3xi64>
+}
+
 // -----
 
 func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
@@ -315,6 +323,7 @@ func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> ten
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
   return %0#0 : tensor<2x2x!quant.any<i16:f32>>
 }
+
 // -----
 
 func @sub_with_quantized_i8_five_dim_broadcasting(tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>> {
