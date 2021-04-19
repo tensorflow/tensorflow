@@ -8072,6 +8072,9 @@ func MultiDeviceIteratorToStringHandle(scope *Scope, multi_device_iterator tf.Ou
 type QuantizeAndDequantizeV4Attr func(optionalAttr)
 
 // QuantizeAndDequantizeV4SignedInput sets the optional signed_input attribute to value.
+//
+// value: Whether the quantization is signed or unsigned. (actually this parameter should
+// have been called <b>`signed_output`</b>)
 // If not specified, defaults to true
 func QuantizeAndDequantizeV4SignedInput(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8080,6 +8083,8 @@ func QuantizeAndDequantizeV4SignedInput(value bool) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4NumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization.
 // If not specified, defaults to 8
 func QuantizeAndDequantizeV4NumBits(value int64) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8088,6 +8093,8 @@ func QuantizeAndDequantizeV4NumBits(value int64) QuantizeAndDequantizeV4Attr {
 }
 
 // QuantizeAndDequantizeV4RangeGiven sets the optional range_given attribute to value.
+//
+// value: Whether the range is given or should be determined from the `input` tensor.
 // If not specified, defaults to false
 func QuantizeAndDequantizeV4RangeGiven(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8096,6 +8103,15 @@ func QuantizeAndDequantizeV4RangeGiven(value bool) QuantizeAndDequantizeV4Attr {
 }
 
 // QuantizeAndDequantizeV4RoundMode sets the optional round_mode attribute to value.
+//
+// value: The 'round_mode' attribute controls which rounding tie-breaking algorithm is
+// used when rounding float values to their quantized equivalents. The following
+// rounding modes are currently supported:
+//
+// *   HALF_TO_EVEN: this is the default round_mode.
+// *   HALF_UP: round towards positive. In this mode 7.5 rounds up to 8 and -7.5
+//     rounds up to -7.
+//
 // If not specified, defaults to "HALF_TO_EVEN"
 func QuantizeAndDequantizeV4RoundMode(value string) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8104,6 +8120,10 @@ func QuantizeAndDequantizeV4RoundMode(value string) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4NarrowRange sets the optional narrow_range attribute to value.
+//
+// value: If True, then the absolute value of the quantized minimum value is the same as
+// the quantized maximum value, instead of 1 greater.
+// i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
 // If not specified, defaults to false
 func QuantizeAndDequantizeV4NarrowRange(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8112,6 +8132,9 @@ func QuantizeAndDequantizeV4NarrowRange(value bool) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4Axis sets the optional axis attribute to value.
+//
+// value: If specified, this axis is treated as a channel or slice axis, and a separate
+// quantization range is used for each channel or slice along this axis.
 // If not specified, defaults to -1
 func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8123,6 +8146,15 @@ func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 //
 // This is almost identical to QuantizeAndDequantizeV2, except that it returns a
 // gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+//
+// Arguments:
+//	input: Tensor to quantize and then dequantize.
+//	input_min: If `range_given == True`, this specifies the minimum input value that needs to
+// be represented, otherwise it is determined from the min value of the `input`
+// tensor.
+//	input_max: If `range_given == True`, this specifies the maximum input value that needs to
+// be represented, otherwise it is determined from the max value of the `input`
+// tensor.
 func QuantizeAndDequantizeV4(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4Attr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
