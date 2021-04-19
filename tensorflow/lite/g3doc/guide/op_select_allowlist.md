@@ -809,3 +809,99 @@ model_data = converter.convert()
 
 On the runtime side, it is also required to link your operators library into the
 final app or binary.
+
+## Add TensorFlow core operators to the allowed list.
+
+If you hit the case where the TensorFlow core operators are not in the above
+allowed
+[list](https://www.tensorflow.org/lite/guide/op_select_allowlist#tensorflow_core_operators),
+you can report the feature request at
+[here](https://github.com/tensorflow/tensorflow/issues) with the names of the
+TensorFlow core operators, not listed in the allowed list.
+
+You can also create own your pull request from the source code. For example, if
+you want to add the `raw_ops.StringToNumber` op in the allowed list, there are
+three places to update like this
+[commit](https://github.com/tensorflow/tensorflow/commit/02e691329517eb5e76522ed8d8bef79ceb082ff8).
+
+(1) Add the operator kernel source code to the `portable_extended_ops_group2`
+BUILD rule.
+
+```
+filegroup(
+    name = "portable_extended_ops_group2",
+    srcs = [
+        ...
++       "string_to_number_op.cc",
+
+        ...
+    ],
+)
+```
+
+In order to find the relvant operator kernel source file under the
+`tensorflow/core/kernels` directory, you can search the source code location,
+which contains the following kernel declaration with the operator name:
+
+```
+REGISTER_KERNEL_BUILDER(Name("StringToNumber")                 \
+                            .Device(DEVICE_CPU)                \
+                            .TypeConstraint<type>("out_type"), \
+                        StringToNumberOp<type>)
+```
+
+If there are any header files under the `tensorflow/core/kernels` directory,
+required in the operator kernel source code, you need to add the header file
+into the `portable_extended_ops_headers` BUILD rule as the follows:
+
+```
+filegroup(
+    name = "portable_extended_ops_headers",
+    srcs = [
+        ...
++       "string_util.h",
+
+        ...
+    ],
+)
+```
+
+(2) Add the operator name to the allowed list.
+
+The allowed list is defined in the
+`tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc`. The TensorFlow core
+operator name is need to be listed in order to be allowed through the Select TF
+option.
+
+```
+static const std::set<std::string>* allowlisted_flex_ops =
+    new std::set<std::string>({
+        ...
++       "StringToNumber",
+
+        ...
+    });
+```
+
+Since the above list is sorted in alphabetical order, it makes sure to place the
+name in the right place.
+
+(3) Add the operator name to this guide page.
+
+To show the operator inclusion to the other developers, this guide page should
+be updated as well. This page is located at the
+`tensorflow/lite/g3doc/guide/op_select_allowlist.md`.
+
+```
+## TensorFlow core operators
+
+The following is an exhaustive list of TensorFlow core operations that are
+supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
+
+...
++*   `raw_ops.StringToNumber`
+...
+```
+
+Since the above list is sorted in alphabetical order, it makes sure to place the
+name in the right place.
