@@ -3701,7 +3701,7 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
 #else
             VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
                     << " data type for native format. Please switch to Intel "
-                    << "Optimized Tensorflow and set environment variable "
+                    << "Optimized Tensorflow and set the environment variable "
                     << "TF_ENABLE_MKL_NATIVE_FORMAT to false.";
 #endif  // defined(ENABLE_MKL)
           });
