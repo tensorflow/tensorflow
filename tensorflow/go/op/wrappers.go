@@ -11176,6 +11176,17 @@ func CudnnRNNBackpropV2(scope *Scope, input tf.Output, input_h tf.Output, input_
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
+// DirectedInterleaveDatasetAttr is an optional argument to DirectedInterleaveDataset.
+type DirectedInterleaveDatasetAttr func(optionalAttr)
+
+// DirectedInterleaveDatasetStopOnEmptyDataset sets the optional stop_on_empty_dataset attribute to value.
+// If not specified, defaults to false
+func DirectedInterleaveDatasetStopOnEmptyDataset(value bool) DirectedInterleaveDatasetAttr {
+	return func(m optionalAttr) {
+		m["stop_on_empty_dataset"] = value
+	}
+}
+
 // A substitute for `InterleaveDataset` on a fixed list of `N` datasets.
 //
 // Arguments:
@@ -11185,11 +11196,14 @@ func CudnnRNNBackpropV2(scope *Scope, input tf.Output, input_h tf.Output, input_
 // the values of `selector_input_dataset`.
 //
 //
-func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, data_input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, data_input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DirectedInterleaveDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DirectedInterleaveDataset",
 		Input: []tf.Input{
