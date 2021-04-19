@@ -832,7 +832,10 @@ class Worker(object):
     self._maybe_delay()
     while self._should_worker_thread_run:
       closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
-      if not self._should_worker_thread_run or closure is None:
+      if closure is None:
+        return
+      if not self._should_worker_thread_run:
+        closure.mark_cancelled()
         return
       self._process_closure(closure)
       # To properly stop the worker and preemption threads, it is important that
