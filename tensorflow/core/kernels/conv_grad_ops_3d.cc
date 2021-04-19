@@ -239,6 +239,20 @@ class Conv3DBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
 
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context, ConvBackpropComputeDimensions(
                                 "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
@@ -345,6 +359,20 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     } else {
       input_shape = context->input(0).shape();
     }
+
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context, ConvBackpropComputeDimensions(
@@ -696,6 +724,20 @@ class Conv3DBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
                    ConvBackpropComputeDimensions(
@@ -807,6 +849,20 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     } else {
       filter_shape = context->input(1).shape();
     }
+
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
