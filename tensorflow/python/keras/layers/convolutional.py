@@ -231,6 +231,8 @@ class Conv(Layer):
     if tf_op_name == 'Conv1D':
       tf_op_name = 'conv1d'  # Backwards compat.
     
+    # Check if output shapes are valid
+    # They must not have 0 entries along any dimension
     output_shapes = self.compute_output_shape(input_shape).as_list()
     output_shapes = list(filter((None).__ne__, output_shapes))
     if not all(output_shapes):
