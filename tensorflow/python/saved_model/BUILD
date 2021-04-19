@@ -41,7 +41,10 @@ py_strict_library(
     name = "constants",
     srcs = ["constants.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/util:tf_export"],
+    deps = [
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
 py_strict_library(
@@ -323,7 +326,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":builder",
-        ":constants",
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
@@ -352,6 +354,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
