@@ -1944,7 +1944,13 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
 
   bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
-  LaunchDimensionsConfig launch_config{unroll_factor, few_waves, row_vectorized};
+  LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
+				       row_vectorized};
+  // Check that the shapes is supported.
+  launch_config.row_vectorized &= ThareadsPerBlockRowVectorized(
+      element_shape,
+      ir_emitter_context_->gpu_device_info(),
+      launch_config) > 0;
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(

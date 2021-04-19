@@ -53,7 +53,25 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
   return threads_per_block;
 }
 
-// Calculates the launch dimensions used to invoke `hlo`.
+int ThareadsPerBlockRowVectorized(const Shape& shape, GpuDeviceInfo gpu_device_info,
+				  LaunchDimensionsConfig dim_config) {
+  int64 threads_per_block_row_vectorized =
+      shape.dimensions().back() / dim_config.unroll_factor;
+  if (dim_config.row_vectorized &&
+      shape.dimensions().back() % dim_config.unroll_factor == 0 &&
+      // If the row size is a multiple of 256, then use the old code
+      // path that use a block size of 256. This give small speed up on V100.
+      // Vectorization of the row load was already happening.
+      (shape.dimensions().back() % 256) != 0 &&
+      // Do not trigger the row vectorized codepath if this create too
+      // small block size as this hurt performance.
+      (threads_per_block_row_vectorized >= 128 &&
+       threads_per_block_row_vectorized <=
+           gpu_device_info.threads_per_block_limit))
+    return threads_per_block_row_vectorized;
+  return -1;
+}
+
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
     LaunchDimensionsConfig dim_config) {
@@ -77,23 +95,13 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
   int64 threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
-  int64 threads_per_block_row_vectorized =
-      shape.dimensions().back() / dim_config.unroll_factor;
-  if (dim_config.row_vectorized &&
-      shape.dimensions().back() % dim_config.unroll_factor == 0 &&
-      // If the row size is a multiple of 256, then use the old code
-      // path that use a block size of 256. This give small speed up on V100.
-      // Vectorization of the row load was already happening.
-      (shape.dimensions().back() % 256) != 0 &&
-      // Do not trigger the row vectorized codepath if this create too
-      // small block size as this hurt performance.
-      (threads_per_block_row_vectorized >= 128 &&
-       threads_per_block_row_vectorized <=
-           gpu_device_info.threads_per_block_limit)) {
+  int64 threads_per_block_row_vectorized = ThareadsPerBlockRowVectorized(shape, gpu_device_info, dim_config);
+  if (threads_per_block_row_vectorized > 0) {
     threads_per_block = threads_per_block_row_vectorized;
     VLOG(2) << "Update # of threads per block to (" << threads_per_block
             << ") to be row_vectorized.";
   } else {
+    CHECK(!dim_config.row_vectorized);
     // We unroll kernels to make use of vectorized loads/stores. This means we
     // need more registers to hold intermediate values. Reduce the number of
     // blocks per thread to increase the number of registers available to ptxas.

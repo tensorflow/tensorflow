@@ -82,6 +82,13 @@ struct LaunchDimensionsConfig {
   bool row_vectorized = false;
 };
 
+// Return -1 if the shape doesn't allows the row vectorization code path.
+// If supported, return the number of threads to use in that case.
+int ThareadsPerBlockRowVectorized(
+    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    LaunchDimensionsConfig dim_config);
+
+// Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
     LaunchDimensionsConfig dim_config = {});

@@ -252,3 +252,17 @@ ENTRY %computation {
 // This graph triggered a bug where the new indexing was generated
 // CHECK-LLVM-LABEL: @fusion_7
 // CHECK-LLVM-NOT: row_index
+
+
+// -----
+HloModule RowToLong
+
+
+
+ENTRY main {
+  %param_0 = f32[2024]{0} parameter(0)
+  ROOT %broadcastRowToLong = f32[3025,2024]{1,0} broadcast(%param_0), dimensions={1}
+}
+// Check that we didn't emit the simpler row broadcasting.
+// CHECK-LLVM-LABEL: @broadcastRowToLong
+// CHECK-LLVM-NOT: row_index
