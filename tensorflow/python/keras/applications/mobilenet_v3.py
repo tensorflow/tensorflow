@@ -14,7 +14,8 @@
 # ==============================================================================
 # pylint: disable=invalid-name
 # pylint: disable=missing-function-docstring
-"""MobileNet v3 models for Keras."""
+"""MobileNet v3 models for Keras.
+See code for full docstring."""
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import models
