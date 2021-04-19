@@ -25,7 +25,7 @@ namespace tools {
 class DefaultExecutionProvider : public DelegateProvider {
  public:
   DefaultExecutionProvider() {
-    default_params_.AddParam("num_threads", ToolParam::Create<int32_t>(1));
+    default_params_.AddParam("num_threads", ToolParam::Create<int32_t>(-1));
     default_params_.AddParam("max_delegated_partitions",
                              ToolParam::Create<int32_t>(0));
     default_params_.AddParam("min_nodes_per_partition",
