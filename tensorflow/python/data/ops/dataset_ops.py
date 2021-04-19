@@ -2533,7 +2533,7 @@ name=None))
     >>> dataset = tf.data.Dataset.range(10)
     >>> window_size = 5
     >>> key_func = lambda x: x%2
-    >>> reduce_func = reduce_func=lambda key, dataset: dataset.batch(window_size)
+    >>> reduce_func = lambda key, dataset: dataset.batch(window_size)
     >>> dataset = dataset.group_by_window(
     ...           key_func=key_func,
     ...           reduce_func=reduce_func,
