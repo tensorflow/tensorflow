@@ -247,7 +247,7 @@ tf_py_test(
     name = "directed_interleave_dataset_test",
     size = "small",
     srcs = ["directed_interleave_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

@@ -106,7 +106,7 @@ tf_module {
   }
   member_method {
     name: "choose_from_datasets"
-    argspec: "args=[\'datasets\', \'choice_dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "copy_to_device"
@@ -202,7 +202,7 @@ tf_module {
   }
   member_method {
     name: "sample_from_datasets"
-    argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "save"

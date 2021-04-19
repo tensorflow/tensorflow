@@ -154,10 +154,15 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:stateless_random_ops_gen",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

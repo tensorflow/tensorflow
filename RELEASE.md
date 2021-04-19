@@ -52,8 +52,15 @@
     *   Promoting `tf.data.experimental.get_single_element` API to
         `tf.data.Dataset.get_single_element` and deprecating the experimental
         endpoint.
-*  `tf.lite`:
-  * Fix mean op reference quantization rounding issue.
+    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
+        `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
+        sampling if it encounters an empty dataset. This preserves the sampling
+        ratio throughout training. The prior behavior was to continue sampling,
+        skipping over exhausted datasets, until all datasets are exhausted. By
+        default, the original behavior (`stop_on_empty_dataset=False`) is
+        preserved.
+*   `tf.lite`:
+    *   Fix mean op reference quantization rounding issue.
 
 ## Thanks to our Contributors
 
