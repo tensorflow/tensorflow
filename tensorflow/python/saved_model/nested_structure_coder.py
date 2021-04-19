@@ -528,8 +528,7 @@ class _TypeSpecCodec(object):
 
   def can_encode(self, pyobj):
     """Returns true if `pyboj` can be encoded as a TypeSpec."""
-    # pylint: disable=unidiomatic-typecheck
-    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:
+    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:  # pylint: disable=unidiomatic-typecheck
       return True
 
     # Check if it's a registered type.
@@ -539,6 +538,8 @@ class _TypeSpecCodec(object):
         return True
       except ValueError:
         return False
+
+    return False
 
   def do_encode(self, type_spec_value, encode_fn):
     """Returns an encoded proto for the given `tf.TypeSpec`."""
