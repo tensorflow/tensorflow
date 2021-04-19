@@ -1246,7 +1246,7 @@ tf_module {
   }
   member_method {
     name: "DirectedInterleaveDataset"
-    argspec: "args=[\'selector_input_dataset\', \'data_input_datasets\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'selector_input_dataset\', \'data_input_datasets\', \'output_types\', \'output_shapes\', \'stop_on_empty_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "Div"

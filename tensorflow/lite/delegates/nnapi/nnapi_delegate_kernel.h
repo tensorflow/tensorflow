@@ -262,7 +262,8 @@ class NNAPIDelegateKernel {
         nnapi_(nnapi),
         nn_model_(nullptr, NNFreeModel(nnapi_)),
         nn_compilation_(nullptr, NNFreeCompilation(nnapi_)),
-        nn_burst_(nullptr, NNFreeBurst(nnapi_)) {}
+        nn_burst_(nullptr, NNFreeBurst(nnapi_)),
+        nn_execution_(nullptr, NNFreeExecution(nnapi_)) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
   ~NNAPIDelegateKernel() {
     for (auto content : allocation_memory_mapping_) {
@@ -337,6 +338,10 @@ class NNAPIDelegateKernel {
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
       nn_compilation_;
   std::unique_ptr<ANeuralNetworksBurst, NNFreeBurst> nn_burst_;
+  std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution> nn_execution_;
+  // The mappings of tenor id to BufferHandle. Needed to track BufferHandle
+  // change and alter nn_reusable_execution_ if necessary.
+  std::vector<int> tensor_handle_map_;
   // Node indices that this delegate is responsible for. Indices here
   // indexes into the nodes array in the TfLiteContext.
   std::vector<int> nodes_;

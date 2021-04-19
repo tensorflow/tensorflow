@@ -245,10 +245,12 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
 
   LogicalResult matchAndRewrite(shape::AssumingOp op,
                                 PatternRewriter &rewriter) const override {
-    // Merge assuming op with directly preceding one.
+    // Merge assuming op with directly preceding one if both witnesses are
+    // availiable.
     auto preceding_op =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
     if (!preceding_op) return failure();
+    if (op.witness().getDefiningOp() == preceding_op) return failure();
 
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);

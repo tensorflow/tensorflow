@@ -694,6 +694,28 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_digamma_kernels",
+    op = "digamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels",
+    op = "lgamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
     name = "gpu_sign_kernels",
     op = "sign",
     tile_size = "256",
@@ -976,11 +998,9 @@ gpu_kernel_library(
     )
     for op in [
         "ceil",
-        "digamma",
         "exp",
         "expm1",
         "floor",
-        "lgamma",
         "log",
         "log1p",
         "rsqrt",

@@ -58,6 +58,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "ApproximateEqual",
           "ArgMax",
           "ArgMin",
+          "AsString",
           "Assert",
           "Assign",
           "AssignAdd",

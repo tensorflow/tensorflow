@@ -262,12 +262,12 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
   m.def(
       "get_tpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+      [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
-                            GetTpuClient(asynchronous));
+                            GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(std::move(client));
       },
-      py::arg("asynchronous") = true);
+      py::arg("max_inflight_computations") = 32);
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
 

@@ -15,8 +15,6 @@
 # ==============================================================================
 """Python module for evaluation loop."""
 
-import re
-
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -194,17 +192,10 @@ class SidecarEvaluator(object):
         # The checkpoint should contain model and optimizer for SidecarEvaluator
         # to work. But the model weights saved by ModelCheckpoint callback does
         # not contain model as an attribute. To make SidecarEvaluator compatibly
-        # work in this case, if model attribute is not found but
-        # layer_with_weights attribute is found, use model.load_weights to load
-        # the model's weights, while self._iterations is still restored by
-        # checkpoint variable.
+        # work in this case, use model.load_weights to load the model's weights,
+        # while self._iterations is still restored by checkpoint variable.
         if 'model' not in checkpoint_attributes:
-          for attribute in checkpoint_attributes:
-            # check whether the checkpoint has the required attributes for
-            # model.load_weights to work.
-            if re.match(r'^layer_with_weights-[\d+]', attribute) is not None:
-              self.model.load_weights(latest_checkpoint)
-              break
+          self.model.load_weights(latest_checkpoint)
         # The model checkpoint might not include optimizer in cases, e.g.
         # using a custom training loop. Directly assign the iterations
         # property to be used in callbacks.

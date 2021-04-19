@@ -331,10 +331,11 @@ struct CacheEntry {
 };
 
 // A CompiledFunctionCache represents a cache of compiled functions that can be
-// shared between one or more CompiledFunction objects. This allows the capacity
-// of an LRU cache to be shared between many jit-compiled functions, rather than
-// necessarily having a unique cache for each function with its own
-// capacity limit. We assume the cache is protected by the GIL.
+// shared between one or more CompiledFunction objects. It serves two goals:
+// - reduce the number of lru caches (hash map) across multiple JITs.
+// - make the cache global to increase cache hits (e.g. calling jit(f)(3) twice)
+//   keeping entries alive as long as the underlying function f is alive.
+// Assume the cache is protected by the GIL.
 class CompiledFunctionCache {
  public:
   static constexpr int kDefaultCapacity = 4096;

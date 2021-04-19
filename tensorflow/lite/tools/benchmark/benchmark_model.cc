@@ -34,7 +34,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("run_frequency", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(-1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));

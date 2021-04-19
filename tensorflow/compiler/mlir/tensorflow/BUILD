@@ -1022,7 +1022,6 @@ cc_library(
         "transforms/tpu_compile_op_replication_pass.cc",
         "transforms/tpu_device_propagation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
-        "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_extract_head_tail_outside_compilation.cc",
         "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_host_computation_expansion.cc",

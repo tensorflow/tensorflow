@@ -1960,7 +1960,7 @@ class LearningRateScheduler(Callback):
       raise ValueError('The dtype of Tensor should be float')
     backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:
-      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+      print('\nEpoch %05d: LearningRateScheduler setting learning '
             'rate to %s.' % (epoch + 1, lr))
 
   def on_epoch_end(self, epoch, logs=None):

@@ -598,7 +598,7 @@ This will take a few minutes, and downloads frameworks the code uses like
 finished, run:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile test_person_detection_test
+make -f tensorflow/lite/micro/tools/make/Makefile test_person_detection_test_int8
 ```
 
 You should see a series of files get compiled, followed by some logging output

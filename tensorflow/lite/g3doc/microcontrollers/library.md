@@ -35,8 +35,8 @@ interpreter are located in the root of the project, accompanied by tests:
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
 
-See [Get started with microcontrollers](get_started.md) for a walkthrough of
-typical usage.
+See [Get started with microcontrollers](get_started_low_level.md) for a
+walkthrough of typical usage.
 
 The build system provides for platform-specific implementations of certain
 files. These are located in a directory with the platform name, for example

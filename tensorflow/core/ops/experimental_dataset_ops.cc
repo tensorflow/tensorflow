@@ -348,6 +348,7 @@ REGISTER_OP("DirectedInterleaveDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
+    .Attr("stop_on_empty_dataset: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalDirectedInterleaveDataset")

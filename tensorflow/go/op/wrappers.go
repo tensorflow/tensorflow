@@ -470,7 +470,7 @@ func TensorScatterSub(scope *Scope, tensor tf.Output, indices tf.Output, updates
 //
 // This operation creates a new tensor by adding sparse `updates` to the passed
 // in `tensor`.
-// This operation is very similar to `tf.scatter_nd_add`, except that the updates
+// This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
 // are added onto an existing tensor (as opposed to a variable). If the memory
 // for the existing tensor cannot be re-used, a copy is made and updated.
 //
@@ -8119,7 +8119,7 @@ func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 	}
 }
 
-// Returns the gradient of `QuantizeAndDequantizeV4`.
+// Quantizes then dequantizes a tensor.
 //
 // This is almost identical to QuantizeAndDequantizeV2, except that it returns a
 // gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
