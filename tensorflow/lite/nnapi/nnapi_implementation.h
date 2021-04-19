@@ -1701,6 +1701,39 @@ struct NnApi {
    */
   int (*ANeuralNetworksExecution_enableInputAndOutputPadding)(
       ANeuralNetworksExecution* execution, bool enable);
+
+  /**
+   * Specifies whether the {@link ANeuralNetworksExecution} can be reused for
+   * multiple computations.
+   *
+   * By default, the {@link ANeuralNetworksExecution} is not reusable.
+   *
+   * Setting the execution to be reusable enables multiple computations to be
+   * scheduled and evaluated on the same execution sequentially, either by means
+   * of
+   * {@link ANeuralNetworksExecution_burstCompute}, {@link
+   * ANeuralNetworksExecution_compute},
+   * {@link ANeuralNetworksExecution_startCompute} or
+   * {@link ANeuralNetworksExecution_startComputeWithDependencies}.
+   *
+   * This function may only be invoked when the execution is in the preparation
+   * state.
+   *
+   * See {@link ANeuralNetworksExecution} for information on execution states
+   * and multithreaded usage.
+   *
+   * @param execution The execution to be modified.
+   * @param reusable 'true' if the execution is to be reusable, 'false' if not.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+   *         ANEURALNETWORKS_BAD_STATE if the execution is not in the
+   * preparation state.
+   *
+   * Available since API level 31.
+   */
+  int (*ANeuralNetworksExecution_setReusable)(
+      ANeuralNetworksExecution* execution, bool reusable);
 };
 
 /**

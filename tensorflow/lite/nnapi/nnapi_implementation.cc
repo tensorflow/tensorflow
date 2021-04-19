@@ -303,7 +303,8 @@ const NnApi LoadNnApi() {
   // API 31 methods
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_enableInputAndOutputPadding);
-
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setReusable);
 #ifndef __ANDROID__
   // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
   // then determine android_sdk_version by testing which functions are
