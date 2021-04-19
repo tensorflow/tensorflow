@@ -629,7 +629,6 @@ tf_py_test(
     size = "small",
     srcs = ["prefetch_with_slack_test.py"],
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
