@@ -167,7 +167,12 @@ bool CallSignature::operator==(const CallSignature& other) const {
                      ". The error was:\n", e.what()));
                }
              }) &&
-         extra_jit_context.equal(other.extra_jit_context);
+         global_extra_jit_context.equal(other.global_extra_jit_context) &&
+         (thread_local_extra_jit_context.has_value() ==
+          other.thread_local_extra_jit_context.has_value()) &&
+         (!thread_local_extra_jit_context.has_value() ||
+          thread_local_extra_jit_context->equal(
+              *other.thread_local_extra_jit_context));
 }
 
 template <typename H>
@@ -198,8 +203,9 @@ H AbslHashValue(H h, const CallSignature& s) {
   }
   h = H::combine(std::move(h), s.device, s.jax_enable_x64);
 
-  // We do not hash extra_jit_context since its current hash function costs
-  // ~300ns and we don't expect a large number of different contexts.
+  // We do not hash the extra_jit_context fields since calling Python hash
+  // functions is expensive (~300ns) and we don't expect a large number of
+  // different contexts.
   return h;
 }
 
@@ -765,8 +771,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
-  arguments.signature.extra_jit_context =
-      tls.extra_jit_context.value_or(global_state.extra_jit_context);
+  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
+  arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   std::shared_ptr<CacheEntry> cache_entry = executables_->GetOrCreateIfAbsent(
       arguments.signature,
