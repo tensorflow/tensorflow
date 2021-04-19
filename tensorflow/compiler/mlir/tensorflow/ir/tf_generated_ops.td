@@ -10072,8 +10072,8 @@ def TF_QuantizeAndDequantizeV4Op : TF_Op<"QuantizeAndDequantizeV4", [NoSideEffec
   let summary = "Quantizes then dequantizes a tensor.";
 
   let description = [{
-    This is almost identical to QuantizeAndDequantizeV2, except that it returns a
-    gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+This is almost identical to QuantizeAndDequantizeV2, except that it returns a
+gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
   }];
 
   let arguments = (ins
@@ -16799,7 +16799,7 @@ Adds sparse `updates` to an existing tensor according to `indices`.
   let description = [{
 This operation creates a new tensor by adding sparse `updates` to the passed
 in `tensor`.
-This operation is very similar to `tf.scatter_nd_add`, except that the updates
+This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
 are added onto an existing tensor (as opposed to a variable). If the memory
 for the existing tensor cannot be re-used, a copy is made and updated.
 
