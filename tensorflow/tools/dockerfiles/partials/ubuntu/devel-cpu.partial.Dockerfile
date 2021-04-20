@@ -31,4 +31,4 @@ ARG CACHE_STOP=1
 ARG CHECKOUT_TF_SRC=0
 # In case of Python 2.7+ we need to add passwd entries for user and group id
 RUN chmod a+w /etc/passwd /etc/group
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth 1 https://github.com/tensorflow/tensorflow.git /tensorflow_src || true

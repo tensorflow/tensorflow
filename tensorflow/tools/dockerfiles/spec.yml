@@ -123,6 +123,7 @@ slice_sets:
               - ubuntu/version
               - ubuntu/devel-cpu
               - ubuntu/python
+              - ubuntu/precommit
               - ubuntu/bazel
               - shell
           tests:
@@ -136,6 +137,7 @@ slice_sets:
               - ubuntu/version
               - ubuntu/devel-nvidia
               - ubuntu/python
+              - ubuntu/precommit
               - ubuntu/bazel
               - shell
           tests:

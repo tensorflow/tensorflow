@@ -54,7 +54,7 @@ ARG CACHE_STOP=1
 ARG CHECKOUT_TF_SRC=0
 # In case of Python 2.7+ we need to add passwd entries for user and group id
 RUN chmod a+w /etc/passwd /etc/group
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth 1 https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
@@ -70,6 +70,10 @@ RUN python3 -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -s $(which python3) /usr/local/bin/python
 
+RUN python3 -m pip --no-cache-dir install \
+        pylint==2.7.4 \
+        pre-commit
+RUN if [ "$CHECKOUT_TF_SRC" = 1 ] ; then cd /tensorflow_src && pre-commit install ; fi
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -87,7 +91,6 @@ RUN python3 -m pip --no-cache-dir install \
     matplotlib \
     mock \
     'numpy<1.19.0' \
-    pylint==2.7.4 \
     scipy \
     sklearn \
     pandas \
@@ -103,6 +106,5 @@ RUN mkdir /bazel && \
     chmod +x /bazel/installer.sh && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
-
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
