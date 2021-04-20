@@ -779,7 +779,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                                            ag_ctx.control_status_ctx())
           else:
             call_fn = self.call
-          outputs = call_fn(inputs, training=False)
+          if self._expects_training_arg:
+            outputs = call_fn(inputs, training=False)
+          else:
+            outputs = call_fn(inputs)
         except TypeError as e:
           raise NotImplementedError(
               'We could not automatically infer the static shape of the '
