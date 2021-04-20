@@ -1133,7 +1133,7 @@ TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(KernelType kernel_type,
 }
 
 template <>
-TfLiteStatus SoftmaxQuantized<int16, int16>(KernelType kernel_type,
+TfLiteStatus SoftmaxQuantized<int16, int16>(KernelType /*kernel_type*/,
                                             TfLiteContext* context,
                                             const TfLiteTensor* input,
                                             TfLiteTensor* output,
