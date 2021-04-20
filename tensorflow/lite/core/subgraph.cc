@@ -698,7 +698,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   return kTfLiteOk;
 }
 
-// TODO(ycling): Support non-zero default values.
+// TODO(b/115961645): Support non-zero default values.
 TfLiteStatus Subgraph::ResetVariableTensors() {
   for (auto& tensor : tensors_) {
     if (!tensor.is_variable) {
