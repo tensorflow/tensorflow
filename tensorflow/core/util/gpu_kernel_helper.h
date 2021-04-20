@@ -245,8 +245,10 @@ class alignas(alignof(T) * N) AlignedVector {
     }
   }
 
-  value_type& operator[](int i) { return values_[i]; }
-  const value_type& operator[](int i) const { return values_[i]; }
+  __host__ __device__ value_type& operator[](int i) { return values_[i]; }
+  __host__ __device__ const value_type& operator[](int i) const {
+    return values_[i];
+  }
 
 #define DEFINE_BINARY_UPDATE_OPERATOR(op)                                      \
   __host__ __device__ AlignedVector& operator op(const AlignedVector& rhs) {   \
