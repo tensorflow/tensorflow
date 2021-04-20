@@ -457,7 +457,6 @@ void Subgraph::SetExternalContext(struct TfLiteContext* context,
 // this memory and it is only guaranteed to exist during the invocation of the
 // delegate prepare.
 TfLiteStatus Subgraph::GetExecutionPlan(TfLiteIntArray** execution_plan) {
-  // TODO(aselle): Do not make a copy here
   plan_cache_.reset(TfLiteIntArrayCreate(execution_plan_.size()));
   *execution_plan = plan_cache_.get();
   static_assert(sizeof(plan_cache_->data[0]) == sizeof(execution_plan_[0]),
