@@ -1286,9 +1286,19 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     save(root, save_dir, {'add': add_func, 'sub': sub_func})
 
     # Try converting multiple functions.
-    with self.assertRaises(ValueError) as error:
-      _ = lite.TFLiteConverterV2.from_saved_model(save_dir)
-    self.assertIn('Only support a single signature key.', str(error.exception))
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # TODO(b/184696047): Write down the test codes for multiple signature
+    #                    runners once the Python API is ready to use.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    self.assertEqual(len(signature_defs), 2)
+    add_signature_runner = interpreter.get_signature_runner('add')
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    self.assertIsNotNone(add_signature_runner)
+    self.assertIsNotNone(sub_signature_runner)
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):
@@ -1299,7 +1309,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     with self.assertRaises(ValueError) as error:
       _ = lite.TFLiteConverterV2.from_saved_model(save_dir)
-    self.assertIn('Only support a single signature key.', str(error.exception))
+    self.assertIn('Only support at least one signature key.',
+                  str(error.exception))
 
   @test_util.run_v2_only
   def testKerasSequentialModel(self):

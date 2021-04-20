@@ -1276,8 +1276,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       signature_keys = saved_model.signatures
 
-    if len(signature_keys) != 1:
-      raise ValueError("Only support a single signature key.")
+    if not signature_keys:
+      raise ValueError("Only support at least one signature key.")
 
     funcs = []
     for key in signature_keys:
