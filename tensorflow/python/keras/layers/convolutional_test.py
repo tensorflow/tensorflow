@@ -168,7 +168,7 @@ class Conv1DTest(keras_parameterized.TestCase):
 
   def test_conv1d_zero_filters(self):
     kwargs = {'filters': 0, 'kernel_size': 2}
-    with self.assertRaisesRegex(ValueError):
+    with self.assertRaisesRegex(ValueError, "The value of the `filters` argument should not be zero"):
       keras.layers.Conv1D(**kwargs)  
 
 
@@ -305,7 +305,7 @@ class Conv2DTest(keras_parameterized.TestCase):
 
   def test_conv2d_zero_filters(self):
     kwargs = {'filters': 0, 'kernel_size': 2}
-    with self.assertRaisesRegex(ValueError):
+    with self.assertRaisesRegex(ValueError, "The value of the `filters` argument should not be zero"):
       keras.layers.Conv2D(**kwargs)
 
 
@@ -445,7 +445,7 @@ class Conv3DTest(keras_parameterized.TestCase):
 
   def test_conv3d_zero_filters(self):
     kwargs = {'filters': 0, 'kernel_size': 2}
-    with self.assertRaisesRegex(ValueError):
+    with self.assertRaisesRegex(ValueError, "The value of the `filters` argument should not be zero"):
       keras.layers.Conv3D(**kwargs)
 
 
@@ -535,7 +535,7 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
 
   def test_conv1d_transpose_zero_filters(self):
     kwargs = {'filters': 0, 'kernel_size': 2}
-    with self.assertRaisesRegex(ValueError):
+    with self.assertRaisesRegex(ValueError, "The value of the `filters` argument should not be zero"):
       keras.layers.Conv1DTranspose(**kwargs)
 
 
@@ -573,7 +573,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
 
   def test_conv3d_transpose_zero_filters(self):
     kwargs = {'filters': 0, 'kernel_size': 2}
-    with self.assertRaisesRegex(ValueError):
+    with self.assertRaisesRegex(ValueError, "The value of the `filters` argument should not be zero"):
       keras.layers.Conv3DTranspose(**kwargs)
  
 
