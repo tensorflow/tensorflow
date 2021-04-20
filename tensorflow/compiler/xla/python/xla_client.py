@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 15
+_version = 18
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -96,7 +96,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 
 def _tpu_backend_factory():
-  return _xla.get_tpu_client(asynchronous=True)
+  return _xla.get_tpu_client(max_inflight_computations=32)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.

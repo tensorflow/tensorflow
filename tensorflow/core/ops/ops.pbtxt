@@ -13373,6 +13373,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "stop_on_empty_dataset"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Div"
@@ -35962,6 +35969,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
       }
     }
   }

@@ -34,21 +34,6 @@ using shape::BroadcastOp;
 using shape::ConstShapeOp;
 using shape::ShapeOfOp;
 
-// Given an input shape Value, try to obtain the shape's values.
-LogicalResult getShapeVec(Value input, SmallVectorImpl<int64_t> &shape_values) {
-  if (auto input_op = input.getDefiningOp<ShapeOfOp>()) {
-    auto type = input_op.arg().getType().dyn_cast<ShapedType>();
-    if (!type.hasRank()) return failure();
-    shape_values = llvm::to_vector<6>(type.getShape());
-    return success();
-  }
-  if (auto input_op = input.getDefiningOp<ConstShapeOp>()) {
-    shape_values = llvm::to_vector<6>(input_op.shape().getValues<int64_t>());
-    return success();
-  }
-  return failure();
-}
-
 // Try to remove operands from broadcasts that don't contribute to the final
 // result.
 struct BroadcastRemoveSubsumedOperandsPattern
@@ -65,7 +50,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     SmallVector<SmallVector<int64_t, 4>, 4> operand_extents;
     for (Value shape : op.shapes()) {
       auto &extents = operand_extents.emplace_back();
-      if (failed(getShapeVec(shape, extents))) return failure();
+      if (failed(shape::getShapeVec(shape, extents))) return failure();
 
       // Prepend dynamic dims if sizes don't match.
       if (extents.size() > known_extents.size()) {

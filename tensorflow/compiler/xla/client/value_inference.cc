@@ -314,8 +314,9 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kAbs:
     case HloOpcode::kDivide:
     case HloOpcode::kGetDimensionSize: {
-      return InvalidArgument("AnalyzeConstantValue can't handle opcode: %s",
-                             root->opcode());
+      return InvalidArgument(
+          "AnalyzeConstantValueFallback can't handle opcode: %s",
+          root->opcode());
     }
     case HloOpcode::kGetTupleElement: {
       int64 operand_handle = root->operand_ids(0);
@@ -331,6 +332,52 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
         });
       }
 
+      if (operand_opcode == HloOpcode::kConditional) {
+        int64 index = root->tuple_index();
+        auto node = PostorderDFSNode();
+        auto* conditional_proto = operand_proto;
+        // Add dependencies to analyze the predicate of the conditional.
+        node.AddDependency(conditional_proto->operand_ids(0),
+                           PostorderDFSNodeType::kConstantValue)
+            .AddDependency(conditional_proto->operand_ids(0),
+                           PostorderDFSNodeType::kValueIsDynamic);
+        const int64 branch_size =
+            conditional_proto->called_computation_ids_size();
+        for (int64 i = 0; i < branch_size; ++i) {
+          int64 branch_root = handle_to_computation(
+                                  conditional_proto->called_computation_ids(i))
+                                  ->root_id();
+          int64 branch_root_operand =
+              handle_to_instruction(branch_root)->operand_ids(index);
+          node.AddDependency(branch_root_operand,
+                             PostorderDFSNodeType::kConstantValue);
+        }
+        return node.AddVisit(
+            [](absl::Span<Literal> operands) -> StatusOr<Literal> {
+              int64 pred_is_dynamic = operands[1].Get<bool>({});
+              if (pred_is_dynamic) {
+                // If predicate is dynamic, return the value of the first branch
+                // -- if all branches return the same value, this is the value
+                // that we want. If not, the value will be masked anyway so the
+                // value inside doesn't matter.
+                return std::move(operands[2]);
+              } else {
+                // If predicate is static, return the value of given branch.
+                int64 branch_index = 0;
+                if (operands[0].shape().element_type() == PRED) {
+                  if (operands[0].Get<bool>({})) {
+                    branch_index = 0;
+                  } else {
+                    branch_index = 1;
+                  }
+                } else {
+                  branch_index = operands[0].GetIntegralAsS64({}).value();
+                }
+                const int64 branch_dynamism_index = 2 + branch_index;
+                return std::move(operands[branch_dynamism_index]);
+              }
+            });
+      }
       return result.AddVisit([root](absl::Span<Literal> operands) {
         return HloProtoEvaluator(*root)
             .WithOperands(operands)
@@ -577,6 +624,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
   const HloInstructionProto* root = handle_to_instruction(handle);
   // Invariant check.
   TF_RET_CHECK(root);
+  VLOG(1) << "Analyzing IsDynamic on " << root->DebugString();
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   PostorderDFSNode result;
   for (auto operand_id : root->operand_ids()) {
@@ -674,9 +722,86 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
                           StringToHloOpcode(operand_proto->opcode()));
       if (operand_opcode == HloOpcode::kParameter) {
-        PostorderDFSNode().AddVisit([root]() -> StatusOr<Literal> {
-          // Don't materialize the whole parameter if it's followed by a GTE.
+        return PostorderDFSNode().AddVisit([root]() -> StatusOr<Literal> {
+          // As an optimization, don't materialize the whole parameter if it's
+          // followed by a GTE.
           return CreatePredLiteral(true, Shape(root->shape()));
+        });
+      }
+
+      if (operand_opcode == HloOpcode::kConditional) {
+        int64 index = root->tuple_index();
+        auto* conditional_proto = operand_proto;
+        auto node = PostorderDFSNode();
+        // Add dependencies to analyze the predicate of the conditional.
+        node.AddDependency(conditional_proto->operand_ids(0),
+                           PostorderDFSNodeType::kConstantValue)
+            .AddDependency(conditional_proto->operand_ids(0),
+                           PostorderDFSNodeType::kValueIsDynamic);
+        const int64 branch_size =
+            conditional_proto->called_computation_ids_size();
+        for (int64 i = 0; i < branch_size; ++i) {
+          int64 branch_root = handle_to_computation(
+                                  conditional_proto->called_computation_ids(i))
+                                  ->root_id();
+          int64 branch_root_operand =
+              handle_to_instruction(branch_root)->operand_ids(index);
+          node.AddDependency(branch_root_operand,
+                             PostorderDFSNodeType::kConstantValue)
+              .AddDependency(branch_root_operand,
+                             PostorderDFSNodeType::kValueIsDynamic);
+        }
+        // Predicate uses 2 dependencies:
+        // 0: Predicate value.
+        // 1: Predicate is dynamic.
+        // Each branch i has 2 dependenices:
+        // 2*i: Branch result value
+        // 2*i + 1: Branch value is dynamic.
+        return node.AddVisit([root, branch_size](absl::Span<Literal> operands)
+                                 -> StatusOr<Literal> {
+          int64 pred_is_dynamic = operands[1].Get<bool>({});
+          auto result = CreatePredLiteral(true, Shape(root->shape()));
+          if (pred_is_dynamic) {
+            // If predicate is dynamic, the result is only static if all
+            // branches are static and return the same value.
+            auto result = CreatePredLiteral(true, Shape(root->shape()));
+
+            result.MutableEachCell<bool>(
+                [&](absl::Span<const int64> indices, bool value) {
+                  string branch_value = operands[2].GetAsString(indices, {});
+                  for (int64 i = 0; i < branch_size; ++i) {
+                    const int64 branch_value_index = 2 + 2 * i;
+                    const int64 branch_dynamism_index = 2 + 2 * i + 1;
+                    auto branch_is_dynamic =
+                        operands[branch_dynamism_index].Get<bool>(indices);
+                    if (branch_is_dynamic) {
+                      return true;
+                    }
+                    if (branch_value !=
+                        operands[branch_value_index].GetAsString(indices, {})) {
+                      return true;
+                    }
+                  }
+                  // Value of the branch is static.
+                  return false;
+                });
+            return result;
+          } else {
+            // If predicate is static, return true if given branch result
+            // value is dynamic.
+            int64 branch_index = 0;
+            if (operands[0].shape().element_type() == PRED) {
+              if (operands[0].Get<bool>({})) {
+                branch_index = 0;
+              } else {
+                branch_index = 1;
+              }
+            } else {
+              branch_index = operands[0].GetIntegralAsS64({}).value();
+            }
+            const int64 branch_dynamism_index = 2 + 2 * branch_index + 1;
+            return std::move(operands[branch_dynamism_index]);
+          }
         });
       }
       return result.AddVisit([root](absl::Span<Literal> operands) {
@@ -798,7 +923,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       break;
     }
     default:
-      return Unimplemented("Can't infer upper bound through %s: %s",
+      return Unimplemented("Can't infer dynamism through %s: %s",
                            root->opcode(), root->DebugString());
   }
 }
@@ -852,19 +977,23 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
     PostorderDFSNode node;
     switch (item.type) {
       case PostorderDFSNodeType::kConstantValue: {
-      TF_ASSIGN_OR_RETURN(node, AnalyzeConstant(item.handle));
+        VLOG(1) << "constant value";
+        TF_ASSIGN_OR_RETURN(node, AnalyzeConstant(item.handle));
         break;
       }
       case PostorderDFSNodeType::kConstantLowerBound: {
-      TF_ASSIGN_OR_RETURN(node, AnalyzeLowerBound(item.handle));
+        VLOG(1) << "constant lower bound";
+        TF_ASSIGN_OR_RETURN(node, AnalyzeLowerBound(item.handle));
         break;
       }
       case PostorderDFSNodeType::kConstantUpperBound: {
+        VLOG(1) << "constant upper bound";
         TF_ASSIGN_OR_RETURN(node, AnalyzeUpperBound(item.handle));
         break;
       }
       case PostorderDFSNodeType::kBoundIsDynamic:
       case PostorderDFSNodeType::kValueIsDynamic: {
+        VLOG(1) << "value is dynamic";
         TF_ASSIGN_OR_RETURN(node, AnalyzeIsDynamic(item.handle, item.type));
         break;
       }
@@ -887,8 +1016,9 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
         return builder_->LookUpInstructionByHandle(handle).ValueOrDie();
       },
       [&](int64 handle) { return &(builder_->embedded_[handle]); });
-  return visitor.PostOrderDFSVisit(op.handle(),
-                                   PostorderDFSNodeType::kValueIsDynamic);
+  auto result = visitor.PostOrderDFSVisit(
+      op.handle(), PostorderDFSNodeType::kValueIsDynamic);
+  return result;
 }
 
 StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(

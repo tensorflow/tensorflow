@@ -389,7 +389,7 @@ class QuantizationMode(object):
         raise ValueError(
             "Provide an input generator for representative_dataset")
     else:
-      # TODO(b/150661651): Relax this check for QAT.
+      # TODO(b/162537905): Relax this check for QAT.
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
 
@@ -1276,8 +1276,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       signature_keys = saved_model.signatures
 
-    if len(signature_keys) != 1:
-      raise ValueError("Only support a single signature key.")
+    if not signature_keys:
+      raise ValueError("Only support at least one signature key.")
 
     funcs = []
     for key in signature_keys:

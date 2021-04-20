@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -297,9 +298,84 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce) {
-  if (!mlir::isa<mlir::lmhlo::ReduceOp>(reduce) &&
-      !mlir::isa<mlir::mhlo::ReduceOp>(reduce)) {
+// Constructs the fusion layout analysis object by using a heuristic to infer
+// the layout of a fusion internal value. In general, if the value is derived
+// from a fusion parameter (which by definition has a layout) using elementwise
+// operations, it will inherit the layout of that parameter. OTOH if the value
+// if written to a fusion output, it will inherit the layout of that output.
+// If the heuristic fails, the default layout will be inferred.
+FusionLayoutAnalysis::FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op) {
+  VLOG(3) << "Analyzing \n" << MlirToString(fusion_op);
+  auto add_layout = [this](mlir::Value v, const Layout& layout) {
+    layouts_[v] = layout;
+    VLOG(3) << "===============\n";
+    VLOG(3) << "For value \n" << MlirToString(v.getDefiningOp());
+    VLOG(3) << "Layout = " << layout.ToString() << "\n";
+    VLOG(3) << "===============\n";
+  };
+
+  // Propagate layouts inside fusion region.
+  for (mlir::Operation& op : fusion_op.region().front().without_terminator()) {
+    if (auto load = mlir::dyn_cast<mlir::memref::TensorLoadOp>(op)) {
+      add_layout(load, TypeToShape(load.memref().getType()).layout());
+    } else if (auto store = mlir::dyn_cast<mlir::memref::TensorStoreOp>(op)) {
+      // Propagate the stored memref layout to the value if it does not have a
+      // inferred layout already. This prefers load coalescing over stores.
+      if (layouts_.count(store.tensor()) == 0) {
+        add_layout(store.tensor(),
+                   TypeToShape(store.memref().getType()).layout());
+      }
+    } else if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(op)) {
+      auto attr = GetLayoutFromMlirHlo(bitcast, "result_layout");
+      std::vector<int64> minor_to_major;
+      absl::c_transform(
+          attr, std::back_inserter(minor_to_major),
+          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      add_layout(bitcast, LayoutUtil::MakeLayout(minor_to_major));
+
+      attr = GetLayoutFromMlirHlo(bitcast, "source_layout");
+      minor_to_major.clear();
+      absl::c_transform(
+          attr, std::back_inserter(minor_to_major),
+          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      add_layout(bitcast.operand(), LayoutUtil::MakeLayout(minor_to_major));
+    } else {
+      HloOpcode opcode = *xla::MhloToHloOpcode(&op);
+      if (!HloInstruction::IsOpElementwise(opcode)) {
+        continue;
+      }
+      // If any operand has a layout, infer that layout for the result of the
+      // operation. If 2 operands have a conflicting layout, we still need to
+      // choose one of them, so we will arbitrarily choose the first one.
+      for (mlir::Value operand : op.getOperands()) {
+        auto it = layouts_.find(operand);
+        if (it != layouts_.end()) {
+          // Do not pass in a reference to an entry in the map when adding a new
+          // entry. The map may expand when adding, and the reference may become
+          // invalid. To avoid this, create a local copy of the layout.
+          const Layout operand_layout = it->second;
+          add_layout(op.getResult(0), operand_layout);
+          break;
+        }
+      }
+    }
+  }
+}
+
+Shape FusionLayoutAnalysis::GetShape(mlir::Value value) const {
+  Shape shape = TypeToShape(value.getType());
+  if (!value.getType().isa<mlir::MemRefType>()) {
+    auto it = layouts_.find(value);
+    if (it != layouts_.end()) {
+      *shape.mutable_layout() = it->second;
+    }
+  }
+  return shape;
+}
+
+bool IsReductionFromOrToContiguousDimensions(
+    mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis) {
+  if (!mlir::isa<mlir::lmhlo::ReduceOp, mlir::mhlo::ReduceOp>(reduce)) {
     return false;
   }
   std::vector<mlir::Value> results = GetHloOutputs(reduce);
@@ -315,16 +391,35 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce) {
   }
 
   mlir::Value input = reduce->getOperand(0);
-  Shape operand_shape = TypeToShape(input.getType());
+  const Shape operand_shape = layout_analysis.GetShape(input);
+
+  // Enable this code to check mismatch between the inferred layout and what was
+  // there before. Based on actual runs, some mismatches are expected.
+#if 0
+  Shape operand_shape_ir = TypeToShape(input.getType());
   if (auto tensor_type = input.getType().dyn_cast<mlir::TensorType>()) {
     if (auto attr = mlir::GetLayoutFromMlirHlo(input.getDefiningOp())) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
           std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-      *operand_shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+      *operand_shape_ir.mutable_layout() =
+          LayoutUtil::MakeLayout(minor_to_major);
     }
   }
+  bool match = ShapeUtil::Equal(operand_shape, operand_shape_ir);
+  llvm::errs() << "inferred shape = " << operand_shape.ToString(true) << "\n";
+  llvm::errs() << "Actual shape in IR = " << operand_shape_ir.ToString(true)
+               << "\n";
+  if (!match) {
+    llvm::errs() << "Unable to infer layout for reduce op operand(0)\n";
+    llvm::errs() << "\nreduce = \n";
+    reduce->dump();
+    llvm::errs() << "\nparent = \n";
+    reduce->getParentOp()->dump();
+    CHECK(0);
+  }
+#endif
 
   std::vector<int64> dimensions;
   {
@@ -610,21 +705,23 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
                            inst->shape().layout());
 }
 
-bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
-                                      mlir::mhlo::ReduceOp first_reduce) {
+bool IsFusedReductionOutputConsistent(
+    mlir::mhlo::ReduceOp inst, mlir::mhlo::ReduceOp first_reduce,
+    const FusionLayoutAnalysis& layout_analysis) {
   CHECK_EQ(1, first_reduce.getNumResults());
   Shape first_reduce_operand_shape =
-      TypeToShape(first_reduce.inputs()[0].getType());
+      layout_analysis.GetShape(first_reduce.inputs()[0]);
   CHECK_EQ(1, inst.getNumResults());
-  auto inst_shape = TypeToShape(inst.getResult(0).getType());
+  Shape inst_shape = layout_analysis.GetShape(inst.getResult(0));
 
-  if (IsReductionFromOrToContiguousDimensions(inst)) {
-    auto first_reduce_shape = TypeToShape(first_reduce.getResult(0).getType());
-    auto first_reduce_init_shape =
-        TypeToShape(first_reduce.init_values()[0].getType());
+  if (IsReductionFromOrToContiguousDimensions(inst, layout_analysis)) {
+    Shape first_reduce_shape =
+        layout_analysis.GetShape(first_reduce.getResult(0));
+    Shape first_reduce_init_shape =
+        layout_analysis.GetShape(first_reduce.init_values()[0]);
 
-    auto inst_operand_shape = TypeToShape(inst.inputs()[0].getType());
-    auto inst_init_shape = TypeToShape(inst.init_values()[0].getType());
+    Shape inst_operand_shape = layout_analysis.GetShape(inst.inputs()[0]);
+    Shape inst_init_shape = layout_analysis.GetShape(inst.init_values()[0]);
 
     // Shapes, layouts and dimensions must be the same for all reduces
     // inside of this fusion.

@@ -533,11 +533,6 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
       new IrEmitterUnnested(hlo_module_config, ir_emitter_context));
 }
 
-Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
-  bindings_.UnbindAllLocalIrValues();
-  return DfsHloVisitor::Postprocess(hlo);
-}
-
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     absl::string_view name, absl::Span<const BufferAllocation* const> args) {
   // Compute the kernel name. The opcode string may contain "-" which cannot be
@@ -1297,7 +1292,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
     // we can just use it, otherwise copy the bias values into the output buffer
     // first.
     if (bias != output) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
+      ThunkSequence thunks;
 
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo(),
@@ -1526,7 +1521,7 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
   TF_ASSIGN_OR_RETURN(auto info_buffer,
                       GetAllocationSliceForMlir(cholesky_op.info()));
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   if (operand_buffer != a_buffer) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
@@ -1679,7 +1674,7 @@ Status IrEmitterUnnested::EmitTriangularSolveFromMlir(MlirEmitterInput input) {
   TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
                       ConvertTranspose(triangular_solve_op.transpose_a()));
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
   // aren't the same buffer.
@@ -1915,6 +1910,9 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op);
 
+  // Infer the layout of fusion internal nodes.
+  const FusionLayoutAnalysis layout_analysis(fusion_op);
+
   auto fusion_results = fusion_op.getFusionResults();
   TF_RET_CHECK(!fusion_results.empty());
   if (fusion_results.size() > 1) {
@@ -1931,13 +1929,14 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     }
 
     const bool is_parallel_reduce =
-        absl::c_any_of(fusion_results, [](mlir::Value result) {
-          return IsReductionFromOrToContiguousDimensions(
-              result.getDefiningOp());
+        absl::c_any_of(fusion_results, [&layout_analysis](mlir::Value result) {
+          return IsReductionFromOrToContiguousDimensions(result.getDefiningOp(),
+                                                         layout_analysis);
         });
 
     if (is_parallel_reduce) {
-      return EmitReductionFromOrToContiguousDimensions(mlir_input);
+      return EmitReductionFromOrToContiguousDimensions(mlir_input,
+                                                       layout_analysis);
     }
   }
 
@@ -1949,7 +1948,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
                                             /*is_fusion=*/true));
     auto* root = fused_computation->root_instruction();
 
-    std::vector<std::unique_ptr<Thunk>> thunks;
+    ThunkSequence thunks;
     // The initialization from 'operand' is using different loop bounds, so
     // emit it in a separate kernel. Treat it like a loop fusion, writing to
     // the output buffer.
@@ -2046,7 +2045,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
   }
 
   if (mlir::isa<mlir::mhlo::ReduceOp>(fusion_root) &&
-      IsReductionFromOrToContiguousDimensions(fusion_root)) {
+      IsReductionFromOrToContiguousDimensions(fusion_root, layout_analysis)) {
     // HandleFusion specializes reduction from a multi-dimensional array to
     // a 1D array. The specialized version requires a initializer thunk that
     // initializes the output array to the initial value of the reduce.
@@ -2055,7 +2054,8 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
       return Unimplemented(
           "Vectorized variadic reduce is not supported on GPU");
     }
-    return EmitReductionFromOrToContiguousDimensions(mlir_input);
+    return EmitReductionFromOrToContiguousDimensions(mlir_input,
+                                                     layout_analysis);
   }
 
   if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
@@ -2184,9 +2184,11 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::EmitReduceFromMlir(MlirEmitterInput mlir_input) {
+  const FusionLayoutAnalysis dummy_analysis;
   if (GetHloOutputs(mlir_input.op).size() == 1 &&
-      IsReductionFromOrToContiguousDimensions(mlir_input.op)) {
-    return EmitReductionFromOrToContiguousDimensions(mlir_input);
+      IsReductionFromOrToContiguousDimensions(mlir_input.op, dummy_analysis)) {
+    return EmitReductionFromOrToContiguousDimensions(mlir_input,
+                                                     dummy_analysis);
   }
 
   return EmitUsingElementalIrEmitter(mlir_input);
@@ -2246,7 +2248,7 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.emplace_back();
   TF_ASSIGN_OR_RETURN(thunks.back(),
                       BuildInitializerThunkForMlir(
@@ -2545,7 +2547,7 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
 }
 
 Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(mlir_input.op);
 
@@ -2912,7 +2914,7 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   MlirEmitterContext context;
   context.SetOperation(sort_op);
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 
   const Shape& keys_shape = context.operand_shapes[0];
   int64 dimension_to_sort = sort_op.dimension();
@@ -3239,7 +3241,7 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
 
   // All-gather with one replica is simply the identity function. Buffer
   // assignment expects a copy, so that's what we do.
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   for (int64 i = 0; i < buffers.size(); i++) {
     const Shape shape = TypeToShape(op.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
@@ -3323,128 +3325,18 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
-// Figures out how to access the buffers for all subshapes of hlo's operands and
-// for hlo itself (i.e. all the buffers produced by HLO).
-//
-// Returns a vector of `HloBufferSlice`s, one for each HLO subshape `hlo` needs
-// to access (including one or more for itself).
-//
-// This function conservatively assumes that we'll touch all sub-buffers of
-// every operand and of the output.
-static std::vector<HloBufferSlice> GetHloBufferSlices(
-    const HloInstruction* hlo, const BufferAssignment& buffer_assn) {
-  std::vector<HloBufferSlice> result;
-  absl::flat_hash_set<std::pair<const HloInstruction*, ShapeIndex>>
-      inserted_buffer_slices;
-
-  // Tries to find a slice plus an array of indices i1, ..., iN such that the
-  // sub-buffer for instr at index can be found at slice[i1]...[iN].
-  auto find_slice_for = [&](const HloInstruction* instr,
-                            const ShapeIndex& index)
-      -> optional<std::pair<BufferAllocation::Slice, ShapeIndex>> {
-    // Simple, common case: Is the buffer for instr known at runtime?  If so,
-    // we're done.
-    auto slice = buffer_assn.GetUniqueSlice(instr, index);
-    if (slice.ok()) {
-      return {{slice.ValueOrDie(), ShapeIndex()}};
-    }
-
-    // If that didn't work, walk up any bitcasts that we might see.  These must
-    // appear before any GTE instructions, because it's illegal to bitcast to a
-    // tuple type.
-    const HloInstruction* parent = instr;
-    while (parent->IsEffectiveBitcast()) {
-      parent = parent->operand(0);
-
-      auto slice = buffer_assn.GetUniqueSlice(parent, {});
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), ShapeIndex()}};
-      }
-    }
-
-    // Check whether instr is a GTE instruction.  If it is, see if we can get a
-    // buffer for its parent, and continue walking up parents until we find a
-    // defined buffer or we hit something that's not a GTE.
-    ShapeIndex gte_indices;
-    while (parent->opcode() == HloOpcode::kGetTupleElement) {
-      gte_indices.push_front(parent->tuple_index());
-      parent = parent->operand(0);
-
-      auto slice = buffer_assn.GetUniqueSlice(parent, {});
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), gte_indices}};
-      }
-    }
-
-    // Finally, if we don't know the buffer for instr at index, see if we know
-    // the buffer for instr at index without its last element.  If so, we can
-    // dynamically find the buffer for instr by dereferencing a pointer in that
-    // buffer.  Continue looking this way until we run out of elements in
-    // 'index'.
-    //
-    // We can almost always get a buffer without resorting to this.  The only
-    // exception is for cases where the relevant sub-buffer is truly unknowable,
-    // for example the sub-buffer of a tuple-shaped select.
-    ShapeIndex new_index = index;
-    while (!new_index.empty()) {
-      gte_indices.push_front(new_index.back());
-      new_index.pop_back();
-      auto slice = buffer_assn.GetUniqueSlice(instr, new_index);
-      if (slice.ok()) {
-        return {{slice.ValueOrDie(), gte_indices}};
-      }
-    }
-
-    return nullopt;
-  };
-
-  // Adds entries for all subshapes of instr to `slices`.
-  auto add_slices_for = [&](const HloInstruction* instr) {
-    ShapeUtil::ForEachSubshape(
-        instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
-          if (!inserted_buffer_slices.insert({instr, index}).second) {
-            // HLOs can have duplicate operands; don't bother redoing work.
-            return;
-          }
-          auto maybe_slice = find_slice_for(instr, index);
-          if (maybe_slice.has_value()) {
-            HloBufferSlice hlo_buffer_slice;
-            hlo_buffer_slice.instr = instr;
-            hlo_buffer_slice.hlo_index = index;
-            hlo_buffer_slice.buffer_slice = maybe_slice->first;
-            hlo_buffer_slice.gte_index = maybe_slice->second;
-            result.push_back(hlo_buffer_slice);
-          } else {
-            VLOG(1) << "Couldn't find buffer for " << instr->ToString()
-                    << " at index " << index.ToString();
-          }
-        });
-  };
-
-  add_slices_for(hlo);
-  for (const HloInstruction* operand : hlo->operands()) {
-    // Conservatively assume we'll need the buffers for all subshapes of the
-    // operand.
-    add_slices_for(operand);
-  }
-
-  return result;
-}
-
-std::unique_ptr<KernelThunk>
-IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
+std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
-    absl::Span<const BufferSlice* const> slices,
-    std::function<void(const BufferSlice*, llvm::Value*)>
-        bind_slice_to_ir_value) {
+    absl::Span<const BufferSlice> slices,
+    std::vector<llvm_ir::IrArray>* ir_arrays) {
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in slices,
   // plus the XLA temp buffer (if we have it).  We always include the temp
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
   std::unordered_set<const BufferAllocation*> buffers_needed;
-  for (auto* slice : slices) {
-    buffers_needed.insert(slice->buffer_slice.allocation());
+  for (const auto& slice : slices) {
+    buffers_needed.insert(slice.buffer_slice.allocation());
   }
   absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : ir_emitter_context_->allocations()) {
@@ -3504,16 +3396,24 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     }
   }
 
+  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
+  for (const auto& slice : slices) {
+    if (slice.written) {
+      buffers_written.insert(slice.buffer_slice);
+    }
+  }
+
+  ir_arrays->clear();
+
   // For each buffer our kernel might want to touch, bind it to a value derived
   // from our kernel args.
-  for (auto* slice : slices) {
-    const BufferAllocation::Slice& buffer_slice = slice->buffer_slice;
-    const ShapeIndex& gte_index = slice->gte_index;
+  for (const auto& slice : slices) {
+    const BufferAllocation::Slice& buffer_slice = slice.buffer_slice;
 
     llvm::Value* loc;
-    if (!slice->constant_name.empty()) {
+    if (!slice.constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
-          slice->constant_name);
+          slice.constant_name);
       CHECK_NE(loc, nullptr);
     } else {
       CHECK(!buffer_slice.allocation()->is_constant());
@@ -3521,59 +3421,17 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
                         {b_.getInt64(buffer_slice.offset())});
     }
 
-    // If gte_index is nonempty, we have to dereference `loc` to get to the
-    // value we're ultimately interested in.
-    llvm::Type* int8_double_pointer =
-        llvm::PointerType::get(b_.getInt8PtrTy(), /*AddressSpace=*/0);
-    for (int64 idx : gte_index) {
-      loc = b_.CreatePointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
-      loc = Load(InBoundsGEP(loc, {b_.getInt64(idx)}));
+    llvm_ir::IrArray ir_array(CastToTypedValue(slice.shape, loc, &b_),
+                              slice.shape);
+    if (!buffers_written.contains(slice.buffer_slice)) {
+      ir_array.MarkInvariantOverWholeProgram(&loc->getContext());
     }
 
-    bind_slice_to_ir_value(slice, loc);
-  }
-
-  // Bind the temp buffer so that nested subcomputations can find it if they
-  // need.
-  if (temp_buffer.has_value()) {
-    bindings_.SetTempBufferBase(kernel_args.at(*temp_buffer));
-  } else {
-    bindings_.SetTempBufferBase(
-        llvm::ConstantPointerNull::get(b_.getInt8PtrTy()));
+    ir_arrays->push_back(ir_array);
   }
 
   return absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
                                         std::string(kernel->getName()));
-}
-
-std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
-    absl::string_view name, Thunk::ThunkInfo thunk_info,
-    absl::Span<const MlirBufferSlice> slices,
-    std::vector<llvm_ir::IrArray>* ir_arrays) {
-  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
-  std::vector<const BufferSlice*> slice_ptrs;
-  slice_ptrs.reserve(slices.size());
-  for (auto& slice : slices) {
-    slice_ptrs.push_back(&slice);
-    if (slice.written) {
-      buffers_written.insert(slice.buffer_slice);
-    }
-  }
-
-  ir_arrays->clear();
-  return BuildKernelThunkFromBufferSlices(
-      name, thunk_info, slice_ptrs,
-      [&](const BufferSlice* slice, llvm::Value* value) {
-        const auto& mlir_slice = static_cast<const MlirBufferSlice&>(*slice);
-
-        llvm_ir::IrArray ir_array(
-            CastToTypedValue(mlir_slice.shape, value, &b_), mlir_slice.shape);
-        if (!buffers_written.contains(slice->buffer_slice)) {
-          ir_array.MarkInvariantOverWholeProgram(&value->getContext());
-        }
-
-        ir_arrays->push_back(ir_array);
-      });
 }
 
 StatusOr<std::unique_ptr<KernelThunk>>
@@ -3582,7 +3440,7 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  std::vector<MlirBufferSlice> slices;
+  std::vector<BufferSlice> slices;
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
@@ -3603,7 +3461,7 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     auto operands = GetHloOperands(op);
     auto outputs = GetHloOutputs(op);
 
-    std::vector<MlirBufferSlice> slices;
+    std::vector<BufferSlice> slices;
     for (auto operand : operands) {
       slices.emplace_back();
       auto& slice = slices.back();
@@ -4146,20 +4004,22 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
     absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-    ReductionCodegenInfo* reduction_info) {
+    ReductionCodegenInfo* reduction_info,
+    const FusionLayoutAnalysis& layout_analysis) {
   VLOG(10) << "Emit prologue for reduction: " << MlirToString(unnested_hlo);
   mlir::Operation* first_reduce = nullptr;
   for (int index : instr_index_group) {
     mlir::Operation* reduce_inst =
         GetReduceFromUnnestedMlir(unnested_hlo, index);
 
-    if (!IsReductionFromOrToContiguousDimensions(reduce_inst)) {
+    if (!IsReductionFromOrToContiguousDimensions(reduce_inst,
+                                                 layout_analysis)) {
       continue;
     }
 
     auto results = GetHloOutputs(reduce_inst);
     CHECK_EQ(1, results.size());
-    Shape reduce_inst_shape = TypeToShape(results[0].getType());
+    Shape reduce_inst_shape = layout_analysis.GetShape(results[0]);
 
     VLOG(10) << "Emit prologue for reduction: " << MlirToString(reduce_inst);
     if (first_reduce == nullptr) {
@@ -4309,7 +4169,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
     absl::Span<HloComputation* const> reducers,
     const ReductionCodegenInfo& reduction_info,
-    const TilingKernelInfo& tiling_kernel_info) {
+    const TilingKernelInfo& tiling_kernel_info,
+    const FusionLayoutAnalysis& layout_analysis) {
   const KernelMappingScheme& mapping_scheme =
       reduction_info.GetKernelMappingScheme();
   auto constant = [&](uint64 c) -> llvm::Constant* {
@@ -4347,11 +4208,11 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   for (int index : instr_index_group) {
     mlir::Operation* reduce_hlo =
         GetReduceFromUnnestedMlir(unnested_hlo, index);
-    if (!IsReductionFromOrToContiguousDimensions(reduce_hlo)) {
+    if (!IsReductionFromOrToContiguousDimensions(reduce_hlo, layout_analysis)) {
       continue;
     }
     i++;
-    auto operand_shape = TypeToShape(reduce_hlo->getOperand(0).getType());
+    Shape operand_shape = layout_analysis.GetShape(reduce_hlo->getOperand(0));
     Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
         [&](int64 dim) {
           return !absl::c_linear_search(
@@ -4528,7 +4389,8 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
     absl::Span<HloComputation* const> reducers,
     const llvm_ir::IrArray::Index& index,
-    const ReductionCodegenInfo& reduction_info, int64 x_iter_num) {
+    const ReductionCodegenInfo& reduction_info, int64 x_iter_num,
+    const FusionLayoutAnalysis& layout_analysis) {
   VLOG(10) << "Emit tile element for reduce " << MlirToString(unnested_hlo);
   int partial_result_index = reduction_info.IsRowReduction() ? 0 : x_iter_num;
 
@@ -4545,7 +4407,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       if (hlo->opcode() == HloOpcode::kTuple) {
         hlo = hlo->operand(index);
       }
-      if (IsReductionFromOrToContiguousDimensions(inst)) {
+      if (IsReductionFromOrToContiguousDimensions(inst, layout_analysis)) {
         input_gens.push_back(*fused_emitter->GetGenerator(hlo->operand(0)));
       } else {
         extra_output_gens.emplace_back(*fused_emitter->GetGenerator(hlo),
@@ -5145,16 +5007,16 @@ int64 NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 // the kernel to run slower. This routine uses a simple heuristic to estimate
 // the benefit as well as the overhead of unrolling in order to decide whether
 // unrolling is beneficial for the given kInput fusion.
-bool IsUnrollingColumnReductionBeneficial(mlir::Operation* unnested_hlo,
-                                          const Shape& input_shape,
-                                          int64 num_kept_minor) {
+bool IsUnrollingColumnReductionBeneficial(
+    mlir::Operation* unnested_hlo, const Shape& input_shape,
+    int64 num_kept_minor, const FusionLayoutAnalysis& layout_analysis) {
   // TODO(b/122468062): Need further investigate to see whether we can
   // remove the constraint on IsPowerOfTwo.
   if (!IsPowerOfTwo(static_cast<uint64>(num_kept_minor))) {
     return false;
   }
 
-  if (IsReductionFromOrToContiguousDimensions(unnested_hlo)) {
+  if (IsReductionFromOrToContiguousDimensions(unnested_hlo, layout_analysis)) {
     return true;
   }
 
@@ -5165,14 +5027,15 @@ bool IsUnrollingColumnReductionBeneficial(mlir::Operation* unnested_hlo,
   absl::flat_hash_set<mlir::Operation*> use_chain_endings;
   if (fusion_results.size() == 1) {
     if (IsReductionFromOrToContiguousDimensions(
-            fusion_results[0].getDefiningOp())) {
+            fusion_results[0].getDefiningOp(), layout_analysis)) {
       use_chain_endings.insert(fusion_results[0].getDefiningOp());
       // Atomic.add of the reduction result can't be vectorized.
       cannot_be_vectorized++;
     }
   } else {
     for (mlir::Value result : fusion_results) {
-      if (IsReductionFromOrToContiguousDimensions(result.getDefiningOp())) {
+      if (IsReductionFromOrToContiguousDimensions(result.getDefiningOp(),
+                                                  layout_analysis)) {
         // Atomic.add of the reduction result can't be vectorized.
         cannot_be_vectorized++;
       } else {
@@ -5207,8 +5070,9 @@ int64 NearestPowerOfTwo(int64 v) {
 }  // namespace
 
 ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
-    mlir::Operation* unnested_hlo, mlir::Operation* first_reduce) {
-  Shape input_shape = TypeToShape(first_reduce->getOperand(0).getType());
+    mlir::Operation* unnested_hlo, mlir::Operation* first_reduce,
+    const FusionLayoutAnalysis& layout_analysis) {
+  Shape input_shape = layout_analysis.GetShape(first_reduce->getOperand(0));
   ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(first_reduce);
   VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
@@ -5278,7 +5142,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     } else if (!reduction_dimensions.is_row_reduction &&
                IsUnrollingColumnReductionBeneficial(
                    unnested_hlo, input_shape,
-                   reduction_dimensions.dimensions[2])) {
+                   reduction_dimensions.dimensions[2], layout_analysis)) {
       num_partial_results = 2;
       reduction_tiling[2] *= num_partial_results;
       return kLinearIndexingX;
@@ -5312,11 +5176,12 @@ void IrEmitterUnnested::EmitIRForReduction(
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
     absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-    ReductionCodegenInfo* reduction_info, const Shape& input_shape) {
+    ReductionCodegenInfo* reduction_info, const Shape& input_shape,
+    const FusionLayoutAnalysis& layout_analysis) {
   std::vector<HloComputation*> reducers;
   for (auto index : instr_index_group) {
     auto reduce = GetReduceFromUnnestedMlir(unnested_hlo, index);
-    if (!IsReductionFromOrToContiguousDimensions(reduce)) {
+    if (!IsReductionFromOrToContiguousDimensions(reduce, layout_analysis)) {
       continue;
     }
     if (auto unnested_reduce = mlir::dyn_cast<mlir::lmhlo::ReduceOp>(reduce)) {
@@ -5346,7 +5211,7 @@ void IrEmitterUnnested::EmitIRForReduction(
       unnested_hlo, launch_dimensions.launch_bound(), &b_);
   EmitPrologueForReduction(unnested_hlo, instr_index_group, fused_computation,
                            fused_emitter, operand_ir_arrays, result_ir_arrays,
-                           reduction_info);
+                           reduction_info, layout_analysis);
 
   EmitElementFunction emit_reduction_tile =
       [&](const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
@@ -5354,7 +5219,7 @@ void IrEmitterUnnested::EmitIRForReduction(
         EmitTileElementForReduction(
             unnested_hlo, input_shape, instr_index_group, fused_computation,
             fused_emitter, operand_ir_arrays, result_ir_arrays, reducers, index,
-            *reduction_info, x_iter_num);
+            *reduction_info, x_iter_num, layout_analysis);
       };
 
   TilingKernelInfo tiling_kernel_info = EmitTilingKernel(
@@ -5368,7 +5233,7 @@ void IrEmitterUnnested::EmitIRForReduction(
       });
   EmitEpilogueForReduction(index_ty, unnested_hlo, instr_index_group,
                            result_ir_arrays, reducers, *reduction_info,
-                           tiling_kernel_info);
+                           tiling_kernel_info, layout_analysis);
 }
 
 namespace {
@@ -5443,7 +5308,7 @@ std::vector<std::vector<int>> DivideOutputInstructionsIntoGroups(
 }  // namespace
 
 Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
-    MlirEmitterInput mlir_input) {
+    MlirEmitterInput mlir_input, const FusionLayoutAnalysis& layout_analysis) {
   mlir::Operation* unnested_hlo = mlir_input.op;
   auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
 
@@ -5456,11 +5321,12 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   VLOG(10) << "Emitting reduction to vector " << MlirToString(unnested_hlo);
 
   // Build an initializer thunk to initialize each reduction output.
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   for (int i = 0; i < num_reduces; ++i) {
     mlir::Operation* output_instruction =
         GetReduceFromUnnestedMlir(unnested_hlo, i);
-    if (!IsReductionFromOrToContiguousDimensions(output_instruction)) {
+    if (!IsReductionFromOrToContiguousDimensions(output_instruction,
+                                                 layout_analysis)) {
       continue;
     }
 
@@ -5483,8 +5349,10 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   // Build a kernel thunk to compute all the outputs.
   mlir::Operation* first_reduce = nullptr;
   for (int i = 0; i < num_reduces; ++i) {
-    if (IsReductionFromOrToContiguousDimensions(
-            GetReduceFromUnnestedMlir(unnested_hlo, i))) {
+    mlir::Operation* output_instruction =
+        GetReduceFromUnnestedMlir(unnested_hlo, i);
+    if (IsReductionFromOrToContiguousDimensions(output_instruction,
+                                                layout_analysis)) {
       first_reduce = GetReduceFromUnnestedMlir(unnested_hlo, i);
       break;
     }
@@ -5496,7 +5364,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
           GetReduceFromUnnestedMlir(unnested_hlo, i));
       if (candidate &&
           !IsFusedReductionOutputConsistent(
-              candidate, mlir::cast<mlir::mhlo::ReduceOp>(first_reduce))) {
+              candidate, mlir::cast<mlir::mhlo::ReduceOp>(first_reduce),
+              layout_analysis)) {
         return InternalError("Inconsistent reduction fusion outputs");
       }
     }
@@ -5567,12 +5436,12 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     // all the reductions are required to have the same shape and layout as
     // verified by `IsFusedReductionOutputConsistent()`. We can loosen the
     // constraint later when the needs arise.
-    ReductionCodegenInfo reduction_info =
-        ComputeReductionCodegenInfo(unnested_hlo, first_reduce);
+    ReductionCodegenInfo reduction_info = ComputeReductionCodegenInfo(
+        unnested_hlo, first_reduce, layout_analysis);
     auto emit_reduction_func = [&] {
       EmitIRForReduction(unnested_hlo, instr_index_groups[i], fused_computation,
                          fused_emitter, operand_ir_arrays, result_ir_arrays,
-                         &reduction_info, input_shape);
+                         &reduction_info, input_shape, layout_analysis);
     };
     // Use raw block_id_y to select the i-th parallel reduction to run. Using
     // block_id_y instead of block_id_x simplifies the index calculation
@@ -5587,7 +5456,7 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     ksl.If(StrCat("reduce-group-", i), guarding_cond, emit_reduction_func);
   }
   ReductionCodegenInfo reduction_info =
-      ComputeReductionCodegenInfo(unnested_hlo, first_reduce);
+      ComputeReductionCodegenInfo(unnested_hlo, first_reduce, layout_analysis);
   const KernelMappingScheme& mapping_scheme =
       reduction_info.GetKernelMappingScheme();
   // block_y_count is set to instr_index_groups.size(), so that each reduction

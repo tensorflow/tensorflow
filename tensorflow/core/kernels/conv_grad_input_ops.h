@@ -649,6 +649,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         dims.batch_size == 1 ||
         thread_work_unit_size >= min_thread_work_unit_size;
 
+    OP_REQUIRES(
+        context, work_unit_size > 0,
+        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
+                                "must all have at least 1 element"));
+
     const size_t shard_size =
         use_parallel_contraction
             ? 1

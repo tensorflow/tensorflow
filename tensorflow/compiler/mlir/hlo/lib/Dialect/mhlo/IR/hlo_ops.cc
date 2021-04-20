@@ -1775,6 +1775,20 @@ static LogicalResult Verify(MapOp op) {
   return success();
 }
 
+OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
+  mlir::Block& bb = computation().front();
+  mlir::Operation& front_op = bb.front();
+
+  auto ret_op = mlir::dyn_cast<ReturnOp>(front_op);
+  if (!ret_op) return nullptr;
+  if (ret_op.results().size() != 1) return nullptr;
+
+  for (mlir::BlockArgument barg : bb.getArguments()) {
+    if (barg == ret_op.results()[0]) return getOperands()[barg.getArgNumber()];
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//

@@ -25,8 +25,9 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \

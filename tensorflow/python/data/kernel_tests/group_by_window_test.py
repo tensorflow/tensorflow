@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -56,16 +55,17 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSingleBucket(self):
 
     def _map_fn(v):
-      return (v, array_ops.fill([v], v),
-              array_ops.fill([3], string_ops.as_string(v)))
+      return (v, array_ops.fill([v],
+                                v), array_ops.fill([3],
+                                                   string_ops.as_string(v)))
 
     input_dataset = dataset_ops.Dataset.from_tensor_slices(
         math_ops.range(32)).map(_map_fn)
 
-    bucketed_dataset = input_dataset.apply(
-        grouping.group_by_window(
-            lambda x, y, z: 0,
-            lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
+    bucketed_dataset = input_dataset.group_by_window(
+        key_func=lambda x, y, z: 0,
+        reduce_func=lambda k, bucket: self._dynamicPad(k, bucket, 32),
+        window_size=32)
     get_next = self.getNext(bucketed_dataset)
 
     which_bucket, bucketed_values = self.evaluate(get_next())
@@ -86,16 +86,17 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testEvenOddBuckets(self):
 
     def _map_fn(v):
-      return (v, array_ops.fill([v], v),
-              array_ops.fill([3], string_ops.as_string(v)))
+      return (v, array_ops.fill([v],
+                                v), array_ops.fill([3],
+                                                   string_ops.as_string(v)))
 
     input_dataset = dataset_ops.Dataset.from_tensor_slices(
         math_ops.range(64)).map(_map_fn)
 
-    bucketed_dataset = input_dataset.apply(
-        grouping.group_by_window(
-            lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
-            lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
+    bucketed_dataset = input_dataset.group_by_window(
+        key_func=lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
+        reduce_func=lambda k, bucket: self._dynamicPad(k, bucket, 32),
+        window_size=32)
 
     get_next = self.getNext(bucketed_dataset)
 
@@ -116,8 +117,8 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_unk_int64 = np.zeros((32, 31 * 2)).astype(np.int64)
     for i in range(0, 32):
       expected_unk_int64[i, :2 * i] = 2 * i
-      expected_vec3_str = np.vstack(
-          3 * [np.arange(0, 32 * 2, 2).astype(bytes)]).T
+      expected_vec3_str = np.vstack(3 *
+                                    [np.arange(0, 32 * 2, 2).astype(bytes)]).T
 
     self.assertAllEqual(expected_scalar_int, bucketed_values_even[0])
     self.assertAllEqual(expected_unk_int64, bucketed_values_even[1])
@@ -158,10 +159,10 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_dataset = dataset_ops.Dataset.from_tensor_slices(math_ops.range(
         128)).map(_map_fn).filter(lambda d: math_ops.equal(d["x"] % 2, 0))
 
-    bucketed_dataset = input_dataset.apply(
-        grouping.group_by_window(
-            lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
-            lambda k, bucket: _dynamic_pad_fn(k, bucket, 32), 32))
+    bucketed_dataset = input_dataset.group_by_window(
+        key_func=lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
+        reduce_func=lambda k, bucket: _dynamic_pad_fn(k, bucket, 32),
+        window_size=32)
 
     get_next = self.getNext(bucketed_dataset)
 
@@ -189,9 +190,12 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
       window_sizes = constant_op.constant([5, 10], dtype=dtypes.int64)
       return window_sizes[key]
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
-        grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(20),
-                                 None, window_size_func))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.group_by_window(
+        key_func=lambda x: x % 2,
+        reduce_func=lambda _, xs: xs.batch(20),
+        window_size=None,
+        window_size_func=window_size_func)
 
     get_next = self.getNext(dataset)
     with self.assertRaises(errors.OutOfRangeError):
@@ -210,10 +214,12 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        components).map(lambda x: x * x).apply(
-            grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: x * x)
+    dataset = dataset.group_by_window(
+        key_func=lambda x: x % 2,
+        reduce_func=lambda _, xs: xs.batch(4),
+        window_size=4)
     get_next = self.getNext(dataset)
     counts = []
     with self.assertRaises(errors.OutOfRangeError):
@@ -230,12 +236,14 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testImmediateOutput(self):
-    components = np.array(
-        [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
-        -1).apply(
-            grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4),
-                                     4))
+    components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0],
+                          dtype=np.int64)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.repeat(-1)
+    dataset = dataset.group_by_window(
+        key_func=lambda x: x % 3,
+        reduce_func=lambda _, xs: xs.batch(4),
+        window_size=4)
     get_next = self.getNext(dataset)
     # The input is infinite, so this test demonstrates that:
     # 1. We produce output without having to consume the entire input,
@@ -250,8 +258,11 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
-        grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4), 4))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.group_by_window(
+        key_func=lambda x: x % 2,
+        reduce_func=lambda _, xs: xs.batch(4),
+        window_size=4)
     get_next = self.getNext(dataset)
     self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next()))
     self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next()))
@@ -262,9 +273,8 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testEmpty(self):
-    dataset = dataset_ops.Dataset.range(4).apply(
-        grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
-
+    dataset = dataset_ops.Dataset.range(4).group_by_window(
+        key_func=lambda _: 0, reduce_func=lambda _, xs: xs, window_size=0)
     get_next = self.getNext(dataset)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -283,9 +293,10 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
           padded_shapes=(tensor_shape.TensorShape([]),
                          constant_op.constant([5], dtype=dtypes.int64) * -1))
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        components).map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.map(lambda x: (x, ops.convert_to_tensor([x * x])))
+    dataset = dataset.group_by_window(
+        key_func=lambda x, _: x % 2, reduce_func=reduce_func, window_size=32)
     get_next = self.getNext(dataset)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
@@ -304,12 +315,15 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
               4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),
       ))
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        components
-    ).map(lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x)).apply(
-        grouping.group_by_window(
-            lambda x: math_ops.cast(array_ops.shape(x)[0] // 10, dtypes.int64),
-            reduce_func, 4))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.map(
+        lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x))
+    # pylint: disable=g-long-lambda
+    dataset = dataset.group_by_window(
+        key_func=lambda x: math_ops.cast(
+            array_ops.shape(x)[0] // 10, dtypes.int64),
+        reduce_func=reduce_func,
+        window_size=4)
 
     get_next = self.getNext(dataset)
     counts = []
@@ -325,29 +339,29 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testShortCircuit(self):
 
-    dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(
-        grouping.group_by_window(lambda x: x, lambda _, window: window.batch(1),
-                                 1))
+    dataset = dataset_ops.Dataset.range(10).group_by_window(
+        key_func=lambda x: x,
+        reduce_func=lambda _, window: window.batch(1),
+        window_size=1)
     self.assertDatasetProduces(
         dataset, expected_output=[[i] for i in range(10)])
 
   @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowWithAutotune(self):
-    dataset = dataset_ops.Dataset.range(1000).apply(
-        grouping.group_by_window(
-            lambda x: x // 10,
-            lambda key, window: dataset_ops.Dataset.from_tensors(key), 4))
+    dataset = dataset_ops.Dataset.range(1000).group_by_window(
+        key_func=lambda x: x // 10,
+        reduce_func=lambda key, window: dataset_ops.Dataset.from_tensors(key),
+        window_size=4)
     dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowCardinality(self):
-    dataset = dataset_ops.Dataset.range(1).repeat().apply(
-        grouping.group_by_window(
-            lambda x: x % 2,
-            lambda key, window: dataset_ops.Dataset.from_tensors(key), 4))
+    dataset = dataset_ops.Dataset.range(1).repeat().group_by_window(
+        key_func=lambda x: x % 2,
+        reduce_func=lambda key, window: dataset_ops.Dataset.from_tensors(key),
+        window_size=4)
     self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
 
 
@@ -355,8 +369,12 @@ class GroupByWindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                   parameterized.TestCase):
 
   def _build_dataset(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
-        grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4), 4))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(-1)
+    dataset = dataset.group_by_window(
+        key_func=lambda x: x % 3,
+        reduce_func=lambda _, xs: xs.batch(4),
+        window_size=4)
+    return dataset
 
   @combinations.generate(test_base.default_test_combinations())
   def testCoreGroupByWindow(self):

@@ -1068,6 +1068,7 @@ def HLO_MapOp: HLO_Op<"map",
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 

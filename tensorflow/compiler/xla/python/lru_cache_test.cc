@@ -24,7 +24,8 @@ namespace xla {
 namespace {
 
 TEST(LRUCache, Basics) {
-  LRUCache<int, int> cache(3);
+  LRUCache<int, int>::LRUList list(3);
+  LRUCache<int, int> cache(&list);
   EXPECT_EQ(3, cache.Capacity());
   EXPECT_EQ(0, cache.Size());
   EXPECT_EQ(0, cache.GetOrCreateIfAbsent(0, [](int) { return 0; }));
@@ -47,8 +48,57 @@ TEST(LRUCache, Basics) {
   EXPECT_EQ(1, cache.Size());
 }
 
+TEST(LRUCache, SharedLRUList) {
+  LRUCache<int, int>::LRUList list(2);
+  LRUCache<int, int> cache1(&list);
+  LRUCache<int, int> cache2(&list);
+  EXPECT_EQ(2, list.Capacity());
+
+  EXPECT_EQ(0, cache1.Size());
+  EXPECT_EQ(0, cache2.Size());
+  EXPECT_EQ(0, cache1.GetOrCreateIfAbsent(0, [](int) { return 0; }));
+  EXPECT_EQ(1, list.Size());
+  EXPECT_EQ(1, cache1.Size());
+  EXPECT_EQ(0, cache2.Size());
+
+  EXPECT_EQ(1, cache2.GetOrCreateIfAbsent(1, [](int) { return 1; }));
+  EXPECT_EQ(2, list.Size());
+  EXPECT_EQ(1, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+  EXPECT_EQ(2, cache1.GetOrCreateIfAbsent(2, [](int) { return 2; }));
+  EXPECT_EQ(2, list.Size());
+  EXPECT_EQ(1, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+
+  EXPECT_EQ(1, cache2.GetOrCreateIfAbsent(1, [](int) { return -1; }));
+  EXPECT_EQ(2, list.Size());
+  EXPECT_EQ(1, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+
+  cache1.Clear();
+  EXPECT_EQ(1, list.Size());
+  EXPECT_EQ(0, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+
+  EXPECT_EQ(1, cache2.GetOrCreateIfAbsent(1, [](int) { return 4; }));
+  EXPECT_EQ(1, list.Size());
+  EXPECT_EQ(0, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+  EXPECT_EQ(7, cache1.GetOrCreateIfAbsent(7, [](int) { return 7; }));
+  EXPECT_EQ(2, list.Size());
+  EXPECT_EQ(1, cache1.Size());
+  EXPECT_EQ(1, cache2.Size());
+
+  list.Clear();
+  EXPECT_EQ(0, list.Size());
+  EXPECT_EQ(0, cache1.Size());
+  EXPECT_EQ(0, cache2.Size());
+  EXPECT_EQ(2, cache1.GetOrCreateIfAbsent(2, [](int) { return 2; }));
+}
+
 TEST(LRUCache, RandomInsertions) {
-  LRUCache<int, int> cache(7);
+  LRUCache<int, int>::LRUList list(7);
+  LRUCache<int, int> cache(&list);
   std::random_device rng;
   std::uniform_int_distribution<int> dist(0, 100);
 

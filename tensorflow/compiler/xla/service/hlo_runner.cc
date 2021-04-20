@@ -256,7 +256,9 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   }
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  int64 num_threads = (options.infeed != nullptr) ? options.num_replicas : 0;
+  TF_RET_CHECK(options.infeed_values.empty() ||
+               options.infeed_values.size() == options.num_replicas);
+  int64 num_threads = options.infeed_values.size();
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
     num_threads += options.num_replicas;
   }
@@ -265,17 +267,17 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         tensorflow::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
-  if (options.infeed != nullptr) {
+  if (!options.infeed_values.empty()) {
     for (int64 i = 0; i < options.num_replicas; ++i) {
       int64 device = (*device_assignment)(i, 0);
-      pool->Schedule([this, device, &options]() {
+      pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting infeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
-              executor, *options.infeed));
+              executor, *options.infeed_values[i]));
           if (step % 100 == 0) {
             VLOG(1) << "Infeed step " << step;
           }
@@ -284,9 +286,12 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     }
   }
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
+    if (options.outfeed_values) {
+      options.outfeed_values->resize(options.num_replicas);
+    }
     for (int64 i = 0; i < options.num_replicas; ++i) {
       int64 device = (*device_assignment)(i, 0);
-      pool->Schedule([this, device, &options]() {
+      pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting outfeed on device " << device;
@@ -295,8 +300,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
               executor, &literal));
-          if (options.outfeed_values != nullptr) {
-            options.outfeed_values->push_back(std::move(literal));
+          if (options.outfeed_values) {
+            options.outfeed_values->at(i) = std::move(literal);
           }
           if (step % 100 == 0) {
             VLOG(1) << "Outfeed step " << step;

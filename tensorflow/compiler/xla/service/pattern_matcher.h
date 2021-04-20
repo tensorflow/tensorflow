@@ -304,8 +304,8 @@ class AllOfPattern {
   void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
                       int64 indent) const {
     constexpr bool first_is_trivial =
-        IsTrivialMatcher<typename std::remove_reference<decltype(
-            std::get<0>(patterns_))>::type>::value;
+        IsTrivialMatcher<typename std::remove_reference<decltype(std::get<0>(
+            patterns_))>::type>::value;
     constexpr bool is_last = index == sizeof...(Patterns) - 1;
     const auto& submatcher = std::get<index>(patterns_);
 
@@ -2087,7 +2087,6 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Multiply)
 XLA_BINOP_PATTERN(Outfeed)
 XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
-XLA_BINOP_PATTERN(ReduceWindow)
 XLA_BINOP_PATTERN(Remainder)
 XLA_BINOP_PATTERN(Send)
 XLA_BINOP_PATTERN(Subtract)
@@ -2172,6 +2171,7 @@ XLA_VARIADIC_OP_PATTERN(DynamicSlice)
 XLA_VARIADIC_OP_PATTERN(Fusion);
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
+XLA_VARIADIC_OP_PATTERN(ReduceWindow)
 XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 

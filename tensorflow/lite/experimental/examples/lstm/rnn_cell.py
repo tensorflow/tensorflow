@@ -14,8 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """TfLite BasicRnnCell wrapper.
-
-TODO(renjieliu): Find a better home for this one.
 """
 from __future__ import absolute_import
 from __future__ import division
