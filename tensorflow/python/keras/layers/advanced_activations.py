@@ -404,7 +404,8 @@ class ReLU(Layer):
     max_value: Float >= 0. Maximum activation value. Default to None, which
       means unlimited.
     negative_slope: Float >= 0. Negative slope coefficient. Default to 0.
-    threshold: Float. Threshold value for thresholded activation. Default to 0.
+    threshold: Float >= 0. Threshold value for thresholded activation. Default
+      to 0.
   """
 
   def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):
