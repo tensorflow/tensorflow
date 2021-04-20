@@ -131,6 +131,9 @@ do_pylint() {
   echo ""
 
   # !!!!!!This is only an hack to workaround CI VM with numpy 1.14.5!!!!!!!!
+  add-apt-repository ppa:deadsnakes/ppa -y
+  apt-get install --assume-yes python3.8
+  python3.8 --version
   python3.8 -m pip install --upgrade numpy~=1.19.2 lazy-object-proxy
   python3.8 -m pip show numpy lazy-object-proxy
 
