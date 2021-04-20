@@ -20,12 +20,16 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -380,6 +384,98 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   return Status::OK();
 }
 
+Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
+  for (size_t i = 0; i < opdef.input_arg_size(); i++) {
+    if (!opdef.input_arg(i).type_list_attr().empty()) {
+      return errors::Unimplemented("Input: ", opdef.input_arg(i).name(),
+                                   " of op ", opdef.name(),
+                                   " is of list type.");
+    }
+  }
+  for (size_t i = 0; i < opdef.output_arg_size(); i++) {
+    if (!opdef.output_arg(i).type_list_attr().empty()) {
+      return errors::Unimplemented("Output: ", opdef.output_arg(i).name(),
+                                   " of op ", opdef.name(),
+                                   " is of list type.");
+    }
+  }
+  absl::flat_hash_set<string> opdef_attrs;
+  for (const auto& attr : opdef.attr()) {
+    opdef_attrs.insert(attr.name());
+  }
+  const auto& node_def = op->MutableAttrs()->BuildNodeDef();
+  for (const auto& attr : node_def.attr()) {
+    if (opdef_attrs.find(attr.first) == opdef_attrs.end()) {
+      return errors::Unimplemented("EagerOperation: ", op->Name(),
+                                   " has a private attr '", attr.first, "'.");
+    }
+  }
+  return Status::OK();
+}
+
+Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
+  DCHECK(!op->is_function());
+  const OpDef& opdef = OpRegistry::Global()->LookUp(op->Name())->op_def;
+  // Raise an error for ops which don't support wrapping yet. This includes
+  // ops with list inputs/outputs and ops with private attrs.
+  // TODO(srbs): Support list inputs/outputs.
+  TF_RETURN_IF_ERROR(VerifyWrappableInCallOp(opdef, op));
+
+  // Build a FunctionDef containing op as a node and register with context.
+  // TODO(srbs): Here we are unable to distinguish between a FunctionDef for
+  // a wrapped eager op and an existing user defined function registered with
+  // the context e.g. with something like
+  // @tf.function
+  // def __wrapped__Add(x, y):
+  //   ...
+  // This can be avoided by introducing a dict in EagerContext that stores a
+  // mapping from the eager op's name to its unique FunctionDef name.
+  const string fname = absl::StrCat("__wrapped__", op->Name());
+  if (!op->EagerContext().GetFunctionDef(fname)) {
+    FunctionDef fdef;
+    // Set signature.
+    *fdef.mutable_signature() = opdef;
+    fdef.mutable_signature()->set_name(fname);
+    // Add node.
+    NodeDef* ndef = fdef.add_node_def();
+    ndef->set_op(op->Name());
+    ndef->set_name(op->Name());  // This could be anything.
+    for (size_t i = 0; i < opdef.input_arg_size(); i++) {
+      ndef->add_input(absl::StrCat(opdef.input_arg(i).name(), ":0"));
+    }
+    // TODO(srbs): Private attrs on the op are dropped here and applied to
+    // the call op instead. If this causes problems we might have to copy those
+    // attrs to this ndef. That would require updating fname to contain a hash
+    // of such attributes.
+    for (const auto& attr : opdef.attr()) {
+      (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
+    }
+    // Set `ret` map.
+    for (size_t i = 0; i < opdef.output_arg_size(); i++) {
+      (*fdef.mutable_ret())[opdef.output_arg(i).name()] =
+          absl::StrCat(ndef->name(), ":", opdef.output_arg(i).name(), ":0");
+    }
+    VLOG(1) << fdef.DebugString();
+    TF_RETURN_IF_ERROR(op->EagerContext().AddFunctionDef(std::move(fdef)));
+  }
+  // Build the call op.
+  auto& ctx = op->EagerContext();
+  AbstractOperationPtr call_op(ctx.CreateOperation());
+  TF_RETURN_IF_ERROR(call_op->Reset(fname.c_str(), op->DeviceName().c_str()));
+  for (auto t : op->Inputs()) {
+    TF_RETURN_IF_ERROR(call_op->AddInput(t));
+  }
+  TF_RETURN_IF_ERROR(call_op->SetDeviceName(op->DeviceName().c_str()));
+  *wrapped_op = down_cast<EagerOperation*>(call_op.release());
+  // Attributes on the elementary eager operation are applied to the call op and
+  // to the NodeDef inside the FunctionDef. This allows us to have a single
+  // FunctionDef for different attribute values. When the function is
+  // instantiated, these attributes get forwarded to the NodeDef. This is done
+  // by setting the AttrValue.placeholder field for the NodeDef attrs.
+  (*wrapped_op)->AddAttrs(op->GetOpAttrs());
+  return Status::OK();
+}
+
 Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
@@ -414,7 +510,7 @@ Status GetOrCreateKernelAndDevice(
   //  - Function has a node or a (node) attribute that can potentially make
   //    the function multi-device after a rewrite pass (e.g. various XLA/TPU
   //    special nodes and attributes)
-  if (op->is_function()) {
+  if (op->is_function() || ctx.RunEagerOpAsFunction()) {
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
@@ -464,7 +560,16 @@ Status GetOrCreateKernelAndDevice(
   }
 
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
+  AbstractOperationPtr wrapped_op_releaser;
   if (kernel == nullptr) {
+    if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
+      EagerOperation* wrapped_op = nullptr;
+      TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
+      DCHECK(wrapped_op);
+      DCHECK(wrapped_op->is_function());
+      wrapped_op_releaser.reset(wrapped_op);
+      op = wrapped_op;
+    }
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
              << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
     bool run_function_with_flr = false;

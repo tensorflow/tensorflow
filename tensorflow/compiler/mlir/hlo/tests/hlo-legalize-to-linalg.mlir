@@ -1352,6 +1352,56 @@ func @reduce_maximum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32
 
 // -----
 
+func @reduce_and(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
+    %1 = mhlo.and %arg3, %arg4 : tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_and
+// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[INIT_TENSOR]], %[[INIT]])
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = and %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+func @reduce_or(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
+    %1 = mhlo.or %arg3, %arg4 : tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_or
+// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[INIT_TENSOR]], %[[INIT]])
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = or %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
@@ -1479,6 +1529,35 @@ func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 }
 // CHECK-LABEL: func @slice_stride_part
 //       CHECK:   subtensor %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
+
+// -----
+
+func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xf32> {
+  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {
+    slice_sizes = dense<[1, 4]> : tensor<2xi64>
+  } : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
+  return %0 : tensor<1x4xf32>
+}
+// CHECK-LABEL: func @dynamic_slice
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.*]] = constant 0 : i64
+// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
+// CHECK:         %[[UB1:.*]] = constant 2 : i64
+// CHECK:         %[[COND1:.*]] = cmpi slt, %[[SCALAR1]], %[[UB1]] : i64
+// CHECK:         %[[T1:.*]] = select %[[COND1]], %[[SCALAR1]], %[[UB1]] : i64
+// CHECK:         %[[COND2:.*]] = cmpi sgt, %[[T1]], %[[C0]] : i64
+// CHECK:         %[[CLAMPED1:.*]] = select %[[COND2]], %[[T1]], %[[C0]] : i64
+// CHECK:         %[[START1:.*]] = index_cast %[[CLAMPED1]] : i64 to index
+// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i64>
+// CHECK:         %[[UB2:.*]] = constant 0 : i64
+// CHECK:         %[[COND3:.*]] = cmpi slt, %[[SCALAR2]], %[[UB2]] : i64
+// CHECK:         %[[T2:.*]] = select %[[COND3]], %[[SCALAR2]], %[[UB2]] : i64
+// CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i64
+// CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i64
+// CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i64 to index
+// CHECK:           subtensor %[[ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
 
 // -----
 

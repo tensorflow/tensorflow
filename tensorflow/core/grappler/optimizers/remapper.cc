@@ -867,15 +867,17 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     if (!GetNodeAttr(*fused_batch_norm_node_def, kIsTraining, &is_training)
              .ok())
       return false;
+    string data_format;
+    if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
+             .ok())
+      return false;
+    if (data_format != "NHWC" && data_format != "NCHW") return false;
+
     // In training mode we rely on cuDNN for computing FusedBatchNorm with side
     // inputs and activation, and it has its own limitations. In inference mode
     // we have a custom CUDA kernel that doesn't not have these constraints.
     if (is_training && NodeIsOnGpu(fused_batch_norm_node_def)) {
       // cuDNN only supports NHWC data layout.
-      string data_format;
-      if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
-               .ok())
-        return false;
       if (data_format != "NHWC") return false;
 
       // Data type must be DT_HALF.

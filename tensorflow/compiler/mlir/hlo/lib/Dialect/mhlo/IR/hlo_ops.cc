@@ -146,6 +146,46 @@ static void ReplaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
 }
 
 #include "mhlo_canonicalize.inc"
+
+// Common shape function helper for RngNormal and RngUniform.
+static LogicalResult rngInferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  if (operands.size() != 3)
+    return emitOptionalError(location, "expected 3 operands");
+
+  SmallVector<int64_t> shapeVector;
+  Value shapeOperand = operands[2];
+  auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
+  Type elementType = getElementTypeOrSelf(operands[1]);
+
+  // Match constant shape arguments.
+  DenseIntElementsAttr shape;
+  if (!matchPattern(shapeOperand, m_Constant(&shape))) {
+    if (!shapeOperandType.hasRank()) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    if (shapeOperandType.getRank() != 1)
+      return emitOptionalError(location, "shape operand required to be 1D");
+    int size = shapeOperandType.getDimSize(0);
+    if (size == ShapedType::kDynamicSize) {
+      inferredReturnShapes.emplace_back(elementType);
+      return success();
+    }
+    shapeVector.resize(size, ShapedType::kDynamicSize);
+    inferredReturnShapes.emplace_back(shapeVector, elementType);
+    return success();
+  }
+
+  shapeVector.reserve(shape.size());
+  for (const APInt& fp : shape.getIntValues())
+    shapeVector.push_back(fp.getSExtValue());
+  inferredReturnShapes.emplace_back(shapeVector, elementType);
+  return success();
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -898,6 +938,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   return success();
 }
 
+namespace {
 // If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
 // BroadcastInDimOp.
 class DynamicBroadcastInDimOpNotActuallyDynamic
@@ -915,9 +956,40 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
   }
 };
 
+class ChainedDynamicBroadcastInDimCanonicalization
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp bcast,
+                                PatternRewriter& rewriter) const override {
+    auto preceding_bcast =
+        bcast.operand().getDefiningOp<DynamicBroadcastInDimOp>();
+    if (!preceding_bcast) return failure();
+
+    // Compose broadcast dimensions.
+    DenseIntElementsAttr preceding_bcast_dims =
+        preceding_bcast.broadcast_dimensions();
+    DenseIntElementsAttr bcast_dims = bcast.broadcast_dimensions();
+    SmallVector<APInt, 4> composition;
+    for (APInt preceding_dim : preceding_bcast_dims) {
+      auto composed_dim = bcast_dims.getValue({preceding_dim.getZExtValue()})
+                              .cast<IntegerAttr>();
+      composition.push_back(composed_dim.getValue());
+    }
+    auto composed_bcast_dims =
+        DenseIntElementsAttr::get(preceding_bcast_dims.getType(), composition);
+
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        bcast, bcast.getType(), preceding_bcast.operand(),
+        bcast.output_dimensions(), composed_bcast_dims);
+    return success();
+  }
+};
+}  // namespace
+
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
+  results.insert<ChainedDynamicBroadcastInDimCanonicalization,
+                 DynamicBroadcastInDimOpNotActuallyDynamic,
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
                  DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
@@ -1703,6 +1775,20 @@ static LogicalResult Verify(MapOp op) {
   return success();
 }
 
+OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
+  mlir::Block& bb = computation().front();
+  mlir::Operation& front_op = bb.front();
+
+  auto ret_op = mlir::dyn_cast<ReturnOp>(front_op);
+  if (!ret_op) return nullptr;
+  if (ret_op.results().size() != 1) return nullptr;
+
+  for (mlir::BlockArgument barg : bb.getArguments()) {
+    if (barg == ret_op.results()[0]) return getOperands()[barg.getArgNumber()];
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//
@@ -1810,28 +1896,52 @@ static TensorType GetReduceResultType(Type operand_ty,
 }
 
 void ReduceOp::build(OpBuilder& builder, OperationState& state,
-                     ValueRange operands, ValueRange init_values,
+                     ValueRange inputs, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
-  result_ty.reserve(operands.size());
+  result_ty.reserve(inputs.size());
 
-  for (Value operand : operands) {
+  for (Value input : inputs) {
     result_ty.push_back(
-        GetReduceResultType(operand.getType(), dimensions, &builder));
+        GetReduceResultType(input.getType(), dimensions, &builder));
   }
-  build(builder, state, result_ty, operands, init_values, dimensions);
+  build(builder, state, result_ty, inputs, init_values, dimensions);
 }
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (dimensions().getNumElements() == 0) {
-    for (Value input : this->operands()) {
+    for (Value input : this->inputs()) {
       results.push_back(input);
     }
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// RngNormalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngNormalOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// RngUniformOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RngUniformOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  return rngInferReturnTypeComponents(context, location, operands, attributes,
+                                      regions, inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//

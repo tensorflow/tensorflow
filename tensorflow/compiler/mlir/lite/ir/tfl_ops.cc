@@ -189,9 +189,10 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
-  // which are broadcastable shapes up to five dimension or have same shapes.
+  // which are broadcastable shapes up to four dimensions or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type) || IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type) ||
+      IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -2531,10 +2532,8 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   return value();
 }
 
-
 namespace {
-struct FoldPseudoConstOp
-    : public OpRewritePattern<ConstOp> {
+struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
   using OpRewritePattern<ConstOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ConstOp const_op,
@@ -2552,8 +2551,6 @@ void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<FoldPseudoConstOp>(context);
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // CastOp

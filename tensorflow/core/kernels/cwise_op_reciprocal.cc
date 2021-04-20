@@ -19,8 +19,13 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
           complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
           int64, complex64, complex128);
+#else
+REGISTER2(UnaryOp, GPU, "Inv", functor::inverse, complex64, complex128);
+#endif
 #endif
 
 REGISTER5(SimpleBinaryOp, CPU, "InvGrad", functor::inverse_grad, float,
@@ -33,8 +38,13 @@ REGISTER3(SimpleBinaryOp, GPU, "InvGrad", functor::inverse_grad, float,
 REGISTER6(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
           bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
           double, int64, complex64, complex128);
+#else
+REGISTER2(UnaryOp, GPU, "Reciprocal", functor::inverse, complex64, complex128);
+#endif
 #endif
 
 REGISTER6(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,

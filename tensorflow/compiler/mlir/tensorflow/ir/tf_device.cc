@@ -698,14 +698,23 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
   // New results stores values to use while replacing the old cluster op.
   llvm::SmallVector<Value, 4> new_results;
   new_results.reserve(num_results);
-  for (Value result : return_op->getOperands()) {
-    if (result.getParentBlock() == &body) {
+  for (OpOperand& operand : return_op->getOpOperands()) {
+    // If the corresponding result of the cluster op is used in some resource
+    // update op, do not eliminate the result. Such assignment ops could be for
+    // device resources and are required during fusing of the execute op and
+    // the resource update ops.
+    bool is_used_for_resource_write = llvm::any_of(
+        op.getResult(operand.getOperandNumber()).getUsers(),
+        [](Operation* user) { return isa<TF::AssignVariableOp>(user); });
+    Value result = operand.get();
+    if (result.getParentBlock() != &body && !is_used_for_resource_write) {
+      // Pass through result.
+      new_results.push_back(result);
+    } else {
       // This result will be populated with the new result after rewriting the
       // cluster op.
       new_results.push_back(nullptr);
       cluster_vals.push_back(result);
-    } else {
-      new_results.push_back(result);
     }
   }
 

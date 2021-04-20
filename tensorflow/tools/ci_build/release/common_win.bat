@@ -53,7 +53,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PY_EXE% -m pip install --upgrade "tb-nightly ~= 2.4.0.a"
 %PY_EXE% -m pip install --upgrade "tensorflow_estimator ~= 2.4.0"
 @REM Test dependencies
-%PY_EXE% -m pip install "grpcio ~= 1.34.0"
+%PY_EXE% -m pip install "grpcio >= 1.37.0, < 2.0"
 %PY_EXE% -m pip install "portpicker ~= 1.3.1"
 %PY_EXE% -m pip install "scipy ~= 1.5.2"
 

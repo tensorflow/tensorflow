@@ -105,28 +105,6 @@ def _captured_refvar_test_combinations():
   return functools.reduce(reduce_fn, cases, [])
 
 
-def _disable_intra_op_parallelism_test_combinations():
-
-  def make_tensor_dataset():
-    return dataset_ops.Dataset.from_tensors(42)
-
-  def make_map_dataset():
-    return dataset_ops.Dataset.from_tensors(42).map(lambda x: x + 1)
-
-  cases = [
-      ("FromTensors", make_tensor_dataset, [42]),
-      ("Map", make_map_dataset, [43]),
-  ]
-
-  def reduce_fn(x, y):
-    name, dataset_fn, expected_output = y
-    return x + combinations.combine(
-        dataset_fn=combinations.NamedObject(name, dataset_fn),
-        expected_output=[expected_output])
-
-  return functools.reduce(reduce_fn, cases, [])
-
-
 class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
@@ -248,23 +226,6 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          _disable_intra_op_parallelism_test_combinations(),
-          combinations.combine(apply_autotune=[None, True, False])))
-  def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
-                                                expected_output,
-                                                apply_autotune):
-    dataset = dataset_fn()
-    dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
-    if apply_autotune is not None:
-      options = dataset_ops.Options()
-      options.experimental_optimization.autotune = apply_autotune
-      dataset = dataset.with_options(options)
-
-    self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
           combinations.combine(autotune=False, autotune_buffers=False) +
           combinations.combine(autotune=True, autotune_buffers=False) +
           combinations.combine(autotune=True, autotune_buffers=True),
@@ -318,27 +279,21 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(set_env=[True, False])))
-  def testOptimizationUsePrivateThreadPool(self, set_env):
-    if set_env:
-      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "use_private_thread_pool"
-      os.environ["TF_JOB_NAME"] = "test_job"
-
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(apply_autotune=[None, True, False])))
+  def testOptimizationGraduatedExperiments(self, apply_autotune):
     dataset = dataset_ops.Dataset.range(6)
-    if set_env:
-      dataset = dataset.apply(
-          testing.assert_next(
-              ["MaxIntraOpParallelism", "PrivateThreadPool", "Model"]))
-    else:
-      dataset = dataset.apply(
-          testing.assert_next(["MaxIntraOpParallelism", "Model"]))
+    dataset = dataset.apply(
+        testing.assert_next(
+            ["MaxIntraOpParallelism", "PrivateThreadPool"]))
+
+    if apply_autotune is not None:
+      options = dataset_ops.Options()
+      options.experimental_optimization.autotune = apply_autotune
+      dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=list(range(6)))
-
-    if set_env:
-      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-      del os.environ["TF_JOB_NAME"]
 
   @combinations.generate(
       combinations.times(

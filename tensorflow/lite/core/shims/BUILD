@@ -97,7 +97,10 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     hdrs = [
+        "cc/kernels/builtin_op_kernels.h",
         "cc/kernels/register.h",
+        # TODO(b/161243354): remove the line below when clients no
+        # longer depend on it.
         "//tensorflow/lite/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
@@ -106,6 +109,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
+        ":builtin_ops_list",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -216,6 +220,17 @@ build_test(
         ":c_api_experimental",
         ":common",
     ],
+)
+
+cc_library(
+    name = "builtin_ops_list",
+    textual_hdrs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+exports_files(
+    srcs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 #------------------------------------------------------------------------------

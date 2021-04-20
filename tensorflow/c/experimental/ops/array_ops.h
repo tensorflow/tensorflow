@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,24 +22,24 @@ namespace tensorflow {
 namespace ops {
 
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                absl::Span<AbstractTensorHandle*> output, const char* name);
+                AbstractTensorHandle** output, const char* name);
 
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
                  absl::Span<AbstractTensorHandle*> output, const char* name);
 
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 absl::Span<AbstractTensorHandle*> y, const char* name);
+                 AbstractTensorHandle** y, const char* name);
 
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             absl::Span<AbstractTensorHandle*> output, const char* name);
+             AbstractTensorHandle** output, const char* name);
 
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
-                  absl::Span<AbstractTensorHandle*> output, const char* name);
+                  AbstractTensorHandle** output, const char* name);
 
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                absl::Span<AbstractTensorHandle*> y, const char* name);
+                AbstractTensorHandle** y, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

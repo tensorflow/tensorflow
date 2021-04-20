@@ -253,22 +253,22 @@ func @tensorlistLength(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>) -> (tensor
 // CHECK: return [[RESULT]] : tensor<i32>
 }
 
-func @tensorlistWhileLoop(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+func @tensorlistWhileLoop(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<3> : tensor<1xi32>
   %cst_0 = constant dense<0> : tensor<i32>
   %cst_1 = constant dense<-1> : tensor<i32>
   %0 = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<2x3xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<3xf32>>>
   %1:2 = "tf.While"(%cst_0, %0) {T = ["tfdtype$DT_INT32", "tfdtype$DT_VARIANT"], body = @tensorlistWhileBody, cond = @tensorlistWhileCond, is_stateless = false} : (tensor<i32>, tensor<!tf.variant<tensor<3xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<*xf32>>>)
-  %2 = "tf.TensorListStack"(%1#1, %cst_1) : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  %2 = "tf.TensorListStack"(%1#1, %cst_1) : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>) -> tensor<2x3xf32>
+  return %2 : tensor<2x3xf32>
 
 // make sure the variant types in input/output have been updated, and `T` attribute
 // is removed.
 // CHECK-LABEL: func @tensorlistWhileLoop
 // CHECK-NOT: "tf.While"{{.*}}T =
 // CHECK: "tf.While"
-// CHECK-SAME: (tensor<i32>, tensor<2x3xf32>) -> (tensor<i32>, tensor<*xf32>)
-// CHECK:  return %0#1 : tensor<*xf32>
+// CHECK-SAME: (tensor<i32>, tensor<2x3xf32>) -> (tensor<i32>, tensor<2x3xf32>)
+// CHECK:  return %0#1 : tensor<2x3xf32>
 }
 
 func @tensorlistWhileBody(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> (tensor<i32>, tensor<!tf.variant>) {
@@ -277,12 +277,12 @@ func @tensorlistWhileBody(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> (te
   return %0, %1 : tensor<i32>, tensor<!tf.variant>
 
 // verify `body` function's signature.
-// CHECK: func @tensorlistWhileBody(%[[ARG0:.*]]: tensor<i32>, %[[ARG:.*]]: tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
+// CHECK: func @tensorlistWhileBody(%[[ARG0:.*]]: tensor<i32>, %[[ARG:.*]]: tensor<2x3xf32>) -> (tensor<i32>, tensor<2x3xf32>)
 // CHECK-NOT: tensor<!tf.variant>
 // CHECK:  %[[LEN:.*]] = "tf.Gather"
 // CHECK-NOT: tensor<!tf.variant>
-// CHECK:  %[[LIST:.*]] = "tf.Identity"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:  return %[[LEN]], %[[LIST]] : tensor<i32>, tensor<*xf32>
+// CHECK:  %[[LIST:.*]] = "tf.Identity"(%arg1) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+// CHECK:  return %[[LEN]], %[[LIST]] : tensor<i32>, tensor<2x3xf32>
 }
 
 func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> tensor<i1> {
@@ -291,7 +291,7 @@ func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> ten
   return %0 : tensor<i1>
 
 // verify `cond` function's signature.
-// CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<*xf32>) -> tensor<i1>
+// CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<2x3xf32>) -> tensor<i1>
 // CHECK:  %[[RESULT:.*]] = "tf.Less"(%[[ARG0]], {{.*}}) : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:  return %[[RESULT]] : tensor<i1>
 }
@@ -457,13 +457,11 @@ func @tensorlistConcat(%arg0: tensor<3x2x2xf32>, %lead: tensor<i64>) -> (tensor<
   return %t#0, %t#1 : tensor<?x2xf32>, tensor<0xi64>
 
 // CHECK: [[ELEMENT_SHAPE:%.*]] = constant dense<2> : tensor<2xi32>
+// CHECK: [[UNPACK:%.*]]:3 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<3x2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>)
 // CHECK: [[SCALAR_ZERO:%.*]] = constant dense<0> : tensor<i32>
-// CHECK: [[SCALAR_ONE:%.*]] = constant dense<1> : tensor<i32>
-// CHECK: [[SPLIT:%.*]] = "tf.Split"([[SCALAR_ZERO]], %arg0) : (tensor<i32>, tensor<3x2x2xf32>) -> tensor<*xf32>
-// CHECK: [[CONCAT:%.*]] = "tf.Concat"([[SCALAR_ONE]], [[SPLIT]]) : (tensor<i32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONCAT]]) {squeeze_dims = [0]} : (tensor<*xf32>) -> tensor<?x2xf32>
+// CHECK: [[CONCAT:%.*]] = "tf.Concat"([[SCALAR_ZERO]], [[UNPACK]]#0, [[UNPACK]]#1, [[UNPACK]]#2) : (tensor<i32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<?x2xf32>
 // CHECK: [[LENGTHS:%.*]] = constant dense<0> : tensor<0xi64>
-// CHECK: return [[SQUEEZE]], [[LENGTHS]] : tensor<?x2xf32>, tensor<0xi64>
+// CHECK: return [[CONCAT]], [[LENGTHS]] : tensor<?x2xf32>, tensor<0xi64>
 }
 
 // -----

@@ -2491,8 +2491,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         auto reduce_window_instr = Cast<HloReduceWindowInstruction>(hlo);
         std::vector<llvm_ir::ElementGenerator> input_generators;
-        for (const HloInstruction* instr :
-             reduce_window_instr->input_arrays()) {
+        for (const HloInstruction* instr : reduce_window_instr->inputs()) {
           input_generators.push_back(operand_to_generator.at(instr));
         }
 
@@ -2604,7 +2603,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   std::vector<llvm::Type*> accum_types;
   std::vector<llvm::Value*> accum_ptrs;
   for (int64 operand_index = 0; operand_index < input_count; ++operand_index) {
-    auto operand = reduce_window->input_arrays()[operand_index];
+    auto operand = reduce_window->inputs()[operand_index];
     PrimitiveType operand_element_type = operand->shape().element_type();
     operand_element_types.push_back(operand_element_type);
     llvm::Type* llvm_type =
@@ -2669,11 +2668,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     // comparison is equivalent to the unsigned comparison
     // input_multi_index[i] < bound, as a negative value wraps to a large
     // positive value.
-    in_bounds = And(
-        in_bounds,
-        ICmpULT(input_multi_index[i],
-                index_typed_const(
-                    reduce_window->input_arrays()[0]->shape().dimensions(i))));
+    in_bounds =
+        And(in_bounds,
+            ICmpULT(input_multi_index[i],
+                    index_typed_const(
+                        reduce_window->inputs()[0]->shape().dimensions(i))));
   }
 
   llvm_ir::LlvmIfData if_data =
@@ -2682,8 +2681,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
 
   // We are not in pad, so do the computation.
   std::vector<llvm::Value*> input_values(reduce_window->operand_count());
-  IrArray::Index input_index(
-      input_multi_index, reduce_window->input_arrays()[0]->shape(), index_type);
+  IrArray::Index input_index(input_multi_index,
+                             reduce_window->inputs()[0]->shape(), index_type);
   for (int64 operand_idx = 0; operand_idx < input_count; ++operand_idx) {
     TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                         input_generators[operand_idx](input_index));

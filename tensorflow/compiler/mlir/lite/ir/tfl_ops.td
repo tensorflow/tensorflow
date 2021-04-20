@@ -530,9 +530,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -550,11 +550,11 @@ def TFL_AddOp : TFL_Op<"add", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -2401,12 +2401,12 @@ def TFL_PadOp : TFL_Op<"pad", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    TFL_OperandHasRankAtMost<0, 4>,
+    TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
-    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+    PredOpTrait<"the first dim size of the padding argument must be at most 5",
       Or<[TFL_OperandIsUnrankedPred<1>,
-          TFL_OperandDimIsAtMost<1, 0, 4>]>>]> {
+          TFL_OperandDimIsAtMost<1, 0, 5>]>>]> {
   let summary = "Padding operator";
 
   let description = [{
@@ -2447,13 +2447,13 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    TFL_OperandHasRankAtMost<0, 4>,
+    TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandHasRank<2, 0>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
-    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+    PredOpTrait<"the first dim size of the padding argument must be at most 5",
       Or<[TFL_OperandIsUnrankedPred<1>,
-          TFL_OperandDimIsAtMost<1, 0, 4>]>>,
+          TFL_OperandDimIsAtMost<1, 0, 5>]>>,
     PredOpTrait<"input and constant value operands must have same element type",
       TFL_TCopVTEtAreSameAt<0, 2>>]> {
   let summary = "Padding operator v2";

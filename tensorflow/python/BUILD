@@ -59,6 +59,7 @@ visibility = [
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
@@ -3479,6 +3480,7 @@ filegroup(
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
+        "//tensorflow/core/platform:statusor",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session

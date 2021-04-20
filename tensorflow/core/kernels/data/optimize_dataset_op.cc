@@ -63,8 +63,7 @@ std::vector<tstring> SelectOptimizationsHelper(
   // of the Borg jobs, the experiments will be randomly turned on.
   // clang-format off
   absl::flat_hash_map<string, uint64> live_experiments = {
-    {"enable_gradient_descent", 0},
-    {"use_private_thread_pool", 100}
+    {"enable_gradient_descent", 0}
   };
   // clang-format on
   auto hash_func = [](const string& str) { return Hash64(str); };
@@ -120,7 +119,10 @@ void MakeDatasetHelper(OpKernelContext* ctx,
   // The vector stores the graduated experiment names which will be turned on
   // for all input pipelines.
   // clang-format off
-  std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
+  std::vector<string> graduated_experiments = {
+    "disable_intra_op_parallelism",
+    "use_private_thread_pool"
+  };
   // clang-format on
 
   // Add the graduated experiments to the optimization list and log them.

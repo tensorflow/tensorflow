@@ -26,7 +26,7 @@ OpTypeConstructor Unary(FullTypeId t, const string& var_name) {
     tdef->set_type_id(t);
 
     FullTypeDef* arg = tdef->add_args();
-    arg->set_type_id(FT_VAR);
+    arg->set_type_id(TFT_VAR);
     arg->set_s(var_name);
 
     return Status::OK();
@@ -40,7 +40,7 @@ OpTypeConstructor UnaryGeneric(FullTypeId t) {
     tdef->set_type_id(t);
 
     FullTypeDef* arg = tdef->add_args();
-    arg->set_type_id(FT_ANY);
+    arg->set_type_id(TFT_ANY);
 
     return Status::OK();
   };
@@ -53,7 +53,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype) {
     tdef->set_type_id(t);
 
     FullTypeDef* arg = tdef->add_args();
-    arg->set_type_id(FT_TENSOR);
+    arg->set_type_id(TFT_TENSOR);
     FullTypeDef* targ = arg->add_args();
     targ->set_type_id(dtype);
 

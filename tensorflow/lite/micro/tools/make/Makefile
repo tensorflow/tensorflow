@@ -276,6 +276,7 @@ tensorflow/lite/micro/kernels/comparisons_test.cc \
 tensorflow/lite/micro/kernels/concatenation_test.cc \
 tensorflow/lite/micro/kernels/conv_test.cc \
 tensorflow/lite/micro/kernels/cumsum_test.cc \
+tensorflow/lite/micro/kernels/depth_to_space_test.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
@@ -294,6 +295,7 @@ tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
 tensorflow/lite/micro/kernels/leaky_relu_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
+tensorflow/lite/micro/kernels/log_softmax_test.cc \
 tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
 tensorflow/lite/micro/kernels/mul_test.cc \
 tensorflow/lite/micro/kernels/neg_test.cc \
@@ -337,6 +339,7 @@ tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
 tensorflow/lite/micro/kernels/conv_common.cc \
 tensorflow/lite/micro/kernels/cumsum.cc \
+tensorflow/lite/micro/kernels/depth_to_space.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
@@ -360,6 +363,7 @@ tensorflow/lite/micro/kernels/l2_pool_2d.cc \
 tensorflow/lite/micro/kernels/leaky_relu.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
+tensorflow/lite/micro/kernels/log_softmax.cc \
 tensorflow/lite/micro/kernels/maximum_minimum.cc \
 tensorflow/lite/micro/kernels/mul.cc \
 tensorflow/lite/micro/kernels/neg.cc \
@@ -434,6 +438,7 @@ tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/concatenation.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/cumsum.h \
+tensorflow/lite/kernels/internal/reference/depth_to_space.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
@@ -458,6 +463,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/leaky_relu.h \
+tensorflow/lite/kernels/internal/reference/log_softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \

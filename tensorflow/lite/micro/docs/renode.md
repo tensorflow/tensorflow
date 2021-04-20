@@ -40,7 +40,7 @@ Makefile to `tensorflow/lite/micro/tools/make/downloads/renode`.
 The Makefile internally calls the `renode_download.sh` script:
 
 ```
-tensorflow/lite/micro/testing/renode_download.sh tensorflow/lite/micro/tools/make/downloads
+tensorflow/lite/micro/tools/make/renode_download.sh tensorflow/lite/micro/tools/make/downloads
 ```
 
 # Running Unit Tests

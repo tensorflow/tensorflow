@@ -19,7 +19,6 @@
 import collections
 import copy
 import csv
-import io
 import json
 import os
 import re
@@ -1961,7 +1960,7 @@ class LearningRateScheduler(Callback):
       raise ValueError('The dtype of Tensor should be float')
     backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:
-      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+      print('\nEpoch %05d: LearningRateScheduler setting learning '
             'rate to %s.' % (epoch + 1, lr))
 
   def on_epoch_end(self, epoch, logs=None):
@@ -2070,12 +2069,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         to disable profiling.
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
-      embeddings_metadata: a dictionary which maps layer name to a file name in
-        which metadata for this embedding layer is saved. See the
-        [details](
-          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
-        about metadata files format. In case if the same metadata file is
-        used for all embedding layers, string can be passed.
+      embeddings_metadata: Dictionary which maps embedding layer names to the
+        filename of a file in which to save metadata for the embedding layer.
+        In case the same metadata file is to be
+        used for all embedding layers, a single filename can be passed.
 
   Examples:
 
@@ -2435,7 +2432,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.write_steps_per_second:
       batch_run_time = time.time() - self._batch_start_time
       self._train_accumulated_time += batch_run_time
-      summary_ops_v2.scalar('batch_steps_per_second', 1. / batch_run_time)
+      summary_ops_v2.scalar(
+          'batch_steps_per_second', 1. / batch_run_time, step=self._train_step)
     if not self._should_trace:
       return
 
@@ -2738,21 +2736,17 @@ class CSVLogger(Callback):
     self.writer = None
     self.keys = None
     self.append_header = True
-    self.file_flags = ''
-    self._open_args = {'newline': '\n'}
     super(CSVLogger, self).__init__()
 
   def on_train_begin(self, logs=None):
     if self.append:
       if file_io.file_exists_v2(self.filename):
-        with open(self.filename, 'r' + self.file_flags) as f:
+        with gfile.GFile(self.filename, 'r') as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
     else:
       mode = 'w'
-    self.csv_file = io.open(self.filename,
-                            mode + self.file_flags,
-                            **self._open_args)
+    self.csv_file = gfile.GFile(self.filename, mode)
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}

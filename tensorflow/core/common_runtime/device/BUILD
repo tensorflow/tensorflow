@@ -31,6 +31,7 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     # features = ["-parse_headers"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

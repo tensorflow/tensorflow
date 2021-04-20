@@ -20,8 +20,9 @@ corresponding list of parameters that each supports to create a particular
 TFLite delegate.
 
 ### Common parameters
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running the inference on CPU.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running the inference on CPU. By default,
+    this is set to the platform default value -1.
 *   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
     The maximum number of partitions that will be delegated. \
     Currently supported by the GPU, Hexagon, CoreML and NNAPI delegate.

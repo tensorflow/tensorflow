@@ -205,7 +205,7 @@ def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO
 // TODO(timshen): cleanup lmhlo.TerminatorOp.
 def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out,
     I64ElementsAttr:$dimensions

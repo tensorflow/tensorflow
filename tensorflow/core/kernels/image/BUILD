@@ -37,6 +37,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -443,7 +444,7 @@ build_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",
@@ -466,7 +467,7 @@ filegroup(
 )
 
 filegroup(
-    name = "android_all_ops_textual_hdrs",
+    name = "portable_all_ops_textual_hdrs",
     srcs = ["mirror_pad_op.h"],
     visibility = ["//visibility:public"],
 )

@@ -5,7 +5,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -526,6 +525,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/numeric:bits",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -570,6 +570,7 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/modify_io_nodes.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
@@ -1056,23 +1057,4 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
     ],
-)
-
-# Python Library to check TensorFlow op compatibility.
-py_library(
-    name = "tensorflow_lite_compatibility_tbl_generated",
-    srcs = [
-        "tensorflow_lite_compatibility_tbl_generated.py",
-    ],
-    srcs_version = "PY3",
-    visibility = internal_visibility_allowlist(),
-)
-
-genrule(
-    name = "tfl_compatibility_tbl_gen",
-    srcs = ["transforms/generated_legalize_tf.inc"],
-    outs = ["tensorflow_lite_compatibility_tbl_generated.py"],
-    cmd = "$(location generate_tfl_compatibility_tbl.sh) $(location transforms/generated_legalize_tf.inc) > \"$@\"",
-    compatible_with = get_compatible_with_cloud(),
-    tools = ["generate_tfl_compatibility_tbl.sh"],
 )

@@ -239,6 +239,18 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("window_dimensions"), py::arg("window_strides"),
       py::arg("base_dilations"), py::arg("window_dilations"),
       py::arg("padding"));
+  ops.def(
+      "ReduceWindowWithGeneralPadding",
+      static_cast<XlaOp (*)(absl::Span<const XlaOp>, absl::Span<const XlaOp>,
+                            const XlaComputation&, absl::Span<const int64>,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const int64>,
+                            absl::Span<const std::pair<int64, int64>>)>(
+          &ReduceWindowWithGeneralPadding),
+      py::arg("operands"), py::arg("init_values"), py::arg("computation"),
+      py::arg("window_dimensions"), py::arg("window_strides"),
+      py::arg("base_dilations"), py::arg("window_dilations"),
+      py::arg("padding"));
   ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
           py::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, py::arg("builder"));

@@ -45,7 +45,8 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
       sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
-      next_allocation_id_(1) {
+      next_allocation_id_(1),
+      action_counter_(0) {
   if (allow_growth) {
     // 2MiB smallest initial allocation, unless total memory available
     // is less.

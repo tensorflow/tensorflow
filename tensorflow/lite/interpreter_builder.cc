@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -764,9 +765,11 @@ TfLiteStatus InterpreterBuilder::operator()(
         FlatBufferIntArrayToVector(subgraph->outputs()));
 
     // Finally setup nodes and tensors
-    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
-      return cleanup_and_error();
+    // Parse tensors before nodes as ParseNodes checks input tensors for the
+    // nodes.
     if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+      return cleanup_and_error();
+    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
 
     std::vector<int> variables;

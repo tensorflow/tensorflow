@@ -317,8 +317,16 @@ class Runner {
   static Runner* get();
 };
 
-// A class which provides a sequence of splits. Iterators created with a split
-// provider will iterate over only the splits provided by the split provider.
+// A class which provides a sequence of splits. Splits represent subdivisions of
+// a dataset, e.g. filenames or ranges within files. We use splitting to
+// partition input data into smaller pieces for distributed processing (see
+// go/tf-data-splitting-design).
+//
+// Datasets provide a `MakeSplitProvider` method to expose a listing of their
+// splits.
+//
+// Iterators created with a split provider will only iterate over the splits
+// provided by the split provider.
 class SplitProvider {
  public:
   virtual ~SplitProvider() {}

@@ -91,6 +91,24 @@ GENERATE_DEFAULT_TEST(Floor, DT_FLOAT, DT_FLOAT, Eigen::numext::floor,
 GENERATE_DEFAULT_TEST(Floor, DT_DOUBLE, DT_DOUBLE, Eigen::numext::floor,
                       test::OpsTestConfig().NoBufferReuse())
 
+/// Test `tf.Invert`.
+template <typename T>
+T baseline_invert(T x) {
+  return ~x;
+}
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT8, DT_INT8, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT16, DT_INT16, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT32, DT_INT32, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT64, DT_INT64, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+
 /// Test `tf.Rsqrt`.
 GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())

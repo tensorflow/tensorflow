@@ -837,13 +837,21 @@ TEST(OpVersionTest, VersioningAbsTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
-  // int16 input is version 3.
+  // int16 quantized input is version 3.
   fake_op_sig = {
       .op = BuiltinOperator_ABS,
       .input_types = std::vector<TensorType>{TensorType_INT16},
       .output_types = std::vector<TensorType>{TensorType_INT16},
   };
+  fake_op_sig.options.abs.input_quantized = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  // int16 non-quantized input is version 4.
+  fake_op_sig = {
+      .op = BuiltinOperator_ABS,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningBatchMatMulTest) {
   // Default.

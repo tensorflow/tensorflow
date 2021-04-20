@@ -15,29 +15,24 @@
 """Keras discretization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
 
-import collections
-import json
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_boosted_trees_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.parallel_for import control_flow_ops
+from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import keras_export
-
-
-_BINS_NAME = "bins"
 
 
 def summarize(values, epsilon):
@@ -60,18 +55,17 @@ def summarize(values, epsilon):
       interpolated partition values, the second is the weights (counts).
   """
 
-  num_bins = 1.0 / epsilon
-  value_shape = values.shape
-  n = np.prod([[(1 if dim is None else dim) for dim in value_shape]])
-  if num_bins >= n:
-    return np.hstack((np.expand_dims(np.sort(values), 1), np.ones((n, 1))))
-  step_size = int(n / num_bins)
-  partition_indices = np.arange(step_size, n, step_size, np.int64)
-
-  part = np.partition(values, partition_indices)[partition_indices]
-
-  return np.hstack((np.expand_dims(part, 1),
-                    step_size * np.ones((np.prod(part.shape), 1))))
+  values = array_ops.reshape(values, [-1])
+  values = sort_ops.sort(values)
+  elements = math_ops.cast(array_ops.size(values), dtypes.float32)
+  num_buckets = 1. / epsilon
+  increment = math_ops.cast(elements / num_buckets, dtypes.int32)
+  start = increment
+  step = math_ops.maximum(increment, 1)
+  boundaries = values[start::step]
+  weights = array_ops.ones_like(boundaries)
+  weights = weights * math_ops.cast(step, dtypes.float32)
+  return array_ops.stack([boundaries, weights])
 
 
 def compress(summary, epsilon):
@@ -91,18 +85,24 @@ def compress(summary, epsilon):
       A 2-D `np.ndarray` that is a compressed summary. First column is the
       interpolated partition values, the second is the weights (counts).
   """
-  if np.prod(summary[:, 0].shape) * epsilon < 1:
+  # TODO(b/184863356): remove the numpy escape hatch here.
+  return script_ops.numpy_function(
+      lambda s: _compress_summary_numpy(s, epsilon), [summary], dtypes.float32)
+
+
+def _compress_summary_numpy(summary, epsilon):
+  """Compress a summary with numpy."""
+  if summary.shape[1] * epsilon < 1:
     return summary
 
   percents = epsilon + np.arange(0.0, 1.0, epsilon)
-  cum_weights = summary[:, 1].cumsum()
+  cum_weights = summary[1].cumsum()
   cum_weight_percents = cum_weights / cum_weights[-1]
-  new_bins = np.interp(percents, cum_weight_percents, summary[:, 0])
+  new_bins = np.interp(percents, cum_weight_percents, summary[0])
   cum_weights = np.interp(percents, cum_weight_percents, cum_weights)
   new_weights = cum_weights - np.concatenate((np.array([0]), cum_weights[:-1]))
-
-  return np.hstack((np.expand_dims(new_bins, 1),
-                    np.expand_dims(new_weights, 1)))
+  summary = np.stack((new_bins, new_weights))
+  return summary.astype(np.float32)
 
 
 def merge_summaries(prev_summary, next_summary, epsilon):
@@ -114,25 +114,23 @@ def merge_summaries(prev_summary, next_summary, epsilon):
   Args:
       prev_summary: 2-D `np.ndarray` summary to be merged with `next_summary`.
       next_summary: 2-D `np.ndarray` summary to be merged with `prev_summary`.
-      epsilon: A `'float32'` that determines the approxmiate desired precision.
+      epsilon: A float that determines the approxmiate desired precision.
 
   Returns:
       A 2-D `np.ndarray` that is a merged summary. First column is the
       interpolated partition values, the second is the weights (counts).
   """
-  merged = np.concatenate((prev_summary, next_summary))
-  merged = merged[merged[:, 0].argsort()]
-  if np.prod(merged.shape) * epsilon < 1:
-    return merged
+  merged = array_ops.concat((prev_summary, next_summary), axis=1)
+  merged = array_ops.gather_v2(merged, sort_ops.argsort(merged[0]), axis=1)
   return compress(merged, epsilon)
 
 
-def get_bucket_boundaries(summary, num_bins):
-  return compress(summary, 1.0 / num_bins)[:-1, 0]
+def get_bin_boundaries(summary, num_bins):
+  return compress(summary, 1.0 / num_bins)[0, :-1]
 
 
 @keras_export("keras.layers.experimental.preprocessing.Discretization")
-class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
+class Discretization(base_preprocessing_layer.PreprocessingLayer):
   """Buckets data into discrete ranges.
 
   This layer will place each element of its input data into one of several
@@ -194,12 +192,9 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
       elif bin_boundaries is None:
         bin_boundaries = kwargs["bins"]
       del kwargs["bins"]
-    super(Discretization, self).__init__(
-        combiner=Discretization.DiscretizingCombiner(
-            epsilon, num_bins if num_bins is not None else 1),
-        **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell(
-        "Discretization").set(True)
+    super().__init__(**kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("Discretization").set(
+        True)
     if num_bins is not None and num_bins < 0:
       raise ValueError("`num_bins` must be must be greater than or equal to 0. "
                        "You passed `num_bins={}`".format(num_bins))
@@ -210,18 +205,71 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.bin_boundaries = bin_boundaries
     self.num_bins = num_bins
     self.epsilon = epsilon
+    # Bins only need to be `adapt`'d when `num_bins` is passed.
+    self.stateful = self.num_bins is not None
 
   def build(self, input_shape):
     if self.bin_boundaries is not None:
       initial_bins = np.append(self.bin_boundaries, [np.Inf])
     else:
       initial_bins = np.zeros(self.num_bins)
-    self.bins = self._add_state_variable(
-        name=_BINS_NAME,
+    self.bins = self.add_weight(
+        name="bins",
         shape=(initial_bins.size,),
         dtype=dtypes.float32,
-        initializer=init_ops.constant_initializer(initial_bins))
-    super(Discretization, self).build(input_shape)
+        initializer=init_ops.constant_initializer(initial_bins),
+        trainable=False)
+
+    if self.stateful:
+      # Summary contains two equal length vectors of bins at index 0 and weights
+      # at index 1.
+      self.summary = self.add_weight(
+          name="summary",
+          shape=(2, None),
+          dtype=dtypes.float32,
+          initializer=lambda shape, dtype: [[], []],  # pylint: disable=unused-arguments
+          trainable=False)
+
+    self.built = True
+
+  def update_state(self, data):
+    if not self.stateful:
+      return
+
+    if not self.built:
+      raise RuntimeError("`build` must be called before `update_state`.")
+
+    data = ops.convert_to_tensor_v2_with_dispatch(data)
+    if data.dtype != dtypes.float32:
+      data = math_ops.cast(data, dtypes.float32)
+    summary = summarize(data, self.epsilon)
+    self.summary.assign(merge_summaries(summary, self.summary, self.epsilon))
+
+  def merge_state(self, layers):
+    for l in layers + [self]:
+      if not l.stateful:
+        raise ValueError(
+            "Cannot merge non-stateful Discretization layer {}. All layers to "
+            "be adapted and merged should be initialized with `num_bins`."
+            .format(l.name))
+      if not l.built:
+        raise ValueError(
+            "Cannot merge unbuilt Discretization layer {}. You need to call "
+            "`adapt` on this layer before merging.".format(l.name))
+
+    summary = self.summary
+    for l in layers:
+      summary = merge_summaries(summary, l.summary, self.epsilon)
+    self.summary.assign(summary)
+    self.finalize_state()
+
+  def finalize_state(self):
+    if not self.stateful:
+      return
+
+    boundaries = get_bin_boundaries(self.summary, self.num_bins)
+    boundaries = array_ops.concat([boundaries, [np.inf]], axis=0)
+    self.bins.assign(boundaries)
 
   def get_config(self):
     config = {
@@ -275,84 +323,4 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
       # inputs after batch size and vectorized_map over each sample.
       reshaped = array_ops.reshape(inputs, [dynamic_shape[0], -1])
       return array_ops.reshape(
-          control_flow_ops.vectorized_map(_bucketize_fn, reshaped),
-          dynamic_shape)
-
-  class DiscretizingCombiner(Combiner):
-    """Combiner for the Discretization preprocessing layer.
-
-    This class encapsulates the computations for finding the quantile boundaries
-    of a set of data in a stable and numerically correct way. Its associated
-    accumulator is a namedtuple('summaries'), representing summarizations of
-    the data used to generate boundaries.
-
-    Attributes:
-      epsilon: Error tolerance.
-      num_bins: The desired number of buckets.
-    """
-
-    def __init__(self, epsilon, num_bins,):
-      self.epsilon = epsilon
-      self.num_bins = num_bins
-
-      # TODO(mwunder): Implement elementwise per-column discretization.
-
-    def compute(self, values, accumulator=None):
-      """Compute a step in this computation, returning a new accumulator."""
-
-      if isinstance(values, sparse_tensor.SparseTensor):
-        values = values.values
-      if tf_utils.is_ragged(values):
-        values = values.flat_values
-      flattened_input = np.reshape(values, newshape=(-1, 1))
-
-      summaries = [summarize(v, self.epsilon) for v in flattened_input.T]
-
-      if accumulator is None:
-        return self._create_accumulator(summaries)
-      else:
-        return self._create_accumulator(
-            [merge_summaries(prev_summ, summ, self.epsilon)
-             for prev_summ, summ in zip(accumulator.summaries, summaries)])
-
-    def merge(self, accumulators):
-      """Merge several accumulators to a single accumulator."""
-      # Combine accumulators and return the result.
-
-      merged = accumulators[0].summaries
-      for accumulator in accumulators[1:]:
-        merged = [merge_summaries(prev, summary, self.epsilon)
-                  for prev, summary in zip(merged, accumulator.summaries)]
-
-      return self._create_accumulator(merged)
-
-    def extract(self, accumulator):
-      """Convert an accumulator into a dict of output values."""
-
-      boundaries = [np.append(get_bucket_boundaries(summary, self.num_bins),
-                              [np.Inf])
-                    for summary in accumulator.summaries]
-      return {
-          _BINS_NAME: np.squeeze(np.vstack(boundaries))
-      }
-
-    def restore(self, output):
-      """Create an accumulator based on 'output'."""
-      raise NotImplementedError(
-          "Discretization does not restore or support streaming updates.")
-
-    def serialize(self, accumulator):
-      """Serialize an accumulator for a remote call."""
-      output_dict = {
-          _BINS_NAME: [summary.tolist() for summary in accumulator.summaries]
-      }
-      return compat.as_bytes(json.dumps(output_dict))
-
-    def deserialize(self, encoded_accumulator):
-      """Deserialize an accumulator received from 'serialize()'."""
-      value_dict = json.loads(compat.as_text(encoded_accumulator))
-      return self._create_accumulator(np.array(value_dict[_BINS_NAME]))
-
-    def _create_accumulator(self, summaries):
-      """Represent the accumulator as one or more summaries of the dataset."""
-      return collections.namedtuple("Accumulator", ["summaries"])(summaries)
+          vectorized_map(_bucketize_fn, reshaped), dynamic_shape)

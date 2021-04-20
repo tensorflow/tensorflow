@@ -40,12 +40,16 @@ bool IsTakeAll(const NodeDef& take_node, const MutableGraphView& graph) {
   const auto& count_node = *graph.GetNode(take_node.input(1));
   if (count_node.op() != "Const") return false;
   // We are looking only for 'take' with negative count.
-  return count_node.attr().at("value").tensor().int64_val(0) < 0;
+  const auto& tensor = count_node.attr().at("value").tensor();
+  if (tensor.int64_val_size()) return tensor.int64_val(0) < 0;
+  return false;
 }
 
 bool IsConstNodeWithValue(const NodeDef& node, int value) {
   if (node.op() != "Const") return false;
-  return node.attr().at("value").tensor().int64_val(0) == value;
+  const auto& tensor = node.attr().at("value").tensor();
+  if (tensor.int64_val_size()) return tensor.int64_val(0) == value;
+  return value == 0;
 }
 
 bool IsSkipNone(const NodeDef& skip_node, const MutableGraphView& graph) {

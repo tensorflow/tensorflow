@@ -544,6 +544,11 @@ static void AllocateFlags() {
       "Dumps HloModuleMetadata as text protos to the directory specified "
       "by --xla_dump_to."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_compress_protos",
+      bool_setter_for(&DebugOptions::set_xla_dump_compress_protos),
+      flag_values->xla_dump_compress_protos(),
+      "Gzip-compress protos dumped by --xla_dump_hlo_as_proto."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
       flag_values->xla_hlo_graph_addresses(),
