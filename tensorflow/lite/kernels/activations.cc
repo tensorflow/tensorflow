@@ -1076,21 +1076,58 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
     reference_ops::Softmax(data->params, GetTensorShape(input),
                            GetTensorData<In>(input), GetTensorShape(output),
                            GetTensorData<Out>(output));
-  }
-#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-  else if ((std::is_same<In, uint8_t>::value &&
-            std::is_same<Out, uint8_t>::value) ||
-           (std::is_same<In, int8_t>::value &&
-            std::is_same<Out, int8_t>::value)) {
-    optimized_ops::SoftmaxInt8LUT(
-        data->params, GetTensorShape(input), GetTensorData<In>(input),
-        GetTensorShape(output), GetTensorData<Out>(output));
-  }
-#endif
-  else {
+  } else {
     optimized_ops::Softmax(data->params, GetTensorShape(input),
                            GetTensorData<In>(input), GetTensorShape(output),
                            GetTensorData<Out>(output));
+  }
+  return kTfLiteOk;
+}
+
+template <>
+TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              TfLiteTensor* output,
+                                              SoftmaxOpData* data,
+                                              KernelType kernel_type) {
+  if (kernel_type == kReference) {
+    reference_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<int8_t>(input), GetTensorShape(output),
+                           GetTensorData<int8_t>(output));
+  } else {
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+    optimized_ops::SoftmaxInt8LUT(
+        data->params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
+#else
+    optimized_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<int8_t>(input), GetTensorShape(output),
+                           GetTensorData<int8_t>(output));
+#endif
+  }
+  return kTfLiteOk;
+}
+
+template <>
+TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
+                                                const TfLiteTensor* input,
+                                                TfLiteTensor* output,
+                                                SoftmaxOpData* data,
+                                                KernelType kernel_type) {
+  if (kernel_type == kReference) {
+    reference_ops::Softmax(
+        data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+    optimized_ops::SoftmaxInt8LUT(
+        data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+#else
+    optimized_ops::Softmax(
+        data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+#endif
   }
   return kTfLiteOk;
 }
