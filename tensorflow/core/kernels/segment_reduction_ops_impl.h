@@ -806,17 +806,17 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       return;
     }
 
-    ScratchSpace<SegmentId> output_rows_host(context, 1, /*on_host=*/true);
+    ScratchSpace<SegmentId> last_segment_id_host(context, 1, /*on_host=*/true);
 
     auto create_and_check_output = [this, context, input, indices, segment_ids,
-                                    output_rows_host, done]() {
+                                    last_segment_id_host, done]() {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
       ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-      SegmentId output_rows = *output_rows_host.data();
-      output_rows++;
+      SegmentId last_segment_id = *last_segment_id_host.data();
+      SegmentId output_rows = last_segment_id + 1;
       OP_REQUIRES_ASYNC(context, output_rows > 0,
                         errors::InvalidArgument("segment ids must be >= 0"),
                         done);
@@ -844,26 +844,29 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
 
     if (has_num_segments_) {
       // No need to do any device to host memcpy, just compute synchronously.
-      const Tensor& num_segments = context->input(3);
-      *output_rows_host.mutable_data() =
-          internal::SubtleMustCopy(num_segments.scalar<int32>()()) - 1;
+      const Tensor& num_segments_t = context->input(3);
+      SegmentId num_segments =
+          internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
+                                       ? num_segments_t.scalar<int32>()()
+                                       : num_segments_t.scalar<int64>()());
+      *last_segment_id_host.mutable_data() = num_segments - 1;
       create_and_check_output();
     } else {
       const int64 num_indices = indices.NumElements();
       // Need to copy last element of segment_ids from device to host, and then
       // asynchronously allocate the output and finish the computation.
-      se::DeviceMemoryBase output_rows_device(
+      se::DeviceMemoryBase last_segment_id_device(
           const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
           (num_indices - 1));
       auto stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(
           context,
           stream
-              ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
-                           sizeof(SegmentId))
+              ->ThenMemcpy(last_segment_id_host.mutable_data(),
+                           last_segment_id_device, sizeof(SegmentId))
               .ok(),
           errors::Internal(type_string() +
-                           ": failed to copy output_rows from device"),
+                           ": failed to copy last_segment_id from device"),
           done);
       context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
           stream, create_and_check_output);

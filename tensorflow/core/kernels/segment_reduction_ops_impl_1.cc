@@ -76,16 +76,15 @@ void SparseSegmentReductionValidationHelper(OpKernelContext* context,
     done = [] {};
   }
   if (has_num_segments) {
-    const Tensor& num_segments = context->input(3);
+    const Tensor& num_segments_t = context->input(3);
     OP_REQUIRES_ASYNC(
-        context, TensorShapeUtils::IsScalar(num_segments.shape()),
+        context, TensorShapeUtils::IsScalar(num_segments_t.shape()),
         errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                num_segments.shape().DebugString()),
+                                num_segments_t.shape().DebugString()),
         done);
-    // Note that there is a Tnumsegments parameter on the op, but it is not
-    // plumbed through to here and so always takes its default value of int32.
-    int32 output_rows =
-        internal::SubtleMustCopy(num_segments.scalar<int32>()());
+    int64 output_rows = internal::SubtleMustCopy(
+        num_segments_t.dtype() == DT_INT32 ? num_segments_t.scalar<int32>()()
+                                           : num_segments_t.scalar<int64>()());
     OP_REQUIRES_ASYNC(context, output_rows >= 0,
                       errors::InvalidArgument("segment ids must be >= 0"),
                       done);
