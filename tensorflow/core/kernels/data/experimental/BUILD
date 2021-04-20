@@ -15,10 +15,15 @@ package(
     licenses = ["notice"],
 )
 
+# TODO(b/185903858): This should not be needed with the definition of "portable_all_op_kernels" below.
+exports_files([
+    "lookup_ops.cc",
+])
+
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "portable_all_op_kernels",
-    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc"),
+    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc", "lookup_ops.cc"),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -332,6 +337,25 @@ tf_cc_test(
         "//tensorflow/core/kernels/data:dataset_test_base",
         "//tensorflow/core/platform:env",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "lookup_ops",
+    srcs = ["lookup_ops.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:initializable_lookup_table",
+        "//tensorflow/core/kernels:lookup_util",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -785,6 +809,7 @@ tf_kernel_library(
         ":map_and_batch_dataset_op",
         ":matching_files_dataset_op",
         ":non_serializable_dataset_op",
+        ":lookup_ops",
         ":parallel_interleave_dataset_op",
         ":parse_example_dataset_op",
         ":prefetching_kernels",
