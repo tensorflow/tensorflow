@@ -1050,9 +1050,9 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
-                          TfLiteTensor* output, TfLiteSoftmaxParams* params,
-                          KernelType kernel_type) {
+TfLiteStatus SoftmaxFloat(KernelType kernel_type, TfLiteContext* context,
+                          const TfLiteTensor* input, TfLiteTensor* output,
+                          TfLiteSoftmaxParams* params) {
   SoftmaxParams op_params;
   op_params.beta = params->beta;
   if (kernel_type == kReference) {
@@ -1069,9 +1069,9 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
 }
 
 template <typename In, typename Out>
-TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
-                              TfLiteTensor* output, SoftmaxOpData* data,
-                              KernelType kernel_type) {
+TfLiteStatus SoftmaxQuantized(KernelType kernel_type, TfLiteContext* context,
+                              const TfLiteTensor* input, TfLiteTensor* output,
+                              SoftmaxOpData* data) {
   if (kernel_type == kReference) {
     reference_ops::Softmax(data->params, GetTensorShape(input),
                            GetTensorData<In>(input), GetTensorShape(output),
@@ -1085,11 +1085,11 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
 }
 
 template <>
-TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
+TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(KernelType kernel_type,
+                                              TfLiteContext* context,
                                               const TfLiteTensor* input,
                                               TfLiteTensor* output,
-                                              SoftmaxOpData* data,
-                                              KernelType kernel_type) {
+                                              SoftmaxOpData* data) {
   if (kernel_type == kReference) {
     reference_ops::Softmax(data->params, GetTensorShape(input),
                            GetTensorData<int8_t>(input), GetTensorShape(output),
@@ -1109,11 +1109,11 @@ TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
 }
 
 template <>
-TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
+TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(KernelType kernel_type,
+                                                TfLiteContext* context,
                                                 const TfLiteTensor* input,
                                                 TfLiteTensor* output,
-                                                SoftmaxOpData* data,
-                                                KernelType kernel_type) {
+                                                SoftmaxOpData* data) {
   if (kernel_type == kReference) {
     reference_ops::Softmax(
         data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -1133,11 +1133,11 @@ TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
 }
 
 template <>
-TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
+TfLiteStatus SoftmaxQuantized<int16, int16>(KernelType kernel_type,
+                                            TfLiteContext* context,
                                             const TfLiteTensor* input,
                                             TfLiteTensor* output,
-                                            SoftmaxOpData* data,
-                                            KernelType /*kernel_type*/) {
+                                            SoftmaxOpData* data) {
   if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
     reference_ops::SoftmaxInt16(
         data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -1164,16 +1164,16 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteFloat32: {
-      return SoftmaxFloat(context, input, output, params, kernel_type);
+      return SoftmaxFloat(kernel_type, context, input, output, params);
     }
     case kTfLiteUInt8: {
       switch (output->type) {
         case kTfLiteUInt8:
-          return SoftmaxQuantized<uint8_t, uint8_t>(context, input, output,
-                                                    data, kernel_type);
+          return SoftmaxQuantized<uint8_t, uint8_t>(kernel_type, context, input,
+                                                    output, data);
         case kTfLiteInt16:
-          return SoftmaxQuantized<uint8_t, int16_t>(context, input, output,
-                                                    data, kernel_type);
+          return SoftmaxQuantized<uint8_t, int16_t>(kernel_type, context, input,
+                                                    output, data);
         default:
           TF_LITE_KERNEL_LOG(context,
                              "Only uint8_t and int16_t outputs are supported "
@@ -1185,11 +1185,11 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       switch (output->type) {
         case kTfLiteInt8:
-          return SoftmaxQuantized<int8_t, int8_t>(context, input, output, data,
-                                                  kernel_type);
+          return SoftmaxQuantized<int8_t, int8_t>(kernel_type, context, input,
+                                                  output, data);
         case kTfLiteInt16:
-          return SoftmaxQuantized<int8_t, int16_t>(context, input, output, data,
-                                                   kernel_type);
+          return SoftmaxQuantized<int8_t, int16_t>(kernel_type, context, input,
+                                                   output, data);
         default:
           TF_LITE_KERNEL_LOG(context,
                              "Only int8_t and int16_t outputs are supported "
@@ -1199,8 +1199,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       }
     }
     case kTfLiteInt16: {
-      return SoftmaxQuantized<int16_t, int16_t>(context, input, output, data,
-                                                kernel_type);
+      return SoftmaxQuantized<int16_t, int16_t>(kernel_type, context, input,
+                                                output, data);
     }
 
     default:
