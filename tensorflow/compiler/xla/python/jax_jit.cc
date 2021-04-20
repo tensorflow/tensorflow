@@ -308,10 +308,13 @@ namespace {
 
 // Elements of CacheEntry are protected by the GIL.
 struct CacheEntry {
-  // Has this cache entry been fully populated?
-  // The first thread to determine a compilation result sets `ready` to true
-  // after populating all necessary fields of the cache entry.
-  bool ready = false;
+  // Ensures a single thread performs the compilation for a given executable.
+  //
+  // The first thread (holding the GIL) will create the CacheEntry associated to
+  // a signature and fill it. Other threads will wait for the notification.
+  // If an error occured during the compilation, `fall_back_to_python` is set
+  // to `true`, and other threads will fail with the same error.
+  absl::Notification compilation_complete;
 
   std::shared_ptr<xla::PyExecutable> executable;
   xla::PyTreeDef out_pytree_def;
@@ -326,8 +329,11 @@ struct CacheEntry {
   std::vector<py::object> out_lazy_exprs;
   xla::PjRtDevice* sticky_device;
 
-  // Trivial computation will fallback to Python.
-  // Running a jax(pmap) will also fallback to Python.
+  // Fallback to Python happens:
+  // - for trivial computations
+  // - when running a jax(pmap)
+  // - after a compilation error, for threads that did not compile it the first
+  //   time
   bool fall_back_to_python = false;
 
   // Python objects (notably in the cache key) that must remain alive as long
@@ -649,7 +655,6 @@ void CompiledFunction::PopulateCacheEntry(
   CHECK_EQ(out_and_fastpath_data.size(), 2);
   if (out_and_fastpath_data[1].is_none()) {
     cache_entry->fall_back_to_python = true;
-    cache_entry->ready = true;
     return;
   }
 
@@ -694,8 +699,6 @@ void CompiledFunction::PopulateCacheEntry(
         py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
-
-  cache_entry->ready = true;
 }
 
 void CompiledFunction::TryToPopulateDefaultDevice() {
@@ -774,36 +777,48 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
+  bool inserted = false;
   std::shared_ptr<CacheEntry> cache_entry = executables_->GetOrCreateIfAbsent(
-      arguments.signature,
-      [](const CallSignature& key) { return std::make_shared<CacheEntry>(); });
+      arguments.signature, [&inserted](const CallSignature& key) {
+        inserted = true;
+        return std::make_shared<CacheEntry>();
+      });
 
-  if (!cache_entry->ready) {
-    // Calls Python and may release the GIL. May also throw if
-    // compilation/tracing fails.
-    // Multiple threads may reach this point and compile the same computation
-    // concurrently. Only the first thread to call PopulateCacheEntry ends
-    // up committing its compilation result to the cache.
-    // TODO(phawkins): it may be preferable to force other threads to wait if
-    // a cache miss is already happening.
-    py::object out_and_fastpath_data =
-        cache_miss_(*py::reinterpret_borrow<py::args>(args),
-                    **kwargs.value_or(py::kwargs()));
-    py::tuple out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
+  if (!cache_entry->compilation_complete.HasBeenNotified()) {
+    // In case of several threads attempting to compile the executable, only
+    // the one that inserted the item will perform the compilation.
+    if (inserted) {
+      py::object out_and_fastpath_data;
+      py::tuple out_tuple;
+      try {
+        // Calls Python and may release the GIL. May also throw if
+        // compilation/tracing fails.
+        out_and_fastpath_data = out_and_fastpath_data =
+            cache_miss_(*py::reinterpret_borrow<py::args>(args),
+                        **kwargs.value_or(py::kwargs()));
+        out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
+        PopulateCacheEntry(cache_entry.get(), arguments.signature, out_tuple);
+      } catch (const std::exception& e) {
+        cache_entry->fall_back_to_python = true;
+        cache_entry->compilation_complete.Notify();
+        throw;
+      }
+      cache_entry->compilation_complete.Notify();
 
-    // Another thread might have populated the cache entry while we were calling
-    // cache_miss_. We therefore check again that the cache entry hasn't been
-    // populated now that we have reacquired the GIL.
-    if (!cache_entry->ready) {
-      PopulateCacheEntry(cache_entry.get(), arguments.signature, out_tuple);
+      // We have already computed the result in the miss path so we can return
+      // it. We are even *required* to do so if there are donated arguments,
+      // because any donated buffers will now be invalid.
+      return py::object(out_tuple[0]);
+    } else {
+      // Release the GIL while we wait, making sure the compile thread can
+      // lock it.
+      py::gil_scoped_release release;
+      cache_entry->compilation_complete.WaitForNotification();
     }
-
-    // We have already computed the result in the miss path so we can return it.
-    // We are even *required* to do so if there are donated arguments, because
-    // any donated buffers will now be invalid.
-    return py::object(out_tuple[0]);
   }
-
+  // It's hard to reraise the exact same kind of errors when a compilation error
+  // occured. If the first compilation failed, other threads will also execute
+  // the Python path.
   if (cache_entry->fall_back_to_python) {
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
