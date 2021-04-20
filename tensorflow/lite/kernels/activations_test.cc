@@ -247,7 +247,7 @@ class LogisticOpTest : public SingleOpTest {
   }
 };
 
-const auto kLogSoftmaxKernelMap = std::map<string, TfLiteRegistration*>({
+const auto kLogSoftmaxKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_LOG_SOFTMAX_REF()},
     {"GenericOptimized", ops::builtin::Register_LOG_SOFTMAX()},
 });
@@ -255,7 +255,7 @@ const auto kLogSoftmaxKernelMap = std::map<string, TfLiteRegistration*>({
 class LogSoftmaxOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return kLogSoftmaxKernelMap;
+    return *kLogSoftmaxKernelMap;
   }
 };
 
@@ -2508,7 +2508,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     LogSoftmaxOpTest, LogSoftmaxOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(kLogSoftmaxKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogSoftmaxKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     PReluOpTest, PReluOpTest,
