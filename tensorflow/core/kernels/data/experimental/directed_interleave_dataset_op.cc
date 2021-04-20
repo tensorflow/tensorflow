@@ -269,6 +269,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       for (auto& data_input_impl : data_input_impls_) {
         data_input_impl.reset();
       }
+      num_active_inputs_ = 0;
     }
 
     mutex mu_;
