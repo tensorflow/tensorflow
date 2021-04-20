@@ -10607,6 +10607,9 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   let builders = [
     OpBuilder<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
+
+  let hasFolder = 1;
+
 }
 
 def TF_RangeDatasetOp : TF_Op<"RangeDataset", [NoSideEffect, TF_NoConstantFold]> {
