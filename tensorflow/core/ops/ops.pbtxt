@@ -8026,6 +8026,13 @@ op {
     }
     has_minimum: true
   }
+  attr {
+    name: "max_subdivs_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
   is_stateful: true
 }
 op {
