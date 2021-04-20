@@ -2576,10 +2576,18 @@ class IntermediatesTest(lite_v2_test_util.ModelTest):
                            input_data)
     interpreter.invoke()
     out = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])
-    tensors = {
-        t['name']: interpreter.get_tensor(t['index'])
-        for t in interpreter.get_tensor_details()
-    }
+    tensors = {}
+    for t in interpreter.get_tensor_details():
+      # With Tensorflow Lite default delegate applied to the model graph, the
+      # access to original tensors of a delegated op could cause a ValueError
+      # (i.e. 'Tensor data is null. Run allocate_tensors() first') to be thrown
+      # out because the tensor memory isn't allocated at all.
+      val = None
+      try:
+        val = interpreter.get_tensor(t['index'])
+      except ValueError:
+        pass
+      tensors.update({t['name']: val})
     return (tensors, out)
 
   def testPreserve(self):
