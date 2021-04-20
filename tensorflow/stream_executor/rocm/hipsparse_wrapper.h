@@ -77,16 +77,19 @@ namespace wrap {
   __macro(hipsparseCreateMatDescr)      \
   __macro(hipsparseCcsr2csc)            \
   __macro(hipsparseCcsrgemm)            \
+  __macro(hipsparseCcsrmm)             \
   __macro(hipsparseCcsrmm2)             \
   __macro(hipsparseCcsrmv)              \
   __macro(hipsparseDcsr2csc)            \
   __macro(hipsparseDcsrgemm)            \
+  __macro(hipsparseDcsrmm)             \
   __macro(hipsparseDcsrmm2)             \
   __macro(hipsparseDcsrmv)              \
   __macro(hipsparseDestroy)             \
   __macro(hipsparseDestroyMatDescr)     \
   __macro(hipsparseScsr2csc)            \
   __macro(hipsparseScsrgemm)            \
+  __macro(hipsparseScsrmm)	            \
   __macro(hipsparseScsrmm2)	            \
   __macro(hipsparseScsrmv)              \
   __macro(hipsparseSetStream)           \
@@ -97,6 +100,7 @@ namespace wrap {
   __macro(hipsparseXcsrgemmNnz)         \
   __macro(hipsparseZcsr2csc)            \
   __macro(hipsparseZcsrgemm)            \
+  __macro(hipsparseZcsrmm)             \
   __macro(hipsparseZcsrmm2)             \
   __macro(hipsparseZcsrmv)              
 
