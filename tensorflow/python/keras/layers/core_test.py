@@ -95,6 +95,14 @@ class DropoutLayersTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes
 class LambdaLayerTest(keras_parameterized.TestCase):
 
+  def test_dynamic(self):
+    inp = keras.Input(shape=(10,))
+    out = keras.layers.Lambda(
+          lambda x_input: x_input,
+          dynamic=True)(inp)
+    model = keras.Model(inputs=inp, outputs=out)
+    self.assertEqual(model.output_shape, (None, 10))
+
   def test_lambda(self):
     testing_utils.layer_test(
         keras.layers.Lambda,
