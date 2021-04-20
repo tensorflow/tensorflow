@@ -3854,14 +3854,14 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
 TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                          TfLiteNode* node, int* nnapi_errno) {
   const bool allow_padding =
-      nnapi_->android_sdk_version > kMinSdkVersionForNNAPI13;
+      nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13;
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
 
   // Check for conditions where we need to re-create NN Execution object and
   // re-configure the settings and inputs / outputs.
   bool should_reset_execution = false;
-  if (nnapi_->android_sdk_version <= kMinSdkVersionForNNAPI13 ||
+  if (nnapi_->nnapi_runtime_feature_level <= kMinSdkVersionForNNAPI13 ||
       delegate_options.allow_dynamic_dimensions) {
     // Must reset execution before Android API 31, or using dynamic dimensions.
     should_reset_execution = true;
