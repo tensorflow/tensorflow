@@ -389,7 +389,7 @@ class QuantizationMode(object):
         raise ValueError(
             "Provide an input generator for representative_dataset")
     else:
-      # TODO(b/150661651): Relax this check for QAT.
+      # TODO(b/162537905): Relax this check for QAT.
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
 
