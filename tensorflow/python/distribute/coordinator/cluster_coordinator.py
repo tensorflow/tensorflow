@@ -629,7 +629,9 @@ class WorkerPreemptionHandler(object):
           # Consider adding backoff retry logic if we see the error logged
           # too frequently.
           logging.error("Cluster update failed with error: %s. Retrying...", e)
-
+          # Add sleep to prevent consistent cluster recovering in fault tolerance.
+          import time
+          time.sleep(5)
 
 class Worker(object):
   """A worker in a cluster.
@@ -652,13 +654,29 @@ class Worker(object):
     self._should_worker_thread_run = True
 
     # Worker threads need to start after `Worker`'s initialization.
-    threading.Thread(target=self._process_queue,
+    self._process_thread = threading.Thread(target=self._process_queue,
                      name="WorkerClosureProcessingLoop-%d" % self.worker_index,
-                     daemon=True).start()
+                     daemon=True)
+    self._process_thread.start()
 
   def stop(self):
     """Ensure the worker thread is closed."""
     self._should_worker_thread_run = False
+    self._set_resources_aborted()
+
+  def restart(self):
+    """Restart the stopped worker."""
+    if self._should_worker_thread_run:
+      return
+    # join the thread here the prevent deadlock in _closure_queue.get()
+    if self._process_thread is not None:
+      self._process_thread.join()
+    self._should_worker_thread_run = True
+    # Worker threads need to start after `Worker`'s initialization.
+    self._process_thread = threading.Thread(target=self._process_queue,
+                     name="WorkerClosureProcessingLoop-%d" % self.worker_index,
+                     daemon=True)
+    self._process_thread.start()
 
   def _set_resources_aborted(self):
     # TODO(yuefengz): maybe we can query whether a tensor is valid or not
@@ -718,6 +736,7 @@ class Worker(object):
     while self._should_worker_thread_run:
       closure = self._cluster.closure_queue.get()
       if not self._should_worker_thread_run or closure is None:
+        self._cluster._closure_queue.put_back(closure)
         return
       self._process_closure(closure)
       # To properly stop the worker and preemption threads, it is important that
