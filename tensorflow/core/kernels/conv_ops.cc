@@ -425,6 +425,9 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
               errors::InvalidArgument("Patch depth too large"));
   const int in_depth = static_cast<int>(in_depth_raw);
   const int patch_depth = static_cast<int>(patch_depth_raw);
+  TF_REQUIRES(patch_depth > 0,
+              errors::InvalidArgument(
+                  "filter depth must be stricly positive, got ", patch_depth));
   TF_REQUIRES(in_depth % patch_depth == 0,
               errors::InvalidArgument(
                   "input depth must be evenly divisible by filter depth: ",
