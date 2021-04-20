@@ -260,6 +260,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
           MultiplyWithoutOverflow(new_num_elements, input_shape_vec(i));
       if (new_num_elements < 0) {
         overflow_ocurred = true;
+        break;
       }
     }
 
