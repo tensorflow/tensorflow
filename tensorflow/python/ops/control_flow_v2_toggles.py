@@ -44,9 +44,7 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   function is not required.
   """
   # pylint: disable=protected-access
-  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Enabling control flow v2")
-  # copybara:comment_end
   ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
@@ -62,9 +60,7 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   properly please file a bug.
   """
   # pylint: disable=protected-access
-  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Disabling control flow v2")
-  # copybara:comment_end
   ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 
