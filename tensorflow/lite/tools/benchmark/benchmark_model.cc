@@ -261,9 +261,12 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  if (!parse_result) {
+  if (!parse_result || params_.Get<bool>("help")) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
+    // Returning kTfLiteError intentionally when "--help=true" is specified so
+    // that the caller could check the return value to decide stopping the
+    // execution.
     return kTfLiteError;
   }
 
