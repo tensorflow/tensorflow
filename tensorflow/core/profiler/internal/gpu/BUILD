@@ -62,7 +62,7 @@ tf_cuda_cc_test(
     name = "device_tracer_test",
     size = "small",
     srcs = ["device_tracer_test.cc"],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
