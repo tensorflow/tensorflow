@@ -267,6 +267,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "cumsum.cc",
+        "depth_to_space.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
@@ -276,11 +277,13 @@ cc_library(
         "fill.cc",
         "floor.cc",
         "floor_div.cc",
+        "floor_mod.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
+        "log_softmax.cc",
         "maximum_minimum.cc",
         "mul.cc",
         "neg.cc",
@@ -555,6 +558,21 @@ cc_test(
 )
 
 cc_test(
+    name = "depth_to_space_test",
+    srcs = [
+        "depth_to_space_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "depthwise_conv_test",
     srcs = [
         "depthwise_conv_test.cc",
@@ -679,6 +697,19 @@ cc_test(
 )
 
 cc_test(
+    name = "floor_mod_test",
+    srcs = ["floor_mod_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "floor_test",
     srcs = [
         "floor_test.cc",
@@ -785,6 +816,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "log_softmax_test",
+    srcs = [
+        "log_softmax_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

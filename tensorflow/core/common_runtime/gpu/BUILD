@@ -31,6 +31,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

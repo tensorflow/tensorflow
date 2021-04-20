@@ -162,7 +162,7 @@ def train_net(
 
   # Convert the model to the TensorFlow Lite format with quantization
   converter = tf.lite.TFLiteConverter.from_keras_model(model)
-  converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+  converter.optimizations = [tf.lite.Optimize.DEFAULT]
   tflite_model = converter.convert()
 
   # Save the model to disk

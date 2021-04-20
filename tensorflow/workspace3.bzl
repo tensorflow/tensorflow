@@ -1,6 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
 
 def workspace():
     http_archive(
@@ -23,15 +24,7 @@ def workspace():
         ],
     )
 
-    http_archive(
-        name = "tf_runtime",
-        sha256 = "dcf5fc07ad9c97f4a4f4dc0102fea99d308a7637bcbe34e36a52e95efe2512e3",
-        strip_prefix = "runtime-da2734f5c28aca71782376eed2dececd6f96d2b1",
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/da2734f5c28aca71782376eed2dececd6f96d2b1.tar.gz",
-            "https://github.com/tensorflow/runtime/archive/da2734f5c28aca71782376eed2dececd6f96d2b1.tar.gz",
-        ],
-    )
+    tf_runtime()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

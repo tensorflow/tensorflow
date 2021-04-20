@@ -492,6 +492,15 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2Op
+//===----------------------------------------------------------------------===//
+
+void QuantizeAndDequantizeV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // QrOp
 //===----------------------------------------------------------------------===//
 
@@ -2950,7 +2959,7 @@ struct WhileRegionEliminatePassThrough
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      auto yield_operand = yield.getOperand(op_idx);
+      auto yield_operand = LookThroughIdentity(yield.getOperand(op_idx));
       auto while_operand = while_op.getOperand(op_idx);
       if (body_arg == yield_operand || while_operand == yield_operand) {
         // Replace the use of the passthrough value with the while operand

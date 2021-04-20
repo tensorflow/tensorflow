@@ -615,6 +615,15 @@ class Subgraph {
   // Enables preserving intermediates for debugging.
   TfLiteStatus PreserveAllTensorsExperimental();
 
+  // Returns true if 'node' could have side effect (e.g. stateful op).
+  // Note that any node that might update other tensors beside op's output
+  // are considered to have side effect.
+  // So control flow ops like 'If' and 'While' are considered to have
+  // side effect because they can have ops that have side effect in the
+  // condition and body subgraphs.
+  bool OpMightHaveSideEffect(const TfLiteNode* node,
+                             const TfLiteRegistration* registration) const;
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.

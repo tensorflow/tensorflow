@@ -743,45 +743,42 @@ TEST_F(ShapeInferenceTest,
 }
 
 TEST_F(ShapeInferenceTest,
-       FloatingPointConvolveWithInvalidPreferredElementType) {
+       FloatingPointConvolveWithIntegralPreferredElementType) {
   ConvolveArgs args = MakeConvolveArgs(BF16, BF16);
-  auto inferred_status =
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/S32)
-          .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must both be integral or both be floating point"));
+          /*preferred_element_type=*/S32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
 }
 
 TEST_F(ShapeInferenceTest,
        IntegralConvolveWithFloatingPointPreferredElementType) {
   ConvolveArgs args = MakeConvolveArgs(S8, S16);
-  auto inferred_status =
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/F32)
-          .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must both be integral or both be floating point"));
+          /*preferred_element_type=*/F32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
+                               inferred_shape));
 }
 
 TEST_F(ShapeInferenceTest,
        ConvolveWithPreferredElementTypeWithDifferentSignedness) {
   ConvolveArgs args = MakeConvolveArgs(S8, S16);
-  auto inferred_status =
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/U32)
-          .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must have the same signedness as the original type"));
+          /*preferred_element_type=*/U32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(U32, {10, 12, 2, 3}),
+                               inferred_shape));
 }
 
 TEST_F(ShapeInferenceTest, ConvolveWithNarrowerPreferredElementType) {
@@ -1765,46 +1762,43 @@ TEST_F(ShapeInferenceTest, FloatingPointDotWithNarrowerPreferredElementType) {
       ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(BF16, {32, 32})));
 }
 
-TEST_F(ShapeInferenceTest, FloatingPointDotWithInvalidPreferredElementType) {
+TEST_F(ShapeInferenceTest, FloatingPointDotWithIntegralPreferredElementType) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto inferred_status = ShapeInference::InferDotOpShape(
-                             ShapeUtil::MakeShape(BF16, {32, 32}),
-                             ShapeUtil::MakeShape(BF16, {32, 32}), dot_dnums,
-                             /*preferred_element_type=*/S32)
-                             .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must both be integral or both be floating point"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(BF16, {32, 32}),
+                              ShapeUtil::MakeShape(BF16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/S32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S32, {32, 32})));
 }
 
 TEST_F(ShapeInferenceTest, IntegralDotWithFloatingPointPreferredElementType) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto inferred_status = ShapeInference::InferDotOpShape(
-                             ShapeUtil::MakeShape(S8, {32, 32}),
-                             ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
-                             /*preferred_element_type=*/F32)
-                             .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must both be integral or both be floating point"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/F32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {32, 32})));
 }
 
 TEST_F(ShapeInferenceTest, DotWithPreferredElementTypeWithDifferentSignedness) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto inferred_status = ShapeInference::InferDotOpShape(
-                             ShapeUtil::MakeShape(S8, {32, 32}),
-                             ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
-                             /*preferred_element_type=*/U32)
-                             .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.error_message(),
-              HasSubstr("must have the same signedness as the original type"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/U32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U32, {32, 32})));
 }
 
 TEST_F(ShapeInferenceTest, DotWithNarrowerPreferredElementType) {

@@ -3319,12 +3319,15 @@ class Graph(object):
             continue
           # TODO(b/141471245): Fix the inconsistency when inputs of func graph
           # are appended during gradient computation of while/cond.
-          for input_tensor, arg_def in zip(func_graph_inputs,
-                                           function_def.signature.input_arg):
-            input_shapes.list.shape.add().CopyFrom(
-                input_tensor.get_shape().as_proto())
-            if input_tensor.dtype == dtypes.resource:
-              _copy_handle_data_to_arg_def(input_tensor, arg_def)
+          assert len(input_shapes.list.shape) in [0, len(func_graph_inputs)]
+          # If the function_def has inputs already filled out, skip this step.
+          if not input_shapes.list.shape:
+            for input_tensor, arg_def in zip(func_graph_inputs,
+                                             function_def.signature.input_arg):
+              input_shapes.list.shape.add().CopyFrom(
+                  input_tensor.get_shape().as_proto())
+              if input_tensor.dtype == dtypes.resource:
+                _copy_handle_data_to_arg_def(input_tensor, arg_def)
 
           for output_tensor, arg_def in zip(func_graph.outputs,
                                             function_def.signature.output_arg):

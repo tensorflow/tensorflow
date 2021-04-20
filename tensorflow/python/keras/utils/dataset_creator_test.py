@@ -19,11 +19,11 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.keras import combinations
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core as core_layers
@@ -80,7 +80,7 @@ class DatasetCreatorTest(test.TestCase, parameterized.TestCase):
     self.assertLen(history.history["loss"], 10)
 
   def _get_parameter_server_strategy(self):
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
+    cluster_def = multi_worker_testing_utils.create_in_process_cluster(
         num_workers=2, num_ps=1, rpc_layer="grpc")
     return parameter_server_strategy_v2.ParameterServerStrategyV2(
         SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc"))

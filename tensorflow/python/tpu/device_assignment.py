@@ -475,7 +475,7 @@ def device_assignment(
 
     enable_3d_tiling = (
         topology_rank == 4 and
-        computation_shape[-1] == 2  # Only handle 3D case.
+        computation_shape[-1] == mesh_shape[-1]  # Only handle 3D case.
         and np.prod(computation_stride) == 1  # Ensure no stride.
         and num_replicas == max_replicas)  # Full replication.
 
@@ -495,11 +495,11 @@ def device_assignment(
         outer_x, outer_y, outer_z = outer_ring[replica]
         per_replica_assignment = []
         for index in xrange(np.prod(computation_shape)):
-          inner_x, inner_y, inner_z = inner_ring[index // 2]
+          inner_x, inner_y, inner_z = inner_ring[index // mesh_shape[-1]]
           px = outer_x * computation_shape[0] + inner_x
           py = outer_y * computation_shape[1] + inner_y
           pz = outer_z * computation_shape[2] + inner_z
-          pi = index % 2
+          pi = index % mesh_shape[-1]
           per_replica_assignment.append([px, py, pz, pi])
         assignment.append(per_replica_assignment)
     else:

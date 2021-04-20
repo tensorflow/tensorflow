@@ -297,8 +297,8 @@ def LegalizeFakeQuantWithMinMaxVars: Pat<
 
 // TODO(rocky): Not all of the attributes are handled correctly.  Make this
 // more general if there is a need.
-def LegalizeQuantizeAndDequantizeV2 : Pat<
-  (TF_QuantizeAndDequantizeV2Op $inputs, (ConstantOp F32ElementsAttr:$min),
+def LegalizeQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV4Op $inputs, (ConstantOp F32ElementsAttr:$min),
     (ConstantOp F32ElementsAttr:$max),
     $signed_input, $num_bits, $range_given, $round_mode, $narrow_range, $axis),
   (TFL_DequantizeOp
@@ -350,6 +350,11 @@ def LegalizeProd : Pat<
 def LegalizeAny : Pat<
   (TF_AnyOp $input, $reduction_indices, $keep_dims),
   (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
+
+def LegalizeAll : Pat<
+  (TF_AllOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAllOp $input, (CreateTFCastToInt32Op $reduction_indices),
                    $keep_dims)>;
 
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;

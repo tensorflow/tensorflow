@@ -47,6 +47,8 @@ void CreateProfilers(
   mutex_lock lock(mu);
   for (auto factory : *GetFactories()) {
     if (auto profiler = factory(options)) {
+      // A factory might return nullptr based on options.
+      if (profiler == nullptr) continue;
       result->push_back(std::move(profiler));
     }
   }

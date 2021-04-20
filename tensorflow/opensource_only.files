@@ -16,10 +16,12 @@ tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
+tensorflow/lite/core/shims/cc/kernels/builtin_op_kernels.h
 tensorflow/lite/core/shims/cc/kernels/register.h
 tensorflow/lite/core/shims/cc/model.h
 tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
+tensorflow/lite/core/shims/cc/tools/verifier.h
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h

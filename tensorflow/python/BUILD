@@ -59,6 +59,7 @@ visibility = [
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
@@ -2606,6 +2607,7 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":resource_variable_ops",
+        ":resource_variable_ops_gen",
         ":summary_op_util",
         ":summary_ops_gen",
         ":training_util",
@@ -3478,6 +3480,7 @@ filegroup(
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
+        "//tensorflow/core/platform:statusor",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
@@ -5204,7 +5207,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_true",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility + ["//platforms/darwinn/lisa:__subpackages__"],
+    visibility = visibility,
 )
 
 alias(
@@ -5265,7 +5268,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_false",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility + ["//platforms/darwinn/lisa:__subpackages__"],
+    visibility = visibility,
 )
 
 alias(

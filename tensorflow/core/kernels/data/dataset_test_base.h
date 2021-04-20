@@ -852,7 +852,7 @@ class DatasetOpsTestBase : public ::testing::Test {
                                 public ::testing::WithParamInterface<       \
                                     SkipTestCase<dataset_params_class>> {}; \
                                                                             \
-  TEST_P(ParameterizedSkipTest, GetNext) {                                  \
+  TEST_P(ParameterizedSkipTest, Skip) {                                     \
     auto test_case = GetParam();                                            \
     TF_ASSERT_OK(Initialize(test_case.dataset_params));                     \
     TF_ASSERT_OK(CheckIteratorSkip(                                         \

@@ -66,6 +66,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
@@ -138,6 +139,7 @@ cuda_py_test(
     srcs = ["adamax_test.py"],
     shard_count = 4,
     # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
+    tags = ["no_rocm"],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",

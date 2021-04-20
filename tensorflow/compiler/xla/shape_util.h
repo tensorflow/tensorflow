@@ -272,35 +272,8 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    // Returns a tuple where the elements are lexicographically ordered in terms
-    // of importance.
-    auto type_properties = [](const Shape& shape) {
-      return std::make_tuple(
-          // Prefer floating point types with more range over other
-          // floating-point types or non-floating point types.
-          ElementIsFloating(shape)
-              ? primitive_util::OverflowExponent(shape.element_type())
-              : -1,
-          // Prefer floating point types with more precision over less precise
-          // types.
-          ElementIsFloating(shape)
-              ? primitive_util::SignificandWidth(shape.element_type())
-              : -1,
-          // Prefer wider types over narrower types.
-          primitive_util::BitWidth(shape.element_type()),
-          // Prefer signed integer types over unsigned integer types.
-          primitive_util::IsSignedIntegralType(shape.element_type()));
-    };
-    auto a_properties = type_properties(a);
-    auto b_properties = type_properties(b);
-    if (a_properties > b_properties) {
-      return a.element_type();
-    }
-    if (b_properties > a_properties) {
-      return b.element_type();
-    }
-    CHECK(SameElementType(a, b));
-    return a.element_type();
+    return primitive_util::HigherPrecisionType(a.element_type(),
+                                               b.element_type());
   }
 
   // Returns true if the rank, dimension sizes, and element type are

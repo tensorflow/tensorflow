@@ -1292,6 +1292,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
         "@six_archive//:six",
     ],
 )
@@ -1733,7 +1736,6 @@ cuda_py_test(
     name = "betainc_op_test",
     size = "small",
     srcs = ["betainc_op_test.py"],
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -2434,6 +2436,7 @@ cuda_py_test(
     srcs = ["reduction_ops_test.py"],
     shard_count = 6,
     tags = [
+        "no_cuda_asan",  # times out
         "no_windows_gpu",
     ],
     deps = [
@@ -3252,6 +3255,7 @@ cuda_py_test(
     srcs = ["extract_image_patches_grad_test.py"],
     shard_count = 15,
     tags = [
+        "no_rocm",
         "nomac",  # b/181799478
         "notap",  # b/31080670
     ],
@@ -3614,6 +3618,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,  # b/161856380
     deps = [
         "//tensorflow/python:array_ops",

@@ -1091,6 +1091,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     return StructuredTensorSpec.from_value(self)
 
 
+@type_spec.register('tf.StructuredTensorSpec')
 class StructuredTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `StructuredTensor`s."""
 
@@ -1131,10 +1132,26 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
     return StructuredTensor
 
   def _to_components(self, value):
-    return value._fields
+    if value._fields:
+      return value._fields
+    elif value.nrows() is None:
+      return ((), value.row_partitions)  # empty rank-0 structured tensor
+    else:
+      return (value.nrows(), value.row_partitions)
 
   def _from_components(self, components):
-    return StructuredTensor.from_fields(components, self._shape, validate=False)
+    if isinstance(components, dict):
+      fields = components
+      nrows = None
+      row_partitions = None
+    else:
+      fields = {}
+      nrows, row_partitions = components
+      if isinstance(nrows, tuple) and not nrows:
+        nrows = None  # empty rank-0 structured tensor
+    return StructuredTensor.from_fields(fields, self._shape, nrows=nrows,
+                                        row_partitions=row_partitions,
+                                        validate=False)
 
   @property
   def _component_specs(self):

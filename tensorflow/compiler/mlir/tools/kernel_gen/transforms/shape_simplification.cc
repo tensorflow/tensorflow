@@ -34,21 +34,6 @@ using shape::BroadcastOp;
 using shape::ConstShapeOp;
 using shape::ShapeOfOp;
 
-// Given an input shape Value, try to obtain the shape's values.
-LogicalResult getShapeVec(Value input, SmallVectorImpl<int64_t> &shape_values) {
-  if (auto input_op = input.getDefiningOp<ShapeOfOp>()) {
-    auto type = input_op.arg().getType().dyn_cast<ShapedType>();
-    if (!type.hasRank()) return failure();
-    shape_values = llvm::to_vector<6>(type.getShape());
-    return success();
-  }
-  if (auto input_op = input.getDefiningOp<ConstShapeOp>()) {
-    shape_values = llvm::to_vector<6>(input_op.shape().getValues<int64_t>());
-    return success();
-  }
-  return failure();
-}
-
 // Try to remove operands from broadcasts that don't contribute to the final
 // result.
 struct BroadcastRemoveSubsumedOperandsPattern
@@ -65,7 +50,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     SmallVector<SmallVector<int64_t, 4>, 4> operand_extents;
     for (Value shape : op.shapes()) {
       auto &extents = operand_extents.emplace_back();
-      if (failed(getShapeVec(shape, extents))) return failure();
+      if (failed(shape::getShapeVec(shape, extents))) return failure();
 
       // Prepend dynamic dims if sizes don't match.
       if (extents.size() > known_extents.size()) {
@@ -150,42 +135,22 @@ struct BroadcastRemoveSubsumedOperandsPattern
   }
 };
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+struct ExtractFromExtentTensorCanonicalizationPattern
+    : public OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
 
-// Resolve shape of result of an operation in terms of shape of its operands
-// using the `InferShapedTypeOpInterface`. Most Linalg operations implement this
-// interface.
-struct ShapeOfOpWithReifyPerDim : public OpRewritePattern<shape::ShapeOfOp> {
-  using OpRewritePattern<shape::ShapeOfOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(shape::ShapeOfOp op,
+  LogicalResult matchAndRewrite(tensor::ExtractOp op,
                                 PatternRewriter &rewriter) const override {
-    if (!op.arg().getType().isa<ShapedType>()) return failure();
-    auto arg = op.arg().dyn_cast<OpResult>();
-    if (!arg) return failure();
-    auto defining_op = dyn_cast<InferShapedTypeOpInterface>(arg.getOwner());
-    if (!defining_op) return failure();
-
-    SmallVector<SmallVector<Value>> reified_result_shape_per_dim;
-    if (failed(defining_op.reifyReturnTypeShapesPerResultDim(
-            rewriter, reified_result_shape_per_dim)))
-      return failure();
-    Value reified_result_shape = rewriter.create<tensor::FromElementsOp>(
-        op.getLoc(), reified_result_shape_per_dim[arg.getResultNumber()]);
-    rewriter.replaceOp(op, reified_result_shape);
+    auto shape_of_op = op.tensor().getDefiningOp<ShapeOfOp>();
+    if (!shape_of_op) return failure();
+    Value index = op.indices().front();
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, shape_of_op.arg(), index);
     return success();
   }
 };
 
-// Simplify the shape expressions involving results of the operation. This makes
-// the operations that are still not DCE-ed because of their use in shape
-// expression dead.
-LogicalResult simplifyShapeExprs(FuncOp func, MLIRContext *context) {
-  RewritePatternSet patterns(context);
-  patterns.insert<ShapeOfOpWithReifyPerDim>(context);
-  return applyPatternsAndFoldGreedily(func, std::move(patterns));
-}
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
@@ -206,13 +171,12 @@ struct ShapeSimplification
         op->getCanonicalizationPatterns(patterns, context);
     }
 
-    patterns.insert<BroadcastRemoveSubsumedOperandsPattern>(context);
+    patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
+                    ExtractFromExtentTensorCanonicalizationPattern>(context);
 
     auto func = getFunction();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
-
-    if (failed(simplifyShapeExprs(func, context))) return signalPassFailure();
   }
 };
 

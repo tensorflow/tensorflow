@@ -276,6 +276,7 @@ tf_py_test(
         ":dataset_creator",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
     ],

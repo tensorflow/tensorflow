@@ -38,7 +38,7 @@ constexpr int kTfLiteSubgraphResource = 0;
 }
 
 REGISTER_OP("TfLiteSubgraphExecute")
-    .Input("x: string")
+    .Input("subgraph_key: string")
     .Input("args: Tin")
     .Output("output: Tout")
     .Attr("Tin: list(type) >= 0")

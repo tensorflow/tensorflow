@@ -26,11 +26,13 @@ namespace mlir {
 namespace TF {
 
 class ResourceType;
+class TensorFlowRegistryEffectInterfaceFallback;
 class VariantType;
 
 class TensorFlowDialect final : public Dialect {
  public:
   explicit TensorFlowDialect(MLIRContext *context);
+  ~TensorFlowDialect() override;
 
   static StringRef getDialectNamespace() { return "tf"; }
 
@@ -118,6 +120,10 @@ class TensorFlowDialect final : public Dialect {
     return failure();
   }
 
+  // Provides a hook for op interface.
+  void *getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                    mlir::OperationName opName) override;
+
  private:
   /// Register the attributes of this dialect.
   void registerAttributes();
@@ -130,6 +136,9 @@ class TensorFlowDialect final : public Dialect {
 
   static ConstantFoldHook constant_fold_hook_;
   static DecodeConstantHook decode_constant_hook_;
+
+  // Storage for a custom fallback interface.
+  TensorFlowRegistryEffectInterfaceFallback *fallback_effect_op_interface_;
 };
 
 }  // namespace TF

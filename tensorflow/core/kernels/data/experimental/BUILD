@@ -17,7 +17,7 @@ package(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc"),
     visibility = ["//tensorflow:__subpackages__"],
 )

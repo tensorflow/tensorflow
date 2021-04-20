@@ -245,28 +245,19 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
 
   LogicalResult matchAndRewrite(shape::AssumingOp op,
                                 PatternRewriter &rewriter) const override {
-    // Merge assuming op with directly preceding one.
+    // Merge assuming op with directly preceding one if both witnesses are
+    // availiable.
     auto preceding_op =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
     if (!preceding_op) return failure();
-
-    // For now, both witnesses must be cstr_broadcastable.
-    // TODO(frgossen): Generalize this.
-    auto bcastable_a = op.witness().getDefiningOp<shape::CstrBroadcastableOp>();
-    auto bcastable_b =
-        preceding_op.witness().getDefiningOp<shape::CstrBroadcastableOp>();
-    if (!bcastable_a || !bcastable_b) return failure();
+    if (op.witness().getDefiningOp() == preceding_op) return failure();
 
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(preceding_op);
-    SmallVector<Value, 8> new_operands;
-    new_operands.append(bcastable_a->getOperands().begin(),
-                        bcastable_a->getOperands().end());
-    new_operands.append(bcastable_b->getOperands().begin(),
-                        bcastable_b->getOperands().end());
-    Value new_witness = rewriter.create<shape::CstrBroadcastableOp>(
-        bcastable_a.getLoc(), new_operands);
+    Value new_witness = rewriter.create<shape::AssumingAllOp>(
+        op.witness().getDefiningOp()->getLoc(),
+        ValueRange{preceding_op.witness(), op.witness()});
 
     // Merge assuming ops.
     Block *body_a = preceding_op.getBody();

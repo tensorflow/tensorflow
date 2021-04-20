@@ -41,6 +41,10 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
     licenses = ["notice"],
 )
 
@@ -237,6 +241,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

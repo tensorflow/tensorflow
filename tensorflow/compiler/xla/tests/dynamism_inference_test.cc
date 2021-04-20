@@ -298,6 +298,139 @@ TEST_F(DynamismInferenceTest, InferThroughPad) {
   EXPECT_TRUE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({2}));
 }
 
+TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
+  // The result of following conditional is static.
+  // pred = .. # a dynamic value
+  // if (pred) {
+  //  return (1) # both branches return the same value
+  // } else {
+  //  return (1)
+  // }
+  //
+
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  XlaBuilder true_builder("true");
+  Parameter(&true_builder, 0, s32_shape, "cond_param");
+  Tuple(&true_builder, {ConstantR0<int32>(&true_builder, 1)});
+  auto true_computation = true_builder.Build().ValueOrDie();
+
+  XlaBuilder false_builder("false");
+  Parameter(&false_builder, 0, s32_shape, "cond_param");
+  Tuple(&false_builder, {ConstantR0<int32>(&false_builder, 1)});
+  auto false_computation = false_builder.Build().ValueOrDie();
+
+  XlaBuilder b(TestName());
+  auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
+  auto constant = ConstantR0<int32>(&b, 0);
+  auto cond = Conditional(parameter, constant, true_computation, constant,
+                          false_computation);
+  auto gte = GetTupleElement(cond, 0);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is not dynamic.
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
+TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
+  // The result of following conditional is dynamic.
+  // pred = .. # a dynamic value
+  // if (pred) {
+  //  return (1) # These two branches return different values.
+  // } else {
+  //  return (2)
+  // }
+  //
+
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  XlaBuilder true_builder("true");
+  Parameter(&true_builder, 0, s32_shape, "cond_param");
+  Tuple(&true_builder, {ConstantR0<int32>(&true_builder, 1)});
+  auto true_computation = true_builder.Build().ValueOrDie();
+
+  XlaBuilder false_builder("false");
+  Parameter(&false_builder, 0, s32_shape, "cond_param");
+  Tuple(&false_builder, {ConstantR0<int32>(&false_builder, 2)});
+  auto false_computation = false_builder.Build().ValueOrDie();
+
+  XlaBuilder b(TestName());
+  auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
+  auto constant = ConstantR0<int32>(&b, 0);
+  auto cond = Conditional(parameter, constant, true_computation, constant,
+                          false_computation);
+  auto gte = GetTupleElement(cond, 0);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is dynamic.
+  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
+TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
+  // The result of following conditional is static.
+  // pred = true
+  // if (pred) {
+  //  return (1)
+  // } else {
+  //  return (..dynamic_value...)
+  // }
+  //
+
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  XlaBuilder true_builder("true");
+  Parameter(&true_builder, 0, s32_shape, "cond_param");
+  Tuple(&true_builder, {ConstantR0<int32>(&true_builder, 0)});
+  auto true_computation = true_builder.Build().ValueOrDie();
+
+  XlaBuilder false_builder("false");
+  Tuple(&false_builder,
+        {Parameter(&false_builder, 0, s32_shape, "cond_param")});
+  auto false_computation = false_builder.Build().ValueOrDie();
+
+  XlaBuilder b(TestName());
+  auto pred = ConstantR0<bool>(&b, true);
+  auto constant = ConstantR0<int32>(&b, 0);
+  auto cond = Conditional(pred, constant, true_computation, constant,
+                          false_computation);
+  auto gte = GetTupleElement(cond, 0);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is not dynamic.
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
+TEST_F(DynamismInferenceTest,
+       InferThroughConditionalPredIsConstantFalseBranch) {
+  // The result of following conditional is dynamic.
+  // pred = false
+  // if (pred) {
+  //  return (1)
+  // } else {
+  //  return (..dynamic_value...)
+  // }
+  //
+
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  XlaBuilder true_builder("true");
+  Parameter(&true_builder, 0, s32_shape, "cond_param");
+  Tuple(&true_builder, {ConstantR0<int32>(&true_builder, 0)});
+  auto true_computation = true_builder.Build().ValueOrDie();
+
+  XlaBuilder false_builder("false");
+  Tuple(&false_builder,
+        {Parameter(&false_builder, 0, s32_shape, "cond_param")});
+  auto false_computation = false_builder.Build().ValueOrDie();
+
+  XlaBuilder b(TestName());
+  auto pred = ConstantR0<bool>(&b, false);
+  auto constant = ConstantR0<int32>(&b, 0);
+  auto cond = Conditional(pred, constant, true_computation, constant,
+                          false_computation);
+  auto gte = GetTupleElement(cond, 0);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is dynamic.
+  EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
 class UpperBoundInferenceTest : public ValueInferenceTest {
  public:
   explicit UpperBoundInferenceTest(se::Platform* platform = nullptr)

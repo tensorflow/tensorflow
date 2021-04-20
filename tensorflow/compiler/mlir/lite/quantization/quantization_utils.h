@@ -240,6 +240,22 @@ struct QuantizationPattern : public RewritePattern {
         return failure();
       }
 
+      // An op with float inputs and outputs are expected when it's used by a
+      // NumericVerify op. Skip this op and look at next users.
+      if (enable_verify) {
+        bool used_by_verifier = false;
+        for (auto result : quantized_op->getResults()) {
+          if (used_by_verifier) break;
+          for (auto user : result.getUsers()) {
+            if (llvm::isa<VERIFIER>(user)) {
+              used_by_verifier = true;
+              break;
+            }
+          }
+        }
+        if (used_by_verifier) continue;
+      }
+
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
@@ -382,6 +398,10 @@ struct QuantizationPattern : public RewritePattern {
   bool single_layer_verify;
   bool log_if_failed;
 };
+
+// Converts quantized tensor type with signed integer type to quantized tensor
+// type with unsigned integer type.
+Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc);
 
 // Converts quantize ops with unsigned quantized types to these with signed
 // quantized types and preserves the scales.

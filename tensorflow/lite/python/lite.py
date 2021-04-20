@@ -467,6 +467,7 @@ class TFLiteConverterBase(object):
     # Variable for converter metrics.
     self._tflite_metrics = _global_metrics
     self._experimental_disable_batchmatmul_unfold = False
+    self._experimental_lower_tensor_list_ops = True
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -525,7 +526,9 @@ class TFLiteConverterBase(object):
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
-      return _mlir_quantize(calibrated, disable_per_channel)
+      return _mlir_quantize(calibrated, disable_per_channel,
+                            input_data_type=inference_input_type,
+                            output_data_type=inference_output_type)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
@@ -550,6 +553,7 @@ class TFLiteConverterBase(object):
         "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
+        "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
     }
 
     if self.saved_model_dir:
@@ -785,7 +789,12 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+    if self.experimental_new_quantizer:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags(
+          self.inference_input_type, self.inference_output_type)
+    else:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
@@ -907,7 +916,12 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     converter_kwargs.update(quant_mode.converter_flags())
 
     result = _convert_saved_model(**converter_kwargs)
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+    if self.experimental_new_quantizer:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags(
+          self.inference_input_type, self.inference_output_type)
+    else:
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags()
+
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
@@ -1262,8 +1276,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       signature_keys = saved_model.signatures
 
-    if len(signature_keys) != 1:
-      raise ValueError("Only support a single signature key.")
+    if not signature_keys:
+      raise ValueError("Only support at least one signature key.")
 
     funcs = []
     for key in signature_keys:

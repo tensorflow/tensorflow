@@ -41,10 +41,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",

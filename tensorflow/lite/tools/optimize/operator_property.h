@@ -127,7 +127,6 @@ struct OperatorProperty {
 };
 
 // The op as well as it variants.
-// TODO(b/174283888): extend it to support ops that has multiple variants.
 struct OpVariant {
   BuiltinOperator op_code;
   bool use_layer_norm = false;
