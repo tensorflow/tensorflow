@@ -238,6 +238,8 @@ upper_tabs:
       - include: /lite/api_docs/python/tf/lite/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
+      - heading: "Swift"
+      - include: /lite/api_docs/swift/_toc.yaml
       - heading: "C++"
       - title: "Overview"
         path: /lite/api_docs/cc/
