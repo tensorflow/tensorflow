@@ -133,6 +133,7 @@ do_pylint() {
   # !!!!!!This is only an hack to workaround CI VM with numpy 1.14.5!!!!!!!!
   python3.8 --version
   python3.8 -m pip install --upgrade numpy~=1.19.2 lazy-object-proxy
+  python3.8 -m pip uninstall -y tb-nightly tf-estimator-nightly
   python3.8 -m pip list
 
 
@@ -173,7 +174,7 @@ do_pylint() {
   # header, removes lines of context that show up from some lines.
   # Also, don't redirect stderr as this would hide pylint fatal errors.
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=1 ${PYTHON_SRC_FILES} | grep '\[[CEFW]' > ${OUTPUT_FILE}
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} | grep '\[[CEFW]' > ${OUTPUT_FILE}
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
