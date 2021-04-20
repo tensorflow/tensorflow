@@ -140,7 +140,7 @@ template <typename InputIteratorT, typename OutputIteratorT,
           typename OffsetIteratorT, typename ReduceOp, typename T>
 Status GpuSegmentedReduce(
     OpKernelContext* context, int num_segments, ReduceOp reduce_op,
-    T initial_value,
+    const T& initial_value,
     InputIteratorT input,             // [any]
     OffsetIteratorT segment_offsets,  // [num_segments + 1]
     OutputIteratorT output) {         // [num_segments]

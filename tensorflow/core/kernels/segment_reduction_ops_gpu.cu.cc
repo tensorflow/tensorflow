@@ -208,6 +208,31 @@ struct RealTypeIfComplex<std::complex<Real>> {
   using type = Real;
 };
 
+// Reduces along columns of the thread block, returning the result in the first
+// row of threads.
+template <typename T, typename ReduceOp>
+__device__ T ReduceBlockAlongCols(ReduceOp reduce_op, const T& value,
+                                  bool is_valid) {
+  GPU_DYNAMIC_SHARED_MEM_DECL(/*ALIGN=*/16, char, shared_memory_raw);
+  T* const shared_memory =
+      reinterpret_cast<T*>(shared_memory_raw);  // [blockDim.y, blockDim.x]
+  const int x = threadIdx.x;
+  const int y = threadIdx.y;
+  T reduced = value;
+  // Reduce over the y dimension of the block.
+  for (unsigned k = blockDim.y / 2; k > 0; k /= 2) {
+    if (is_valid && y < 2 * k) {
+      shared_memory[y * blockDim.x + x] = reduced;
+    }
+    __syncthreads();
+    if (is_valid && y < k) {
+      reduced = reduce_op(reduced, shared_memory[(y + k) * blockDim.x + x]);
+    }
+    __syncthreads();
+  }
+  return reduced;
+}
+
 // This kernel uses a 2D thread decomposition. The x dimension maps to the inner
 // dimension of the input/output. The y grid dimension maps to segments, and y
 // threads within a block cooperate to reduce over the block's segment.
@@ -222,9 +247,6 @@ __global__ void SegmentReduceVectorKernel(
     const Tindex* __restrict__ segment_offsets,  // [nsegments + 1]
     const Tindex* __restrict__ indices,          // [nouter] (optional)
     Tvec* __restrict__ output_vec) {             // [nsegments, ninner_vec]
-  GPU_DYNAMIC_SHARED_MEM_DECL(/*ALIGN = */ 16, char, smem_raw);
-  Treducevec* const smem =
-      reinterpret_cast<Treducevec*>(smem_raw);  // [blockDim.y, blockDim.x]
   const int num_blocks_x = (ninner_vec - 1) / blockDim.x + 1;
   // Grid-stride loop over inner dimension blocks.
   for (Tindex blk_x = blockIdx.x; blk_x < num_blocks_x; blk_x += gridDim.x) {
@@ -234,40 +256,33 @@ __global__ void SegmentReduceVectorKernel(
     // Grid-stride loop over segment blocks, each processing one segment.
     for (Tsegmentids seg = blockIdx.y; seg < nsegments; seg += gridDim.y) {
       // Load segment range.
-      const Tindex beg = segment_offsets[seg];
+      const Tindex begin = segment_offsets[seg];
       const Tindex end = segment_offsets[seg + 1];
       // Reduce over the segment.
       Treducevec result = Treducevec(initial_value);
       // Loop over the segment, reducing blockDim.y elements at a time.
-      for (Tindex yy = beg; yy < end; yy += blockDim.y) {
-        const bool y_ok = yy + y < end;
+      for (Tindex y_offset = begin; y_offset < end; y_offset += blockDim.y) {
+        const bool y_ok = y_offset + y < end;
         // Perform indirect lookup if required.
-        const Tindex y_idx = indices && y_ok ? indices[yy + y] : yy + y;
+        const Tindex y_idx =
+            indices && y_ok ? indices[y_offset + y] : y_offset + y;
         const int64 input_idx = static_cast<int64>(y_idx) * ninner_vec + x;
         // Load the input row from global mem.
         Treducevec block_result =
             x_ok && y_ok ? input_vec[input_idx] : Tvec(initial_value);
-        // Reduce over the y dimension of the block.
-        for (unsigned k = blockDim.y / 2; k > 0; k /= 2) {
-          if (x_ok && y < 2 * k) {
-            smem[y * blockDim.x + x] = block_result;
-          }
-          __syncthreads();
-          if (x_ok && y < k) {
-            block_result =
-                reduce_op(block_result, smem[(y + k) * blockDim.x + x]);
-          }
-          __syncthreads();
+        // Reduce along the columns of the block, returning result in first row.
+        block_result = ReduceBlockAlongCols(reduce_op, block_result, x_ok);
+        if (y == 0 && x_ok) {
+          result = reduce_op(result, block_result);
         }
-        result = reduce_op(result, block_result);
       }
       // First row of the block stores the result to global memory.
       if (y == 0 && x_ok) {
-        if (beg == end) {
+        if (begin == end) {
           // Empty segment.
           result = Treducevec(empty_segment_value);
         } else {
-          typename RealTypeIfComplex<Tinit>::type total_weight(end - beg);
+          typename RealTypeIfComplex<Tinit>::type total_weight(end - begin);
           // Normalize the results if necessary.
           if (is_mean) {
             result /= Treducevec(total_weight);
@@ -321,13 +336,13 @@ Status LaunchSegmentReduceVectorKernel(
   dim3 grid(std::min(Eigen::divup(ninner_vec, static_cast<Tindex>(block.x)),
                      static_cast<Tindex>(kMaxGridX)),
             std::min(nsegments, static_cast<Tsegmentids>(kMaxGridY)));
-  unsigned smem = block.x * block.y * sizeof(Treducevec);
+  unsigned shared_memory_bytes = block.x * block.y * sizeof(Treducevec);
   return GpuLaunchKernel(
       SegmentReduceVectorKernel<Treducevec, Tvec, Tindex, Tsegmentids, ReduceOp,
                                 Tinit>,
-      grid, block, smem, d.stream(), nouter, ninner_vec, nsegments, reduce_op,
-      initial_value, empty_segment_value, is_mean, is_sqrtn, input_vec,
-      segment_offsets, indices, output_vec);
+      grid, block, shared_memory_bytes, d.stream(), nouter, ninner_vec,
+      nsegments, reduce_op, initial_value, empty_segment_value, is_mean,
+      is_sqrtn, input_vec, segment_offsets, indices, output_vec);
 }
 
 template <typename Tvec, typename Treducevec, typename Tindex,
