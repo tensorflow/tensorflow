@@ -223,7 +223,7 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   }
 };
 
-const auto kTanhKernelMap = std::map<string, TfLiteRegistration*>({
+const auto kTanhKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_TANH_REF()},
     {"GenericOptimized", ops::builtin::Register_TANH_GENERIC_OPT()},
     {"FixedPointOptimized", ops::builtin::Register_TANH_FIXED_POINT_OPT()},
@@ -232,11 +232,11 @@ const auto kTanhKernelMap = std::map<string, TfLiteRegistration*>({
 class TanhOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return kTanhKernelMap;
+    return *kTanhKernelMap;
   }
 };
 
-const auto kLogisticKernelMap = std::map<string, TfLiteRegistration*>({
+const auto kLogisticKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_LOGISTIC_REF()},
     {"GenericOptimized", ops::builtin::Register_LOGISTIC_GENERIC_OPT()},
     {"FixedPointOptimized", ops::builtin::Register_LOGISTIC_FIXED_POINT_OPT()},
@@ -245,11 +245,11 @@ const auto kLogisticKernelMap = std::map<string, TfLiteRegistration*>({
 class LogisticOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return kLogisticKernelMap;
+    return *kLogisticKernelMap;
   }
 };
 
-const auto kSoftmaxKernelMap = std::map<string, TfLiteRegistration*>({
+const auto kSoftmaxKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_SOFTMAX_REF()},
     {"GenericOptimized", ops::builtin::Register_SOFTMAX()},
 });
@@ -257,7 +257,7 @@ const auto kSoftmaxKernelMap = std::map<string, TfLiteRegistration*>({
 class SoftmaxOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return kSoftmaxKernelMap;
+    return *kSoftmaxKernelMap;
   }
 };
 
@@ -2277,7 +2277,7 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8LargeNegativeNumber) {
                                      }));
 }
 
-const auto kPReluKernelMap = std::map<string, TfLiteRegistration*>({
+const auto kPReluKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_PRELU_REF()},
     {"GenericOptimized", ops::builtin::Register_PRELU()},
 });
@@ -2341,7 +2341,7 @@ class QuantizedPReluOpModel : public BasePReluOpModel {
 class PReluOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return kPReluKernelMap;
+    return *kPReluKernelMap;
   }
 };
 
@@ -2555,19 +2555,19 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
 
 INSTANTIATE_TEST_SUITE_P(
     TanhOpTest, TanhOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(kTanhKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kTanhKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     LogisticOpTest, LogisticOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(kLogisticKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogisticKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     SoftmaxOpTest, SoftmaxOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(kSoftmaxKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kSoftmaxKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     PReluOpTest, PReluOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(kPReluKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kPReluKernelMap)));
 
 }  // namespace
 }  // namespace tflite
