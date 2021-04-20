@@ -170,7 +170,7 @@ class Conv(Layer):
               self.groups, self.filters))
       
     if self.filters == 0:
-      raise ValueError("The value of `filters` argument should not be zero")
+      raise ValueError("The value of the `filters` argument should not be zero")
 
     if not all(self.kernel_size):
       raise ValueError('The argument `kernel_size` cannot contain 0(s). '
