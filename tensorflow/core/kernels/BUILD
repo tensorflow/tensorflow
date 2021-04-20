@@ -6430,7 +6430,7 @@ filegroup(
     name = "portable_all_ops",
     srcs = [
         "//tensorflow/c/kernels:android_all_op_kernels",
-        "//tensorflow/core/kernels/data:android_all_op_kernels",
+        "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:portable_all_op_kernels",
         "//tensorflow/core/kernels/linalg:portable_all_op_kernels",
     ] + glob(
