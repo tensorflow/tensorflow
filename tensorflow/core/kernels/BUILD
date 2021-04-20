@@ -5904,7 +5904,7 @@ filegroup(
         "variable_ops.cc",
         "variable_ops.h",
     ] + [
-        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",
     ],
@@ -6429,7 +6429,7 @@ ANDROID_TEXTUAL_HDRS = [
 filegroup(
     name = "portable_all_ops",
     srcs = [
-        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:portable_all_op_kernels",
         "//tensorflow/core/kernels/linalg:portable_all_op_kernels",
