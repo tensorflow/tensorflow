@@ -507,6 +507,14 @@ def serialize(activation):
   return serialize_keras_object(activation)
 
 
+# Add additional globals so that deserialize can find these common activation
+# functions
+leaky_relu = nn.leaky_relu
+log_softmax = nn.log_softmax
+relu6 = nn.relu6
+silu = nn.swish
+
+
 @keras_export('keras.activations.deserialize')
 @dispatch.add_dispatch_support
 def deserialize(name, custom_objects=None):
