@@ -819,18 +819,13 @@ def walk_v2(top, topdown=True, onerror=None):
     # Since `os.path.join` discards paths before one that starts with the path
     # separator (https://docs.python.org/3/library/os.path.html#os.path.join),
     # we have to manually handle that case as `/` is a valid character on GCS.
-    print("_make_full_path -> item = ", item)
-    print("_make_full_path -> parent = ", parent)
     if item[0] == os.sep:
-      print("_make_full_path -> executed branch 1")
       return "".join([os.path.join(parent, ""), item])
-    print("_make_full_path -> executed branch 2")
     return os.path.join(parent, item)
 
   top = compat.as_str_any(compat.path_to_str(top))
   try:
     listing = list_directory(top)
-    print("walk_v2 -> `listing` (L832) = ", listing)
   except errors.NotFoundError as err:
     if onerror:
       onerror(err)
