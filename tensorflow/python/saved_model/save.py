@@ -798,22 +798,8 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
-    proto.variable.SetInParent()
-    if not obj.name.endswith(":0"):
-      raise ValueError("Cowardly refusing to save variable {} because of"
-                       " unexpected suffix which won't be restored.".format(
-                           obj.name))
-    proto.variable.name = meta_graph._op_name(obj.name)  # pylint: disable=protected-access
-    proto.variable.trainable = obj.trainable
-    proto.variable.dtype = obj.dtype.as_datatype_enum
-    proto.variable.synchronization = obj.synchronization.value
-    proto.variable.aggregation = obj.aggregation.value
-    proto.variable.shape.CopyFrom(obj.shape.as_proto())
     options = save_context.get_save_options()
-    if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
-    ):
-      if hasattr(obj, "device"):
-        proto.variable.device = obj.device
+    obj._write_object_proto(proto, options)  # pylint: disable=protected-access
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(function_serialization.serialize_function(
         obj, function_name_map))
@@ -841,15 +827,6 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
 
-  # Give the object a chance to modify the SavedObject proto.
-  # This is currently used by MirroredVariables to optionally write their
-  # component variables to the proto.
-  #
-  # This is not yet an official Trackable method, the only current use case
-  # being MirroredVariables. See the method implementation there for more
-  # documentation.
-  if hasattr(obj, "_write_object_proto"):
-    obj._write_object_proto(proto, options)  # pylint: disable=protected-access
   return has_saved_object_metadata
 
 
