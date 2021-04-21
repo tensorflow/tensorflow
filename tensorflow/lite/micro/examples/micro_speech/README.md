@@ -421,7 +421,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=disco_f746ng OPTIMIZED_
 Running the make command will result in the creation of a new folder:
 
 ```
-tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed
+tensorflow/lite/micro/tools/make/gen/disco_f746ng_cortex-m4_default/prj/micro_speech/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
