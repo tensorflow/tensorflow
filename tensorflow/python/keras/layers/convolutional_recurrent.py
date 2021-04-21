@@ -1054,6 +1054,7 @@ class ConvLSTM1D(ConvLSTM):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
+
   Call arguments:
     inputs: A 4D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
@@ -1241,6 +1242,7 @@ class ConvLSTM2D(ConvLSTM):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
+
   Call arguments:
     inputs: A 5D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
@@ -1428,8 +1430,9 @@ class ConvLSTM3D(ConvLSTM):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
+
   Call arguments:
-    inputs: A 5D tensor.
+    inputs: A 6D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
       a given timestep should be masked.
     training: Python boolean indicating whether the layer should behave in
