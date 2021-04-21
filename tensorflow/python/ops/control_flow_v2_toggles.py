@@ -44,7 +44,7 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   function is not required.
   """
   # pylint: disable=protected-access
-  logging.info("Enabling control flow v2")
+  logging.vlog(1, "Enabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
@@ -60,7 +60,7 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   properly please file a bug.
   """
   # pylint: disable=protected-access
-  logging.info("Disabling control flow v2")
+  logging.vlog(1, "Disabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 
