@@ -2914,24 +2914,6 @@ class MeanIoU(Metric):
   >>> m.result().numpy()
   0.23809525
 
-  When passing `y_pred` as a logits tensor:
-
-  >>> # cm = [[0., 0., 1.],
-  >>> #       [0., 2., 0.],
-  >>> #       [0., 0., 1.]]
-  >>> # sum_row = [1, 2, 1], sum_col = [0, 2, 2], true_positives = [0, 2, 1]
-  >>> # iou = true_positives / (sum_row + sum_col - true_positives))
-  >>> # expected_result = (0 / (1 + 0 - 0) + 2 / (2 + 2 - 2) + 1 / (1 + 2 - 1)) / 3
-  >>> m = tf.keras.metrics.MeanIoU(num_classes=3)
-  >>> y_true = [2, 0, 1, 1]
-  >>> y_pred = [[2.5,  0.2, 2.7],
-  ...           [-1.4, 0.7, 1.2],
-  ...           [2.0, 3.0, 1.4],
-  ...           [2.2, 2.4, 1.5]]
-  >>> m.update_state(y_true, y_pred)
-  >>> m.result().numpy()
-  0.5
-
   Usage with `compile()` API:
 
   ```python
@@ -2968,10 +2950,6 @@ class MeanIoU(Metric):
 
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-
-    # If y_pred is passed as a logits tensor, or a probability tensor
-    if len(backend.int_shape(y_true)) == len(backend.int_shape(y_pred)) - 1:
-      y_pred = math_ops.argmax(y_pred, axis=-1)
 
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
