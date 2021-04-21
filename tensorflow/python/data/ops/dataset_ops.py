@@ -818,6 +818,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     cache any external state in `generator` before calling
     `Dataset.from_generator()`.
 
+    Note: While the `output_signature` parameter makes it possible to yield
+    `Dataset` elements, the scope of `Dataset.from_generator()` should be
+    limited to logic that cannot be expressed through tf.data operations. Using
+    tf.data operations within the generator function is an anti-pattern and may
+    result in incremental memory growth.
+
     Args:
       generator: A callable object that returns an object that supports the
         `iter()` protocol. If `args` is not specified, `generator` must take no
