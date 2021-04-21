@@ -946,6 +946,13 @@ def assert_no_garbage_created(f):
     gc.collect()
     new_garbage = len(gc.garbage)
     if new_garbage > previous_garbage:
+
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        # Known false positive for ast.fix_missing_locations.
+        if getattr(obj, "__module__", "") == "ast":
+          new_garbage -= 3
+
+    if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
           "likely due to a reference cycle. New objects in cycle(s):")

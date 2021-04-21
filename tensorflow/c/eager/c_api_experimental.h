@@ -618,6 +618,14 @@ TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
                                                   TF_Buffer* buf,
                                                   TF_Status* status);
 
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

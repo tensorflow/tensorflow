@@ -10,6 +10,12 @@ load(
     "dict_add",
 )
 
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
+
 exports_files(["LICENSE.txt"])
 
 genrule(

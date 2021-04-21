@@ -19,6 +19,7 @@ import itertools
 import json
 import os
 import warnings
+import weakref
 
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -30,6 +31,7 @@ from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -54,6 +56,7 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -72,6 +75,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -310,8 +314,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
     self._saved_model_inputs_spec = None
-    self._trackable_saver = (
-        trackable_utils.saver_with_op_caching(self))
+    self._trackable_saver = saver_with_op_caching(self)
 
     self._steps_per_execution = None
 
@@ -556,9 +559,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       if 'experimental_steps_per_execution' in kwargs:
-        logging.warn('The argument `steps_per_execution` is no longer '
-                     'experimental. Pass `steps_per_execution` instead of '
-                     '`experimental_steps_per_execution`.')
+        logging.warning('The argument `steps_per_execution` is no longer '
+                        'experimental. Pass `steps_per_execution` instead of '
+                        '`experimental_steps_per_execution`.')
         if not steps_per_execution:
           steps_per_execution = kwargs.pop('experimental_steps_per_execution')
 
@@ -766,6 +769,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
+    For concrete examples of how to override this method see
+    [Customizing what happends in fit](https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit).
     This method is called by `Model.make_train_function`.
 
     This method should contain the mathematical logic for one step of training.
@@ -2794,7 +2799,7 @@ def reduce_per_replica(values, strategy, reduction='first'):
     """Reduce a single `PerReplica` object."""
     if reduction == 'concat' and _collective_all_reduce_multi_worker(strategy):
       return _multi_worker_concat(v, strategy)
-    if not isinstance(v, ds_values.PerReplica):
+    if not _is_per_replica_instance(v):
       return v
     elif reduction == 'first':
       return strategy.unwrap(v)[0]
@@ -2848,7 +2853,7 @@ def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
   replicas = strategy.gather(v, axis=0)
   # v might not have the same shape on different replicas
-  if isinstance(v, ds_values.PerReplica):
+  if _is_per_replica_instance(v):
     shapes = array_ops.concat([
         array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
         for single_value in v.values
@@ -2955,3 +2960,18 @@ def flatten_metrics_in_order(logs, metrics_names):
   if len(results) == 1:
     return results[0]
   return results
+
+
+def _is_per_replica_instance(obj):
+  return (isinstance(obj, ds_values.DistributedValues) and
+          isinstance(obj, composite_tensor.CompositeTensor))
+
+
+def saver_with_op_caching(obj):
+  if context.executing_eagerly():
+    saveables_cache = None
+  else:
+    saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+  return trackable_utils.TrackableSaver(
+      graph_view_lib.ObjectGraphView(
+          weakref.ref(obj), saveables_cache=saveables_cache))

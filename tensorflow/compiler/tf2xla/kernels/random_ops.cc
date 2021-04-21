@@ -53,7 +53,8 @@ class RandomUniformOp : public XlaOpKernel {
     LOG_FIRST_N(WARNING, 1)
         << "Warning: Using tf.random.uniform with XLA compilation will ignore "
            "seeds; consider using tf.random.stateless_uniform instead if "
-           "reproducible behavior is desired.";
+           "reproducible behavior is desired. "
+        << name();
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
 
@@ -157,7 +158,8 @@ class RandomShuffleOp : public XlaOpKernel {
     auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
     LOG_FIRST_N(WARNING, 1)
         << "Warning: Using tf.random.shuffle with XLA compilation "
-           "will ignore seeds.";
+           "will ignore seeds. "
+        << name();
     auto swaps =
         xla::RngUniform(xla::ConstantR0<int32>(builder, 0),
                         xla::ConstantR0<int32>(builder, n), swaps_shape);
@@ -241,7 +243,8 @@ class RandomUniformIntOp : public XlaOpKernel {
     LOG_FIRST_N(WARNING, 1)
         << "Warning: Using tf.random.uniform with XLA compilation will ignore "
            "seeds; consider using tf.random.stateless_uniform instead if "
-           "reproducible behavior is desired.";
+           "reproducible behavior is desired. "
+        << name();
     ctx->SetOutput(0, xla::RngUniform(minval, maxval, xla_shape));
   }
 
@@ -302,7 +305,8 @@ class TruncatedNormalOp : public XlaOpKernel {
         << "Warning: Using tf.random.truncated_normal with XLA "
            "compilation will ignore seeds; consider using "
            "tf.random.stateless_truncated_normal instead if "
-           "reproducible behavior is desired.";
+           "reproducible behavior is desired. "
+        << name();
     auto uniform = xla::RngUniform(min_positive, one, xla_shape);
     ctx->SetOutput(0, TruncatedNormal(uniform));
   }
@@ -335,7 +339,8 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
         << "Warning: Using tf.random.truncated_normal with XLA "
            "compilation will ignore seeds; consider using "
            "tf.random.stateless_truncated_normal instead if "
-           "reproducible behavior is desired.";
+           "reproducible behavior is desired. "
+        << name();
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
     auto result = b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {

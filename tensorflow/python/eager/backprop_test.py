@@ -887,6 +887,20 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       z = y * y
       self.assertAllClose([[[4. * 3. ** 3.]]], g.batch_jacobian(z, x))
 
+  def testBatchJacobianParallelIterations(self):
+    @def_function.function
+    def f(persistent):
+      with backprop.GradientTape(persistent=persistent) as t:
+        x = constant_op.constant([[3.0]])
+        t.watch(x)
+        y = x * x
+        z = array_ops.tile(y * y, [1, 16])
+      return t.batch_jacobian(z, x, parallel_iterations=8)
+    with self.assertRaisesRegex(RuntimeError,
+                                'persistent=True.*parallel_iterations'):
+      f(persistent=False)
+    self.assertAllClose([[[4. * 3. ** 3.]] * 16], f(persistent=True))
+
   @test_util.assert_no_new_tensors
   def testGradientTapeBatchJacobianCalledMultipleTimes(self):
     with backprop.GradientTape() as g:

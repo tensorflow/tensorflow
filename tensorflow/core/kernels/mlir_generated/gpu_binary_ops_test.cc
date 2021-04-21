@@ -204,6 +204,10 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Bool, bool, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int8, int8, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int16, int16, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C64, std::complex<float>, bool,
+                       baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C128, std::complex<double>, bool,
+                       baseline_equal)
 
 /// Test `tf.FloorDiv`.
 
@@ -419,6 +423,10 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int8, int8, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
                        baseline_not_equal)
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C64, std::complex<float>, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C128, std::complex<double>, bool,
                        baseline_not_equal)
 
 /// Test `tf.Polygamma`.

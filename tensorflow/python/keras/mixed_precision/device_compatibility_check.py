@@ -104,14 +104,15 @@ def _log_device_compatibility_check(policy_name, gpu_details_list):
     warning_str += ('See https://developer.nvidia.com/cuda-gpus for a list of '
                     'GPUs and their compute capabilities.\n')
     warning_str += _COMPAT_CHECK_WARNING_SUFFIX
-    tf_logging.warn(warning_str)
+    tf_logging.warning(warning_str)
   elif not supported_device_strs:
-    tf_logging.warn('%s\n'
-                    'The dtype policy mixed_float16 may run slowly because '
-                    'this machine does not have a GPU. Only Nvidia GPUs with '
-                    'compute capability of at least 7.0 run quickly with '
-                    'mixed_float16.\n%s' % (_COMPAT_CHECK_WARNING_PREFIX,
-                                            _COMPAT_CHECK_WARNING_SUFFIX))
+    tf_logging.warning(
+        '%s\n'
+        'The dtype policy mixed_float16 may run slowly because '
+        'this machine does not have a GPU. Only Nvidia GPUs with '
+        'compute capability of at least 7.0 run quickly with '
+        'mixed_float16.\n%s' % (_COMPAT_CHECK_WARNING_PREFIX,
+                                _COMPAT_CHECK_WARNING_SUFFIX))
   elif len(supported_device_strs) == 1:
     tf_logging.info('%s\n'
                     'Your GPU will likely run quickly with dtype policy '

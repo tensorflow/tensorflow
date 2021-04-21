@@ -4,6 +4,13 @@
 
 ## Breaking Changes
 
+* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+  the API only works in graph mode and is not customizable. The function is
+  still accessible under
+  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
+  recommended to use the
+  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+  instead.
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -18,11 +25,48 @@
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* `tf.keras`:
+    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
+        `tf.distribute.InputOptions` for specific options when used with
+        distribution.
+
+* `tf.lite`:
+    *   The recommended Android NDK version for building TensorFlow Lite has
+        been changed from r18b to r19c.
+
 ## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
+*   TF Core:
+    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
+        creation of custom wrapper objects for resource tensors.
+    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
+        generic mutable hash table implementation.
+        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
+        lower overall memory usage, and a cleaner API. It does not require
+        specifying a `delete_key` and `empty_key` that cannot be inserted into
+        the table.
+   *    Added support for specifying number of subdivisions in all reduce host
+        collective. This parallelizes work on CPU and speeds up the collective
+        performance. Default behavior is unchanged.
+*   `tf.data`:
+    *   Promoting `tf.data.experimental.get_single_element` API to
+        `tf.data.Dataset.get_single_element` and deprecating the experimental
+        endpoint.
+    *   Promoting `tf.data.experimental.group_by_window` API to
+        `tf.data.Dataset.group_by_window` and deprecating the experimental
+        endpoint.
+    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
+        `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
+        sampling if it encounters an empty dataset. This preserves the sampling
+        ratio throughout training. The prior behavior was to continue sampling,
+        skipping over exhausted datasets, until all datasets are exhausted. By
+        default, the original behavior (`stop_on_empty_dataset=False`) is
+        preserved.
+*   `tf.lite`:
+    *   Fix mean op reference quantization rounding issue.
 
 ## Thanks to our Contributors
 
@@ -115,8 +159,23 @@ This release contains contributions from many people at Google, as well as:
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>
 *   `tf.keras`:
-    *   Improvements to Keras preprocessing layers:
-        *   Discretization combiner implemented, with additional arg `epsilon`.
+    *   Preprocessing layers API consistency changes:
+        *   `StringLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`.
+        *   `IntegerLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`. Renamed `max_values`, `oov_value` and
+            `mask_value` to `max_tokens`, `oov_token` and `mask_token` to align
+            with `StringLookup` and `TextVectorization`.
+        *   `TextVectorization` default for `pad_to_max_tokens` switched to
+            False.
+        *   `CategoryEncoding` no longer supports `adapt`, `IntegerLookup`
+            now supports equivalent functionality. `max_tokens` argument renamed
+            to `num_tokens`.
+        *   `Discretization` added `num_bins` argument for learning bins
+            boundaries through calling `adapt` on a dataset. Renamed `bins`
+            argument to `bin_boundaries` for specifying bins without `adapt`.
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
     *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
@@ -140,6 +199,9 @@ This release contains contributions from many people at Google, as well as:
         the input pipeline to insert sharding transformations.
     *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
         boundaries.
+    *   If autotuning is ON, `tf.data.Dataset.map()` will default to be
+        parallelized unless users turn off the optimization
+        option `map_parallelization` explicitly.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -202,6 +264,15 @@ This release contains contributions from many people at Google, as well as:
        `converter.target_spec._experimental_custom_op_registerers`.
       used in Python Interpreter API.
 *   TF Core:
+    *   Several new types have been introduced to describe the return types of
+        `tf.function` and related APIs:
+          * `tf.types.experimental.Callable` is intended to represent TensorFlow
+            callables in general.
+          * `tf.types.experimental.ConcreteFunction` represents a callable
+            TensofFlow graph function specialized to a particular input.
+          * `tf.types.experimental.GenericFunction` is the output of
+            `tf.function` and represents a callble that can be backed by
+            multiple `ConcreteFunction`s (commonly known as traces).
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
@@ -215,6 +286,7 @@ This release contains contributions from many people at Google, as well as:
         its subclasses to support more detailed error reporting.
         This is inspired from Abseil Status payloads:
         https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
+    *   Extended `tf.matmul` to support output_type and mixed input types.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

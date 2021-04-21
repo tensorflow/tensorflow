@@ -161,7 +161,7 @@ class ShardingSpec {
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray : xla::DeviceArrayBase {
+class ShardedDeviceArray {
  public:
   ShardedDeviceArray(
       pybind11::handle aval, ShardingSpec sharding_spec,
@@ -170,8 +170,7 @@ class ShardedDeviceArray : xla::DeviceArrayBase {
       // TODO(jblespiau): As soon as PjRtBuffer is supported by all
       // implementations, we should be able to store this with the C++ objects.
       pybind11::list device_buffers)
-      : DeviceArrayBase(),
-        aval_(pybind11::cast<pybind11::object>(aval)),
+      : aval_(pybind11::cast<pybind11::object>(aval)),
         sharding_spec_(std::move(sharding_spec)),
         device_buffers_(device_buffers) {}
 

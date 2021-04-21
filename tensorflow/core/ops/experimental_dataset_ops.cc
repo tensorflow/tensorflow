@@ -348,6 +348,7 @@ REGISTER_OP("DirectedInterleaveDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
+    .Attr("stop_on_empty_dataset: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalDirectedInterleaveDataset")
@@ -1215,5 +1216,15 @@ REGISTER_OP("RegisterDataset")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("InitializeTableFromDataset")
+    .Input("table_handle: resource")
+    .Input("dataset: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

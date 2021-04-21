@@ -410,7 +410,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       if self._could_use_gpu_kernel:
         logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
       else:
-        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
+        logging.warning(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
@@ -463,7 +463,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 
@@ -1137,7 +1137,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       if self._could_use_gpu_kernel:
         logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
       else:
-        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
+        logging.warning(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'lstm')
@@ -1276,7 +1276,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 

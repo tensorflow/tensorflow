@@ -62,7 +62,8 @@ class HloFunctionImporter {
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
 
-  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
+                               llvm::StringRef attr_name = "minor_to_major");
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.
@@ -118,6 +119,9 @@ class HloFunctionImporter {
 
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
+
+  // Converts an XLA shape/layout to the corresponding MLIR layout
+  StatusOr<mlir::Attribute> ConvertShapeToMlirLayout(const xla::Shape& shape);
 
   // Returns the output type of an HloInstruction.
   StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);

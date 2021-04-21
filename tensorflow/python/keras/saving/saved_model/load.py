@@ -344,10 +344,11 @@ class KerasObjectLoader(object):
         if self.loaded_nodes[child_id][0] is not obj_child:
           # This means that the same trackable object is referenced by two
           # different objects that were recreated from the config.
-          logging.warn('Looks like there is an object (perhaps variable or '
-                       'layer) that is shared between different layers/models. '
-                       'This may cause issues when restoring the variable '
-                       'values. Object: {}'.format(obj_child))
+          logging.warning(
+              'Looks like there is an object (perhaps variable or '
+              'layer) that is shared between different layers/models. '
+              'This may cause issues when restoring the variable '
+              'values. Object: {}'.format(obj_child))
         continue
 
       # Overwrite variable names with the ones saved in the SavedModel.

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -1020,6 +1021,72 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
       << status.error_message();
 }
 
+FunctionDef SliceFn() {
+  return FunctionDefHelper::Define(
+      // Name
+      "SliceFn",
+      // Args
+      {"x: T", "begin: Index", "size: Index"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}", "Index: {int32,int64}"},
+      // Nodes
+      {{{"y"},
+        "Slice",
+        {"x", "begin", "size"},
+        {{"T", "$T"}, {"Index", "$Index"}}}});
+}
+
+TEST_F(XlaCompilerTest, SliceWithDynamicBegins) {
+  // Certain operations in a function, "Slice" for example, support both dynamic
+  // inputs and static inputs. This test checks that dynamic inputs can also
+  // be supported in a function call.
+  XlaCompiler compiler(DefaultOptions());
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = SliceFn();
+
+  TF_ASSERT_OK(flib_def_->AddFunctionDef(SliceFn()));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto value = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  auto begin = ops::_Arg(scope.WithOpName("arg"), DT_INT32, 0);
+  auto size = ops::Const<int32>(scope.WithOpName("value"), {1}, {1});
+
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
+
+  NodeDef def;
+  TF_ASSERT_OK(NodeDefBuilder("slice", "SliceFn", flib_def_.get())
+                   .Input(value.name(), 0, DT_INT32)
+                   .Input(begin.node()->name(), 1, DT_INT32)
+                   .Input(size.name(), 2, DT_INT32)
+                   .Finalize(&def));
+  Status status;
+  Node* slice = scope.graph()->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+  TF_ASSERT_OK(scope.DoShapeInference(slice));
+  scope.graph()->AddEdge(value.node(), 0, slice, 0);
+  scope.graph()->AddEdge(begin.node(), 0, slice, 1);
+  scope.graph()->AddEdge(size.node(), 0, slice, 2);
+
+  auto retval = ops::_Retval(scope.WithOpName("retval"), Output(slice), 0);
+
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the argument.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1});
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "slice",
+                                     std::move(graph), args, &result));
+}
+
 void RunAndCheckVariablesComputation(
     xla::Client* client, const XlaCompiler::CompilationResult& result) {
   xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
@@ -1798,62 +1865,6 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
       tuple_shape, std::vector<xla::HloSharding>{sharding});
   EXPECT_EQ(root_instruction_proto->sharding().SerializeAsString(),
             tuple_sharding.ToProto().SerializeAsString());
-}
-
-TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
-  // When we have a dynamic shape input followed by a Shape op, the Shape op
-  // should return dynamic size:
-  //
-  // [2, b] // b's static size is 3 and dynamic size is 2
-  //   |
-  //  Size // should return 2, 2
-  Scope scope = Scope::NewRootScope().ExitOnError();
-  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
-  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
-  auto shape = ops::Shape(scope.WithOpName("shape"), a);
-  (void)ops::_Retval(scope.WithOpName("retval"), shape, 0);
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_ASSERT_OK(scope.ToGraph(graph.get()));
-
-  // Builds a description of the arguments.
-  std::vector<XlaCompiler::Argument> args(2);
-  args[0].kind = XlaCompiler::Argument::kParameter;
-  args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2, 3});
-  // Indicates that first dimension is dynamic, and arg 1 holds the runtime
-  // value of it.
-  args[0].dynamic_dim_to_arg_num_map.insert({1, 1});
-
-  // Arg 1 holds the dynamic size.
-  args[1].kind = XlaCompiler::Argument::kParameter;
-  args[1].type = DT_INT32;
-  args[1].shape = TensorShape({});
-
-  // Compiles the graph.
-  XlaCompiler compiler(DefaultOptions());
-
-  XlaCompiler::CompilationResult result;
-  auto options = XlaCompiler::CompileOptions();
-  TF_ASSERT_OK(
-      compiler.CompileGraph(options, "test", std::move(graph), args, &result));
-
-  xla::Literal literal0 =
-      xla::LiteralUtil::CreateR2<int32>({{0, 1, 2}, {3, 4, 5}});
-  xla::Literal literal1 = xla::LiteralUtil::CreateR0<int32>(2);
-  std::unique_ptr<xla::GlobalData> data0 =
-      client_->TransferToServer(literal0).ConsumeValueOrDie();
-  std::unique_ptr<xla::GlobalData> data1 =
-      client_->TransferToServer(literal1).ConsumeValueOrDie();
-
-  // Prepare arguments.
-  std::unique_ptr<xla::GlobalData> actual =
-      client_->Execute(*result.computation, {data0.get(), data1.get()})
-          .ConsumeValueOrDie();
-  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
-  // The dynamic size of the op is <2, 2> instead of static size <2, 3>
-  xla::Literal expected = xla::LiteralUtil::CreateR1<int32>({2, 2});
-  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 TEST_F(XlaCompilerTest, AliasResourceUpdates) {

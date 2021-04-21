@@ -65,6 +65,7 @@ load(
     "if_android",
     "if_chromiumos",
     "if_cuda_or_rocm",
+    "if_google",
     "if_ios",
     "if_libtpu",
     "if_mobile",
@@ -134,7 +135,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -153,7 +154,15 @@ exports_files([
 ])
 
 # Authorized users go here.
-package_group(name = "friends")
+package_group(
+    name = "friends",
+    packages = if_google([
+        "//learning/brain/...",
+        "//tensorflow/...",
+        "@tf_runtime//...",
+        "//third_party/tf_runtime_google/...",
+    ]),
+)
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -447,11 +456,11 @@ tf_cuda_library(
         "//tensorflow/core/framework:reader_op_kernel.h",
         "//tensorflow/core/framework:register_types.h",
         "//tensorflow/core/framework:register_types_traits.h",
-        "//tensorflow/core/framework:registration_options.h",
+        "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework:resource_mgr.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
         "//tensorflow/core/framework:rng_alg.h",
-        "//tensorflow/core/framework:selective_registration.h",
+        "//tensorflow/core/framework/registration:registration.h",
         "//tensorflow/core/framework:session_state.h",
         "//tensorflow/core/framework:shape_inference.h",
         "//tensorflow/core/framework:shared_ptr_variant.h",
@@ -1638,7 +1647,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:op_def_builder",
         "//tensorflow/core/framework:op_def_util",
         "//tensorflow/core/framework:resource_handle",
-        "//tensorflow/core/framework:selective_registration",
+        "//tensorflow/core/framework/registration",
         "//tensorflow/core/framework:shape_inference",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",

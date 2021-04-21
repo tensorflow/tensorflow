@@ -621,7 +621,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     // "mhlo::ReduceOp" only has one input, one init_value and one result.
     if (failed(MatchInitValue(reduce_op.init_values()[0]))) return failure();
 
-    auto input = reduce_op.operands()[0];
+    auto input = reduce_op.inputs()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
@@ -648,12 +648,11 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   // This function tries to match that the "mhlo::ReduceOp" only has one
   // input, one init_value and one result.
   LogicalResult MatchReduceOpInput(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.operands().size() != 1 ||
-        reduce_op.init_values().size() != 1 ||
+    if (reduce_op.inputs().size() != 1 || reduce_op.init_values().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.inputs()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -714,7 +713,7 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.operands().size() != 2) return failure();
+    if (reduce_op.inputs().size() != 2) return failure();
     if (reduce_op.dimensions().getNumElements() != 1) return failure();
 
     // Check that the input init is the expected value.
@@ -731,7 +730,7 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
-    Value iota = reduce_op.operands().back();
+    Value iota = reduce_op.inputs().back();
     mhlo::BroadcastInDimOp iota_broadcast =
         llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
     if (!iota_broadcast ||
@@ -743,7 +742,7 @@ class ConvertReduceOpToTfArgMinMax
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
 
-    Value input = reduce_op.operands().front();
+    Value input = reduce_op.inputs().front();
     int64_t axis = reduce_op.dimensions().getValue<int64_t>({0});
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
@@ -924,7 +923,7 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   }
 };
 
-// Maps the following represenattions of AvgPool in MHLO into a tf.AvgPool{3D}
+// Maps the following representations of AvgPool in MHLO into a tf.AvgPool{3D}
 // operation when they cleanly map to 2D or 3D average pool with VALID or SAME
 // padding:
 // * div(reduce_sum_window(x), constant(sizeof(window)))
@@ -938,28 +937,29 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       ConversionPatternRewriter &rewriter) const final {
     auto rw =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.lhs().getDefiningOp());
-    if (!rw) return failure();
+    if (!rw || rw->getNumResults() != 1) return failure();
 
     // Check that the reduce-window is a sum-reduce-window.
     if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw.body())))
       return failure();
 
     // Check that this is a floating point reduce window with a rank of 4 or 5.
-    RankedTensorType rw_type = rw.getType().dyn_cast<RankedTensorType>();
+    const RankedTensorType rw_type =
+        rw.getResult(0).getType().dyn_cast<RankedTensorType>();
     if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
         rw_type.getRank() <= 3 || rw_type.getRank() > 5)
       return failure();
 
     // Check that the Div op doesn't do broadcasting on the output of the reduce
     // window.
-    if (div_op.getType() != rw.getType()) return failure();
+    if (div_op.getType() != rw_type) return failure();
 
     // tf.avg_pool need at least 3 dimensions (batch, spatial, channel)
     const uint64_t rank = rw.window_dimensions().size();
     if (rank <= 2) return failure();
 
     // If the init value isn't zero then it can't be an average pool.
-    if (!isFloatZero(rw.init_value())) return failure();
+    if (!isFloatZero(rw.init_values()[0])) return failure();
 
     llvm::SmallVector<int64_t, 5> window_strides;
     if (rw.window_strides().hasValue()) {
@@ -1017,14 +1017,14 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.operand(),
+          div_op, rw.inputs()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
 
     auto rw_rhs =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.rhs().getDefiningOp());
-    if (rw_rhs) {
+    if (rw_rhs && rw_rhs.getNumResults() == 1) {
       // Check that RHS is a sum-reduce-window.
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.body())))
         return failure();
@@ -1032,8 +1032,8 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // Check that the RHS is a reduce_window over a constant 1 input with 0 as
       // the init value.
       DenseFPElementsAttr rhs_input;
-      if (!isFloatZero(rw_rhs.init_value()) ||
-          !matchPattern(rw_rhs.operand(), m_Constant(&rhs_input)) ||
+      if (!isFloatZero(rw_rhs.init_values()[0]) ||
+          !matchPattern(rw_rhs.inputs()[0], m_Constant(&rhs_input)) ||
           !rhs_input.isSplat() ||
           !rhs_input.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -1048,13 +1048,14 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
 
       if (llvm::all_of(padding, [](int64_t i) { return i == 0; }))
         return replaceWithAvgPool(
-            div_op, rw.operand(),
+            div_op, rw.inputs()[0],
             llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
             window_strides, "VALID", rewriter);
 
       RankedTensorType input_type =
-          rw.operand().getType().dyn_cast<RankedTensorType>();
-      RankedTensorType output_type = rw.getType().dyn_cast<RankedTensorType>();
+          rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
+      RankedTensorType output_type =
+          rw.getResult(0).getType().dyn_cast<RankedTensorType>();
       if (!input_type || !output_type) return failure();
 
       // Check that the individual padding values are corresponding to SAME
@@ -1071,7 +1072,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           return failure();
       }
       return replaceWithAvgPool(
-          div_op, rw.operand(),
+          div_op, rw.inputs()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "SAME", rewriter);
     }

@@ -51,7 +51,7 @@ fi
 #   $1 - full path to the downloaded flexbuffers.h that will be patched in-place.
 function patch_to_avoid_strtod() {
   local input_flexbuffers_path="$1"
-  local temp_flexbuffers_path="/tmp/flexbuffers_patched.h"
+  local temp_flexbuffers_path="$(mktemp)"
   local string_to_num_line=`awk '/StringToNumber/{ print NR; }' ${input_flexbuffers_path}`
   local case_string_line=$((${string_to_num_line} - 2))
 
@@ -94,11 +94,14 @@ else
   FLATBUFFERS_URL="http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
   FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
 
-  wget ${FLATBUFFERS_URL} -O /tmp/${ZIP_PREFIX}.zip >&2
-  check_md5 /tmp/${ZIP_PREFIX}.zip ${FLATBUFFERS_MD5}
+  TMPDIR="$(mktemp -d)"
+  TMPFILE="${TMPDIR}/${ZIP_PREFIX}.zip"
+  wget ${FLATBUFFERS_URL} -O "$TMPFILE" >&2
+  check_md5 "${TMPFILE}" ${FLATBUFFERS_MD5}
 
-  unzip -qo /tmp/${ZIP_PREFIX}.zip -d /tmp >&2
-  mv /tmp/flatbuffers-${ZIP_PREFIX} ${DOWNLOADED_FLATBUFFERS_PATH}
+  unzip -qo "$TMPFILE" -d "${TMPDIR}" >&2
+  mv "${TMPDIR}/flatbuffers-${ZIP_PREFIX}" ${DOWNLOADED_FLATBUFFERS_PATH}
+  rm -rf "${TMPDIR}"
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
   delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}

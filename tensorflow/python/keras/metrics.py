@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=unused-import
 # pylint: disable=g-classes-have-attributes
 # pylint: disable=g-doc-return-or-yield
 """Built-in metrics."""
 
 import abc
-import math
 import types
 import warnings
 
@@ -33,7 +31,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -56,7 +53,6 @@ from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
-from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -64,13 +60,11 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -1343,8 +1337,9 @@ class Precision(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_positives)])
 
   def get_config(self):
     config = {
@@ -1468,8 +1463,9 @@ class Recall(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_negatives)])
 
   def get_config(self):
     config = {
@@ -1552,8 +1548,11 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
 
   def reset_state(self):
     num_thresholds = len(self.thresholds)
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                  self.false_positives, self.false_negatives)
+    backend.batch_set_value([
+        (v, np.zeros((num_thresholds,))) for v in confusion_matrix_variables
+    ])
 
   def get_config(self):
     config = {'class_id': self.class_id}
@@ -1575,13 +1574,11 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
 
     Returns maximal dependent value, if no value satiesfies the constraint 0.0.
     """
-    feasible = array_ops.where(predicate(constrained, self.value))
+    feasible = array_ops.where_v2(predicate(constrained, self.value))
     feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+    max_dependent = math_ops.reduce_max(array_ops.gather(dependent, feasible))
 
-    def get_max():
-      return math_ops.reduce_max(array_ops.gather(dependent, feasible))
-
-    return control_flow_ops.cond(feasible_exists, get_max, lambda: 0.0)
+    return array_ops.where_v2(feasible_exists, max_dependent, 0.0)
 
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
@@ -2381,14 +2378,16 @@ class AUC(Metric):
           name=self.name)
 
   def reset_state(self):
-    if self.multi_label:
-      backend.batch_set_value(
-          [(v, np.zeros((self.num_thresholds, self._num_labels)))
-           for v in self.variables])
-    else:
-      backend.batch_set_value([
-          (v, np.zeros((self.num_thresholds,))) for v in self.variables
-      ])
+    if self._built:
+      confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                    self.false_positives, self.false_negatives)
+      if self.multi_label:
+        backend.batch_set_value(
+            [(v, np.zeros((self.num_thresholds, self._num_labels)))
+             for v in confusion_matrix_variables])
+      else:
+        backend.batch_set_value([(v, np.zeros((self.num_thresholds,)))
+                                 for v in confusion_matrix_variables])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):

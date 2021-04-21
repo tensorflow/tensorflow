@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
 namespace mlir {
@@ -69,12 +70,52 @@ class RewriteXlaHostComputeMlir
           TF::ShapeAttr::get(rewriter.getContext(), ty.cast<ShapedType>()));
     }
 
+    // Clone the `host_func` in the `host_mlir_module` attribute if it exists
+    // and use it for `shape_inference_graph` attribute on XlaHostCompute.
+    FuncOp cloned_func;
+    SymbolTable manager(op->getParentOfType<ModuleOp>());
+    StringRef host_module = op.host_mlir_module();
+    if (!host_module.empty()) {
+      mlir::OwningModuleRef module_for_func;
+
+      FuncOp func = op.GetHostFunc(&module_for_func);
+
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
+      cloned_func =
+          llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
+      manager.insert(cloned_func);
+      rewriter.setInsertionPointToStart(&cloned_func.body().front());
+      auto result_type =
+          RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
+      auto dynamic_key =
+          rewriter.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+              func.getLoc(), /*program=*/result_type, llvm::ArrayRef<Value>{});
+
+      auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
+          func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
+          op.send_keyAttr(),
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+      for (auto result :
+           llvm::zip(cloned_func.getArguments(), recv_at_host->getResults())) {
+        std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
+      }
+
+      rewriter.setInsertionPoint(cloned_func.body().front().getTerminator());
+      rewriter.create<TF::_XlaSendFromHostOp>(
+          func.getLoc(),
+          cloned_func.body().front().getTerminator()->getOperands(),
+          /*dynamic_key=*/dynamic_key, op.recv_keyAttr(),
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+    }
+
     constexpr int64_t kDefaultCostEstimate = 1000000;
     rewriter.replaceOpWithNewOp<TF::XlaHostComputeOp>(
         op, op.getResultTypes(), op.inputs(),
         /*ancestors=*/rewriter.getArrayAttr({}),
         rewriter.getArrayAttr(shape_attrs),
-        /*shape_inference_graph=*/SymbolRefAttr(),
+        /*shape_inference_graph=*/
+        cloned_func ? rewriter.getSymbolRefAttr(cloned_func) : SymbolRefAttr(),
         /*key=*/rewriter.getStringAttr(""), op.send_keyAttr(),
         op.recv_keyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),

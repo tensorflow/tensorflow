@@ -1077,21 +1077,21 @@ class ImageDataGenerator(image.ImageDataGenerator):
         and `y` is a numpy array of corresponding labels.
     """
     if 'has_ext' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'has_ext is deprecated, filenames in the dataframe have '
           'to match the exact filenames in disk.', DeprecationWarning)
     if 'sort' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'sort is deprecated, batches will be created in the'
           'same order than the filenames provided if shuffle'
           'is set to False.', DeprecationWarning)
     if class_mode == 'other':
-      tf_logging.warn(
+      tf_logging.warning(
           '`class_mode` "other" is deprecated, please use '
           '`class_mode` "raw".', DeprecationWarning)
       class_mode = 'raw'
     if 'drop_duplicates' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'drop_duplicates is deprecated, you can drop duplicates '
           'by using the pandas.DataFrame.drop_duplicates method.',
           DeprecationWarning)

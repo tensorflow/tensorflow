@@ -17,7 +17,7 @@ package(
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(

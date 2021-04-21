@@ -368,3 +368,20 @@ func @CheckLegacyQuantizeAdd() -> tensor<1x2x!quant.uniform<i8:f32, 0.0078431372
 
 // LEGACY:  "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, value = dense<{{\[\[}}-1, 127]]> : tensor<1x2xi8>}
 }
+
+// DEBUG-LABEL: CheckNumericVerifyMultipleUsers
+func @CheckNumericVerifyMultipleUsers(%arg0: tensor<1x5x5x3xf32>) -> tensor<1x5x5x3xf32> {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x5x5x3xf32>) -> tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>
+  %1 = "tfl.dequantize"(%0) : (tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x5x5x3xf32>
+  %2 = "tfl.average_pool_2d"(%1) {filter_height = 5 : i32, filter_width = 5 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 5 : i32, stride_w = 5 : i32} : (tensor<1x5x5x3xf32>) -> tensor<1x1x1x3xf32>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x1x1x3xf32>) -> tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>
+  %4 = "tfl.dequantize"(%3) : (tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x1x1x3xf32>
+  %5 = "tfl.add"(%1, %4) {fused_activation_function = "NONE"} : (tensor<1x5x5x3xf32>, tensor<1x1x1x3xf32>) -> tensor<1x5x5x3xf32>
+  %6 = "tfl.quantize"(%5) {qtype = tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x5x5x3xf32>) -> tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>
+  %7 = "tfl.dequantize"(%6) : (tensor<1x5x5x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x5x5x3xf32>
+  return %7 : tensor<1x5x5x3xf32>
+// DEBUG: %[[q:.*]] = "tfl.quantize"(%arg0)
+// DEBUG: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// DEBUG: "tfl.average_pool_2d"(%[[dq]])
+// DEBUG: "tfl.average_pool_2d"(%[[q]])
+}

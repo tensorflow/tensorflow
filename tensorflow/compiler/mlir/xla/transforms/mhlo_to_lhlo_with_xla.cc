@@ -1603,6 +1603,8 @@ Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
 }
 
 Status LhloDialectEmitter::Initialize() {
+  TF_RET_CHECK(computation_.IsEntryComputation());
+
   mlir::IntegerAttr unique_id =
       builder_.getI32IntegerAttr(computation_.parent()->unique_id());
   module_->setAttr("hlo.unique_id", unique_id);
@@ -1613,6 +1615,13 @@ Status LhloDialectEmitter::Initialize() {
   // buffer allocation and update the type then.
   auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
                                 builder_.getFunctionType({}, {}));
+
+  {
+    const Shape& shape = computation_.root_instruction()->shape();
+    func_op->setAttr(
+        "result_xla_shape",
+        builder_.getStringAttr(shape.ToString(/*print_layout=*/true)));
+  }
   Block* block = func_op.addEntryBlock();
 
   llvm::SmallVector<const BufferAllocation*, 8> ordered_allocations;
@@ -1649,41 +1658,84 @@ Status LhloDialectEmitter::Initialize() {
                      allocation_comparator);
   }
 
+  absl::flat_hash_map<const BufferAllocation*, xla::ShapeIndex>
+      allocation_to_output_index;
+  TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
+      computation_.root_instruction()->shape(),
+      [&](const Shape& sub_shape, xla::ShapeIndex index) -> Status {
+        TF_ASSIGN_OR_RETURN(
+            auto slice,
+            assignment_.GetUniqueSlice(computation_.root_instruction(), index));
+        const BufferAllocation* alloc = slice.allocation();
+        TF_RET_CHECK(slice.offset() == 0);
+        TF_RET_CHECK(slice.size() == alloc->size());
+        allocation_to_output_index[alloc] = index;
+        return Status::OK();
+      }));
+
   // The function signature will be composed of:
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
   llvm::SmallVector<DictionaryAttr, 8> args_attrs;
   for (const BufferAllocation* alloc : ordered_allocations) {
-    if (computation_.IsEntryComputation() &&
-        alloc->is_entry_computation_parameter()) {
-      const xla::Shape& buffer_shape = xla::ShapeUtil::GetSubshape(
+    if (alloc->is_thread_local()) {
+      continue;
+    }
+
+    NamedAttrList arg_attr_list;
+    mlir::Type arg_type;
+    if (alloc->is_entry_computation_parameter() && !alloc->maybe_live_out()) {
+      xla::Shape buffer_shape = xla::ShapeUtil::GetSubshape(
           computation_.parameter_instruction(alloc->parameter_number())
               ->shape(),
           alloc->param_shape_index());
 
-      // TODO(jurahul): Revisit this when we can model memrefs with dynamic
-      // shape but static bounds in MLIR.
-      const Shape static_shape = xla::ShapeUtil::MakeStaticShape(buffer_shape);
-      TF_ASSIGN_OR_RETURN(auto arg_type, xla::ConvertShapeToType<MemRefType>(
-                                             static_shape, builder_));
-
-      // First map parameters to memrefs on the operation.
-      block->addArgument(arg_type);
-      allocations_[alloc] = block->getArguments().back();
-      NamedAttrList arg_attr_list;
-      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+      if (buffer_shape.IsTuple()) {
+        arg_type = MemRefType::get({alloc->size()}, i8_type_);
+      } else {
+        // TODO(jurahul): Revisit this when we can model memrefs with dynamic
+        // shape but static bounds in MLIR.
+        const Shape static_shape =
+            xla::ShapeUtil::MakeStaticShape(buffer_shape);
+        TF_ASSIGN_OR_RETURN(arg_type, xla::ConvertShapeToType<MemRefType>(
+                                          static_shape, builder_));
+      }
+    } else {
+      arg_type = MemRefType::get({alloc->size()}, i8_type_);
+    }
+    block->addArgument(arg_type);
+    allocations_[alloc] = block->getArguments().back();
+    arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+    if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
-      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
-    } else {
-      block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
-      allocations_[alloc] = block->getArguments().back();
-
-      NamedAttrList arg_attr_list;
-      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
-      arg_attr_list.set("lmhlo.liveout", builder_.getBoolAttr(true));
-      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
+      if (!alloc->param_shape_index().empty()) {
+        arg_attr_list.set("lmhlo.param_shape_index",
+                          builder_.getI64TensorAttr(llvm::makeArrayRef(
+                              alloc->param_shape_index().begin(),
+                              alloc->param_shape_index().end())));
+      }
     }
+    if (alloc->is_constant()) {
+      arg_attr_list.set(
+          "lmhlo.constant_name",
+          builder_.getStringAttr(
+              xla::llvm_ir::ConstantBufferAllocationToGlobalName(*alloc)));
+    }
+    auto iter = allocation_to_output_index.find(alloc);
+    if (iter != allocation_to_output_index.end()) {
+      arg_attr_list.set("lmhlo.output_index",
+                        builder_.getI64TensorAttr(llvm::makeArrayRef(
+                            iter->second.begin(), iter->second.end())));
+      if (auto alias = computation_.parent()
+                           ->input_output_alias_config()
+                           .GetAliasedParameter(iter->second)) {
+        if (alias->must_alias()) {
+          arg_attr_list.set("lmhlo.must_alias", builder_.getUnitAttr());
+        }
+      }
+    }
+    args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
   }
 
   FunctionType function_type =

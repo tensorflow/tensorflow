@@ -34,7 +34,7 @@ package(
         "//visibility:public",
     ],
     features = ["-parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export the BUILD file so automated tooling can check licenses
@@ -377,7 +377,7 @@ cc_library(
 
 filegroup(
     name = "portable_op_registrations_and_gradients",
-    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
+    srcs = ["//tensorflow/c/kernels:portable_all_ops"] + glob(
         [
             "**/*.cc",
             "**/*.h",

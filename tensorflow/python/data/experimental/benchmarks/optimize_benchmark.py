@@ -53,6 +53,10 @@ class OptimizationBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=100,
         iters=10,
         warmup=True,
+        extras={
+            "model_name": "optimize.benchmark.1",
+            "parameters": "%d.%s" % (chain_length, optimize_dataset),
+        },
         name="map_fusion_{}_chain_length_{}".format(opt_mark, chain_length))
 
   def benchmark_map_and_filter_fusion(self):
@@ -83,6 +87,10 @@ class OptimizationBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=100,
         iters=10,
         warmup=True,
+        extras={
+            "model_name": "optimize.benchmark.2",
+            "parameters": "%d.%s" % (chain_length, optimize_dataset),
+        },
         name="map_and_filter_fusion_{}_chain_length_{}".format(
             opt_mark, chain_length))
 
@@ -114,6 +122,10 @@ class OptimizationBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=100,
         iters=10,
         warmup=True,
+        extras={
+            "model_name": "optimize.benchmark.3",
+            "parameters": "%d.%s" % (chain_length, optimize_dataset),
+        },
         name="filter_fusion_{}_chain_length_{}".format(opt_mark, chain_length))
 
 

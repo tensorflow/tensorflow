@@ -101,6 +101,7 @@ using mlir::TensorType;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
+using mlir::WalkResult;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -220,10 +221,29 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   std::string op_str;
   llvm::raw_string_ostream os(op_str);
   inst->getName().print(os);
+  os << "(";
+  if (!inst->getOperandTypes().empty()) {
+    bool first = true;
+    for (Type operand_type : inst->getOperandTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << operand_type;
+    }
+  }
+  os << ") -> (";
+  if (!inst->getResultTypes().empty()) {
+    bool first = true;
+    for (Type result_type : inst->getResultTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << result_type;
+    }
+  }
+  os << ")";
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
   if (!inst->getAttrDictionary().empty()) {
-    os << " {";
+    os << " : {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
@@ -311,9 +331,20 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   // Verify that module has a function named main.
   FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
   if (!main_fn) {
-    return emitError(UnknownLoc::get(context),
-                     "should have a function named 'main'"),
-           false;
+    int entry_func_count = 0;
+    for (auto fn : module.getOps<FuncOp>()) {
+      auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      if (attrs && !attrs.empty()) {
+        ++entry_func_count;
+      }
+    }
+
+    // Verify that module has a least one enrty function.
+    if (entry_func_count == 0) {
+      return emitError(UnknownLoc::get(context),
+                       "should have a least one entry function"),
+             false;
+    }
   }
 
   for (auto fn : module.getOps<FuncOp>()) {
@@ -1574,7 +1605,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 }
 
 std::vector<SignatureDefData> BuildSignaturedef(
-    FuncOp main_op, const std::string& saved_model_tag) {
+    FuncOp main_op, const std::string& saved_model_tag,
+    tensorflow::OpOrArgNameMapper& name_mapper) {
   static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
@@ -1638,7 +1670,11 @@ std::vector<SignatureDefData> BuildSignaturedef(
     result[0].inputs[sig_def_inputs[i]] = input_names[i].str();
   }
   for (int i = 0; i < output_names.size(); ++i) {
-    result[0].outputs[sig_def_outputs[i]] = output_names[i].str();
+    // Fetch the name from the actual operand and not rely on names from
+    // outputs as deduping can make them invalid after conversion.
+    auto& operand = term->getOpOperand(i);
+    auto unique_name = std::string(name_mapper.GetUniqueName(operand.get()));
+    result[0].outputs[sig_def_outputs[i]] = unique_name;
   }
   if (auto name_attr = exported_name[0].dyn_cast_or_null<StringAttr>())
     result[0].method_name = name_attr.getValue().str();
@@ -1693,17 +1729,18 @@ bool UpdateEntryFunction(ModuleOp module) {
   FuncOp entry_func = nullptr;
   for (auto fn : module.getOps<FuncOp>()) {
     auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
-    if (attrs && !attrs.empty()) {
-      entry_func_count++;
-      entry_func = fn;
-    }
+    if (!attrs || attrs.empty()) continue;
+    ++entry_func_count;
+    entry_func = fn;
   }
 
-  // We should have one & only have one entry function.
-  if (entry_func_count != 1) return false;
+  // We should have at least one entry function.
+  if (entry_func_count == 0) return false;
 
-  // Update the entry func to main.
-  entry_func.setName("main");
+  if (entry_func_count == 1) {
+    // Update the entry func to main when the entry func is only & one.
+    entry_func.setName("main");
+  }
   return true;
 }
 
@@ -1732,16 +1769,45 @@ Optional<std::string> Translator::TranslateInternal() {
   named_regions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
+
+  // Entry functions for signature defs.
+  std::vector<FuncOp> entry_functions;
+  std::vector<FuncOp> non_entry_functions;
   FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
-  subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
-  named_regions.emplace_back("main", &main_fn.getBody());
+  if (main_fn != nullptr) {
+    // Treat the main function as a signature def when the given main function
+    // contains on the tf.entry_function attribute.
+    auto attrs =
+        main_fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_functions.push_back(main_fn);
+    } else {
+      non_entry_functions.push_back(main_fn);
+    }
+  }
+
   // Walk over the module collection ops with functions and while ops.
   module_.walk([&](FuncOp fn) {
-    if (fn != main_fn) {
-      subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-      named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+    if (main_fn == fn) return WalkResult::advance();
+    auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_functions.push_back(fn);
+    } else {
+      non_entry_functions.push_back(fn);
     }
+    return WalkResult::advance();
   });
+
+  // Assign the subgraph index. Among the given functions, it will put entry
+  // functions at the beginning of the list of the subgrahs.
+  for (auto fn : entry_functions) {
+    subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+    named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+  }
+  for (auto fn : non_entry_functions) {
+    subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+    named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+  }
 
   // Build subgraph for each of the named regions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
@@ -1827,11 +1893,17 @@ Optional<std::string> Translator::TranslateInternal() {
   auto metadata = CreateMetadataVector();
   if (!metadata) return llvm::None;
 
-  // Build SignatureDef
-  // We only have 1 entry point 'main' function, so build only 1 signature def.
-  auto main_fn_signature_def = BuildSignaturedef(
-      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin());
-  auto signature_defs = CreateSignatureDefs(main_fn_signature_def);
+  std::vector<SignatureDefData> signature_defs_vec;
+  // Build SignatureDefs for the tf.entry_function based func ops.
+  for (auto fn : entry_functions) {
+    auto signature_defs = BuildSignaturedef(
+        fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin(),
+        name_mapper_);
+    for (const auto& signature_def : signature_defs) {
+      signature_defs_vec.push_back(signature_def);
+    }
+  }
+  auto signature_defs = CreateSignatureDefs(signature_defs_vec);
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
                                    builder_.CreateVector(opcodes_),
