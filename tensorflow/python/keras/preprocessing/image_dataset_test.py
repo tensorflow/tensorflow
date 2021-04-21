@@ -38,18 +38,18 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
   def _get_images(self,
                   count=16,
                   color_mode='rgb',
-                  min=0,
-                  max=256,
+                  image_min=0,
+                  image_max=256,
                   dtype=None):
     width = height = 24
     imgs = []
     for _ in range(count):
       if color_mode == 'grayscale':
-        img = np.random.randint(min, max, size=(height, width, 1))
+        img = np.random.randint(image_min, image_max, size=(height, width, 1))
       elif color_mode == 'rgba':
-        img = np.random.randint(min, max, size=(height, width, 4))
+        img = np.random.randint(image_min, image_max, size=(height, width, 4))
       else:
-        img = np.random.randint(min, max, size=(height, width, 3))
+        img = np.random.randint(image_min, image_max, size=(height, width, 3))
       img = image_preproc.array_to_img(img)
       imgs.append(img)
     return imgs
@@ -86,7 +86,11 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
 
     # Save images to the paths
     i = 0
-    for img in self._get_images(color_mode=color_mode, count=count, min=min_img_val, max=max_img_val, dtype=dtype):
+    for img in self._get_images(color_mode=color_mode,
+                                count=count,
+                                min=min_img_val,
+                                max=max_img_val,
+                                dtype=dtype):
       path = paths[i % len(paths)]
       if color_mode == 'rgb':
         ext = 'jpg'
@@ -244,9 +248,18 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
     if PIL is None:
       return  # Skip test if PIL is not available.
 
-    directory = self._prepare_directory(num_classes=1, color_mode='rgba', min_img_val=256, max_img_val=60000, dtype=dtypes.uint16)
+    directory = self._prepare_directory(
+        num_classes=1,
+        color_mode='rgba',
+        min_img_val=256,
+        max_img_val=60000,
+        dtype=dtypes.uint16)
     dataset = image_dataset.image_dataset_from_directory(
-        directory, batch_size=8, image_size=(18, 18), color_mode='rgba', dtype=dtypes.uint16)
+        directory,
+        batch_size=8,
+        image_size=(18, 18),
+        color_mode='rgba',
+        dtype=dtypes.uint16)
     batch = next(iter(dataset))
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].dtype.name, 'uint16')
