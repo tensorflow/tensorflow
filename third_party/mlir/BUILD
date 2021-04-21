@@ -286,6 +286,25 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPILinalg",
+    srcs = [
+        "lib/CAPI/Dialect/Linalg.cpp",
+        "lib/CAPI/Dialect/LinalgPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/Linalg.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":LinalgOps",
+        ":LinalgPassIncGen",
+        ":LinalgTransforms",
+        ":Pass",
+    ],
+)
+
+cc_library(
     name = "CAPIConversion",
     srcs = ["lib/CAPI/Conversion/Passes.cpp"],
     hdrs = ["include/mlir-c/Conversion.h"],
@@ -295,6 +314,18 @@ cc_library(
         ":ConversionPassIncGen",
         ":ConversionPasses",
         ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIDebug",
+    srcs = ["lib/CAPI/Debug/Debug.cpp"],
+    hdrs = ["include/mlir-c/Debug.h"],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":Support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -4994,6 +5025,14 @@ gentbl(
         (
             "-gen-pass-decls -name Linalg",
             "include/mlir/Dialect/Linalg/Passes.h.inc",
+        ),
+        (
+            "-gen-pass-capi-header --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
