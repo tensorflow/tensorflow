@@ -112,6 +112,7 @@ TF_LITE_MICRO_TEST(HorizontalResize) {
                                       expected_size_data, expected_output_data,
                                       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
   const int input_dims[] = {4, 1, 1, 2, 1};
   const int8_t input_data[] = {3, 6};
@@ -129,6 +130,7 @@ TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
       input_dims, input_data, expected_size_data, expected_output_data,
       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(VerticalResize) {
   const int input_dims[] = {4, 1, 2, 1, 1};
   const float input_data[] = {3, 9};
@@ -146,6 +148,7 @@ TF_LITE_MICRO_TEST(VerticalResize) {
                                       expected_size_data, expected_output_data,
                                       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(VerticalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 1, 1};
   const int8_t input_data[] = {3, 9};
@@ -163,6 +166,7 @@ TF_LITE_MICRO_TEST(VerticalResizeInt8) {
       input_dims, input_data, expected_size_data, expected_output_data,
       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(TwoDimensionalResize) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_data[] = {
@@ -188,6 +192,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResize) {
                                       expected_size_data, expected_output_data,
                                       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const int8_t input_data[] = {
@@ -212,6 +217,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
       input_dims, input_data, expected_size_data, expected_output_data,
       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
   const int input_dims[] = {4, 2, 2, 2, 1};
   const float input_data[] = {
@@ -241,6 +247,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
                                       expected_size_data, expected_output_data,
                                       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
   const int input_dims[] = {4, 2, 2, 2, 1};
   const int8_t input_data[] = {
@@ -270,6 +277,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
       input_dims, input_data, expected_size_data, expected_output_data,
       output_dims, output_data, &params, /*tolerance=*/1);
 }
+
 TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
   const int input_dims[] = {4, 1, 2, 2, 2};
   const float input_data[] = {
@@ -294,6 +302,7 @@ TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
                                       expected_size_data, expected_output_data,
                                       output_dims, output_data, &params);
 }
+
 TF_LITE_MICRO_TEST(ThreeDimensionalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 2, 2};
   const int8_t input_data[] = {
