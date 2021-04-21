@@ -31,10 +31,10 @@ del absolute_import
 del division
 del print_function
 
-# These symbols appear because we import the python package which
-# in turn imports from tensorflow.core and tensorflow.python. They
-# must come from this module. So python adds these symbols for the
-# resolution to succeed.
+# These symbols appear to us because we import all the python packages which
+# in turn imports packages from tensorflow.core and tensorflow.python. They
+# must be present in these modules. So python adds these symbols so that the
+# resolution succeeds.
 # pylint: disable=undefined-variable
 del python
 del core
