@@ -941,6 +941,104 @@ class IotaConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+/// Converts mhlo.concatenate operation to a linalg.generic op.
+struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
+  using OpConversionPattern<mhlo::ConcatenateOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConcatenateOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    // Shortcut the one-operand case, simplifies code below.
+    if (args.size() == 1) {
+      rewriter.replaceOp(op, args[0]);
+      return success();
+    }
+
+    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    uint64_t dim = op.dimension();
+    int64_t rank = result_type.getRank();
+    Value zero = b.create<ConstantIndexOp>(0);
+    SmallVector<Value, 3> sizes;
+    for (int64_t i = 0; i < rank; ++i) {
+      sizes.push_back(i == dim ? Value() : b.create<memref::DimOp>(args[0], i));
+    }
+
+    // Calculate the size of the concatenated dimension.
+    Value result_dim_size;
+    for (auto arg : args) {
+      Value size = b.create<memref::DimOp>(arg, dim);
+      result_dim_size =
+          result_dim_size ? b.create<AddIOp>(result_dim_size, size) : size;
+    }
+    sizes[dim] = result_dim_size;
+
+    // Allocate the output tensor with init_tensor.
+    SmallVector<Value, 3> dyn_sizes;
+    for (int64_t i = 0; i < rank; ++i) {
+      if (result_type.isDynamicDim(i)) dyn_sizes.push_back(sizes[i]);
+    }
+    Value result = b.create<linalg::InitTensorOp>(
+        dyn_sizes, result_type.getShape(), result_type.getElementType());
+
+    // Generate a generic op to gather the elements of the concatenate. This is
+    // awkward standalone but allows fusion with other generic ops.
+    unsigned nloops = result_type.getRank();
+    auto linalg_op = b.create<linalg::IndexedGenericOp>(
+        /*resultTensorTypes=*/result_type,
+        /*inputs=*/ValueRange{}, /*outputBuffers=*/result,
+        llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nested_builder, Location loc, ValueRange ivs,
+            ValueRange) {
+          OpBuilder b = nested_builder;
+          Value concat_dim_size = zero;
+          Value result;
+          auto extract_indices = llvm::to_vector<4>(ivs);
+          for (const Value& arg : args) {
+            Value new_concat_dim_size;
+            scf::IfOp if_op;
+            if (&arg != &args.back()) {
+              // Calculate how far along we have iterated along the concatenate
+              // dimension. That way we can tell which input to select.
+              new_concat_dim_size = b.create<AddIOp>(
+                  loc, concat_dim_size, b.create<memref::DimOp>(loc, arg, dim));
+              Value cmp = b.create<CmpIOp>(loc, rewriter.getI1Type(),
+                                           CmpIPredicate::ult, ivs[dim],
+                                           new_concat_dim_size);
+              if_op = b.create<scf::IfOp>(loc, result_type.getElementType(),
+                                          cmp, true);
+              if (result) {
+                b.create<scf::YieldOp>(loc, if_op->getResults()[0]);
+              } else {
+                result = if_op->getResults()[0];
+              }
+
+              b = if_op.getThenBodyBuilder(b.getListener());
+            }
+
+            // Now adjust the index for the concatenated dimension to fit into
+            // the selected tensor and do an extract at that position.
+            extract_indices[dim] =
+                b.create<SubIOp>(loc, ivs[dim], concat_dim_size);
+            Value extract =
+                b.create<tensor::ExtractOp>(loc, arg, extract_indices);
+            b.create<scf::YieldOp>(loc, extract);
+
+            if (if_op) {
+              b = if_op.getElseBodyBuilder(b.getListener());
+              concat_dim_size = new_concat_dim_size;
+            }
+          }
+          nested_builder.create<linalg::YieldOp>(loc, result);
+        });
+    rewriter.replaceOp(op, linalg_op.result_tensors());
+    return success();
+  }
+};
+
 template <typename OpTy>
 class ConstConverter : public OpConversionPattern<OpTy> {
  public:
@@ -2107,7 +2205,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
-      BroadcastConverter<mhlo::BroadcastOp, false>,
+      BroadcastConverter<mhlo::BroadcastOp, false>, ConcatenateConverter,
       ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
       IotaConverter<mhlo::DynamicIotaOp, false>,
