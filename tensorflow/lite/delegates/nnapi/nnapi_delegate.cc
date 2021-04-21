@@ -3883,7 +3883,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                     nnapi_->ANeuralNetworksExecution_create(
                                         nn_compilation_.get(), &execution),
                                     "creating NNAPI execution", nnapi_errno);
-    if (nnapi_->android_sdk_version > kMinSdkVersionForNNAPI13) {
+    if (nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13) {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
           nnapi_->ANeuralNetworksExecution_setReusable(execution,
