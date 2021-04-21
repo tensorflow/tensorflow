@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"     // from @llvm-project
 
 // This file contains legalizations common to mapping both TensorFlow and
 // TensorFlow Lite to TOSA.
@@ -34,7 +34,7 @@ namespace tosa {
 // Lowers the Pack operator to TOSA.
 llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
                                     Value result_value,
-                                    SmallVector<Value, 8>& inputs,
+                                    SmallVectorImpl<Value>& inputs,
                                     int32_t axis);
 
 // Lowers the Unpack operator to TOSA.
@@ -73,7 +73,7 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
 // Lowers ConcatV2 to TOSA.
 llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
                                         Operation* op, Value result_value,
-                                        SmallVector<Value, 8>& values,
+                                        SmallVectorImpl<Value>& values,
                                         int32_t axis);
 
 // Lowers SpaceToBatchND to TOSA.
@@ -98,7 +98,7 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
 // Lowers Squeeze to TOSA.
 llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value input_value,
-                                       SmallVector<int32_t, 8>& squeeze_dims);
+                                       SmallVectorImpl<int32_t>& squeeze_dims);
 
 // Lowers ELU to a sequence of TOSA ops.
 llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
@@ -136,7 +136,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 // Lowers SplitV to a sequence of TOSA ops.
 llvm::Optional<SmallVector<Value>> convertSplitVOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
-    Value input_value, SmallVector<int32_t, 4>& size_split, int32_t axis);
+    Value input_value, SmallVectorImpl<int32_t>& size_split, int32_t axis);
 
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(
