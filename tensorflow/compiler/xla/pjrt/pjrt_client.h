@@ -210,6 +210,89 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
 
+  // A client may want to create a buffer, and hand the buffer to other PjRt
+  // methods, before the data to store in the buffer is available to the client.
+  // This is supported using CreateBuffersForAsyncTransfer, which returns an
+  // AsyncBufferTransferManager helper object.
+  //
+  // The PjRtBuffers can be retrieved from the AsyncBufferTransferManager and
+  // safely passed immediately to downstream PjRt method calls. Subsequently the
+  // client can call methods on the AsyncBufferTransferManager object to copy
+  // data into the buffers, and once the data copies are complete, the buffers'
+  // definition events will automatically become ready, unblocking downstream
+  // consumers of the buffers.
+  //
+  // A single call to CreateBuffersForAsyncTransfer creates a "batch" of buffers
+  // that share a single definition event, which may amortize some performance
+  // overheads, but means that none of the buffers are available to downstream
+  // consumers until all the transfers have completed. Multiple calls to
+  // CreateBuffersForAsyncTransfer should be made if it is desirable for buffers
+  // to become available as soon as transfers into them complete.
+
+  // Helper class to all clients to asynchronously transfer data into buffers
+  // that are created uninitialized, see comments immediately above.
+  class AsyncBufferTransferManager {
+   public:
+    virtual ~AsyncBufferTransferManager() = default;
+
+    // Returns the number of buffers managed by this object.
+    virtual size_t buffer_count() const = 0;
+
+    // Returns buffer_index, which can be passed to downstream consumers
+    // immediately and will become available once transfers complete. May not
+    // be called more than once for a given buffer_index.
+    //
+    // RetrieveBuffer can be called at any convenient time; transfer methods
+    // can safely be called for a buffer index after RetrieveBuffer has been
+    // called.
+    virtual std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) = 0;
+
+    // Transfers 'literal' into buffer_index. No transfer calls into
+    // buffer_index can be made after this call. on_done is called when the
+    // transfer is complete. 'literal' must remain in scope until on_done is
+    // called.
+    virtual Status TransferLiteralToBuffer(int buffer_index,
+                                           const LiteralSlice& literal,
+                                           std::function<void()> on_done) = 0;
+
+    // Returns the on-device size in bytes of buffer buffer_index.
+    virtual size_t buffer_size(int buffer_index) const = 0;
+
+    // Transfers 'data' into buffer_index. 'data' must be already laid out in
+    // the correct on-device format, for example returned by a call to
+    // buffer->CopyRawToHost. No transfer calls into buffer_index can be made
+    // after this call. on_done is called when the transfer is complete. 'data'
+    // must remain in scope until on_done is called.
+    virtual Status TransferRawDataToBuffer(int buffer_index,
+                                           absl::string_view data,
+                                           std::function<void()> on_done) = 0;
+
+    // Transfers 'data' into a sub-buffer of buffer_index starting at offset, of
+    // length transfer_size. 'data' must be already laid out in the correct
+    // on-device format, for example returned by a call to
+    // buffer->CopyRawToHost. If is_last_transfer is false then the buffer
+    // remains unavailable to consumers after the transfer completes. If
+    // is_last_transfer is true then the buffer becomes available to consumers
+    // after the transfer completes, and no transfer calls into buffer_index can
+    // be made after this call. on_done is called when the transfer is complete.
+    // 'data' must remain in scope until on_done is called.
+    virtual Status TransferRawDataToSubBuffer(
+        int buffer_index, const void* data, int64 offset, int64 transfer_size,
+        bool is_last_transfer, std::function<void()> on_done) = 0;
+
+    // Indicates that a client error occurred and the transfers will never
+    // complete. Puts all buffers in an error state. For the stream executor
+    // client, since error states are not well supported, this triggers a fatal
+    // error.
+    virtual void SetTransferError(Status error) = 0;
+  };
+
+  // Returns a manager for async transfers into a set of buffers with on-host
+  // shapes 'shapes'.
+  virtual StatusOr<std::unique_ptr<AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) = 0;
+
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
   enum class HostBufferSemantics {
@@ -362,6 +445,17 @@ class PjRtBuffer {
     TF_RETURN_IF_ERROR(ToLiteral(literal.get()));
     return literal;
   }
+
+  // Returns the number of bytes of the buffer storage on the device.
+  virtual StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
+
+  // Transfers a sub-range of the on-device representation of the buffer.
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. on_ready
+  // is called if and only if CopyRawToHost returns OK. on_ready will be called
+  // with a non-OK status if the buffer asynchronously transitions to an error
+  // state.
+  virtual Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                               std::function<void(Status)> on_ready) = 0;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

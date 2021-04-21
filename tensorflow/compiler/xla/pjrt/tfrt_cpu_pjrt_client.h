@@ -138,6 +138,12 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
+  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) override {
+    return Unimplemented("Async transfer to buffers not implemented");
+  };
+
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
@@ -402,6 +408,15 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   using PjRtBuffer::ToLiteral;
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
+
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
+    return Unimplemented("GetOnDeviceSizeInBytes not implemented");
+  }
+
+  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                       std::function<void(Status)> on_ready) override {
+    return Unimplemented("CopyRawToHost not implemented");
+  }
 
   void Delete() override;
 
