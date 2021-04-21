@@ -823,6 +823,8 @@ class _FunctionConverterData(_ConverterData):
       if idx in map_index_to_variable:
         data = map_index_to_variable[idx].numpy()
       else:
+        if val_tensor.dtype == dtypes.resource:
+          continue
         data = np.array(val_tensor.numpy())
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
