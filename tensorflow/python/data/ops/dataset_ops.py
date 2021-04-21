@@ -2578,7 +2578,7 @@ name=None))
     >>> dataset = dataset.bucket_by_sequence_length(
     ...         element_length_func=lambda elem: tf.shape(elem)[0],
     ...         bucket_boundaries=[3, 5],
-    ...         bucket_batch_sizes=[2, 2, 2]))
+    ...         bucket_batch_sizes=[2, 2, 2])
     >>> for elem in dataset.as_numpy_iterator():
     ...   print(elem)
     [[1 2 3 4]
