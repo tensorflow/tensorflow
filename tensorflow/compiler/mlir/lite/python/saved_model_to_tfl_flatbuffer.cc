@@ -52,8 +52,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
             func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
-      // TODO(jaesung): There could be multiple entry functions. Let's handle
-      // such cases if there are any needs for that.
+      // TODO(b/184697652): There could be multiple entry functions. Let's
+      // handle such cases if there are any needs for that.
       if (entry_function != nullptr) {
         return errors::InvalidArgument(
             "There should be only one tf.entry_function");
