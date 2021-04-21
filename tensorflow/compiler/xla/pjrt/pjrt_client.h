@@ -249,7 +249,8 @@ class PjRtClient {
 
     // Transfers 'literal' into buffer_index. No transfer calls into
     // buffer_index can be made after this call. on_done is called when the
-    // transfer is complete. 'literal' must remain in scope until on_done is
+    // transfer is complete but before the buffers are made available to
+    // their consumers. 'literal' must remain in scope until on_done is
     // called.
     virtual Status TransferLiteralToBuffer(int buffer_index,
                                            const LiteralSlice& literal,
@@ -261,8 +262,9 @@ class PjRtClient {
     // Transfers 'data' into buffer_index. 'data' must be already laid out in
     // the correct on-device format, for example returned by a call to
     // buffer->CopyRawToHost. No transfer calls into buffer_index can be made
-    // after this call. on_done is called when the transfer is complete. 'data'
-    // must remain in scope until on_done is called.
+    // after this call. on_done is called when the transfer is complete but
+    // before the buffers are made available to their consumers. 'data' must
+    // remain in scope until on_done is called.
     virtual Status TransferRawDataToBuffer(int buffer_index,
                                            absl::string_view data,
                                            std::function<void()> on_done) = 0;
@@ -274,8 +276,9 @@ class PjRtClient {
     // remains unavailable to consumers after the transfer completes. If
     // is_last_transfer is true then the buffer becomes available to consumers
     // after the transfer completes, and no transfer calls into buffer_index can
-    // be made after this call. on_done is called when the transfer is complete.
-    // 'data' must remain in scope until on_done is called.
+    // be made after this call. on_done is called when the transfer is complete
+    // but before the buffers are made available to their consumers. 'data' must
+    // remain in scope until on_done is called.
     virtual Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64 offset, int64 transfer_size,
         bool is_last_transfer, std::function<void()> on_done) = 0;
