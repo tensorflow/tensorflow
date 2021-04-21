@@ -65,6 +65,9 @@
         skipping over exhausted datasets, until all datasets are exhausted. By
         default, the original behavior (`stop_on_empty_dataset=False`) is
         preserved.
+*   `tf.keras`:
+    *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
+        inputs are `RaggedTensor` objects.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
 
