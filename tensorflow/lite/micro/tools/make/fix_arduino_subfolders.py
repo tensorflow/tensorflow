@@ -74,7 +74,6 @@ def main(unparsed_args):
   rename_example_subfolder_files(library_dir)
   rename_example_main_inos(library_dir)
   move_person_data(library_dir)
-  move_image_data_experimental(library_dir)
 
 
 def parse_args():
