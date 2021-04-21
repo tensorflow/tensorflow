@@ -1,0 +1,56 @@
+{
+	"name": "Tensorflow Dev Container",
+	
+	"dockerFile": "Dockerfile",
+
+	// Uncomment this for GPU image
+	// "build": { 
+	// 		"args": { 
+	//			"IMAGE_TYPE": "-gpu"
+	//		} 
+	//	},
+	
+
+	// Set *default* container specific settings.json values on container create.
+	"settings": {
+		"terminal.integrated.shell.linux": "/bin/bash",
+		"python.testing.pytestEnabled": true,
+		"python.testing.pytestArgs": [ 
+			"./tensorflow"
+		],
+		"C_Cpp.clang_format_style": "{BasedOnStyle: Google}",
+		"C_Cpp.default.includePath": [
+			"${workspaceFolder}/**",
+        	],
+		"files.watcherExclude": {
+			"**/bazel-*/**": true
+		},
+		"search.exclude": {
+			"**/bazel-*/**": true
+		}
+	},
+
+	// Add the IDs of extensions you want installed when the container is created.
+	"extensions": [
+		"ms-python.python",
+		"ms-vscode.cpptools",
+	],
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// "postCreateCommand": "uname -a",
+    "mounts": [
+        "source=tensorflow_cache,target=/home/vscode/.cache/bazel/"
+      ],
+
+	// Uncomment when using a ptrace-based debugger like C++, Go, and Rust
+	"runArgs": [ 
+		"--cap-add=SYS_PTRACE",
+		// Uncomment this to enable Nvidia support
+		//"--runtime=nvidia",
+		"--security-opt",
+		"seccomp=unconfined" ],
+	"remoteUser": "vscode"
+}
