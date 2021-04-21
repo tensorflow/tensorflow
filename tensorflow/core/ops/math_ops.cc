@@ -1478,7 +1478,8 @@ REGISTER_OP("Range")
     .Input("delta: Tidx")
     .Output("output: Tidx")
     .Attr(
-        "Tidx: {bfloat16, half, float, double, int8, int16, int32, int64} = "
+        "Tidx: "
+        "{bfloat16, half, float, double, int8, int16, int32, int64, uint32} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1505,6 +1506,8 @@ REGISTER_OP("Range")
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT32) {
+        return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {

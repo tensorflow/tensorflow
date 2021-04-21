@@ -1103,6 +1103,13 @@ py_test(
 )
 
 py_library(
+    name = "immutable_dict",
+    srcs = ["immutable_dict.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+py_library(
     name = "tensor_shape",
     srcs = ["tensor_shape.py"],
     srcs_version = "PY3",
@@ -1610,6 +1617,20 @@ tf_py_test(
         ":framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_py_test(
+    name = "immutable_dict_test",
+    size = "small",
+    srcs = ["immutable_dict_test.py"],
+    main = "immutable_dict_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/184565242) Enable pip once we add a module that depends on this.
+    deps = [
+        ":immutable_dict",
+        ":test_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

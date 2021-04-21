@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -160,10 +163,31 @@ extern const char* const kCusolverCholeskyCallTarget;
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
+// Layout analysis for fusion. The constructor will analyze the given LMHLO
+// fusion operation and store the inferred layouts of fusion internal values.
+// The default constructor will be used when dealing with LMHLO operations, in
+// which case there no analysis is needed and the layout can be inferred from
+// the memref types (so that we can have a unified interface in helper functions
+// to query layouts).
+class FusionLayoutAnalysis {
+ public:
+  FusionLayoutAnalysis() {}
+  explicit FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op);
+
+  // Gets the shape of a given value, including its inferred layout.
+  Shape GetShape(mlir::Value value) const;
+
+ private:
+  llvm::DenseMap<mlir::Value, Layout> layouts_;
+};
+
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
-bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
+
+// MLIR variant that relies on the shape layouts from fusion layout analysis.
+bool IsReductionFromOrToContiguousDimensions(
+    mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
@@ -229,8 +253,9 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 // `first_reduce`.
 bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
                                       const HloInstruction* first_reduce);
-bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
-                                      mlir::mhlo::ReduceOp first_reduce);
+bool IsFusedReductionOutputConsistent(
+    mlir::mhlo::ReduceOp inst, mlir::mhlo::ReduceOp first_reduce,
+    const FusionLayoutAnalysis& layout_analysis);
 
 inline bool AreFusedReductionOutputsConsistent(
     absl::Span<const HloInstruction* const> output_instructions,

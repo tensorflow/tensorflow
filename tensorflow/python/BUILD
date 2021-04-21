@@ -59,6 +59,7 @@ visibility = [
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(

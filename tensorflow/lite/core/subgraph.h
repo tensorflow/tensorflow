@@ -142,8 +142,6 @@ class Subgraph {
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Get a mutable tensor data structure.
-  // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
-  // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
         static_cast<size_t>(tensor_index) >= context_.tensors_size) {

@@ -864,6 +864,16 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK:  return
 }
 
+func @pad_5D(tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3x1x1xf32>, %arg1: tensor<5x2xi32>):
+  %0 = "tf.Pad"(%arg0, %arg1) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: pad_5D
+  // CHECK:  "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
 func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf32> {
   %0 = "tf.Pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
   return %0 : tensor<2x1x3xf32>
@@ -892,6 +902,17 @@ func @padv2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 
   // CHECK-LABEL: padv2
   // CHECK:  "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
+func @padv2_5D(tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3x1x1xf32>, %arg1: tensor<5x2xi32>):
+  %cst = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %0 = "tf.PadV2"(%arg0, %arg1, %cst) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>, tensor<f32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: padv2_5D
+  // CHECK:  "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>, tensor<f32>) -> tensor<?xf32>
   // CHECK:  return
 }
 

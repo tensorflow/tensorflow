@@ -130,6 +130,24 @@ std::vector<GetNextTestCase<FlatMapDatasetParams>> GetNextTestCases() {
 ITERATOR_GET_NEXT_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
                          GetNextTestCases())
 
+std::vector<SkipTestCase<FlatMapDatasetParams>> SkipTestCases() {
+  return {{/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{2}})},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{4}})},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 9, /*expected_num_skipped*/ 9, /*get_next*/ false},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9, /*get_next*/ false}};
+}
+
+ITERATOR_SKIP_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
+                     SkipTestCases())
+
 TEST_F(FlatMapDatasetOpTest, DatasetNodeName) {
   auto dataset_params = FlatMapDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));

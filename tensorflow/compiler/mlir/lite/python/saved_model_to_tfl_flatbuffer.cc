@@ -150,8 +150,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
-  if (exported_names.size() != 1) {
-    return errors::Unimplemented("Only support a single exported name.");
+  if (exported_names.empty()) {
+    return errors::Unimplemented("Need at least one exported name.");
   }
 
   tensorflow::GraphImportConfig specs;

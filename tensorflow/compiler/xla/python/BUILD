@@ -549,6 +549,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:gpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tpu_client",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
@@ -574,6 +575,7 @@ cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/types:optional",
     ],

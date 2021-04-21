@@ -276,6 +276,23 @@ cc_library(
 )
 
 cc_library(
+    name = "quantized_fully_connected_tester",
+    testonly = 1,
+    srcs = ["quantized_fully_connected_tester.cc"],
+    hdrs = ["quantized_fully_connected_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "reduce_tester",
     testonly = 1,
     srcs = ["reduce_tester.cc"],
@@ -741,9 +758,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # TODO(b/185256952): enable after this is fixed.
-    ],
     deps = [
         ":quantized_conv_2d_tester",
         ":test_main",
@@ -759,11 +773,23 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # TODO(b/185256952): enable after this is fixed.
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantized_fully_connected_test",
+    srcs = ["quantized_fully_connected_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_fully_connected_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

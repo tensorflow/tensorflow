@@ -27,7 +27,7 @@ def which(repository_ctx, program_name, allow_failure = False):
         out = execute(
             repository_ctx,
             ["C:\\Windows\\System32\\where.exe", program_name],
-            empty_stdout_fine = allow_failure,
+            allow_failure = allow_failure,
         ).stdout
         if out != None:
             out = out.replace("\\", "\\\\").rstrip()
@@ -36,7 +36,7 @@ def which(repository_ctx, program_name, allow_failure = False):
     out = execute(
         repository_ctx,
         ["which", program_name],
-        empty_stdout_fine = allow_failure,
+        allow_failure = allow_failure,
     ).stdout
     if out != None:
         out = out.replace("\\", "\\\\").rstrip()
@@ -52,17 +52,17 @@ def get_python_bin(repository_ctx):
       The python bin path.
     """
     python_bin = get_host_environ(repository_ctx, PYTHON_BIN_PATH)
-    if python_bin != None:
+    if python_bin:
         return python_bin
 
     # First check for an explicit "python3"
     python_bin = which(repository_ctx, "python3", True)
-    if python_bin != None:
+    if python_bin:
         return python_bin
 
     # Some systems just call pythone3 "python"
     python_bin = which(repository_ctx, "python", True)
-    if python_bin != None:
+    if python_bin:
         return python_bin
 
     auto_config_fail("Cannot find python in PATH, please make sure " +
@@ -113,7 +113,7 @@ def read_dir(repository_ctx, src_dir):
         find_result = execute(
             repository_ctx,
             ["C:\\Windows\\System32\\cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
-            empty_stdout_fine = True,
+            allow_failure = True,
         )
 
         # src_files will be used in genrule.outs where the paths must
@@ -123,7 +123,7 @@ def read_dir(repository_ctx, src_dir):
         find_result = execute(
             repository_ctx,
             ["find", src_dir, "-follow", "-type", "f"],
-            empty_stdout_fine = True,
+            allow_failure = True,
         )
         result = find_result.stdout
     return sorted(result.splitlines())
@@ -144,14 +144,14 @@ def get_environ(repository_ctx, name, default_value = None):
         result = execute(
             repository_ctx,
             ["C:\\Windows\\System32\\cmd.exe", "/c", "echo", "%" + name + "%"],
-            empty_stdout_fine = True,
+            allow_failure = True,
         )
     else:
         cmd = "echo -n \"$%s\"" % name
         result = execute(
             repository_ctx,
             [get_bash_bin(repository_ctx), "-c", cmd],
-            empty_stdout_fine = True,
+            allow_failure = True,
         )
     if len(result.stdout) == 0:
         return default_value
@@ -212,7 +212,7 @@ def execute(
         cmdline,
         error_msg = None,
         error_details = None,
-        empty_stdout_fine = False):
+        allow_failure = False):
     """Executes an arbitrary shell command.
 
     Args:
@@ -220,13 +220,13 @@ def execute(
       cmdline: list of strings, the command to execute
       error_msg: string, a summary of the error if the command fails
       error_details: string, details about the error or steps to fix it
-      empty_stdout_fine: bool, if True, an empty stdout result is fine,
-        otherwise it's an error
+      allow_failure: bool, if True, an empty stdout result and output to stderr
+        is fine, otherwise it's an error
     Returns:
       The result of repository_ctx.execute(cmdline)
     """
     result = raw_exec(repository_ctx, cmdline)
-    if result.stderr or not (empty_stdout_fine or result.stdout):
+    if (result.stderr or not result.stdout) and not allow_failure:
         fail(
             "\n".join([
                 error_msg.strip() if error_msg else "Repository command failed",

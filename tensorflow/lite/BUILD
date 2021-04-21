@@ -498,8 +498,9 @@ cc_library(
     name = "tflite_with_xnnpack_default",
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
-    # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
-    # once we have a good testing coverage on these two platforms.
+    # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
+    # configuration conditions will make TFLite interpreter to apply XNNPACK
+    # delegate by default.
     deps = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],

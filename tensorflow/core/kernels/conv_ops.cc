@@ -260,6 +260,11 @@ struct LaunchConv2DOp<CPUDevice, T> {
     const int64 out_depth = output->dim_size(3);
     const int64 patch_depth = filter.dim_size(2);
 
+    if (patch_depth <= 0) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "filter depth must be stricly positive, got ", patch_depth));
+      return;
+    }
     if (in_depth % patch_depth != 0) {
       ctx->SetStatus(errors::InvalidArgument(
           "input depth must be evenly divisible by filter depth: ", in_depth,
@@ -268,6 +273,11 @@ struct LaunchConv2DOp<CPUDevice, T> {
     }
 
     const int64 num_groups = in_depth / patch_depth;
+    if (num_groups <= 0) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "number of groups must be stricly positive, got ", num_groups));
+      return;
+    }
     if (out_depth % num_groups != 0 || out_depth < num_groups) {
       ctx->SetStatus(errors::InvalidArgument(
           "output depth must be evenly divisible by number of groups: ",
@@ -536,6 +546,9 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
               errors::InvalidArgument("Patch depth too large"));
   const int in_depth = static_cast<int>(in_depth_raw);
   const int patch_depth = static_cast<int>(patch_depth_raw);
+  TF_REQUIRES(patch_depth > 0,
+              errors::InvalidArgument(
+                  "filter depth must be stricly positive, got ", patch_depth));
   TF_REQUIRES(in_depth % patch_depth == 0,
               errors::InvalidArgument(
                   "input depth must be evenly divisible by filter depth: ",

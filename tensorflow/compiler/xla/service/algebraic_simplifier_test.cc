@@ -1832,6 +1832,38 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, ZeroSizedVariadicReduceWindow) {
+  const char* const hlo_string = R"(
+HloModule ZeroSizedVariadicReduceWindow
+
+ZeroSizedVariadicReduceWindow.add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  p3 = f32[] parameter(3)
+  add.0 = f32[] add(p0, p1)
+  add.1 = f32[] add(p2, p3)
+  ROOT r = tuple(add.0, add.1)
+}
+
+ENTRY ZeroSizedReduceWindow {
+  op = f32[3,0] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = (f32[5,2], f32[5,2]) reduce-window(op, op, constant, constant), window={size=1x1 pad=1_1x1_1}, to_apply=ZeroSizedVariadicReduceWindow.add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Parameter(0),
+                                         m::Constant(), m::Constant())));
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
+                                  m::Broadcast(m::Constant()))));
+}
+
 TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
@@ -7211,6 +7243,40 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
   ASSERT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
+  ASSERT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(0)
+                ->called_computations()
+                .size(),
+            1);
+  EXPECT_THAT(m->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->called_computations()[0]
+                  ->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduceWindow) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      a = f32[] add(p0, p1)
+      ROOT t = (f32[]) tuple(a)
+    }
+    test {
+      p0 = f32[32,8,6,7] parameter(0)
+      c = f32[] constant(0)
+      ROOT r = (f32[32,8,6,7]) reduce-window(p0, c), to_apply=fn, window={size=1x1x1x1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::ReduceWindow(m::Parameter(0), m::ConstantScalar(0)))));
   ASSERT_EQ(m->entry_computation()
                 ->root_instruction()
                 ->operand(0)

@@ -457,7 +457,6 @@ void Subgraph::SetExternalContext(struct TfLiteContext* context,
 // this memory and it is only guaranteed to exist during the invocation of the
 // delegate prepare.
 TfLiteStatus Subgraph::GetExecutionPlan(TfLiteIntArray** execution_plan) {
-  // TODO(aselle): Do not make a copy here
   plan_cache_.reset(TfLiteIntArrayCreate(execution_plan_.size()));
   *execution_plan = plan_cache_.get();
   static_assert(sizeof(plan_cache_->data[0]) == sizeof(execution_plan_[0]),
@@ -699,7 +698,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   return kTfLiteOk;
 }
 
-// TODO(ycling): Support non-zero default values.
+// TODO(b/115961645): Support non-zero default values.
 TfLiteStatus Subgraph::ResetVariableTensors() {
   for (auto& tensor : tensors_) {
     if (!tensor.is_variable) {
@@ -836,8 +835,6 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
     return kTfLiteError;
   }
 
-  // TODO(aselle): All bounds checks can be implemented as one-sided bounds
-  // checks by casting to unsigned for efficiency. Profile before doing this.
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
   TfLiteTensor* tensor = &context_.tensors[tensor_index];

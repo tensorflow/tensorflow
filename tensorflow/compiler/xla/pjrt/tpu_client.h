@@ -53,7 +53,7 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
 };
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
-    bool asynchronous,
+    int max_inflight_computations,
     absl::Duration init_retry_timeout = absl::ZeroDuration());
 
 }  // namespace xla

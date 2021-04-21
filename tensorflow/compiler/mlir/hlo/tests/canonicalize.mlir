@@ -1735,3 +1735,15 @@ func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
 // CHECK: mhlo.dynamic_reshape
 // CHECK-NEXT: mhlo.abs
 // CHECK-NOT: mhlo.dynamic_reshape
+
+// CHECK-LABEL: @map_op_fold
+func @map_op_fold(%arg: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.map"(%arg, %arg1) ( {
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>):  // no predecessors
+    "mhlo.return"(%b) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+// CHECK: return %arg1 : tensor<?xf32>
+
+

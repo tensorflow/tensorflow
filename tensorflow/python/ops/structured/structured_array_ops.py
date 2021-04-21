@@ -24,6 +24,8 @@ from typing import Sequence
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
@@ -96,6 +98,51 @@ def expand_dims_v2(input, axis, name=None):  # pylint: disable=redefined-builtin
   return _expand_dims_impl(input, axis, name=name)
 
 
+@dispatch.dispatch_for_types(array_ops.gather, StructuredTensor)
+def gather(params,
+           indices,
+           validate_indices=None,
+           name=None,
+           axis=None,
+           batch_dims=0):
+  """tf.gather for structured tensors.
+
+  Does not support (yet) checks on illegal axis values, et cetera.
+
+  Indices must be a ragged or dense tensor.
+  Args:
+    params: a structured tensor to be gathered
+    indices: a ragged tensor or tensor to gather by.
+    validate_indices: whether to validate the indices
+    name: the name of the op(s).
+    axis: the axis in params to gather on.
+    batch_dims: the number of batch dimensions.
+
+  Returns:
+    the params reorganized according to indices.
+  """
+  if name is None:
+    name = 'gather'
+  with ops.name_scope(name):
+    if axis is None:
+      axis = batch_dims
+    ndims_name = params.shape.rank
+    axis = array_ops.get_positive_axis(axis, ndims_name)
+    indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        indices, name='indices')
+
+    def leaf_op(p):
+      return array_ops.gather(
+          p,
+          indices,
+          validate_indices=validate_indices,
+          axis=axis,
+          batch_dims=batch_dims,
+          name=None)
+
+    return _extend_op_single(params, leaf_op)
+
+
 @dispatch.dispatch_for_types(array_ops.concat, StructuredTensor)
 def concat(values, axis, name: str = 'concat'):
   """tf.concat for structured tensors.
@@ -121,39 +168,70 @@ def concat(values, axis, name: str = 'concat'):
     return _extend_op(values, leaf_op)
 
 
+@dispatch.dispatch_for_types(random_ops.random_shuffle, StructuredTensor)
+def random_shuffle(value, seed=None, name=None):
+  """Shuffle a structured tensor on the zeroth axis.
+
+  Args:
+    value: a structured tensor of rank at least one.
+    seed: the seed for shuffling.
+    name: the name for shuffle.
+
+  Returns:
+    The shuffled structured tensor.
+  """
+  with ops.name_scope(name, 'shuffle', [value, seed]):
+    if value.rank == 0:
+      raise ValueError('Cannot shuffle a scalar StructuredTensor')
+    first_dimension = value.nrows()
+    index = random_ops.random_shuffle(math_ops.range(first_dimension),
+                                      seed=seed)
+    return gather(value, index, axis=0)
+
+
 # pylint: disable=protected-access
-def zeros_like_object(st, dtype=None):
+@dispatch.dispatch_for_types(array_ops.zeros_like, StructuredTensor)
+def zeros_like(tensor, dtype=None, name=None, optimize=True):
+  """Implementation of zeros_like for StructuredTensor for TF v1."""
+  del optimize
+  return zeros_like_v2(tensor, dtype=dtype, name=name)
+
+
+# pylint: disable=protected-access
+@dispatch.dispatch_for_types(array_ops.zeros_like_v2, StructuredTensor)
+def zeros_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-builtin
   """Replace every object with a zero.
 
   Example:
   >>> st = StructuredTensor.from_pyval([{"x":[3]}, {"x":[4,5]}])
-  >>> zeros_like_object(st)
+  >>> tf.zeros_like(st)
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0.0, 0.0], dtype=float32)>
   >>> st = StructuredTensor.from_pyval([[{"x":[3]}], [{"x":[4,5]}, {"x":[]}]])
-  >>> zeros_like_object(st, dtype=tf.int32)
+  >>> tf.zeros_like(st, dtype=tf.int32)
   <tf.RaggedTensor [[0], [0, 0]]>
 
   Args:
-    st: a structured tensor.
+    input: a structured tensor.
     dtype: the dtype of the resulting zeros. (default is tf.float32)
-
+    name: a name for the op.
   Returns:
     a tensor of zeros of the same shape.
   """
   if dtype is None:
     dtype = dtypes.float32
-  if not st._row_partitions:
-    if st._nrows is not None:
-      return array_ops.zeros([st._nrows], dtype)  # vector.
-    else:
-      return array_ops.zeros([], dtype)  # scalar.
-  # 2D and up.
-  last_row_partition = st._row_partitions[-1]
+  with ops.name_scope(name, 'zeros_like', [input]) as name:
+    if not input._row_partitions:
+      if input._nrows is not None:
+        return array_ops.zeros([input._nrows], dtype)  # vector.
+      else:
+        return array_ops.zeros([], dtype)  # scalar.
+    # 2D and up.
+    last_row_partition = input._row_partitions[-1]
 
-  result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
-      array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
-      st._row_partitions)
-  return result
+    result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
+        array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
+        input._row_partitions)
+    return result
 
 
 def _expand_dims_impl(st, axis, name=None):  # pylint: disable=redefined-builtin
@@ -220,6 +298,7 @@ def _expand_st_row_partitions(st, axis):
         1, nvals, nrows=nvals, validate=False),) + st.row_partitions[axis - 1:]
 
 
+# TODO(martinz): consider allowing values to be nested.
 def _extend_op(values, leaf_op, empty_st_op=None):
   """Extend an op from RaggedTensor and Tensor to StructuredTensor.
 
@@ -267,11 +346,27 @@ def _extend_op(values, leaf_op, empty_st_op=None):
     return leaf_op(values)
 
 
+def _extend_op_single(value, leaf_op, empty_st_op=None):
+  """Extend an op to a value instead of a list of values."""
+
+  def to_list_op(element_op):
+    if element_op is None:
+      return None
+
+    def list_op(values):
+      [value] = values
+      return element_op(value)
+
+    return list_op
+
+  return _extend_op([value], to_list_op(leaf_op), to_list_op(empty_st_op))
+
+
 def empty_st_op_like_zeros(leaf_op):
 
   def empty_st_op(values):
     as_zeros = [
-        zeros_like_object(value, dtype=dtypes.int32) for value in values
+        zeros_like_v2(value, dtype=dtypes.int32) for value in values
     ]
     result = leaf_op(as_zeros)
     return _structured_tensor_like(result)

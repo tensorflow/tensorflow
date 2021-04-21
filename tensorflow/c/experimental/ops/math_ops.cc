@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -64,16 +63,6 @@ Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   ```
 Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
             AbstractTensorHandle** output, const char* name) {
-  // Hand-coded optimization:
-  auto dtype = input->DataType();
-  if (DataTypeIsFloating(BaseType(dtype)) ||
-      DataTypeIsInteger(BaseType(dtype))) {
-    return Identity(ctx, input, output, name);
-  } else if (!DataTypeIsComplex(BaseType(dtype)) &&
-             BaseType(dtype) != DT_VARIANT) {
-    return errors::InvalidArgument(
-        "Expected numeric or variant tensor, got dtype ", dtype);
-  }
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Conj", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
