@@ -233,7 +233,7 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
-  logging.info("Enabling resource variables")
+  logging.vlog(1, "Enabling resource variables")
   _api_usage_gauge.get_cell().set(True)
 
 
@@ -268,7 +268,7 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
-  logging.info("Disabling resource variables")
+  logging.vlog(1, "Disabling resource variables")
   _api_usage_gauge.get_cell().set(False)
 
 
