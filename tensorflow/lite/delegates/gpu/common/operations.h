@@ -49,8 +49,12 @@ enum class OperationType {
   ELU,
   EQUAL,
   EXP,
+  FLOOR,
+  FLOOR_DIV,
+  FLOOR_MOD,
   FULLY_CONNECTED,
   FULLY_CONNECTED_INT8,
+  GATHER,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -77,6 +81,7 @@ enum class OperationType {
   REDUCE_PRODUCT,
   REDUCE_SUM,
   RELU,
+  RESAMPLER,
   RESHAPE,
   RESIZE,
   RSQRT,
@@ -92,6 +97,7 @@ enum class OperationType {
   SQUARED_DIFF,
   SUB,
   TANH,
+  TILE,
   TRANSPOSE,
 };
 
@@ -570,6 +576,10 @@ struct QuantizeAndDequantizeAttributes {
   float min = 0;
   float max = 0;
   float scale = 0;
+};
+
+struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 }  // namespace gpu

@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["tflite_convert.py"])
@@ -41,10 +41,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -216,6 +212,7 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     data = [
+        "//tensorflow/lite/python/testdata:test_delegate.so",
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
@@ -227,7 +224,10 @@ py_test(
     deps = [
         ":lite",
         ":lite_v2_test_util",
+        ":test_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
+        "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",

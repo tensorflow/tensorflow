@@ -252,9 +252,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     });
 
     // Populate patterns.
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
 
-    populateStdExpandOpsPatterns(ctx, patterns);
+    populateStdExpandOpsPatterns(patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
@@ -269,7 +269,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
                              math::MathDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
     // Mark modules as legal.
-    target.addLegalOp<ModuleOp, ModuleTerminatorOp, gpu::GPUModuleOp>();
+    target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.
     target.markOpRecursivelyLegal<gpu::GPUModuleOp>();
 

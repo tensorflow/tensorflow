@@ -26,7 +26,8 @@ namespace graph_tests_utils {
 // Creates a test NodeDef for BatchDatasetV2.
 NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
                         StringPiece batch_size_node_name,
-                        StringPiece drop_remainder_node_name);
+                        StringPiece drop_remainder_node_name,
+                        bool parallel_copy);
 
 // Creates a test NodeDef for ParallelBatchDataset.
 NodeDef MakeParallelBatchNode(StringPiece name, StringPiece input_node_name,

@@ -195,7 +195,8 @@ class TRTEngineResourceOpsTest
       }
       std::vector<PartialTensorShape> input_partial_shapes;
       TF_CHECK_OK(GetNetworkInputShapes(network.get(), &input_partial_shapes));
-      profile.InitProfiles(input_partial_shapes);
+      profile.InitProfiles(input_partial_shapes,
+                           ProfileStrategy::kImplicitBatchModeCompatible);
       // Configure and build engine
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
       TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
@@ -287,14 +288,11 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
 
   // Create an engine and add it to the cache of the resource.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
-  auto context_status =
-      ExecutionContext::Create(engine.get(), resource->allocator_.get());
-  TF_ASSERT_OK(context_status.status());
+  ExecutionContext context = ExecutionContext::Create(engine.get());
 
   resource->cache_.emplace(
       std::vector<TensorShape>{TensorShape({1, 1})},
-      absl::make_unique<EngineContext>(std::move(engine),
-                                       std::move(context_status.ValueOrDie())));
+      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());

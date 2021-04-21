@@ -96,6 +96,9 @@ CreateGpuKernelToNvvmPass();
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
 
+// Pass to simplify shape ops.
+std::unique_ptr<FunctionPass> CreateShapeSimplification();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

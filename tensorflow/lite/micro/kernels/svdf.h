@@ -36,15 +36,15 @@ struct OpData {
 };
 
 // Input tensors.
-constexpr int kInputTensor = 0;
-constexpr int kWeightsFeatureTensor = 1;
-constexpr int kWeightsTimeTensor = 2;
-constexpr int kBiasTensor = 3;
+extern const int kSvdfInputTensor;
+extern const int kSvdfWeightsFeatureTensor;
+extern const int kSvdfWeightsTimeTensor;
+extern const int kSvdfBiasTensor;
 // This is a variable tensor, and will be modified by this op.
-constexpr int kInputActivationStateTensor = 4;
+extern const int kSvdfInputActivationStateTensor;
 
 // Output tensor.
-constexpr int kOutputTensor = 0;
+extern const int kSvdfOutputTensor;
 
 // TensorflowLite Micro-specific reference implementation for Integer SVDF.
 void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
@@ -57,15 +57,14 @@ void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
                               TfLiteEvalTensor* output_tensor,
                               const OpData& data);
 
-void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
-                   const TfLiteEvalTensor* input,
-                   const TfLiteEvalTensor* weights_feature,
-                   const TfLiteEvalTensor* weights_time,
-                   const TfLiteEvalTensor* bias, const TfLiteSVDFParams* params,
-                   int scratch_tensor_index, TfLiteEvalTensor* activation_state,
-                   TfLiteEvalTensor* output);
+void EvalFloatSvdfReference(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
+    const TfLiteEvalTensor* weights_feature,
+    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
+    const TfLiteSVDFParams* params, int scratch_tensor_index,
+    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output);
 
-TfLiteStatus PrepareSVDF(TfLiteContext* context, TfLiteNode* node);
+TfLiteStatus PrepareSvdf(TfLiteContext* context, TfLiteNode* node);
 
 }  // namespace tflite
 

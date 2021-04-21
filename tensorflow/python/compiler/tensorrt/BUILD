@@ -15,10 +15,8 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 exports_files(glob([
     "test/testdata/*",
@@ -146,6 +144,7 @@ cuda_py_tests(
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
+        "test/tf_function_test.py",
         "test/topk_test.py",
         "test/trt_mode_test.py",
         "test/unary_test.py",

@@ -32,6 +32,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+using uint = unsigned int;
+
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
     const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,

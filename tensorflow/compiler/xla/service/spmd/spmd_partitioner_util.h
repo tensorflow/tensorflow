@@ -417,6 +417,16 @@ GatherOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
     const hlo_sharding_util::GatherParallelDims& parallel_dims);
 
+// Pattern rewrite preprocessing utilities.
+
+// Returns rotate_amount if the concat(lhs, rhs) is equivalent to rotating the
+// elements along the concat dimension to the right by rotate_amount, where the
+// input of rotation is the shard operand of lhs and rhs. Returns -1 if the
+// pattern is not found.
+int64 FindRotateRightPattern(const HloInstruction* concat,
+                             const HloInstruction* lhs,
+                             const HloInstruction* rhs);
+
 }  // namespace spmd
 }  // namespace xla
 

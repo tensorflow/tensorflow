@@ -31,17 +31,6 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-/**
- * This version of SVDF is specific to TFLite Micro. It contains the following
- * differences between the TFLite version:
- *
- * 1.) Scratch tensor allocation - scratch tensors must be known ahead of time
- * for the Micro interpreter.
- * 2.) Output dimensions - the TFLite version determines output size and runtime
- * and resizes the output tensor. Micro runtime does not support tensor
- * resizing.
- */
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -53,25 +42,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
   const TfLiteEvalTensor* input =
-      tflite::micro::GetEvalInput(context, node, kInputTensor);
+      tflite::micro::GetEvalInput(context, node, kSvdfInputTensor);
   const TfLiteEvalTensor* weights_feature =
-      tflite::micro::GetEvalInput(context, node, kWeightsFeatureTensor);
+      tflite::micro::GetEvalInput(context, node, kSvdfWeightsFeatureTensor);
   const TfLiteEvalTensor* weights_time =
-      tflite::micro::GetEvalInput(context, node, kWeightsTimeTensor);
+      tflite::micro::GetEvalInput(context, node, kSvdfWeightsTimeTensor);
   const TfLiteEvalTensor* bias =
       (NumInputs(node) == 5)
-          ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
+          ? tflite::micro::GetEvalInput(context, node, kSvdfBiasTensor)
           : nullptr;
   TfLiteEvalTensor* activation_state = tflite::micro::GetMutableEvalInput(
-      context, node, kInputActivationStateTensor);
+      context, node, kSvdfInputActivationStateTensor);
   TfLiteEvalTensor* output =
-      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+      tflite::micro::GetEvalOutput(context, node, kSvdfOutputTensor);
 
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
-      EvalFloatSVDF(context, node, input, weights_feature, weights_time, bias,
-                    params, data.scratch_tensor_index, activation_state,
-                    output);
+      EvalFloatSvdfReference(
+          context, node, input, weights_feature, weights_time, bias, params,
+          data.scratch_tensor_index, activation_state, output);
       return kTfLiteOk;
       break;
     }
@@ -97,7 +86,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration Register_SVDF() {
   return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/PrepareSVDF,
+          /*prepare=*/PrepareSvdf,
           /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,

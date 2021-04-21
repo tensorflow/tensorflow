@@ -299,9 +299,13 @@ TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteEvalTensor* filter,
                        const TfLiteEvalTensor* bias, TfLiteEvalTensor* output,
                        TfLiteEvalTensor* im2col) {
+  const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape& filter_shape = tflite::micro::GetTensorShape(filter);
   /* Dilation is currently not supported on HiFi 4 NN Library */
   if ((params.dilation_width_factor == 1) &&
-      (params.dilation_height_factor == 1)) {
+      (params.dilation_height_factor == 1) &&
+      input_shape.Dims(1) >= filter_shape.Dims(1) &&
+      input_shape.Dims(2) >= filter_shape.Dims(2)) {
     const int32_t input_offset = -data.reference_op_data.input_zero_point;
     const int32_t output_offset = data.reference_op_data.output_zero_point;
     const int stride_width = params.stride_width;
@@ -313,8 +317,6 @@ TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
     const int32_t output_activation_max =
         data.reference_op_data.output_activation_max;
 
-    const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
-    const RuntimeShape& filter_shape = tflite::micro::GetTensorShape(filter);
     const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
     const int batches = MatchingDim(input_shape, 0, output_shape, 0);
     const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);

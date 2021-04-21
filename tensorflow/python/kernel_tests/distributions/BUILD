@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cuda_py_test(
@@ -61,7 +61,6 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tags = [
-        "no_rocm",  # ROCm 3.9 regression
         "notsan",  # b/173653918
     ],
     xla_tags = [
@@ -99,6 +98,9 @@ cuda_py_test(
     name = "categorical_test",
     size = "small",
     srcs = ["categorical_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

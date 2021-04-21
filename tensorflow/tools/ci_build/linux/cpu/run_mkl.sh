@@ -44,13 +44,21 @@ yes "" | $PYTHON_BIN_PATH configure.py
 #   Optimal thread count is case specific.
 RE_DIGITS_ONLY="^[0-9]+$"
 MIN_OMP_THREADS=1
+CONFIG=""
+OMPTHREADS=""
+BLOCK_FORMAT=""
+ENABLE_ONEDNN=""
+KMP_BLOCKTIME=""
 if [[ $# -ge 1 ]]; then
   if [[ "$1" == "eigen" ]]; then
-    CONFIG=""
-    OMPTHREADS=""
+     echo "uses all default values for eigen"
+  elif [[ "$1" == "threadpool" ]]; then
+    ENABLE_ONEDNN="--action_env=TF_ENABLE_ONEDNN_OPTS=1"
   elif [[ "$1" =~ ${RE_DIGITS_ONLY} && $1 -ge ${MIN_OMP_THREADS} ]]; then
     CONFIG="${DEFAULT_CONFIG}"
     OMPTHREADS="--action_env=OMP_NUM_THREADS=${1}"
+    BLOCK_FORMAT="--action_env=TF_ENABLE_MKL_NATIVE_FORMAT=0"
+    KMP_BLOCKTIME="--test_env=KMP_BLOCKTIME=0"
   else
     echo "${1} isn't a valid configuration or"
     echo "number of OM_NUM_THREADS. Exiting..."
@@ -59,10 +67,12 @@ if [[ $# -ge 1 ]]; then
 else  # No parameters were passed in so set default values.
   CONFIG="${DEFAULT_CONFIG}"
   OMPTHREADS="--action_env=OMP_NUM_THREADS=${DEFAULT_OMP_NUM_THREADS}"
+  BLOCK_FORMAT="--action_env=TF_ENABLE_MKL_NATIVE_FORMAT=0"
+  KMP_BLOCKTIME="--test_env=KMP_BLOCKTIME=0"
 fi
 
 echo ""
-echo "Bazel will test with CONFIG=${CONFIG} and OMPTHREADS=${OMPTHREADS}"
+echo "Bazel will test with CONFIG=${CONFIG}, BLOCK_FORMAT=${BLOCK_FORMAT}, ENABLE_ONEDNN=${ENABLE_ONEDNN}, KMP_BLOCKTIME=${KMP_BLOCKTIME}  and OMPTHREADS=${OMPTHREADS}"
 echo ""
 
 # Run bazel test command. Double test timeouts to avoid flakes.
@@ -77,8 +87,10 @@ bazel test \
     --test_timeout 300,450,1200,3600 \
     --build_tests_only \
     ${CONFIG} \
-    --test_env=KMP_BLOCKTIME=0 \
+    ${KMP_BLOCKTIME} \
     ${OMPTHREADS} \
+    ${ENABLE_ONEDNN} \
+    ${BLOCK_FORMAT} \
     --config=opt \
     --test_output=errors \
     -- \

@@ -142,8 +142,6 @@ class Subgraph {
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Get a mutable tensor data structure.
-  // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
-  // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
         static_cast<size_t>(tensor_index) >= context_.tensors_size) {
@@ -612,6 +610,18 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
+  // Enables preserving intermediates for debugging.
+  TfLiteStatus PreserveAllTensorsExperimental();
+
+  // Returns true if 'node' could have side effect (e.g. stateful op).
+  // Note that any node that might update other tensors beside op's output
+  // are considered to have side effect.
+  // So control flow ops like 'If' and 'While' are considered to have
+  // side effect because they can have ops that have side effect in the
+  // condition and body subgraphs.
+  bool OpMightHaveSideEffect(const TfLiteNode* node,
+                             const TfLiteRegistration* registration) const;
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -744,7 +754,12 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 
+  // Name of the subgraph (analogous to function name).
   std::string name_;
+
+  // Whether memory planner should be instantiated to retain intermediates for
+  // debugging.
+  bool preserve_all_tensors_ = false;
 };
 
 }  // namespace tflite

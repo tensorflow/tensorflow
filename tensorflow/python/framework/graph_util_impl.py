@@ -25,7 +25,7 @@ import six
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import _proto_comparators
+from tensorflow.python.framework import _proto_comparators
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation

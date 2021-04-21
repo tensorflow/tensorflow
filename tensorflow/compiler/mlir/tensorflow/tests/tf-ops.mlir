@@ -26,6 +26,16 @@ func @opaquetensorattr() -> () {
 }
 
 //===--------------------------------------------------------------------===//
+//  Test TF placeholder attribute
+//===--------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @placeholderattr
+func @placeholderattr() -> ()
+// CHECK:    attributes {some_placeholder = #tf.placeholder<"foo">} {
+    attributes {some_placeholder = #tf.placeholder<"foo">} {
+  return
+}
+//===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
 
@@ -4236,5 +4246,51 @@ func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -
 func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
   %0 = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<2xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module=""} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> (tensor<2xf32>)
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{can not be deserialized}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="bad_module"} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{'host_mlir_module' does not contain 'host_func' function}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @bad_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{Number of operands/inputs should be the same}}
+  "tf._XlaHostComputeMlir"() {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : () -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{Number of results should be the same}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
   return
 }

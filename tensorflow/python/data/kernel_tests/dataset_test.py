@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 import warnings
 
 from absl.testing import parameterized
@@ -68,22 +67,13 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                                        .ExternalStatePolicy.FAIL))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(init_from_file=[True, False])))
-  def testLookupTableGraphSerialization(self, init_from_file):
-    if init_from_file:
-      file = os.path.join(self.get_temp_dir(), "lookup_table_graph_serialize")
-      with open(file, "w") as f:
-        f.write("10\n11\n")
-      initializer = lookup_ops.TextFileInitializer(
-          file, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
-          dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
-    else:
-      keys_tensor = constant_op.constant([0, 1], dtype=dtypes.int64)
-      vals_tensor = constant_op.constant([10, 11])
-      initializer = lookup_ops.KeyValueTensorInitializer(
-          keys_tensor, vals_tensor)
-
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              init_source=["textfile", "keyvaluetensor", "dataset"])))
+  def testLookupTableGraphSerialization(self, init_source):
+    vals = [10, 11]
+    initializer = self.lookupTableInitializer(init_source, vals)
     table = lookup_ops.StaticHashTable(initializer, -1)
     dataset = dataset_ops.Dataset.range(3)
     dataset = dataset.map(table.lookup)

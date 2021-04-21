@@ -42,6 +42,10 @@ message WorkerConfig {
   int64 dispatcher_timeout_ms = 6;
   // The protocol for the worker to use when transferring data to clients.
   string data_transfer_protocol = 7;
+  // The data transfer address of the worker server. The substring "%port%", if
+  // specified, will be replaced with the worker's bound port. This is useful
+  // when the port is set to `0`.
+  string data_transfer_address = 8;
   // When shutting down a worker, how long to wait for the gRPC server to
   // process the final requests. This is used to achieve clean shutdown in unit
   // tests.

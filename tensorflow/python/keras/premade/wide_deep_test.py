@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras Premade WideNDeep models."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.feature_column import feature_column_v2 as fc

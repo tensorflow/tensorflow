@@ -62,6 +62,8 @@ namespace mlir {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+
 // This pass lifts resource variable operations outside of device computation.
 // This is useful because a lot of accelerator devices can not interact with
 // resource variables directly..
@@ -454,6 +456,7 @@ void RegionResourceHoister::GenerateHoistedReads() {
       Operation* read = builder.create<TF::ReadVariableOp>(
           op_->getLoc(), info.data_type, resource);
       read->setAttrs(info.read_attrs ? info.read_attrs : empty_attrs);
+      read->removeAttr(kDeviceAttr);
       info.hoisted_read = read->getResult(0);
     }
   }
@@ -551,6 +554,7 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
     Operation* write = builder.create<TF::AssignVariableOp>(
         op_->getLoc(), resource, value_to_write);
     write->setAttrs(info.write_attrs);
+    write->removeAttr(kDeviceAttr);
   }
 
   // As a part of lifting, we either reuse an existing slot for resource type

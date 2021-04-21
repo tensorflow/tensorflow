@@ -570,7 +570,13 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
+    if (ctx->serialize_data_tensors()) {
+      TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
+    } else {
+      TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
+      DCHECK_NE(ctx->input_list(), nullptr);
+      ctx->input_list()->emplace_back(node->name(), t);
+    }
     other_arguments->emplace_back(node);
     other_arguments_types->emplace_back(t.dtype());
   }

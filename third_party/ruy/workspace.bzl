@@ -5,11 +5,11 @@ load("//third_party:repo.bzl", "tf_http_archive")
 def repo():
     tf_http_archive(
         name = "ruy",
-        sha256 = "da5ec0cc07472bdb21589b0b51c8f3d7f75d2ed6230b794912adf213838d289a",
-        strip_prefix = "ruy-54774a7a2cf85963777289193629d4bd42de4a59",
+        sha256 = "dbfee92fcf9d6a767e9689ca46aa6c1ec4eb8fe69376bacff45dd875226d0ba1",
+        strip_prefix = "ruy-38a9266b832767a3f535a74a9e0cf39f7892e594",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip",
-            "https://github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip",
+            "https://github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip",
         ],
         build_file = "//third_party/ruy:BUILD",
     )

@@ -1353,3 +1353,23 @@ func @while_body(%arg0: !tf_res_static) -> !tf_res_dynamic {
   %0 = "tf.Cast"(%arg0) : (!tf_res_static) -> !tf_res_dynamic
   return %0 : !tf_res_dynamic
 }
+
+// -----
+
+// Tests that a resource ops device are removed while hoisting.
+
+// CHECK-LABEL: func @same_resource_load_and_store
+// CHECK-NOT: device =
+// CHECK: return
+func @same_resource_load_and_store() -> tensor<*xi32> {
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.ReadVariableOp"(%0) {device = "/device:TPU_REPLICATED_CORE:0"} : (tensor<*x!tf.resource<tensor<*xi32>>>) -> tensor<*xi32>
+    %3 = "tf.SomeComputation"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
+    "tf.AssignVariableOp"(%0, %3) {device = "/device:TPU_REPLICATED_CORE:0"} : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    tf_device.return %3 : tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
+
+  // CHECK: return %[[CLUSTER_RES]]#0
+  return %1 : tensor<*xi32>
+}

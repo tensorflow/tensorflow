@@ -61,7 +61,7 @@ struct DecodeContext {
 
 bool DecodeHeader(StringPiece png_string, int* width, int* height,
                   int* components, int* channel_bit_depth,
-                  std::vector<std::pair<string, string> >* metadata);
+                  std::vector<std::pair<std::string, std::string> >* metadata);
 
 // Sample usage for reading PNG:
 //
@@ -98,17 +98,17 @@ template <typename T>
 bool WriteImageToBuffer(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, T* png_string,
-    const std::vector<std::pair<string, string> >* metadata);
+    const std::vector<std::pair<std::string, std::string> >* metadata);
 
 // Explicit instantiations defined in png_io.cc.
-extern template bool WriteImageToBuffer<string>(
+extern template bool WriteImageToBuffer<std::string>(
     const void* image, int width, int height, int row_bytes, int num_channels,
-    int channel_bits, int compression, string* png_string,
-    const std::vector<std::pair<string, string> >* metadata);
+    int channel_bits, int compression, std::string* png_string,
+    const std::vector<std::pair<std::string, std::string> >* metadata);
 extern template bool WriteImageToBuffer<tstring>(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, tstring* png_string,
-    const std::vector<std::pair<string, string> >* metadata);
+    const std::vector<std::pair<std::string, std::string> >* metadata);
 
 }  // namespace png
 }  // namespace tensorflow
