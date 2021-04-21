@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(
@@ -1104,6 +1104,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":adam",
         "//tensorflow/python:array_ops",

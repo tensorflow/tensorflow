@@ -24,6 +24,7 @@ import six
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
@@ -82,6 +83,7 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  logging.info("Enabling v2 tensorshape")
   _api_usage_gauge.get_cell().set(True)
 
 
@@ -93,6 +95,7 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  logging.info("Disabling v2 tensorshape")
   _api_usage_gauge.get_cell().set(False)
 
 

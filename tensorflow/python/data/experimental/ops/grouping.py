@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -64,6 +65,7 @@ def group_by_reducer(key_func, reducer):
   return _apply_fn
 
 
+@deprecation.deprecated(None, "Use `tf.data.Dataset.group_by_window(...)`.")
 @tf_export("data.experimental.group_by_window")
 def group_by_window(key_func,
                     reduce_func,
@@ -103,23 +105,14 @@ def group_by_window(key_func,
     ValueError: if neither or both of {`window_size`, `window_size_func`} are
       passed.
   """
-  if (window_size is not None and window_size_func or
-      not (window_size is not None or window_size_func)):
-    raise ValueError("Must pass either window_size or window_size_func.")
-
-  if window_size is not None:
-
-    def constant_window_func(unused_key):
-      return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
-
-    window_size_func = constant_window_func
-
-  assert window_size_func is not None
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return _GroupByWindowDataset(dataset, key_func, reduce_func,
-                                 window_size_func)
+    return dataset.group_by_window(
+        key_func=key_func,
+        reduce_func=reduce_func,
+        window_size=window_size,
+        window_size_func=window_size_func)
 
   return _apply_fn
 
@@ -171,14 +164,14 @@ def bucket_by_sequence_length(element_length_func,
   You can also provide which value to be used while padding the data.
   Below example uses `-1` as padding and it also shows the input data
   being bucketizied to two buckets "[0,3], [4,6]".
-  
+
   >>> elements = [
   ...   [0], [1, 2, 3, 4], [5, 6, 7],
   ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
-  
+
   >>> dataset = tf.data.Dataset.from_generator(
   ...   lambda: elements, tf.int32, output_shapes=[None])
-  
+
   >>> dataset = dataset.apply(
   ...     tf.data.experimental.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
@@ -186,7 +179,7 @@ def bucket_by_sequence_length(element_length_func,
   ...         bucket_batch_sizes=[2, 2, 2],
   ...         pad_to_bucket_boundary=True,
   ...         padding_values=-1))
-  
+
   >>> for elem in dataset.as_numpy_iterator():
   ...   print(elem)
   [[ 0 -1 -1]
@@ -195,20 +188,20 @@ def bucket_by_sequence_length(element_length_func,
    [ 7  8  9 10 11 -1]]
   [[21 22 -1]]
   [[13 14 15 16 19 20]]
-  
+
   When using `pad_to_bucket_boundary` option, it can be seen that it is
   not always possible to maintain the bucket batch size.
   You can drop the batches that do not maintain the bucket batch size by
   using the option `drop_remainder`. Using the same input data as in the
   above example you get the following result.
-  
+
   >>> elements = [
   ...   [0], [1, 2, 3, 4], [5, 6, 7],
   ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
-  
+
   >>> dataset = tf.data.Dataset.from_generator(
   ...   lambda: elements, tf.int32, output_shapes=[None])
-  
+
   >>> dataset = dataset.apply(
   ...     tf.data.experimental.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
@@ -217,7 +210,7 @@ def bucket_by_sequence_length(element_length_func,
   ...         pad_to_bucket_boundary=True,
   ...         padding_values=-1,
   ...         drop_remainder=True))
-  
+
   >>> for elem in dataset.as_numpy_iterator():
   ...   print(elem)
   [[ 0 -1 -1]
@@ -448,78 +441,6 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _transformation_name(self):
     return "tf.data.experimental.group_by_reducer()"
-
-
-class _GroupByWindowDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that groups its input and performs a windowed reduction."""
-
-  def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
-    """See `group_by_window()` for details."""
-    self._input_dataset = input_dataset
-    self._make_key_func(key_func, input_dataset)
-    self._make_reduce_func(reduce_func, input_dataset)
-    self._make_window_size_func(window_size_func)
-    variant_tensor = ged_ops.group_by_window_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._key_func.function.captured_inputs,
-        self._reduce_func.function.captured_inputs,
-        self._window_size_func.function.captured_inputs,
-        key_func=self._key_func.function,
-        reduce_func=self._reduce_func.function,
-        window_size_func=self._window_size_func.function,
-        **self._flat_structure)
-    super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _make_window_size_func(self, window_size_func):
-    """Make wrapping defun for window_size_func."""
-
-    def window_size_func_wrapper(key):
-      return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
-    self._window_size_func = dataset_ops.StructuredFunctionWrapper(
-        window_size_func_wrapper,
-        self._transformation_name(),
-        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
-    if not self._window_size_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(
-          "`window_size_func` must return a single tf.int64 scalar tensor.")
-
-  def _make_key_func(self, key_func, input_dataset):
-    """Make wrapping defun for key_func."""
-
-    def key_func_wrapper(*args):
-      return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
-    self._key_func = dataset_ops.StructuredFunctionWrapper(
-        key_func_wrapper, self._transformation_name(), dataset=input_dataset)
-    if not self._key_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(
-          "`key_func` must return a single tf.int64 scalar tensor.")
-
-  def _make_reduce_func(self, reduce_func, input_dataset):
-    """Make wrapping defun for reduce_func."""
-    nested_dataset = dataset_ops.DatasetSpec(
-        input_dataset.element_spec)
-    input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
-    self._reduce_func = dataset_ops.StructuredFunctionWrapper(
-        reduce_func, self._transformation_name(),
-        input_structure=input_structure)
-    if not isinstance(
-        self._reduce_func.output_structure, dataset_ops.DatasetSpec):
-      raise TypeError("`reduce_func` must return a `Dataset` object.")
-    # pylint: disable=protected-access
-    self._element_spec = (
-        self._reduce_func.output_structure._element_spec)
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-  def _functions(self):
-    return [self._key_func, self._reduce_func, self._window_size_func]
-
-  def _transformation_name(self):
-    return "tf.data.experimental.group_by_window()"
 
 
 @tf_export("data.experimental.Reducer")

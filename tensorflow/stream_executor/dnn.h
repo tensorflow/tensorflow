@@ -58,6 +58,10 @@ enum class DimIndex : int {
   Z = 2,
 };
 
+// Return a reordered dims.
+std::vector<int64> ReorderDims(const std::vector<int64>& input,
+                               const DataLayout& from, const DataLayout& to);
+
 // Helper functions to make methods more readable.
 inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
@@ -183,6 +187,15 @@ class RnnSequenceTensorDescriptor {
 class RnnStateTensorDescriptor {
  public:
   virtual ~RnnStateTensorDescriptor() {}
+};
+
+// Specifies the execution plan in convolution.
+class ConvolveExecutionPlan {
+ public:
+  virtual ~ConvolveExecutionPlan() {}
+  virtual std::string getTag() { return "unknown"; }
+  virtual void* get_raw_desc() { return nullptr; }
+  virtual int64_t getWorkspaceSize() { return -1; }
 };
 
 // Returns a string representation of the given quantization mode.
@@ -750,17 +763,28 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
+  typedef std::string Tag;
   AlgorithmDesc() : AlgorithmDesc(0, false) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
   }
+  AlgorithmDesc(Tag a, void* b) {
+    proto_.set_exec_plan_id(a);
+    exec_plan_desc_ = b;
+  }
+  bool IsExecutionPlan() const { return exec_plan_id() != ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
   Index algo_id() const { return proto_.algo_id(); }
+  Tag exec_plan_id() const { return proto_.exec_plan_id(); }
+  void* exec_plan_desc() const { return exec_plan_desc_; }
   bool operator==(const AlgorithmDesc& other) const {
+    if (IsExecutionPlan()) {
+      return exec_plan_id() == other.exec_plan_id();
+    }
     return algo_id() == other.algo_id() &&
            tensor_ops_enabled() == other.tensor_ops_enabled();
   }
@@ -772,6 +796,9 @@ class AlgorithmDesc {
 
  private:
   AlgorithmProto proto_;
+  // We keep a pointer for the execution plan if cuDNN v8 is used. Note,
+  // AlgorithmDesc doesn't own it.
+  void* exec_plan_desc_;
 };
 
 // Describes the result from a perf experiment.
@@ -827,6 +854,11 @@ class AlgorithmConfig {
       : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size,
+                  AlgorithmDesc algorithm_no_scratch)
+      : algorithm_(algorithm),
+        algorithm_no_scratch_(algorithm_no_scratch),
+        scratch_size_(scratch_size) {}
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
@@ -846,11 +878,19 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
+  void set_plan(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+    plan_ = std::move(plan);
+  }
+  void set_plan_no_scratch(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+    plan_no_scratch_ = std::move(plan);
+  }
 
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
+  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_;
+  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -1334,6 +1374,14 @@ class DnnSupport {
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
+
+  virtual bool GetConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

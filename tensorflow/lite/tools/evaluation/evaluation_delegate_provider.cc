@@ -101,10 +101,13 @@ std::vector<Flag> DelegateProviders::GetFlags() {
 
 bool DelegateProviders::InitFromCmdlineArgs(int* argc, const char** argv) {
   std::vector<Flag> flags = GetFlags();
-  const bool parse_result = Flags::Parse(argc, argv, flags);
-  if (!parse_result) {
+  bool parse_result = Flags::Parse(argc, argv, flags);
+  if (!parse_result || params_.Get<bool>("help")) {
     std::string usage = Flags::Usage(argv[0], flags);
     TFLITE_LOG(ERROR) << usage;
+    // Returning false intentionally when "--help=true" is specified so that
+    // the caller could check the return value to decide stopping the execution.
+    parse_result = false;
   }
   return parse_result;
 }

@@ -25,6 +25,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @deprecation.deprecated(None, "Use `tf.data.experimental.StatsOptions`.")
 def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   """Set the given `stats_aggregator` for aggregating the input dataset stats.
@@ -48,6 +50,8 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   return _apply_fn
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export("data.experimental.bytes_produced_stats")
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
@@ -71,6 +75,8 @@ def bytes_produced_stats(tag):
   return _apply_fn
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export("data.experimental.latency_stats")
 def latency_stats(tag):
   """Records the latency of producing each element of the input dataset.
@@ -94,6 +100,8 @@ def latency_stats(tag):
   return _apply_fn
 
 
+# TODO(b/147325552): Remove this class after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 

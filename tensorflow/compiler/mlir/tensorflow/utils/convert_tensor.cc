@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
+#include <cstdint>
 #include <limits>
 
 #include "absl/base/casts.h"
@@ -257,15 +258,27 @@ Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
   return InvalidArgument("Unexpected elements attribute type from MLIR.");
 }
 
-// Converts an MLIR elements attribute and adds it to specified repeated field.
 template <typename T>
 void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
                          protobuf::RepeatedField<T>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<T>());
+    if (attr.getSplatValue<T>() != T(0)) output->Add(attr.getSplatValue<T>());
   } else {
     output->Reserve(attr.getNumElements());
     for (auto value : attr.getValues<T>()) output->AddAlreadyReserved(value);
+  }
+}
+
+// Converts an MLIR elements attribute and adds it to specified repeated field.
+template <typename T, typename Cord>
+void ConvertFloatElementsAttr(const mlir::DenseElementsAttr attr,
+                              protobuf::RepeatedField<T>* output,
+                              Cord* tensor_content) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<T>() != T(0)) output->Add(attr.getSplatValue<T>());
+  } else {
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
   }
 }
 
@@ -274,7 +287,8 @@ void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
                              protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<Eigen::half>().x);
+    if (attr.getSplatValue<Eigen::half>().x != Eigen::half(0))
+      output->Add(attr.getSplatValue<Eigen::half>().x);
   } else {
     output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
@@ -282,23 +296,39 @@ void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
   }
 }
 
-// Converts an MLIR elements attribute containing int values and adds it to
-// specified repeated field.
-void ConvertIntElementsAttr(const mlir::DenseIntElementsAttr attr,
-                            protobuf::RepeatedField<int>* output) {
+// Converts an MLIR elements attribute containing signed int values and adds it
+// to specified repeated field.
+template <typename T, typename U = T, typename Cord>
+void ConvertIntElementsAttr(const mlir::DenseElementsAttr attr,
+                            protobuf::RepeatedField<T>* output,
+                            Cord* tensor_content) {
   if (attr.isSplat()) {
-    output->Add((*attr.begin()).getSExtValue());
+    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
   } else {
-    output->Reserve(attr.getNumElements());
-    for (const llvm::APInt val : attr)
-      output->AddAlreadyReserved(val.getSExtValue());
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
+  }
+}
+
+// Converts an MLIR elements attribute containing unsigned int values and adds
+// it to specified repeated field.
+template <typename T, typename U = T, typename Cord>
+void ConvertUIntElementsAttr(const mlir::DenseElementsAttr attr,
+                             protobuf::RepeatedField<T>* output,
+                             Cord* tensor_content) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
+  } else {
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
   }
 }
 
 void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<bfloat16>().value);
+    if (attr.getSplatValue<bfloat16>().value != bfloat16(0))
+      output->Add(attr.getSplatValue<bfloat16>().value);
   } else {
     output->Reserve(attr.getNumElements());
     for (const bfloat16 value : attr.getValues<bfloat16>())
@@ -321,49 +351,70 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   if (!dense_attr) return errors::InvalidArgument("Unsupported elements attr");
 
   switch (output_dtype) {
-    case DT_FLOAT:
-      ConvertElementsAttr<float>(dense_attr, output->mutable_float_val());
-      break;
-    case DT_HALF:
-      ConvertHalfElementsAttr(dense_attr, output->mutable_half_val());
-      break;
-    case DT_DOUBLE:
-      ConvertElementsAttr(dense_attr, output->mutable_double_val());
-      break;
-    case DT_QUINT8:
-    case DT_UINT8:
-    case DT_INT8:
-    case DT_QUINT16:
-    case DT_UINT16:
-    case DT_INT16:
-    case DT_INT32:
-      ConvertIntElementsAttr(dense_attr.cast<DenseIntElementsAttr>(),
-                             output->mutable_int_val());
-      break;
-    case DT_UINT32:
-      ConvertElementsAttr(dense_attr, output->mutable_uint32_val());
-      break;
-    case DT_UINT64:
-      ConvertElementsAttr(dense_attr, output->mutable_uint64_val());
-      break;
-    case DT_INT64:
-      ConvertElementsAttr(dense_attr, output->mutable_int64_val());
-      break;
     case DT_BOOL:
       ConvertElementsAttr(dense_attr, output->mutable_bool_val());
       break;
     case DT_BFLOAT16:
       ConvertBfloat16ElementsAttr(dense_attr, output->mutable_half_val());
       break;
-    case DT_STRING:
-      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
-                                output->mutable_string_val());
-      break;
     case DT_COMPLEX64:
       ConvertComplexElementsAttr(dense_attr, output->mutable_scomplex_val());
       break;
     case DT_COMPLEX128:
       ConvertComplexElementsAttr(dense_attr, output->mutable_dcomplex_val());
+      break;
+    case DT_DOUBLE:
+      ConvertFloatElementsAttr(dense_attr, output->mutable_double_val(),
+                               output->mutable_tensor_content());
+      break;
+    case DT_HALF:
+      ConvertHalfElementsAttr(dense_attr, output->mutable_half_val());
+      break;
+    case DT_FLOAT:
+      ConvertFloatElementsAttr(dense_attr, output->mutable_float_val(),
+                               output->mutable_tensor_content());
+      break;
+    case DT_QUINT8:
+    case DT_INT8:
+      ConvertUIntElementsAttr<int, int8_t>(dense_attr,
+                                           output->mutable_int_val(),
+                                           output->mutable_tensor_content());
+      break;
+    case DT_QUINT16:
+    case DT_INT16:
+      ConvertIntElementsAttr<int, int16_t>(dense_attr,
+                                           output->mutable_int_val(),
+                                           output->mutable_tensor_content());
+      break;
+    case DT_INT32:
+      ConvertIntElementsAttr(dense_attr, output->mutable_int_val(),
+                             output->mutable_tensor_content());
+      break;
+    case DT_INT64:
+      ConvertIntElementsAttr(dense_attr, output->mutable_int64_val(),
+                             output->mutable_tensor_content());
+      break;
+    case DT_STRING:
+      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
+                                output->mutable_string_val());
+      break;
+    case DT_UINT8:
+      ConvertUIntElementsAttr<int, uint8_t>(dense_attr,
+                                            output->mutable_int_val(),
+                                            output->mutable_tensor_content());
+      break;
+    case DT_UINT16:
+      ConvertUIntElementsAttr<int, uint16_t>(dense_attr,
+                                             output->mutable_int_val(),
+                                             output->mutable_tensor_content());
+      break;
+    case DT_UINT32:
+      ConvertUIntElementsAttr(dense_attr, output->mutable_uint32_val(),
+                              output->mutable_tensor_content());
+      break;
+    case DT_UINT64:
+      ConvertUIntElementsAttr(dense_attr, output->mutable_uint64_val(),
+                              output->mutable_tensor_content());
       break;
     default:
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",

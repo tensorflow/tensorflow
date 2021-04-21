@@ -22,23 +22,19 @@ limitations under the License.
 
 namespace xla {
 
+// Controller of various knobs.
+struct SpaceToBatchController {
+  bool enable_propagations_on_base_dilations;
+  bool enable_propagations_on_window_dilations;
+  bool enable_propagations_on_trivial_window_dilations;
+  int64 limit_on_batch_size;
+};
+
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.
 class SpaceToBatchConverter : public HloModulePass {
  public:
-  explicit SpaceToBatchConverter(bool enable_propagations_on_base_dilations,
-                                 bool enable_propagations_on_window_dilations,
-                                 int64 limit_on_batch_size = 1)
-      : limit_on_batch_size_(limit_on_batch_size),
-        enable_propagations_on_base_dilations_(
-            enable_propagations_on_base_dilations),
-        enable_propagations_on_window_dilations_(
-            enable_propagations_on_window_dilations) {}
-
-  explicit SpaceToBatchConverter(int64 limit_on_batch_size = 1)
-      : SpaceToBatchConverter(/*enable_propagations_on_base_dilations=*/true,
-                              /*enable_propagations_on_window_dilations=*/true,
-                              limit_on_batch_size) {}
+  explicit SpaceToBatchConverter(SpaceToBatchController ctrl) : ctrl_(ctrl) {}
 
   absl::string_view name() const override { return "space-to-batch-converter"; }
 
@@ -46,9 +42,8 @@ class SpaceToBatchConverter : public HloModulePass {
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
 
-  int64 limit_on_batch_size_;
-  bool enable_propagations_on_base_dilations_;
-  bool enable_propagations_on_window_dilations_;
+  // Controller for various knobs.
+  SpaceToBatchController ctrl_;
 };
 
 }  // namespace xla

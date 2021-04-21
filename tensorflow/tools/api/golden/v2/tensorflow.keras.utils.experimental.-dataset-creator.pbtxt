@@ -4,6 +4,6 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'dataset_fn\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'dataset_fn\', \'input_options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

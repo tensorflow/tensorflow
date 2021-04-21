@@ -34,6 +34,11 @@ class DeviceFactory {
                        int priority, bool is_pluggable_device);
   static DeviceFactory* GetFactory(const std::string& device_type);
 
+  // Append to "*devices" CPU devices.
+  static Status AddCpuDevices(const SessionOptions& options,
+                              const std::string& name_prefix,
+                              std::vector<std::unique_ptr<Device>>* devices);
+
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
   //
@@ -54,6 +59,10 @@ class DeviceFactory {
   //
   // CPU is are added first.
   static Status ListAllPhysicalDevices(std::vector<string>* devices);
+
+  // Iterate through all device factories and build a list of all of the
+  // possible pluggable physical devices.
+  static Status ListPluggablePhysicalDevices(std::vector<string>* devices);
 
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.

@@ -112,6 +112,9 @@ struct TFRInlinerInterface : public DialectInlinerInterface {
 
 TFRDialect::TFRDialect(MLIRContext *context)
     : Dialect(/*name=*/"tfr", context, TypeID::get<TFRDialect>()) {
+  // TFR depends on TensorFlow for its canonicalization
+  context->getOrLoadDialect<TF::TensorFlowDialect>();
+
   addTypes<TFRTensorType, TFRTensorListType, TFRAttrType>();
   addOperations<
 #define GET_OP_LIST

@@ -62,22 +62,23 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
   // Verify high-level function signature.
   // Relevant argument characteristics are checked by the TFL op definition.
   if (func_.getNumArguments() < 5) {
-    return func_.emitError()
+    return func_.emitWarning()
            << "Invalid number of arguments to "
               "non_max_suppression_padded_v2 (need at least 5): "
            << func_.getNumArguments();
   }
   if (func_.getType().getNumResults() != 2) {
-    return func_.emitError() << "Invalid number of results from "
-                                "non_max_suppression_padded_v2 (need 2): "
-                             << func_.getType().getNumResults();
+    return func_.emitWarning() << "Invalid number of results from "
+                                  "non_max_suppression_padded_v2 (need 2): "
+                               << func_.getType().getNumResults();
   }
   // The TFLite fused op does not support batching yet.
   // TODO(b/158709815): Add support for batches with padded NMS.
-  auto boxes_type = func_.getArgument(0).getType().dyn_cast<RankedTensorType>();
-  if (!boxes_type.hasRank() || boxes_type.getRank() != 2) {
-    return func_.emitError() << "TFLite does not support batched input for "
-                                "non_max_suppression_padded";
+  auto boxes_type = func_.getType().getInput(0).dyn_cast<RankedTensorType>();
+  if (boxes_type == nullptr || !boxes_type.hasRank() ||
+      boxes_type.getRank() != 2) {
+    return func_.emitWarning() << "TFLite does not support batched input for "
+                                  "non_max_suppression_padded";
   }
   return success();
 }
@@ -90,7 +91,7 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;
-  if (failed(CreateNMSCustomOptions(func_, attr_.GetAttrs(),
+  if (failed(CreateNMSCustomOptions(func_, attr_.getAttrs(),
                                     custom_option_buffer))) {
     return failure();
   }
@@ -155,17 +156,50 @@ LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
   return success();
 }
 
+LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
+    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+  auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
+  if (!int_attr) {
+    return func.emitWarning()
+           << attribute.c_str() << " attribute is not set or not an integer";
+  }
+  return success();
+}
+
+LogicalResult ConvertSSDPostProcessFunc::HasFloatAttr(
+    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+  auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
+  if (!float_attr) {
+    return func.emitWarning()
+           << attribute.c_str() << " attribute is not set or not a float";
+  }
+  return success();
+}
+
 LogicalResult ConvertSSDPostProcessFunc::VerifySignature() {
   // Verify high-level function signature.
   if (func_.getNumArguments() != 3) {
-    return func_.emitError()
+    return func_.emitWarning()
            << "Invalid number of arguments to " << kCustomSSDPostprocessing
            << ": " << func_.getNumArguments();
   }
   if (func_.getType().getNumResults() != 4) {
-    return func_.emitError()
+    return func_.emitWarning()
            << "Invalid number of results from " << kCustomSSDPostprocessing
            << ": " << func_.getType().getNumResults();
+  }
+
+  auto attrs = attr_.getAttrs();
+  if (failed(HasIntAttr(func_, attrs, "max_detections")) ||
+      failed(HasIntAttr(func_, attrs, "max_classes_per_detection")) ||
+      failed(HasIntAttr(func_, attrs, "num_classes")) ||
+      failed(HasFloatAttr(func_, attrs, "nms_score_threshold")) ||
+      failed(HasFloatAttr(func_, attrs, "nms_iou_threshold")) ||
+      failed(HasFloatAttr(func_, attrs, "y_scale")) ||
+      failed(HasFloatAttr(func_, attrs, "x_scale")) ||
+      failed(HasFloatAttr(func_, attrs, "h_scale")) ||
+      failed(HasFloatAttr(func_, attrs, "w_scale"))) {
+    return failure();
   }
   return success();
 }

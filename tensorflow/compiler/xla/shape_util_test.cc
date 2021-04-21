@@ -760,6 +760,21 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }
 
+TEST(ShapeUtilTest, MoveDimToMajor) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
+  Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(shape, new_shape);
+
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 1);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {2, 0, 1}));
+
+  shape = ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {0, 2, 1});
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {2, 1, 0}));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),

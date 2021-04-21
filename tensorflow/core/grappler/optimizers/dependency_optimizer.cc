@@ -68,6 +68,12 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     // The output values of this node may be needed.
     return false;
   }
+
+  if (node.input_size() < 1) {
+    // Node lacks input, is invalid
+    return false;
+  }
+
   const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
   CHECK(input != nullptr) << "node = " << node.name()
                           << " input = " << node.input(0);

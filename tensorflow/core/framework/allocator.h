@@ -286,6 +286,10 @@ class Allocator {
   virtual void ClearStats() {}
 
   virtual void SetSafeFrontier(uint64 count) {}
+
+  // For allocator that are stream aware, allow to specify the compute
+  // stream this allocator is used for.
+  virtual void SetStream(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.

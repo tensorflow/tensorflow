@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains testing utilities related to mixed precision."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

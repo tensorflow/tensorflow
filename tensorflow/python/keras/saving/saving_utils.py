@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Utils related to keras model saving."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import collections.abc as collections_abc
+import collections
 import copy
 import os
-import six
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.keras import backend as K
@@ -82,7 +78,7 @@ def model_input_signature(model, keep_original_batch_size=False):
   input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs,
-                collections_abc.Sequence) and len(input_specs) == 1:
+                collections.abc.Sequence) and len(input_specs) == 1:
     # Note that the isinstance check filters out single-element dictionaries,
     # which should also be wrapped as a single-element list.
     return input_specs
@@ -248,7 +244,7 @@ def _deserialize_nested_config(deserialize_fn, config):
   def _is_single_object(obj):
     if isinstance(obj, dict) and 'class_name' in obj:
       return True  # Serialized Keras object.
-    if isinstance(obj, six.string_types):
+    if isinstance(obj, str):
       return True  # Serialized function or string.
     return False
 

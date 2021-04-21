@@ -76,6 +76,37 @@ def _parse_inference_type(value, flag):
       "QUANTIZED_UINT8 instead got {}.".format(flag, value))
 
 
+class _ParseBooleanFlag(argparse.Action):
+  """Helper class to parse boolean flag that optionally accepts truth value."""
+
+  def __init__(self, option_strings, dest, nargs=None, **kwargs):
+    if nargs != "?":
+      # This should never happen. This class is only used once below with
+      # nargs="?".
+      raise ValueError(
+          "This parser only supports nargs='?' (0 or 1 additional arguments)")
+    super(_ParseBooleanFlag, self).__init__(
+        option_strings, dest, nargs=nargs, **kwargs)
+
+  def __call__(self, parser, namespace, values, option_string=None):
+    if values is None:
+      # Handling `--boolean_flag`.
+      # Without additional arguments, it implies true.
+      flag_value = True
+    elif values.lower() == "true":
+      # Handling `--boolean_flag=true`.
+      # (Case insensitive after the equal sign)
+      flag_value = True
+    elif values.lower() == "false":
+      # Handling `--boolean_flag=false`.
+      # (Case insensitive after the equal sign)
+      flag_value = False
+    else:
+      raise ValueError("Invalid argument to --{}. Must use flag alone,"
+                       " or specify true/false.".format(self.dest))
+    setattr(namespace, self.dest, flag_value)
+
+
 def _get_tflite_converter(flags):
   """Makes a TFLiteConverter object based on the flags provided.
 
@@ -498,7 +529,8 @@ def _get_tf1_flags(parser):
   # Permitted ops flags.
   parser.add_argument(
       "--allow_custom_ops",
-      action="store_true",
+      action=_ParseBooleanFlag,
+      nargs="?",
       help=("Boolean indicating whether to allow custom operations. When false "
             "any unknown operation is an error. When true, custom ops are "
             "created for any op that is unknown. The developer will need to "
@@ -579,37 +611,6 @@ def _get_tf2_flags(parser):
       "--enable_v1_converter",
       action="store_true",
       help=("Enables the TensorFlow V1 converter in 2.0"))
-
-
-class _ParseBooleanFlag(argparse.Action):
-  """Helper class to parse boolean flag that optionally accepts truth value."""
-
-  def __init__(self, option_strings, dest, nargs=None, **kwargs):
-    if nargs != "?":
-      # This should never happen. This class is only used once below with
-      # nargs="?".
-      raise ValueError(
-          "This parser only supports nargs='?' (0 or 1 additional arguments)")
-    super(_ParseBooleanFlag, self).__init__(
-        option_strings, dest, nargs=nargs, **kwargs)
-
-  def __call__(self, parser, namespace, values, option_string=None):
-    if values is None:
-      # Handling `--boolean_flag`.
-      # Without additional arguments, it implies enabling the new converter.
-      flag_value = True
-    elif values.lower() == "true":
-      # Handling `--boolean_flag=true`.
-      # (Case insensitive after the equal sign)
-      flag_value = True
-    elif values.lower() == "false":
-      # Handling `--boolean_flag=false`.
-      # (Case insensitive after the equal sign)
-      flag_value = False
-    else:
-      raise ValueError("Invalid argument to --{}. Must use flag alone,"
-                       " or specify true/false.".format(self.dest))
-    setattr(namespace, self.dest, flag_value)
 
 
 def _get_parser(use_v2_converter):

@@ -334,6 +334,7 @@ REGISTER_OP("ParallelBatchDataset")
     .Input("num_parallel_calls: int64")
     .Input("drop_remainder: bool")
     .Output("handle: variant")
+    .Attr("parallel_copy: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     // "true", "false", or "default".

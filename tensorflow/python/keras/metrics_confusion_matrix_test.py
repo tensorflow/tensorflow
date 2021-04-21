@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras metrics functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 
 from absl.testing import parameterized
@@ -1491,7 +1487,7 @@ class AUCTest(test.TestCase, parameterized.TestCase):
       result = auc_obj(labels, logits)
       self.assertEqual(self.evaluate(result), 0.5)
     except ImportError as e:
-      tf_logging.warn('Cannot test special functions: %s' % str(e))
+      tf_logging.warning('Cannot test special functions: %s' % str(e))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1769,14 +1765,14 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
         metrics=[metrics.AUC(multi_label=True)]
     )
 
-  def test_reset_states(self):
+  def test_reset_state(self):
     with self.test_session():
       self.setup()
       auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
                             multi_label=True)
       self.evaluate(variables.variables_initializer(auc_obj.variables))
       auc_obj(self.y_true_good, self.y_pred)
-      auc_obj.reset_states()
+      auc_obj.reset_state()
       self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
 
 

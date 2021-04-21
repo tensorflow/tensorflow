@@ -2,8 +2,8 @@
 
 // CHECK-LABEL: invert_permutation
 func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
-  // CHECK-NEXT: %[[UPDATES:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[5, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[UPDATES:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[5, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NEXT: %[[INDICES:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<5xi32>, tensor<2xi32>) -> tensor<5x1xi32>
   // CHECK-NEXT: "tf.TensorScatterUpdate"(%arg0, %[[INDICES]], %[[UPDATES]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<5xi32>) -> tensor<5xi32>
@@ -159,7 +159,7 @@ func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor
 // CHECK-LABEL: func @pad
 func @pad(%arg0: tensor<3xf32>) -> tensor<6xf32> {
   %padding = "tf.Const"() { value = dense<[[1, 2]]> : tensor<1x2xi64> } : () -> tensor<1x2xi64>
-  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {
+  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {{.+}} -> tensor<1x2xi64>
   // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
   // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
   %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xf32>, tensor<1x2xi64>) -> tensor<6xf32>
@@ -169,7 +169,7 @@ func @pad(%arg0: tensor<3xf32>) -> tensor<6xf32> {
 // CHECK-LABEL: func @pad_bf16
 func @pad_bf16(%arg0: tensor<3xbf16>) -> tensor<6xbf16> {
   %padding = "tf.Const"() { value = dense<[[1, 2]]> : tensor<1x2xi64> } : () -> tensor<1x2xi64>
-  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {
+  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {{.+}}  -> tensor<1x2xi64>
   // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<bf16>}
   // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
   %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xbf16>, tensor<1x2xi64>) -> tensor<6xbf16>
@@ -859,10 +859,10 @@ func @lgamma(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 func @imag_resize_nearest(%arg0: tensor<1x7x7x1xi32>) -> tensor<1x3x3x1xi32> {
   %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
 
-  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 3, 3, 1]>
-  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 49, 1]>
-  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 2, 4, 14, 16, 18, 28, 30, 32]> : tensor<9xi32>}
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 3, 3, 1]>
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 49, 1]>
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 2, 4, 14, 16, 18, 28, 30, 32]> : tensor<9xi32>}
   // CHECK: [[VAL4:%.+]] = "tf.Reshape"(%arg0, [[VAL2]])
   // CHECK: [[VAL5:%.+]] = "tf.GatherV2"([[VAL4]], [[VAL3]], [[VAL0]]) {batch_dims = 0 : i64}
   // CHECK: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
@@ -875,14 +875,14 @@ func @imag_resize_nearest(%arg0: tensor<1x7x7x1xi32>) -> tensor<1x3x3x1xi32> {
 func @imag_resize_nearest_dyn_img(%arg0: tensor<1x?x?x1xi32>) -> tensor<1x3x3x1xi32> {
   %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
 
-  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>}
-  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<9> : tensor<1xi32>}
-  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
-  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>}
-  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00]>
-  // CHECK: [[VAL6:%.+]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>}
-  // CHECK: [[VAL7:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<9> : tensor<1xi32>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00]>
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
   // CHECK: [[VAL8:%.+]] = "tf.Shape"(%arg0)
   // CHECK: [[VAL9:%.+]] = "tf.Cast"([[VAL8]])
   // CHECK: [[VAL10:%.+]]:4 = "tf.Unpack"([[VAL9]]) {axis = 0 : i64}
@@ -918,12 +918,12 @@ func @imag_resize_nearest_dyn_img(%arg0: tensor<1x?x?x1xi32>) -> tensor<1x3x3x1x
 // CHECK-LABEL: func @imag_resize_nearest_full_dyn
 func @imag_resize_nearest_full_dyn(%arg0: tensor<1x?x?x1xi32>, %arg1: tensor<2xi32>) -> tensor<1x?x?x1xi32> {
 
-  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
-  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
-  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi64>}
-  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
   // CHECK: [[VAL6:%.+]] = "tf.Shape"(%arg0)
   // CHECK: [[VAL7:%.+]] = "tf.Cast"([[VAL6]])
   // CHECK: [[VAL8:%.+]]:4 = "tf.Unpack"([[VAL7]]) {axis = 0 : i64}

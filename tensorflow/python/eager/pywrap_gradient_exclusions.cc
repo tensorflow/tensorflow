@@ -422,7 +422,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 477> a = {{
+  static std::array<OpIndexInfo, 478> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -451,6 +451,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"AvgPoolGrad"},
       {"BatchMatMul"},
       {"BatchMatMulV2"},
+      {"BatchMatMulV3"},
       {"BatchNormWithGlobalNormalization"},
       {"BatchToSpace"},
       {"BatchToSpaceND"},

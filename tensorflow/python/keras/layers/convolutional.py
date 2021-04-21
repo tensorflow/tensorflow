@@ -12,15 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras convolution layers and image transformation layers.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Keras convolution layers and image transformation layers."""
 
 import functools
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
@@ -226,7 +220,7 @@ class Conv(Layer):
     # Convert Keras formats to TF native formats.
     if self.padding == 'causal':
       tf_padding = 'VALID'  # Causal padding handled in `call`.
-    elif isinstance(self.padding, six.string_types):
+    elif isinstance(self.padding, str):
       tf_padding = self.padding.upper()
     else:
       tf_padding = self.padding
@@ -2112,7 +2106,8 @@ class SeparableConv2D(SeparableConv):
     strides: An integer or tuple/list of 2 integers,
       specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
-      all spatial dimensions.
+      all spatial dimensions. Current implementation only supports equal 
+      length strides in the row and column dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).

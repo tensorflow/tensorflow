@@ -797,13 +797,13 @@ class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
               snapshot.COMPRESSION_SNAPPY
           ])))
   def testReadSnapshotParallelAfterWrite(self, compression):
-    self.setUpTFRecord(10, 4000)
+    self.setUpTFRecord(5, 500)
     filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
-        for f in range(0, 10)
-        for r in range(0, 4000)
+        for f in range(0, 5)
+        for r in range(0, 500)
     ]
 
     tmpdir = self.snapshot_dir

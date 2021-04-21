@@ -16,6 +16,7 @@
 
 import csv
 import io
+import re
 
 from unittest import mock
 from absl.testing import parameterized
@@ -122,7 +123,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'stddev': 0.03850026,
         'mean_error': 0.01673192,
         'max_abs_error': 0.10039272,
-        'mean_square_error': 0.0027558778,
+        'mean_squared_error': 0.0027558778,
         'l1_norm': 0.023704167,
     }
     self.assertLen(quant_debugger.layer_statistics, 1)
@@ -143,11 +144,15 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'tensor_idx': 7 if quantized_io else 8,
         'scales': [0.15686275],
         'zero_points': [-128],
-        'tensor_name': 'Identity' if quantized_io else 'Identity4'
+        'tensor_name': r'Identity[1-9]?$'
     })
     for key, value in expected_values.items():
       if isinstance(value, str):
-        self.assertEqual(value, actual_values[key])
+        self.assertIsNotNone(
+            re.match(value, actual_values[key]),
+            'String is different from expected string. Please fix test code if'
+            " it's being affected by graph manipulation changes."
+        )
       elif isinstance(value, list):
         self.assertAlmostEqual(
             value[0], float(actual_values[key][1:-1]), places=5)

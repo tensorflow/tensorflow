@@ -48,28 +48,25 @@ inline double Square(double x) { return x * x; }
 // determined by the relative processing time spent in the corresponding
 // transformation. The collected parameters are returned via maps that map node
 // names to their respective parameters.
-inline void CollectParameters(
-    std::shared_ptr<Node> node,
-    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>*
-        parallelism_parameters,
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>*
-        buffer_size_parameters) {
+inline void CollectParameters(std::shared_ptr<Node> node,
+                              const Node::ModelParameters& parameters,
+                              Node::ModelParameters* parallelism_parameters,
+                              Node::ModelParameters* buffer_size_parameters) {
   // Parallelism parameter is considered to be essential if the corresponding
   // transformations's processing time is greater than essential rate times the
   // average transformation self processing time.
   constexpr double kEssentialRate = 0.3L;
 
-  absl::flat_hash_map<string, double> processing_times;
+  Node::NodeValues processing_times;
   double processing_time = node->TotalProcessingTime(&processing_times);
   double uniform_share =
       processing_time / static_cast<double>(processing_times.size());
   for (auto& pair : parameters) {
     if (pair.second->name == kParallelism &&
         processing_times[pair.first] > kEssentialRate * uniform_share) {
-      parallelism_parameters->insert(pair);
+      parallelism_parameters->push_back(pair);
     } else if (pair.second->name == kBufferSize) {
-      buffer_size_parameters->insert(pair);
+      buffer_size_parameters->push_back(pair);
     }
   }
 }
@@ -77,9 +74,8 @@ inline void CollectParameters(
 // Applies the gradient descent method once and updates the parameter values. If
 // the new value is out of the range, bound it within the range between the
 // minimal and maximum values.
-inline void UpdateParameterValues(
-    const absl::flat_hash_map<string, double>& gradients,
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) {
+inline void UpdateParameterValues(const Node::ParameterGradients& gradients,
+                                  Node::ModelParameters* parameters) {
   // Gradient descent step size.
   constexpr double kDescentStep = 0.1L;
   double new_value;
@@ -87,14 +83,16 @@ inline void UpdateParameterValues(
   double max_abs_derivative = 1.0;
   for (auto& pair : *parameters) {
     if (std::round(pair.second->value) != pair.second->max) {
-      auto* gradient = gtl::FindOrNull(gradients, pair.first);
+      auto* gradient = gtl::FindOrNull(
+          gradients, std::make_pair(pair.first, pair.second->name));
       if (gradient) {
         max_abs_derivative = std::max(max_abs_derivative, std::abs(*gradient));
       }
     }
   }
   for (auto& pair : *parameters) {
-    auto* gradient = gtl::FindOrNull(gradients, pair.first);
+    auto* gradient = gtl::FindOrNull(
+        gradients, std::make_pair(pair.first, pair.second->name));
     if (gradient) {
       new_value =
           pair.second->value - kDescentStep * (*gradient) / max_abs_derivative;
@@ -112,12 +110,11 @@ inline void UpdateParameterValues(
 
 // Copies the parameter values (which are for optimization tuning) and updates
 // the state values (which are for the input pipeline to follow).
-inline void UpdateStateValues(
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) {
+inline void UpdateStateValues(Node::ModelParameters* parameters) {
   for (auto& pair : *parameters) {
     auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
+    VLOG(2) << "Setting tunable parameter " << pair.first
+            << ":: " << parameter->name << " to " << parameter->value;
     mutex_lock l(*parameter->state->mu);
     parameter->state->value = parameter->value;
     parameter->state->cond_var->notify_all();
@@ -142,8 +139,8 @@ class InterleaveMany : public Node {
         Args{id_, name_, std::move(output)});
   }
 
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -168,19 +165,16 @@ class InterleaveMany : public Node {
 
   // The output time is the sum of the self processing time and the average
   // output time of inputs comprising the interleave "cycle".
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node :
-             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-          gradients->erase(node->long_name());
+        for (const auto& pair : CollectTunableParametersLocked()) {
+          gradients->erase(std::make_pair(pair.first, pair.second->name));
         }
       }
       return;
@@ -191,9 +185,9 @@ class InterleaveMany : public Node {
          (*output_times)[inputs_.front()->long_name()]) /
         static_cast<double>(num_inputs() - 1);
     if (gradients) {
-      for (const auto& node :
-           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-        auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
+      for (const auto& pair : CollectTunableParametersLocked()) {
+        auto* gradient = gtl::FindOrNull(
+            *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
           *gradient /= static_cast<double>(num_inputs() - 1);
         }
@@ -206,11 +200,8 @@ class InterleaveMany : public Node {
       // Set derivatives w.r.t. tunable parameters of the subtree rooted in the
       // first input equal to 0 since its output time is excluded from
       // computations.
-      absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-          first_input_parameters;
-      inputs_.front()->CollectTunableParameters(&first_input_parameters);
-      for (auto& pair : first_input_parameters) {
-        (*gradients)[pair.first] = 0.0L;
+      for (auto& pair : inputs_.front()->CollectTunableParameters()) {
+        (*gradients)[std::make_pair(pair.first, pair.second->name)] = 0.0L;
       }
     }
     (*output_times)[long_name()] = self_processing_time + inputs_output_time;
@@ -218,9 +209,8 @@ class InterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
@@ -273,8 +263,8 @@ class AsyncInterleaveMany : public Node {
         Args{id_, name_, std::move(output)}, parameters);
   }
 
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -305,19 +295,16 @@ class AsyncInterleaveMany : public Node {
   // `input_time` specified through `input_times` divided by `num_inputs() - 1`,
   // and if the node has parallelism parameter, then `buffer_size` is derived
   // from `parallelism`.
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node :
-             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-          gradients->erase(node->long_name());
+        for (const auto& pair : CollectTunableParametersLocked()) {
+          gradients->erase(std::make_pair(pair.first, pair.second->name));
         }
       }
       return;
@@ -350,9 +337,9 @@ class AsyncInterleaveMany : public Node {
           consumer_time_der +
           producer_time_der * inputs_time_der_sum / parallelism;
 
-      for (const auto& node :
-           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-        auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
+      for (const auto& pair : CollectTunableParametersLocked()) {
+        auto* gradient = gtl::FindOrNull(
+            *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
           *gradient *= (producer_time_der /
                         static_cast<double>(num_inputs() - 1) / parallelism);
@@ -362,15 +349,12 @@ class AsyncInterleaveMany : public Node {
       // Set derivatives w.r.t. tunable parameters of the subtree rooted in the
       // first input equal to 0 since its output time is excluded from
       // computations.
-      absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-          first_input_parameters;
-      inputs_.front()->CollectTunableParameters(&first_input_parameters);
-      for (auto& pair : first_input_parameters) {
-        (*gradients)[pair.first] = 0.0L;
+      for (auto& pair : inputs_.front()->CollectTunableParameters()) {
+        (*gradients)[std::make_pair(pair.first, pair.second->name)] = 0.0L;
       }
       // Add derivative w.r.t. own parallelism parameter.
       if (parameter && (*parameter)->state->tunable) {
-        (*gradients)[long_name()] =
+        (*gradients)[std::make_pair(long_name(), (*parameter)->name)] =
             buffer_size_der - producer_time_der * producer_time / parallelism;
       }
     } else {
@@ -385,9 +369,8 @@ class AsyncInterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
@@ -436,8 +419,8 @@ class KnownRatio : public Node {
 
   // The input time is the sum of inherited input time and self processing time,
   // divided by `ratio_`.
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -456,27 +439,24 @@ class KnownRatio : public Node {
 
   // The output time is the sum of the self processing time and the product of
   // `ratio_` and the sum of output times of inputs.
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (ratio_ == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node :
-             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-          gradients->erase(node->long_name());
+        for (const auto& pair : CollectTunableParametersLocked()) {
+          gradients->erase(std::make_pair(pair.first, pair.second->name));
         }
       }
       return;
     }
     if (gradients) {
-      for (const auto& node :
-           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-        auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
+      for (const auto& pair : CollectTunableParametersLocked()) {
+        auto* gradient = gtl::FindOrNull(
+            *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
           *gradient *= ratio_;
         }
@@ -490,9 +470,8 @@ class KnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
@@ -544,8 +523,8 @@ class AsyncKnownRatio : public Node {
 
   // The input time is the sum of inherited input time and parallelism adjusted
   // self processing time, divided by `ratio_`.
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -579,11 +558,9 @@ class AsyncKnownRatio : public Node {
   // parallelism parameter, then `buffer_size` is derived from `parallelism`.
   //
   // Current implementation assumes that there is at most 1 parameter per node.
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double parallelism = 1.0;
     double buffer_size = 0.0;
@@ -613,9 +590,8 @@ class AsyncKnownRatio : public Node {
       consumer_time = input_time;
       producer_time = 0.0L;
       if (gradients) {
-        for (const auto& node :
-             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-          gradients->erase(node->long_name());
+        for (const auto& pair : CollectTunableParametersLocked()) {
+          gradients->erase(std::make_pair(pair.first, pair.second->name));
         }
 
         double producer_time_der = 0.0L;
@@ -626,13 +602,15 @@ class AsyncKnownRatio : public Node {
                                     &buffer_size_der);
         (*output_time_gradients)[long_name()] = consumer_time_der;
         if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
-          (*gradients)[long_name()] = -(1.0L + consumer_time_der) *
-                                          self_processing_time /
-                                          Square(parallelism) +
-                                      buffer_size_der;
+          (*gradients)[std::make_pair(long_name(),
+                                      (*parallelism_parameter)->name)] =
+              -(1.0L + consumer_time_der) * self_processing_time /
+                  Square(parallelism) +
+              buffer_size_der;
         } else if (buffer_size_parameter &&
                    (*buffer_size_parameter)->state->tunable) {
-          (*gradients)[long_name()] = buffer_size_der;
+          (*gradients)[std::make_pair(
+              long_name(), (*buffer_size_parameter)->name)] = buffer_size_der;
         }
       } else {
         wait_time = ComputeWaitTime(producer_time, consumer_time, buffer_size,
@@ -659,9 +637,9 @@ class AsyncKnownRatio : public Node {
       (*output_time_gradients)[long_name()] =
           consumer_time_der + producer_time_der * inputs_time_der_sum;
 
-      for (const auto& node :
-           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-        auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
+      for (const auto& pair : CollectTunableParametersLocked()) {
+        auto* gradient = gtl::FindOrNull(
+            *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
           *gradient *= (ratio_ * producer_time_der);
         }
@@ -669,14 +647,16 @@ class AsyncKnownRatio : public Node {
 
       // Add derivative w.r.t. own parameter if it's tunable.
       if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
-        (*gradients)[long_name()] = buffer_size_der / ratio_ -
-                                    (1.0L + consumer_time_der +
-                                     producer_time_der * inputs_time_der_sum) *
-                                        self_processing_time /
-                                        Square(parallelism);
+        (*gradients)[std::make_pair(long_name(),
+                                    (*parallelism_parameter)->name)] =
+            buffer_size_der / ratio_ -
+            (1.0L + consumer_time_der +
+             producer_time_der * inputs_time_der_sum) *
+                self_processing_time / Square(parallelism);
       } else if (buffer_size_parameter &&
                  (*buffer_size_parameter)->state->tunable) {
-        (*gradients)[long_name()] = buffer_size_der;
+        (*gradients)[std::make_pair(
+            long_name(), (*buffer_size_parameter)->name)] = buffer_size_der;
       }
     } else {
       wait_time = ComputeWaitTime(producer_time, consumer_time, buffer_size,
@@ -690,9 +670,8 @@ class AsyncKnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
@@ -765,8 +744,8 @@ class UnknownRatio : public Node {
 
   // The input time is the sum of inherited input time and self processing time,
   // divided by the ratio estimate.
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -789,20 +768,17 @@ class UnknownRatio : public Node {
 
   // The output time is the sum of the self processing time and the product of
   // the ratio estimate and the sum of output times of inputs.
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (num_elements_ == 0 || inputs_.empty() ||
         inputs_.front()->num_elements() == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node :
-             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-          gradients->erase(node->long_name());
+        for (const auto& pair : CollectTunableParametersLocked()) {
+          gradients->erase(std::make_pair(pair.first, pair.second->name));
         }
       }
       return;
@@ -812,9 +788,9 @@ class UnknownRatio : public Node {
     double ratio = static_cast<double>(inputs_.front()->num_elements()) /
                    static_cast<double>(num_elements_);
     if (gradients) {
-      for (const auto& node :
-           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
-        auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
+      for (const auto& pair : CollectTunableParametersLocked()) {
+        auto* gradient = gtl::FindOrNull(
+            *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
           *gradient *= ratio;
         }
@@ -871,8 +847,8 @@ class Unknown : public Node {
   }
 
   // The input time is the inherited input time.
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
@@ -883,11 +859,9 @@ class Unknown : public Node {
   }
 
   // The output time is the sum of output times of inputs.
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     (*output_times)[long_name()] = OutputTimeForInputs(*output_times);
     if (gradients) {
@@ -897,9 +871,8 @@ class Unknown : public Node {
   }
 
   // The processing time is the sum of processing times of inputs.
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (processing_times) {
       (*processing_times)[long_name()] = SelfProcessingTimeLocked();
@@ -1105,16 +1078,21 @@ double Node::ComputeWaitTime(const double& producer_time,
   return p_buffer_empty * producer_time;
 }
 
-void Node::CollectTunableParameters(
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const {
-  tf_shared_lock l(mu_);
+Node::ModelParameters Node::CollectTunableParametersLocked() const {
+  Node::ModelParameters parameters;
   // Collect tunable parameters from the leaves of the nodes tree to the root.
   for (const auto& node :
        CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
-    node->CollectTunableParametersHelper(parameters);
+    node->CollectTunableParametersHelper(&parameters);
   }
-  CollectTunableParametersHelper(parameters);
+  CollectTunableParametersHelper(&parameters);
+  return parameters;
+}
+
+Node::ModelParameters Node::CollectTunableParameters() const {
+  tf_shared_lock l(mu_);
+  return CollectTunableParametersLocked();
 }
 
 string Node::DebugString() const {
@@ -1140,11 +1118,11 @@ void Node::FlushMetrics() {
   metrics_.record_num_elements(num_elements_);
 }
 
-double Node::OutputTime(absl::flat_hash_map<string, double>* input_times,
-                        absl::flat_hash_map<string, double>* gradients) const {
+double Node::OutputTime(Node::NodeValues* input_times,
+                        Node::ParameterGradients* gradients) const {
   // To store the output time gradient w.r.t. input time (if `gradients` is not
   // `nullptr`) and the output time for each node.
-  absl::flat_hash_map<string, double> output_time_gradients, output_times;
+  Node::NodeValues output_time_gradients, output_times;
   tf_shared_lock l(mu_);
   auto nodes = CollectNodes(TraversalOrder::BFS, IsAutotuneNode);
 
@@ -1192,7 +1170,7 @@ double Node::SelfProcessingTime() const {
 }
 
 double Node::TotalBufferedBytes() const {
-  absl::flat_hash_map<string, double> total_bytes;
+  Node::NodeValues total_bytes;
   tf_shared_lock l(mu_);
   // Compute total buffered bytes from the leaves of the nodes tree to the root.
   for (const auto& node :
@@ -1206,7 +1184,7 @@ double Node::TotalBufferedBytes() const {
 }
 
 double Node::TotalMaximumBufferedBytes() const {
-  absl::flat_hash_map<string, double> total_bytes;
+  Node::NodeValues total_bytes;
   tf_shared_lock l(mu_);
   // Compute total maximum buffered bytes from the leaves of the nodes tree
   // to the root.
@@ -1220,11 +1198,10 @@ double Node::TotalMaximumBufferedBytes() const {
   return total_bytes[long_name()];
 }
 
-double Node::TotalProcessingTime(
-    absl::flat_hash_map<string, double>* processing_times) {
+double Node::TotalProcessingTime(Node::NodeValues* processing_times) {
   // Create a hash map to store the per-element CPU time spent in the subtree
   // rooted in each node.
-  absl::flat_hash_map<string, double> total_processing_times;
+  Node::NodeValues total_processing_times;
   tf_shared_lock l(mu_);
 
   // Computes per-element CPU time spent in the subtree rooted in the node from
@@ -1270,8 +1247,7 @@ double Node::AverageBufferedElementSize() const {
          2.0;
 }
 
-double Node::OutputTimeForInputs(
-    const absl::flat_hash_map<string, double>& output_times) const {
+double Node::OutputTimeForInputs(const Node::NodeValues& output_times) const {
   double sum = 0;
   for (auto& input : inputs_) {
     // Inputs for which autotuning is disabled are excluded.
@@ -1283,7 +1259,7 @@ double Node::OutputTimeForInputs(
 }
 
 double Node::OutputTimeGradientsForInputs(
-    const absl::flat_hash_map<string, double>& output_time_gradients) const {
+    const Node::NodeValues& output_time_gradients) const {
   double sum = 0;
   for (auto& input : inputs_) {
     // Inputs for which autotuning is disabled are excluded.
@@ -1296,7 +1272,7 @@ double Node::OutputTimeGradientsForInputs(
 }
 
 double Node::TotalProcessingTimeForInputs(
-    const absl::flat_hash_map<string, double>& total_processing_times) {
+    const Node::NodeValues& total_processing_times) {
   // If the number of elements produced by an input is smaller than this
   // constant, then its processing time is estimated using a weighted average
   // of the empirical processing time and processing time history.
@@ -1375,8 +1351,7 @@ Node::NodeVector Node::CollectNodes(
 }
 
 void Node::CollectTunableParametersHelper(
-    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
-    TF_SHARED_LOCKS_REQUIRED(mu_) {
+    Node::ModelParameters* parameters) const TF_SHARED_LOCKS_REQUIRED(mu_) {
   // If autotune is turned off or there are no elements recorded, we don't
   // collect the parameters on the node.
   if (!autotune_ || num_elements_ <= 0) {
@@ -1384,7 +1359,7 @@ void Node::CollectTunableParametersHelper(
   }
   for (auto& pair : parameters_) {
     if (pair.second->state->tunable) {
-      parameters->insert(std::make_pair(long_name(), pair.second));
+      parameters->push_back(std::make_pair(long_name(), pair.second));
     }
   }
 }
@@ -1443,8 +1418,7 @@ std::shared_ptr<Node> Node::SnapshotHelper(
   return cloned_current;
 }
 
-void Node::TotalBufferedBytesHelper(
-    absl::flat_hash_map<string, double>* total_bytes) const
+void Node::TotalBufferedBytesHelper(Node::NodeValues* total_bytes) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
   if (!autotune_) {
     total_bytes->insert(std::make_pair(long_name(), 0));
@@ -1465,8 +1439,7 @@ void Node::TotalBufferedBytesHelper(
   total_bytes->insert(std::make_pair(long_name(), result));
 }
 
-void Node::TotalMaximumBufferedBytesHelper(
-    absl::flat_hash_map<string, double>* total_bytes) const
+void Node::TotalMaximumBufferedBytesHelper(Node::NodeValues* total_bytes) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
   if (!autotune_) {
     total_bytes->insert(std::make_pair(long_name(), 0));
@@ -1684,21 +1657,17 @@ void Model::RemoveNode(std::shared_ptr<Node> node) {
   }
 }
 
-absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-Model::CollectTunableParameters(std::shared_ptr<Node> node) {
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
-  node->CollectTunableParameters(&parameters);
-  return parameters;
+Model::ModelParameters Model::CollectTunableParameters(
+    std::shared_ptr<Node> node) {
+  return node->CollectTunableParameters();
 }
 
-bool Model::ShouldStop(
-    int64 cpu_budget, int64 ram_budget,
-    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
-    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-        parallelism_parameters,
-    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-        buffer_size_parameters,
-    std::shared_ptr<Node> snapshot, bool* cpu_budget_reached) {
+bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
+                       const Model::ModelParameters& parameters,
+                       const Model::ModelParameters& parallelism_parameters,
+                       const Model::ModelParameters& buffer_size_parameters,
+                       std::shared_ptr<Node> snapshot,
+                       bool* cpu_budget_reached) {
   if (!(*cpu_budget_reached)) {
     // If those essential transformations' parallelism reaches the CPU
     // budget, we will only tune the buffer size parameters in future
@@ -1788,9 +1757,9 @@ void Model::OptimizeGradientDescent(
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
 
-  // The maps of "essential" parallelism parameters and buffer size parameters.
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-      parallelism_parameters, buffer_size_parameters;
+  // The vectors of "essential" parallelism parameters and buffer size
+  // parameters.
+  Model::ModelParameters parallelism_parameters, buffer_size_parameters;
   CollectParameters(snapshot, parameters, &parallelism_parameters,
                     &buffer_size_parameters);
 
@@ -1821,7 +1790,7 @@ void Model::OptimizeGradientDescent(
                    &cpu_budget_reached)) {
       break;
     }
-    absl::flat_hash_map<string, double> gradients;
+    Model::ParameterGradients gradients;
     new_output_time = OutputTime(
         snapshot, optimization_params.model_input_time(), &gradients);
     // We also terminate once the improvement of the output latency is too
@@ -1910,10 +1879,9 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,
-                         absl::flat_hash_map<string, double>* gradients) {
+                         Model::ParameterGradients* gradients) {
   // To store the input time for each node.
-  absl::flat_hash_map<string, double> input_times = {
-      {kModelInputTimeKey, model_input_time}};
+  Model::NodeValues input_times = {{kModelInputTimeKey, model_input_time}};
 
   // TODO(jsimsa): Now that we are accounting for buffer size in wait time
   // computation, assuming that the input is infinitely fast will result in

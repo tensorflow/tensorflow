@@ -50,21 +50,14 @@ class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     components = (np.arange(10),)
     return dataset_ops.Dataset.from_tensor_slices(components).take(count)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testTakeFewerThanInputs(self):
-    count = 4
-    self.run_core_tests(lambda: self._build_take_dataset(count), count)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testTakeVarious(self):
-    # Take more than inputs
-    self.run_core_tests(lambda: self._build_take_dataset(20), 10)
-    # Take exactly the input size
-    self.run_core_tests(lambda: self._build_take_dataset(10), 10)
-    # Take all
-    self.run_core_tests(lambda: self._build_take_dataset(-1), 10)
-    # Take nothing
-    self.run_core_tests(lambda: self._build_take_dataset(0), 0)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(count=[5], num_outputs=[5]) +
+          combinations.combine(count=[20, 10, -1], num_outputs=[10]) +
+          combinations.combine(count=[0], num_outputs=[0])))
+  def testCore(self, count, num_outputs):
+    self.run_core_tests(lambda: self._build_take_dataset(count), num_outputs)
 
   def testInvalidTake(self):
     with self.assertRaisesRegex(ValueError,

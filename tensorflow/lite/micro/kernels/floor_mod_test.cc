@@ -23,86 +23,87 @@ limitations under the License.
 
 namespace tflite {
 namespace testing {
-namespace {}
+namespace {
+
+void ExecuteFloorModTest(TfLiteTensor* tensors, int tensors_count) {
+  constexpr int kInputArrayData[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
+  constexpr int kOutputArrayData[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
+
+  const TfLiteRegistration registration = tflite::Register_FLOOR_MOD();
+  micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
+                             outputs_array, nullptr);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+}
+
+template <typename T>
+void TestFloorMod(const int* input1_dims_data, const T* input1_data,
+                  const int* input2_dims_data, const T* input2_data,
+                  const int* expected_dims, const T* expected_data,
+                  T* output_data) {
+  TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
+  TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
+
+  TfLiteTensor tensors[] = {
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
+  };
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
+
+  ExecuteFloorModTest(tensors, tensors_count);
+
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_data[i], output_data[i]);
+  }
+}
+
+}  // namespace
+}  // namespace testing
+}  // namespace tflite
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(FloorModSimple) {
-#ifdef notdef
-  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, 9, 11, 3});
-  model.PopulateTensor<int32_t>(model.input2(), {2, 2, 3, 4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
-#endif  // notdef
-}
-
-TF_LITE_MICRO_TEST(FloorModNegativeValue) {
-#ifdef notdef
-  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int32_t>(model.input2(), {2, 2, -3, -4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
-#endif  // notdef
-}
-
-TF_LITE_MICRO_TEST(FloorModBroadcast) {
-#ifdef notdef
-  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1}}, {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int32_t>(model.input2(), {-3});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
-#endif  // notdef
-}
-
-TF_LITE_MICRO_TEST(FloorModInt64WithBroadcast) {
-#ifdef notdef
-  FloorMod<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
-                          {TensorType_INT64, {1}}, {TensorType_INT64, {}});
-  model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, (1LL << 34) + 9});
-  model.PopulateTensor<int64_t>(model.input2(), {-(1LL << 33)});
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAre(-8589934582, -9, -11, -8589934583));
-#endif  // notdef
-}
-
 TF_LITE_MICRO_TEST(FloorModFloatSimple) {
-#ifdef notdef
-  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                        {TensorType_FLOAT32, {1, 2, 2, 1}},
-                        {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, 9, 11, 3});
-  model.PopulateTensor<float>(model.input2(), {2, 2, 3, 4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
-#endif  // notdef
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  constexpr float kInput1[] = {10, 9, 11, 3};
+  constexpr float kInput2[] = {2, 2, 3, 4};
+  constexpr float kExpect[] = {0, 1, 2, 3};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorMod(kDims, kInput1, kDims, kInput2, kDims, kExpect,
+                                output_data);
 }
 
 TF_LITE_MICRO_TEST(FloorModFloatNegativeValue) {
-#ifdef notdef
-  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                        {TensorType_FLOAT32, {1, 2, 2, 1}},
-                        {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<float>(model.input2(), {2, 2, -3, -4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
-#endif  // notdef
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  constexpr float kInput1[] = {10, -9, -11, 7};
+  constexpr float kInput2[] = {2, 2, -3, -4};
+  constexpr float kExpect[] = {0, 1, -2, -1};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorMod(kDims, kInput1, kDims, kInput2, kDims, kExpect,
+                                output_data);
 }
 
 TF_LITE_MICRO_TEST(FloorModFloatBroadcast) {
-#ifdef notdef
-  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                        {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<float>(model.input2(), {-3});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
-#endif  // notdef
+  constexpr int kDims1[] = {4, 1, 2, 2, 1};
+  constexpr int kDims2[] = {1, 1};
+  constexpr float kInput1[] = {10, -9, -11, 7};
+  constexpr float kInput2[] = {-3};
+  constexpr float kExpect[] = {-2, 0, -2, -2};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorMod(kDims1, kInput1, kDims2, kInput2, kDims1,
+                                kExpect, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END
-
-}  // namespace testing
-}  // namespace tflite

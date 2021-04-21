@@ -48,6 +48,7 @@ namespace data {
 /* static */ constexpr const char* const
     ParallelBatchDatasetOp::kNumParallelCalls;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kDropRemainder;
+/* static */ constexpr const char* const ParallelBatchDatasetOp::kParallelCopy;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kDeterministic;
@@ -67,7 +68,7 @@ constexpr char kStatus[] = "status";
 class ParallelBatchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 batch_size, int64 num_parallel_calls,
-          bool drop_remainder, const DatasetBase* input,
+          bool drop_remainder, bool parallel_copy, const DatasetBase* input,
           DeterminismPolicy deterministic)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
@@ -79,6 +80,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                                      : std::min<int64>(batch_size, 1 << 16)),
         num_parallel_calls_(num_parallel_calls),
         drop_remainder_(drop_remainder),
+        parallel_copy_(parallel_copy),
         input_(input),
         deterministic_(deterministic),
         traceme_metadata_(
@@ -86,7 +88,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
               num_parallel_calls == model::kAutotune ? "true" : "false"},
              {"batch_size",
               strings::Printf("%lld", static_cast<long long>(batch_size))},
-             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
+             {"drop_remainder", drop_remainder ? "true" : "false"},
+             {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
 
     const auto& input_shapes = input_->output_shapes();
@@ -162,6 +165,11 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
 
     std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    // Attr: parallel_copy
+    AttrValue parallel_copy_attr;
+    b->BuildAttrValue(parallel_copy_, &parallel_copy_attr);
+    attrs.emplace_back(kParallelCopy, parallel_copy_attr);
+
     // Attr: deterministic
     AttrValue deterministic_attr;
     b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
@@ -194,7 +202,13 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = ctx->runner_threadpool_size();
+        // If we copy elements in the same batch in parallel, to be safe, we
+        // initialize the parallelism to be 1.
+        if (dataset()->parallel_copy_) {
+          num_parallel_calls_->value = 1;
+        } else {
+          num_parallel_calls_->value = ctx->runner_threadpool_size();
+        }
       }
       cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -378,7 +392,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         Status status;
         {
           mutex_lock l(result->mu);
-          status = CopyBatch(/*parallel_copy=*/false, ctx.get(),
+          status = CopyBatch(dataset()->parallel_copy_, ctx.get(),
                              &result->output, batch_elements.get());
           result->status.Update(status);
           RecordBufferEnqueue(ctx.get(), result->output);
@@ -573,6 +587,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
   const int64 reserve_size_;
   const int64 num_parallel_calls_;
   const bool drop_remainder_;
+  const bool parallel_copy_;
   const DatasetBase* const input_;
   std::vector<PartialTensorShape> output_shapes_;
   const DeterminismPolicy deterministic_;
@@ -586,6 +601,9 @@ ParallelBatchDatasetOp::ParallelBatchDatasetOp(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
     OP_REQUIRES_OK(
         ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
+  }
+  if (ctx->HasAttr(kParallelCopy)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kParallelCopy, &parallel_copy_));
   }
 }
 
@@ -606,7 +624,7 @@ void ParallelBatchDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, ParseScalarArgument<bool>(ctx, kDropRemainder, &drop_remainder));
 
   *output = new Dataset(ctx, batch_size, num_parallel_calls, drop_remainder,
-                        input, deterministic_);
+                        parallel_copy_, input, deterministic_);
 }
 
 namespace {

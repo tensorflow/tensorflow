@@ -121,7 +121,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def trt_incompatible_op(self):
-    return math_ops.erf
+    return math_ops.erfc
 
   @property
   def precision_modes(self):
@@ -829,7 +829,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_engine = not node.attr["static_engine"].b
         self.assertNotEmpty(segment_funcdef_name, node.name)
         self.assertIn(function_name, functions)
-        if not IsQuantizationWithCalibration and not is_dynamic_engine:
+        if (not IsQuantizationWithCalibration(run_params) and
+            not is_dynamic_engine):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)

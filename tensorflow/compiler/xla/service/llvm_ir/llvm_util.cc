@@ -590,12 +590,11 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(
-      hlo_module, "",
-      absl::StrCat(suffix, filename_suffix.empty() ? "" : ".", filename_suffix,
-                   ".ll"),
-      DumpModuleToString(llvm_module));
+  string suffix =
+      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
+                   filename_suffix.empty() ? "" : ".", filename_suffix);
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
   // with the constants stripped to get IR that is easier to manipulate.  Skip
@@ -605,6 +604,21 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
     DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
+}
+
+void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
+                     const DebugOptions& debug_options) {
+  absl::string_view module_name = "<unnamed>";
+  if (llvm::Optional<llvm::StringRef> mlir_module_name =
+          mlir_module.getName()) {
+    module_name = AsStringView(*mlir_module_name);
+  }
+  if (!DumpingEnabledForHloModule(module_name, debug_options)) {
+    return;
+  }
+
+  DumpToFileInDirOrStdout(debug_options, unique_id, /*file_prefix=*/"",
+                          /*file_suffix=*/"lmhlo", DumpToString(mlir_module));
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,

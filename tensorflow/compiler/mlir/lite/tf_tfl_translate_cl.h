@@ -40,6 +40,7 @@ extern llvm::cl::opt<bool> emit_quant_adaptor_ops;
 extern llvm::cl::opt<std::string> quant_stats_file_name;
 extern llvm::cl::opt<bool> convert_tf_while_to_tfl_while;
 extern llvm::cl::opt<std::string> select_user_tf_ops;
+extern llvm::cl::opt<bool> unfold_batchmatmul;
 
 // Import saved model.
 extern llvm::cl::opt<bool> import_saved_model_object_graph;
