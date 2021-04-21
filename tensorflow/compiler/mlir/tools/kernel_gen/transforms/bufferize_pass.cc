@@ -171,13 +171,13 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         scf::SCFDialect, tensor::TensorDialect,
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
         lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
+    target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp,
                         chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
-                        memref::BufferCastOp>();
+                        memref::BufferCastOp, linalg::TensorReshapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&

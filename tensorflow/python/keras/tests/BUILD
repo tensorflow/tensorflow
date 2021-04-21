@@ -13,7 +13,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -252,7 +252,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/eager/memory_tests:memory_test_util",
         "//tensorflow/python/keras",
-        "@six_archive//:six",
     ],
 )
 

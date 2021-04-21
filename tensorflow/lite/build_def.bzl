@@ -833,7 +833,6 @@ def tflite_custom_cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
-            # TODO(b/161323860) replace this by generated header.
             "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),

@@ -17,7 +17,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -1196,6 +1196,7 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1261,6 +1262,7 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
+    tags = ["no_rocm"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2061,6 +2063,46 @@ xla_test(
 )
 
 xla_test(
+    name = "replicated_io_feed_test",
+    srcs = ["replicated_io_feed_test.cc"],
+    backend_tags = {
+        # This test is tagged "manual" because it requires multiple GPUs, and
+        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
+        # unless they're also tagged "guitar".
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+        ],
+    },
+    backends = ["gpu"],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
     deps = [
@@ -2141,6 +2183,7 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

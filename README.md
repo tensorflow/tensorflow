@@ -165,7 +165,7 @@ Container Type                                                    | Status | Art
 *   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
 *   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow Roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
+*   [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 

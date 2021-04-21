@@ -965,7 +965,7 @@ class Lambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):
@@ -1441,7 +1441,7 @@ class TFOpLambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def get_config(self):
     if not self.symbol:

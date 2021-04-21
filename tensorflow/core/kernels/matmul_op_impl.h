@@ -639,8 +639,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
-template <typename Device, typename Scalar>
+template <typename Device, typename Ta, typename Tb, typename Tout>
 class BaseBatchMatMulOp : public OpKernel {
  public:
   explicit BaseBatchMatMulOp(OpKernelConstruction* context,
@@ -712,8 +711,8 @@ class BaseBatchMatMulOp : public OpKernel {
       return;
     }
     if (in0.NumElements() == 0 || in1.NumElements() == 0) {
-      functor::SetZeroFunctor<Device, Scalar> f;
-      f(ctx->eigen_device<Device>(), out->flat<Scalar>());
+      functor::SetZeroFunctor<Device, Tout> f;
+      f(ctx->eigen_device<Device>(), out->flat<Tout>());
       return;
     }
     Tensor out_reshaped;
@@ -721,7 +720,8 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
-    if (std::is_same<Scalar, bfloat16>::value) {
+    if (std::is_same<Ta, bfloat16>::value &&
+        std::is_same<Tb, bfloat16>::value) {
       bool is_cpu = std::is_same<Device, CPUDevice>::value;
       OP_REQUIRES(ctx, is_cpu,
                   errors::Internal("bfloat16 matmul is not supported by GPU"));
@@ -747,9 +747,17 @@ class BaseBatchMatMulOp : public OpKernel {
       FloatToBFloat16(out_reshaped_float.flat<float>().data(),
                       out_reshaped.flat<bfloat16>().data(), out->NumElements());
     } else {
-      LaunchBatchMatMul<Device, Scalar>::Launch(ctx, in0_reshaped, in1_reshaped,
-                                                adj_x_, adj_y_, trans_x_,
-                                                trans_y_, bcast, &out_reshaped);
+      // Cast tensor to desired type to reuse Eigen.
+      // TODO(b/178749687): remove this cast if Eigen supports this natively.
+      if (!std::is_same<Ta, Tout>::value) {
+        in0_reshaped = CastTensor<Ta, Tout>(in0_reshaped);
+      }
+      if (!std::is_same<Tb, Tout>::value) {
+        in1_reshaped = CastTensor<Tb, Tout>(in1_reshaped);
+      }
+      LaunchBatchMatMul<Device, Tout>::Launch(ctx, in0_reshaped, in1_reshaped,
+                                              adj_x_, adj_y_, trans_x_,
+                                              trans_y_, bcast, &out_reshaped);
     }
   }
 
@@ -759,18 +767,27 @@ class BaseBatchMatMulOp : public OpKernel {
 
  private:
   // TODO(171979567) Make the ops take both adj and transpose attributes.
-  bool adj_x_;
-  bool adj_y_;
-  bool trans_x_;
-  bool trans_y_;
+  bool adj_x_ = false;
+  bool adj_y_ = false;
+  bool trans_x_ = false;
+  bool trans_y_ = false;
+
+  // Cast `t` from `SrcT` to `DstT`.
+  template <typename SrcT, typename DstT>
+  Tensor CastTensor(const Tensor& t) {
+    Tensor res = Tensor(DataTypeToEnum<DstT>::v(), t.shape());
+    res.flat<DstT>() = t.flat<SrcT>().template cast<DstT>();
+    return res;
+  }
 };
 
 // BatchMatMul Op implementation which disallows broadcasting.
-template <typename Device, typename Scalar, bool is_legacy_matmul = false>
-class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
+template <typename Device, typename Ta, typename Tb, typename Tout,
+          bool is_legacy_matmul = false>
+class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
  public:
   explicit BatchMatMulOp(OpKernelConstruction* context)
-      : BaseBatchMatMulOp<Device, Scalar>(context, is_legacy_matmul) {}
+      : BaseBatchMatMulOp<Device, Ta, Tb, Tout>(context, is_legacy_matmul) {}
 
   ~BatchMatMulOp() override {}
 
@@ -809,12 +826,13 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
 };
 
 // BatchMatMul Op implementation with broadcasting support.
-template <typename Device, typename Scalar>
-class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
+template <typename Device, typename Ta, typename Tb, typename Tout>
+class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
  public:
   explicit BatchMatMulV2Op(OpKernelConstruction* context)
-      : BaseBatchMatMulOp<Device, Scalar>(context,
-                                          /* is_legacy_matmul= */ false) {}
+      : BaseBatchMatMulOp<Device, Ta, Tb, Tout>(context,
+                                                /* is_legacy_matmul= */ false) {
+  }
 
   ~BatchMatMulV2Op() override {}
 
@@ -833,27 +851,45 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
   }
 };
 
+// Register for MatMul, BatchMatMul, BatchMatMulv2 where Tin = Tout.
 #define REGISTER_BATCH_MATMUL_CPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulOp<CPUDevice, TYPE>);                                    \
+      BatchMatMulOp<CPUDevice, TYPE, TYPE, TYPE>);                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<CPUDevice, TYPE>);                                  \
+      BatchMatMulV2Op<CPUDevice, TYPE, TYPE, TYPE>);                      \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),        \
-      BatchMatMulOp<CPUDevice, TYPE, /* is_legacy_matmul=*/true>)
+      BatchMatMulOp<CPUDevice, TYPE, TYPE, TYPE, /* is_legacy_matmul=*/true>)
 
 #define REGISTER_BATCH_MATMUL_GPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulOp<GPUDevice, TYPE>);                                    \
+      BatchMatMulOp<GPUDevice, TYPE, TYPE, TYPE>);                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<GPUDevice, TYPE>);                                  \
+      BatchMatMulV2Op<GPUDevice, TYPE, TYPE, TYPE>);                      \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("MatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),        \
-      BatchMatMulOp<GPUDevice, TYPE, /* is_legacy_matmul=*/true>)
+      BatchMatMulOp<GPUDevice, TYPE, TYPE, TYPE, /* is_legacy_matmul=*/true>)
+
+// Register for BatchMatMulv3 where Ta, Tb and Tout are not the same.
+#define REGISTER_BATCH_MATMUL_TOUT_CPU(Ta, Tb, Tout)         \
+  REGISTER_KERNEL_BUILDER(Name("BatchMatMulV3")              \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<Ta>("Ta")      \
+                              .TypeConstraint<Tb>("Tb")      \
+                              .TypeConstraint<Tout>("Tout"), \
+                          BatchMatMulV2Op<CPUDevice, Ta, Tb, Tout>)
+
+#define REGISTER_BATCH_MATMUL_TOUT_GPU(Ta, Tb, Tout)         \
+  REGISTER_KERNEL_BUILDER(Name("BatchMatMulV3")              \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<Ta>("Ta")      \
+                              .TypeConstraint<Tb>("Tb")      \
+                              .TypeConstraint<Tout>("Tout"), \
+                          BatchMatMulV2Op<GPUDevice, Ta, Tb, Tout>)
 
 }  // namespace tensorflow
 

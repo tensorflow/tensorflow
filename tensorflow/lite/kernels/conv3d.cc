@@ -96,17 +96,20 @@ TfLiteStatus AllocateTemporaryTensorsIfRequired(
     opdata->im2col_oversized = true;
   }
 
-  if (opdata->need_im2col && opdata->im2col_tensor_id == kTensorNotAllocated) {
-    TF_LITE_ENSURE_OK(
-        context, context->AddTensors(context, 1, &opdata->im2col_tensor_id));
+  if (opdata->need_im2col) {
+    if (opdata->im2col_tensor_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &opdata->im2col_tensor_id));
+    }
     opdata->im2col_index = temporaries_count++;
   }
 
-  if (opdata->need_transposed_filter &&
-      opdata->transposed_filter_tensor_id == kTensorNotAllocated) {
-    TF_LITE_ENSURE_OK(
-        context,
-        context->AddTensors(context, 1, &opdata->transposed_filter_tensor_id));
+  if (opdata->need_transposed_filter) {
+    if (opdata->transposed_filter_tensor_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1,
+                                       &opdata->transposed_filter_tensor_id));
+    }
     opdata->transposed_filter_index = temporaries_count++;
   }
 

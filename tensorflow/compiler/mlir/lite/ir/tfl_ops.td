@@ -530,9 +530,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -550,11 +550,11 @@ def TFL_AddOp : TFL_Op<"add", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -592,6 +592,35 @@ def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [
     NoQuantizableResult]> {
   let summary = [{
 Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$input,
+    TFL_I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TFL_BoolTensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
+def TFL_ReduceAllOp : TFL_Op<"reduce_all", [
+    NoSideEffect,
+    NoQuantizableResult]> {
+  let summary = [{
+Computes the "logical and" of elements across dimensions of a tensor.
   }];
 
   let description = [{
@@ -2372,12 +2401,12 @@ def TFL_PadOp : TFL_Op<"pad", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    TFL_OperandHasRankAtMost<0, 4>,
+    TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
-    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+    PredOpTrait<"the first dim size of the padding argument must be at most 5",
       Or<[TFL_OperandIsUnrankedPred<1>,
-          TFL_OperandDimIsAtMost<1, 0, 4>]>>]> {
+          TFL_OperandDimIsAtMost<1, 0, 5>]>>]> {
   let summary = "Padding operator";
 
   let description = [{
@@ -2418,13 +2447,13 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    TFL_OperandHasRankAtMost<0, 4>,
+    TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandHasRank<2, 0>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
-    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+    PredOpTrait<"the first dim size of the padding argument must be at most 5",
       Or<[TFL_OperandIsUnrankedPred<1>,
-          TFL_OperandDimIsAtMost<1, 0, 4>]>>,
+          TFL_OperandDimIsAtMost<1, 0, 5>]>>,
     PredOpTrait<"input and constant value operands must have same element type",
       TFL_TCopVTEtAreSameAt<0, 2>>]> {
   let summary = "Padding operator v2";
@@ -3462,14 +3491,17 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
 
     I32Attr:$begin_mask,
     I32Attr:$end_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$ellipsis_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$new_axis_mask,
+    I32Attr:$ellipsis_mask,
+    I32Attr:$new_axis_mask,
     I32Attr:$shrink_axis_mask
   );
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
+
+  // TFLite kernel only supports up to 5D input including added axis.
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -4500,7 +4532,8 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   NoSideEffect,
   NoQuantizableResult,
   IsolatedFromAbove,
-  SingleBlockImplicitTerminator<"YieldOp">]> {
+  SingleBlockImplicitTerminator<"YieldOp">,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Wrapper Op for TF custom ops.";
 
   let description = [{
@@ -4518,6 +4551,11 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [

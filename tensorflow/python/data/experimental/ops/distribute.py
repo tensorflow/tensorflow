@@ -343,7 +343,7 @@ def replicate(dataset, devices):
     #
     # TODO(b/183497230): Move options application after deserialization.
     dataset = dataset._apply_options()
-    if tf_compat.forward_compatible(2021, 4, 12):
+    if tf_compat.forward_compatible(2021, 4, 25):
       policy = ExternalStatePolicy.WARN
     else:
       policy = dataset.options().experimental_external_state_policy

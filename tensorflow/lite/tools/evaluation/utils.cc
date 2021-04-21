@@ -93,7 +93,6 @@ TfLiteStatus GetSortedFileNames(
 }
 #endif
 
-// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return TfLiteDelegatePtr(

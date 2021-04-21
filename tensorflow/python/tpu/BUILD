@@ -16,7 +16,7 @@ package(
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["tpu_test_wrapper.py"])

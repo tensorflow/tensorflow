@@ -177,6 +177,16 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseCos);
   }
 
+  TfLiteStatus AddCumSum() {
+    return AddBuiltin(BuiltinOperator_CUMSUM, tflite::Register_CUMSUM(),
+                      ParseCumsum);
+  }
+
+  TfLiteStatus AddDepthToSpace() {
+    return AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE,
+                      tflite::Register_DEPTH_TO_SPACE(), ParseDepthToSpace);
+  }
+
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
                       Register_DEPTHWISE_CONV_2D(), ParseDepthwiseConv2D);
@@ -191,10 +201,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddDetectionPostprocess() {
     return AddCustom("TFLite_Detection_PostProcess",
                      tflite::Register_DETECTION_POSTPROCESS());
-  }
-
-  TfLiteStatus AddDiv() {
-    return AddBuiltin(BuiltinOperator_DIV, tflite::Register_DIV(), ParseDiv);
   }
 
   TfLiteStatus AddElu() {
@@ -223,9 +229,23 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseExpandDims);
   }
 
+  TfLiteStatus AddFill() {
+    return AddBuiltin(BuiltinOperator_FILL, tflite::Register_FILL(), ParseFill);
+  }
+
   TfLiteStatus AddFloor() {
     return AddBuiltin(BuiltinOperator_FLOOR,
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);
+  }
+
+  TfLiteStatus AddFloorDiv() {
+    return AddBuiltin(BuiltinOperator_FLOOR_DIV, tflite::Register_FLOOR_DIV(),
+                      ParseFloorDiv);
+  }
+
+  TfLiteStatus AddFloorMod() {
+    return AddBuiltin(BuiltinOperator_FLOOR_MOD, tflite::Register_FLOOR_MOD(),
+                      ParseFloorMod);
   }
 
   TfLiteStatus AddFullyConnected(

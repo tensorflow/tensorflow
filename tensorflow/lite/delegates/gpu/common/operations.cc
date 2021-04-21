@@ -168,6 +168,8 @@ std::string ToString(enum OperationType op) {
       return "reduce_sum";
     case OperationType::RELU:
       return "relu";
+    case OperationType::RESAMPLER:
+      return "resampler";
     case OperationType::RESHAPE:
       return "reshape";
     case OperationType::RESIZE:
@@ -257,6 +259,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"reduce_product", OperationType::REDUCE_PRODUCT},
           {"reduce_sum", OperationType::REDUCE_SUM},
           {"relu", OperationType::RELU},
+          {"resampler", OperationType::RESAMPLER},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},

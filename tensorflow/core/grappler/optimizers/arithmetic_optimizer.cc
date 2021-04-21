@@ -2047,6 +2047,12 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
     NodeDef* producer;
+
+    if (consumer->input_size() < 1) {
+      return errors::FailedPrecondition("Node ", simplified_node_name,
+                                        " lacks inputs");
+    }
+
     TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
     const bool producer_is_cast = IsCastLike(*producer);
     const bool can_optimize =
@@ -2538,6 +2544,11 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
+    if (!node || node->input_size() < 2) {
+      // Invalid node
+      return false;
+    }
+
     return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 

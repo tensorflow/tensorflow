@@ -56,7 +56,7 @@ platform, as given below:
 *   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
     Demonstrates the absolute basics of using TensorFlow Lite for
     Microcontrollers
-    *   [Tutorial using any supported device](get_started.md)
+    *   [Tutorial using any supported device](get_started_low_level.md)
 *   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
@@ -100,8 +100,8 @@ The following limitations should be considered:
 
 ## Next steps
 
-*   [Get started with microcontrollers](get_started.md) to try the example
-    application and learn how to use the API.
+*   [Get started with microcontrollers](get_started_low_level.md) to try the
+    example application and learn how to use the API.
 *   [Understand the C++ library](library.md) to learn how to use the library in
     your own project.
 *   [Build and convert models](build_convert.md) to learn more about training

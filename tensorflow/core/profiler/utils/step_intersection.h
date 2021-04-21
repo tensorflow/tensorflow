@@ -43,6 +43,10 @@ class StepIntersection {
   // Returns the number of steps in the intersection.
   uint32 NumSteps() const { return end_chief_idx_ - begin_chief_idx_; }
 
+  // Returns the value of empty_intersect_ (see the explanation of
+  // empty_intersect_ below).
+  bool EmptyIntersect() const { return empty_intersect_; }
+
   // Returns the step numbers for the destination (i.e. the intersection
   // result).
   std::vector<uint32> DstStepNumbers() const;
@@ -62,6 +66,13 @@ class StepIntersection {
   uint32
       chief_host_id_;  // the host whose step sequence is selected as the chief.
   uint32 steps_dropped_;  // number of steps dropped.
+  // If NumSteps() is 0, empty_intersect indicates one of two possible reasons:
+  //   (i) At least one host has some steps, but the intersection over all hosts
+  //   is empty. In this case, empty_intersect is true,
+  //   (ii) None of the hosts has any steps. In this case, empty_intersect is
+  //   false.
+  // If NumSteps() > 0, empty_intersect is don't care.
+  bool empty_intersect_;
   // The begin and end indices to the chief step sequence for this step
   // intersection. Note that the begin index is inclusive but the end index is
   // exclusive.

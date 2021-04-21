@@ -18,6 +18,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
@@ -100,6 +101,9 @@ class DistributionStrategyCnnCorrectnessTest(
       keras_correctness_test_base.all_strategy_and_input_config_combinations() +
       keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
+    if (distribution ==
+        strategy_combinations.central_storage_strategy_with_gpu_and_cpu):
+      self.skipTest('b/183958183')
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
   @ds_combinations.generate(

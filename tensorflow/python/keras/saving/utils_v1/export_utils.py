@@ -15,15 +15,9 @@
 # LINT.IfChange
 """Utilities for creating SavedModels."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import time
-
-import six
 
 from tensorflow.python.keras.saving.utils_v1 import export_output as export_output_lib
 from tensorflow.python.keras.saving.utils_v1 import mode_keys
@@ -110,7 +104,7 @@ def build_all_signature_defs(receiver_tensors,
 
   if receiver_tensors_alternatives:
     for receiver_name, receiver_tensors_alt in (
-        six.iteritems(receiver_tensors_alternatives)):
+        receiver_tensors_alternatives.items()):
       if not isinstance(receiver_tensors_alt, dict):
         receiver_tensors_alt = {
             SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
@@ -178,10 +172,10 @@ def _log_signature_report(signature_def_map, excluded_signatures):
       logging.info('\'{}\' : {}'.format(signature_name, message))
 
   if not signature_def_map:
-    logging.warn('Export includes no signatures!')
+    logging.warning('Export includes no signatures!')
   elif (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY not in
         signature_def_map):
-    logging.warn('Export includes no default signature!')
+    logging.warning('Export includes no default signature!')
 
 
 # When we create a timestamped directory, there is a small chance that the
@@ -223,8 +217,10 @@ def get_timestamped_export_dir(export_dir_base):
       return result_dir
     time.sleep(1)
     attempts += 1
-    logging.warn('Directory {} already exists; retrying (attempt {}/{})'.format(
-        compat.as_str(result_dir), attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+    logging.warning(
+        'Directory {} already exists; retrying (attempt {}/{})'.format(
+            compat.as_str(result_dir), attempts,
+            MAX_DIRECTORY_CREATION_ATTEMPTS))
   raise RuntimeError('Failed to obtain a unique export directory name after '
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 
@@ -243,9 +239,13 @@ def get_temp_export_dir(timestamped_export_dir):
     A sister directory prefixed with 'temp-', e.g. /foo/bar/temp-<timestamp>.
   """
   (dirname, basename) = os.path.split(timestamped_export_dir)
+  if isinstance(basename, bytes):
+    str_name = basename.decode('utf-8')
+  else:
+    str_name = str(basename)
   temp_export_dir = os.path.join(
       compat.as_bytes(dirname),
-      compat.as_bytes('temp-{}'.format(six.ensure_text(basename))))
+      compat.as_bytes('temp-{}'.format(str_name)))
   return temp_export_dir
 
 
@@ -316,7 +316,7 @@ def get_export_outputs(export_outputs, predictions):
   if not isinstance(export_outputs, dict):
     raise TypeError('export_outputs must be dict, given: {}'.format(
         export_outputs))
-  for v in six.itervalues(export_outputs):
+  for v in export_outputs.values():
     if not isinstance(v, export_output_lib.ExportOutput):
       raise TypeError(
           'Values in export_outputs must be ExportOutput objects. '

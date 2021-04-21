@@ -78,6 +78,26 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+
+
+def enable_run_eager_op_as_function():
+  """Execute elementary eager ops (non-function) wrapped in a call op.
+
+  This should be functionally equivalent to running the eager op's kernel
+  directly (the default) but reduces the number of codepaths for executing
+  TF2 programs in the runtime, thereby improving consistency (in terms of
+  optimizations and rewrites for instance) and maintainability.
+  """
+  # Must be called before context is actually built.
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+
+
+def run_eager_op_as_function_enabled():
+  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
 # Expose it as internally public APIs for Keras use cases in b/171080602.
 tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
 
@@ -420,6 +440,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -522,6 +543,8 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
+            opts, self._run_eager_op_as_function)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -663,14 +686,9 @@ class Context(object):
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels.
-
-    Raises:
-      ValueError: if context is not initialized.
     """
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
-    else:
-      raise ValueError("Context is not initialized.")
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -1524,6 +1542,29 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def set_logical_cpu_devices(self, num_cpus, prefix=""):
+    """Set virtual CPU devices in context.
+
+    If virtual CPU devices are already configured at context initialization
+    by tf.config.set_logical_device_configuration(), this method should not be
+    called.
+
+    Args:
+      num_cpus: Number of virtual CPUs.
+      prefix: Device name prefix.
+
+    Raises:
+     RuntimeError: If virtual CPUs are already configured at context
+     initialization.
+    """
+    self.ensure_initialized()
+    # Error out if there are already multiple logical CPU in the context.
+    if len(self.list_logical_devices("CPU")) > 1:
+      raise RuntimeError("Virtual CPUs already set, cannot modify again.")
+
+    pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
+    self._initialize_logical_devices()
+
   def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
     return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
                                        stage, device_name, args)
@@ -1867,6 +1908,11 @@ def ensure_initialized():
   context().ensure_initialized()
 
 
+def initialize_logical_devices():
+  """Initialize the virtual devices."""
+  context()._initialize_logical_devices()  # pylint: disable=protected-access
+
+
 def set_global_seed(seed):
   """Sets the eager mode seed."""
   context()._set_global_seed(seed)  # pylint: disable=protected-access
@@ -2126,7 +2172,32 @@ def get_log_device_placement():
 
 @tf_export("debugging.set_log_device_placement")
 def set_log_device_placement(enabled):
-  """Set if device placements should be logged.
+  """Turns logging for device placement decisions on or off.
+
+  Operations execute on a particular device, producing and consuming tensors on
+  that device. This may change the performance of the operation or require
+  TensorFlow to copy data to or from an accelerator, so knowing where operations
+  execute is useful for debugging performance issues.
+
+  For more advanced profiling, use the [TensorFlow
+  profiler](https://www.tensorflow.org/guide/profiler).
+
+  Device placement for operations is typically controlled by a `tf.device`
+  scope, but there are exceptions, for example operations on a `tf.Variable`
+  which follow the initial placement of the variable. Turning off soft device
+  placement (with `tf.config.set_soft_device_placement`) provides more explicit
+  control.
+
+  >>> tf.debugging.set_log_device_placement(True)
+  >>> tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:GPU:0
+  >>> with tf.device("CPU"):
+  ...  tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:CPU:0
+  >>> tf.debugging.set_log_device_placement(False)
+
+  Turning on `tf.debugging.set_log_device_placement` also logs the placement of
+  ops inside `tf.function` when the function is called.
 
   Args:
     enabled: Whether to enabled device placement logging.

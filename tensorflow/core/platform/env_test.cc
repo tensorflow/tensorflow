@@ -426,6 +426,11 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 
+TEST_F(DefaultEnvTest, GetProcessId) {
+  Env* env = Env::Default();
+  EXPECT_NE(env->GetProcessId(), 0);
+}
+
 TEST_F(DefaultEnvTest, GetThreadInformation) {
   Env* env = Env::Default();
   // TODO(fishx): Turn on this test for Apple.

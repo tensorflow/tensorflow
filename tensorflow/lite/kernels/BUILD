@@ -8,7 +8,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
@@ -355,6 +355,7 @@ cc_library(
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
         "@ruy//ruy:context",
+        "@ruy//ruy:path",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:macros",

@@ -347,6 +347,11 @@ class QuantizedMulOp : public OpKernel {
         tensor_num_elements = x.NumElements();
         tensor_offset = offset_x;
       }
+      if (vector_num_elements == 0) {
+        context->SetStatus(
+            errors::InvalidArgument("vector must have at least 1 element"));
+        return;
+      }
       VectorTensorMultiply<T, Toutput>(
           vector_data, vector_offset, vector_num_elements, tensor_data,
           tensor_offset, tensor_num_elements, z_data);

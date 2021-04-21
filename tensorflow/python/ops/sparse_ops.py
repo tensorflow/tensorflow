@@ -2035,9 +2035,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
       `SparseTensor`.
 
   Returns:
-    A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+    A `SparseTensor` indices and values unchanged from `sp_input`. Its shape is
       `new_shape` if that is set. Otherwise it is the tight bounding box of
-       `input_sp`
+       `sp_input`
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.

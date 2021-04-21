@@ -342,7 +342,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleReduce(HloInstruction* hlo) override;
 
-  Status HandleReduceWindow(HloInstruction* reduce_window) override;
+  Status HandleReduceWindow(HloInstruction* hlo) override;
 
   Status HandleReverse(HloInstruction* reverse) override;
 
@@ -4760,29 +4760,94 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleReduceWindow(
-    HloInstruction* reduce_window) {
+Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
+  auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
+  const bool multi_output_reduce_window = reduce_window->shape().IsTuple();
+  auto inputs = reduce_window->inputs();
+  auto init_values = reduce_window->init_values();
+  auto input_count = reduce_window->input_count();
+  auto input_shapes = reduce_window->input_shapes();
+  auto output_shapes = reduce_window->output_shapes();
+  auto replace_with_span = [&](const std::vector<HloInstruction*>& elements) {
+    CHECK(multi_output_reduce_window || elements.size() == 1);
+    if (multi_output_reduce_window) {
+      return ReplaceWithNewInstruction(reduce_window,
+                                       HloInstruction::CreateTuple(elements));
+    }
+    return ReplaceInstruction(reduce_window, elements[0]);
+  };
+  // For tuple reduce, we require all reduce shapes to be the same, up to the
+  // element types, so we can use just the first operand and the first result as
+  // a representative.
+  if (ShapeUtil::IsZeroElementArray(*input_shapes[0]) ||
+      ShapeUtil::IsZeroElementArray(*output_shapes[0])) {
+    std::vector<HloInstruction*> broadcast_inits;
+    for (int64 i = 0; i < input_count; ++i) {
+      broadcast_inits.push_back(
+          computation_->AddInstruction(HloInstruction::CreateBroadcast(
+              *output_shapes[i], init_values[i], {})));
+    }
+    return replace_with_span(broadcast_inits);
+  }
+  if (ShapeUtil::IsScalar(*input_shapes[0]) &&
+      (!multi_output_reduce_window ||
+       reduce_window->to_apply()->root_instruction()->opcode() ==
+           HloOpcode::kTuple)) {
+    std::vector<HloInstruction*> maps;
+    for (int64 i = 0; i < input_count; ++i) {
+      TF_RET_CHECK(ShapeUtil::IsScalar(*input_shapes[i]));
+      TF_RET_CHECK(ShapeUtil::IsScalar(*output_shapes[i]));
+      HloInstruction* map_computation_root;
+      absl::flat_hash_map<const HloInstruction*,
+                          std::unique_ptr<HloInstruction>>
+          replacements;
+      if (multi_output_reduce_window) {
+        map_computation_root =
+            reduce_window->to_apply()->root_instruction()->mutable_operand(i);
+        replacements[reduce_window->to_apply()->root_instruction()] = nullptr;
+      } else {
+        map_computation_root = reduce_window->to_apply()->root_instruction();
+      }
+      auto map_computation = computation_->parent()->AddEmbeddedComputation(
+          reduce_window->to_apply()->CloneWithReplacements(
+              std::move(replacements),
+              /*extra_parameters=*/{}, nullptr, "clone", map_computation_root));
+      auto map = computation_->AddInstruction(HloInstruction::CreateMap(
+          reduce_window->shape(), {init_values[i], inputs[i]},
+          map_computation));
+      maps.push_back(map);
+    }
+    return replace_with_span(maps);
+  }
+  // Turn trivial variadic reduce windows into normal reduce windows.
+  auto reduce_function_root = reduce_window->to_apply()->root_instruction();
+  if (multi_output_reduce_window && input_count == 1 &&
+      Match(reduce_function_root, m::Tuple())) {
+    // Make a new reducer which is identical but does not have a tuple
+    // instruction at the bottom.
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+        replacements;
+    replacements[reduce_function_root] = nullptr;
+    auto new_function = computation_->parent()->AddEmbeddedComputation(
+        reduce_window->to_apply()->CloneWithReplacements(
+            std::move(replacements), /*extra_parameters=*/{},
+            /*context=*/nullptr,
+            /*suffix=*/"clone",
+            /*new_root=*/reduce_function_root->operand(0)));
+    auto new_reduce =
+        computation_->AddInstruction(HloInstruction::CreateReduceWindow(
+            *output_shapes[0], inputs[0], init_values[0],
+            reduce_window->window(), new_function));
+    return ReplaceWithNewInstruction(reduce_window,
+                                     HloInstruction::CreateTuple({new_reduce}));
+  }
   // TODO(b/73062247) Variadic reduce window is not yet supported in simplifier.
-  if (reduce_window->shape().IsTuple()) {
+  if (multi_output_reduce_window) {
     return Status::OK();
   }
-  if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
-    return ReplaceWithNewInstruction(
-        reduce_window,
-        HloInstruction::CreateBroadcast(reduce_window->shape(),
-                                        reduce_window->mutable_operand(1), {}));
-  }
   auto operand = reduce_window->mutable_operand(0);
-  const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
-  if (ShapeUtil::IsScalar(operand->shape())) {
-    TF_RET_CHECK(ShapeUtil::IsScalar(reduce_window->shape()));
-    return ReplaceWithNewInstruction(
-        reduce_window,
-        HloInstruction::CreateMap(reduce_window->shape(),
-                                  {reduce_window->mutable_operand(1), operand},
-                                  function));
-  }
+  const Window& window = reduce_window->window();
 
   if (options_.enable_window_reduce_to_reduce_replacement()) {
     // A reduce window can be expressed as a reduce and a reshape if all

@@ -1152,9 +1152,9 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  int32 bias =
-      output_zero_point -
-      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float temp = input_zero_point * input_scale / output_scale;
+  temp = temp > 0 ? temp + 0.5f : temp - 0.5f;
+  int32_t bias = output_zero_point - static_cast<int32_t>(temp);
   float real_scale = input_scale / (num_elements_in_axis * output_scale);
 
   int32 multiplier, shift;
@@ -2134,33 +2134,37 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int32* input1_data,
-                const RuntimeShape& input2_shape, const int32* input2_data,
-                const RuntimeShape& output_shape, int32* output_data) {
-  ruy::profiler::ScopeLabel label("Add/int32");
+template <typename T>
+inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Add/int32or64");
+
+  T activation_min, activation_max;
+  GetActivationParams(params, &activation_min, &activation_max);
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   if (input1_shape == input2_shape) {
     output_map.array() = (input1_map.array() + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input2_shape.FlatSize() == 1) {
     auto scalar = input2_data[0];
     output_map.array() = (input1_map.array() + scalar)
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input1_shape.FlatSize() == 1) {
     auto scalar = input1_data[0];
     output_map.array() = (scalar + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else {
-    reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
-                                      input2_shape, input2_data, output_shape,
-                                      output_data);
+    reference_ops::BroadcastAdd4DSlow<T>(params, input1_shape, input1_data,
+                                         input2_shape, input2_data,
+                                         output_shape, output_data);
   }
 }
 
@@ -4122,10 +4126,6 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
   const int32_t clamp_max = std::numeric_limits<T>::max();
   const int32_t clamp_min = std::numeric_limits<T>::min();
 
-  int32_t zero_point_offset = 0;
-  if (std::is_same<T, int8_t>::value) {
-    zero_point_offset = 128;
-  }
   for (int i = 0; i < excluding_last_dim; ++i) {
     T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
@@ -4134,10 +4134,10 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_q8 = std::numeric_limits<T>::max();
+    const int32_t max_uint8 = std::numeric_limits<uint8>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_q8 - max_val];
+    const float* table_offset = &params.table[max_uint8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4147,8 +4147,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
-        params.scale;
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.
@@ -4622,104 +4621,131 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  ruy::profiler::ScopeLabel label("Pad4DSlowImpl");
+  ruy::profiler::ScopeLabel label("PadImpl");
+  const int max_supported_dims = 5;
   const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
+      RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+      RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
   // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
   // to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
-  const int left_padding_extend = 4 - op_params.left_padding_count;
+  std::vector<int> left_padding_copy(max_supported_dims, 0);
+  const int left_padding_extend =
+      max_supported_dims - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
     left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
-  std::vector<int> right_padding_copy(4, 0);
-  const int right_padding_extend = 4 - op_params.right_padding_count;
+  std::vector<int> right_padding_copy(max_supported_dims, 0);
+  const int right_padding_extend =
+      max_supported_dims - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
     right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
+  const int output_spatial_dim1 = ext_output_shape.Dims(1);
+  const int output_spatial_dim2 = ext_output_shape.Dims(2);
+  const int output_spatial_dim3 = ext_output_shape.Dims(3);
+  const int output_channel = ext_output_shape.Dims(4);
 
   const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
+  const int left_s1_padding = left_padding_copy[1];
+  const int left_s2_padding = left_padding_copy[2];
+  const int left_s3_padding = left_padding_copy[3];
+  const int left_c_padding = left_padding_copy[4];
 
   const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
+  const int right_s1_padding = right_padding_copy[1];
+  const int right_s2_padding = right_padding_copy[2];
+  const int right_s3_padding = right_padding_copy[3];
+  const int right_c_padding = right_padding_copy[4];
 
-  const int input_depth = ext_input_shape.Dims(3);
+  const int input_depth = ext_input_shape.Dims(4);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
-    TypedMemset<T>(
-        output_data, pad_value,
-        left_b_padding * output_height * output_width * output_depth);
+    TypedMemset<T>(output_data, pad_value,
+                   left_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+                       output_spatial_dim3 * output_channel);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
-    if (left_h_padding != 0) {
-      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0),
-                     pad_value, left_h_padding * output_width * output_depth);
+    if (left_s1_padding != 0) {
+      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0, 0),
+                     pad_value,
+                     left_s1_padding * output_spatial_dim2 *
+                         output_spatial_dim3 * output_channel);
     }
-    for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
-         ++out_h) {
-      if (left_w_padding != 0) {
+    for (int out_p = left_s1_padding;
+         out_p < output_spatial_dim1 - right_s1_padding; ++out_p) {
+      if (left_s2_padding != 0) {
         TypedMemset<T>(
-            output_data + Offset(ext_output_shape, out_b, out_h, 0, 0),
-            pad_value, left_w_padding * output_depth);
+            output_data + Offset(ext_output_shape, out_b, out_p, 0, 0, 0),
+            pad_value, left_s2_padding * output_spatial_dim3 * output_channel);
       }
-      for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
-           ++out_w) {
-        if (left_d_padding != 0) {
+      for (int out_h = left_s2_padding;
+           out_h < output_spatial_dim2 - right_s2_padding; ++out_h) {
+        if (left_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w, 0),
-              pad_value, left_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h, 0, 0),
+              pad_value, left_s3_padding * output_channel);
         }
+        for (int out_w = left_s3_padding;
+             out_w < output_spatial_dim3 - right_s3_padding; ++out_w) {
+          if (left_c_padding != 0) {
+            TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_p,
+                                                out_h, out_w, 0),
+                           pad_value, left_c_padding);
+          }
 
-        T* out = output_data +
-                 Offset(ext_output_shape, out_b, out_h, out_w, left_d_padding);
-        const T* in = input_data +
-                      Offset(ext_input_shape, out_b - left_b_padding,
-                             out_h - left_h_padding, out_w - left_w_padding, 0);
-        memcpy(out, in, input_depth * sizeof(T));
+          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                        out_w, left_c_padding);
+          const T* in = input_data +
+                        Offset(ext_input_shape, out_b - left_b_padding,
+                               out_p - left_s1_padding, out_h - left_s2_padding,
+                               out_w - left_s3_padding, 0);
+          memcpy(out, in, input_depth * sizeof(T));
 
-        if (right_d_padding != 0) {
+          if (right_c_padding != 0) {
+            TypedMemset<T>(
+                output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                     out_w, output_channel - right_c_padding),
+                pad_value, right_c_padding);
+          }
+        }
+        if (right_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w,
-                                   output_depth - right_d_padding),
-              pad_value, right_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                   output_spatial_dim3 - right_s3_padding, 0),
+              pad_value, right_s3_padding * output_channel);
         }
       }
-      if (right_w_padding != 0) {
-        TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_h,
-                                            output_width - right_w_padding, 0),
-                       pad_value, right_w_padding * output_depth);
+      if (right_s2_padding != 0) {
+        TypedMemset<T>(
+            output_data + Offset(ext_output_shape, out_b, out_p,
+                                 output_spatial_dim2 - right_s2_padding, 0, 0),
+            pad_value, right_s2_padding * output_spatial_dim3 * output_channel);
       }
     }
-    if (right_h_padding != 0) {
+    if (right_s1_padding != 0) {
       TypedMemset<T>(
           output_data + Offset(ext_output_shape, out_b,
-                               output_height - right_h_padding, 0, 0),
-          pad_value, right_h_padding * output_width * output_depth);
+                               output_spatial_dim1 - right_s1_padding, 0, 0, 0),
+          pad_value,
+          right_s1_padding * output_spatial_dim2 * output_spatial_dim3 *
+              output_channel);
     }
   }
   if (right_b_padding != 0) {
     TypedMemset<T>(
-        output_data +
-            Offset(ext_output_shape, output_batch - right_b_padding, 0, 0, 0),
+        output_data + Offset(ext_output_shape, output_batch - right_b_padding,
+                             0, 0, 0, 0),
         pad_value,
-        right_b_padding * output_height * output_width * output_depth);
+        right_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+            output_spatial_dim3 * output_channel);
   }
 }
 
@@ -7872,6 +7898,55 @@ inline int ArgMaxVector(const float* input_data, int size) {
   return max_index;
 }
 
+template <>
+inline int ArgMaxVector(const int8_t* input_data, int size) {
+  int32_t max_index = 0;
+  int8_t max_value = input_data[0];
+  int32_t i = 0;
+#ifdef USE_NEON
+  constexpr int VECTOR_SIZE = 16;
+  if (size >= VECTOR_SIZE) {
+    int8x16_t max_value_s8x16;
+    for (; i <= size - VECTOR_SIZE; i += VECTOR_SIZE) {
+      max_value_s8x16 = vld1q_s8(input_data + i);
+      int8_t max_from_vec;
+#ifdef __aarch64__
+      max_from_vec = vmaxvq_s8(max_value_s8x16);
+#else   // 32 bit
+      int8x8_t max_val_s8x8 =
+          vpmax_s8(vget_low_s8(max_value_s8x16), vget_high_s8(max_value_s8x16));
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_from_vec = vget_lane_s8(max_val_s8x8, 0);
+#endif  // __aarch64__
+      if (max_from_vec > max_value) {
+        max_value = max_from_vec;
+        max_index = i;
+      }
+    }
+  }
+  for (int start_idx = max_index; start_idx < max_index + VECTOR_SIZE;
+       start_idx++) {
+    if (input_data[start_idx] == max_value) {
+      max_index = start_idx;
+      break;
+    }
+  }
+
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const float curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+
+  return max_index;
+}
+
 // Specializes ArgMinMax function with axis=dims-1.
 // In this case, ArgMinMax reduction is applied on contiguous memory.
 template <typename T1, typename T2, bool is_arg_max>
@@ -7926,7 +8001,8 @@ inline void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
 
   // Call specialized function when axis=dims-1. So far, only float32 is
   // optimized so reroute to specialized function only when T1 is float32.
-  if (inner_size == 1 && std::is_same<T1, float>::value) {
+  if (inner_size == 1 &&
+      (std::is_same<T1, float>::value || std::is_same<T1, int8_t>::value)) {
     if (is_arg_max) {
       ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/true>(
           {outer_size, axis_size}, input1_data, {outer_size}, output_data);

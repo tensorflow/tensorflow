@@ -3736,9 +3736,6 @@ class TestFunctionTracing(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_no_tracing_between_epoch(self):
-    if sys.version_info[0] < 3:
-      self.skipTest('self.assertLogs() call is not available in Python 2.')
-
     model, x, y = self._seq_model_and_data()
 
     logging.set_verbosity(1)
@@ -3751,9 +3748,6 @@ class TestFunctionTracing(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_evaluate_no_cached_data(self):
-    if sys.version_info[0] < 3:
-      self.skipTest('self.assertLogs() call is not available in Python 2.')
-
     model, x, y = self._seq_model_and_data()
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'

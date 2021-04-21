@@ -73,6 +73,8 @@ def _test_combinations():
       ("PMapNonIdentity",
        lambda ds: ds.map(lambda x: x * 2, num_parallel_calls=2),
        parallel_map_name),
+      ("Shard1", lambda ds: ds.shard(1, 0), None),
+      ("ShardN", lambda ds: ds.shard(2, 0), "Shard"),
   ]
 
   def reduce_fn(result, case):

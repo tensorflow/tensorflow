@@ -212,6 +212,11 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return captured_func_->CheckExternalState();
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

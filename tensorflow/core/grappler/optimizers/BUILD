@@ -15,7 +15,8 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 filegroup(

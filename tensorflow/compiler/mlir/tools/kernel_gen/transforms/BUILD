@@ -11,7 +11,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -39,11 +39,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )

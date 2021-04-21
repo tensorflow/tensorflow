@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -1022,6 +1024,30 @@ template void DataFromBHWDC<float, float>(const float* src, const BHWDC& shape,
 template void DataFromBHWDC<float, half>(const float* src, const BHWDC& shape,
                                          const TensorDescriptor& desc,
                                          half* dst);
+template void DataFromBHWDC<int32_t, int32_t>(const int32_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              int32_t* dst);
+template void DataFromBHWDC<int16_t, int16_t>(const int16_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              int16_t* dst);
+template void DataFromBHWDC<int8_t, int8_t>(const int8_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int8_t* dst);
+template void DataFromBHWDC<uint32_t, uint32_t>(const uint32_t* src,
+                                                const BHWDC& shape,
+                                                const TensorDescriptor& desc,
+                                                uint32_t* dst);
+template void DataFromBHWDC<uint16_t, uint16_t>(const uint16_t* src,
+                                                const BHWDC& shape,
+                                                const TensorDescriptor& desc,
+                                                uint16_t* dst);
+template void DataFromBHWDC<uint8_t, uint8_t>(const uint8_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint8_t* dst);
 
 template <typename FromType, typename ToType>
 void DataToBHWDC(const FromType* src, const BHWDC& shape,
@@ -1054,6 +1080,29 @@ template void DataToBHWDC<float, float>(const float* src, const BHWDC& shape,
 template void DataToBHWDC<half, float>(const half* src, const BHWDC& shape,
                                        const TensorDescriptor& desc,
                                        float* dst);
+template void DataToBHWDC<int32_t, int32_t>(const int32_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int32_t* dst);
+template void DataToBHWDC<int16_t, int16_t>(const int16_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int16_t* dst);
+template void DataToBHWDC<int8_t, int8_t>(const int8_t* src, const BHWDC& shape,
+                                          const TensorDescriptor& desc,
+                                          int8_t* dst);
+template void DataToBHWDC<uint32_t, uint32_t>(const uint32_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint32_t* dst);
+template void DataToBHWDC<uint16_t, uint16_t>(const uint16_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint16_t* dst);
+template void DataToBHWDC<uint8_t, uint8_t>(const uint8_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            uint8_t* dst);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -650,6 +650,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         return output;
       },
       py::return_value_policy::reference);
+  m.def(
+      "TFE_SetLogicalCpuDevices",
+      [](py::handle& ctx, int num_cpus, const char* prefix) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TFE_SetLogicalCpuDevices(tensorflow::InputTFE_Context(ctx), num_cpus,
+                                 prefix, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
   m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
     TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
   });
@@ -1039,6 +1049,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
+  // Experimental feature, intentionally not exposed as a C API yet.
+  m.def("TFE_ContextOptionsSetRunEagerOpAsFunction",
+        [](TFE_ContextOptions* options, bool run_eager_op_as_function) {
+          options->run_eager_op_as_function = run_eager_op_as_function;
+        });
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);

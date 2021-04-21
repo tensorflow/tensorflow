@@ -23,9 +23,10 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
-@@Counter
 @@CheckpointInputPipelineHook
+@@Counter
 @@CsvDataset
+@@DatasetInitializer
 @@DatasetStructure
 @@DistributeOptions
 @@ExternalStatePolicy
@@ -64,6 +65,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
+@@index_table_from_dataset
 @@latency_stats
 @@load
 @@make_batched_features_dataset
@@ -80,6 +82,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@scan
 @@shuffle_and_repeat
 @@snapshot
+@@table_from_dataset
 @@take_while
 @@to_variant
 @@unbatch
@@ -125,6 +128,9 @@ from tensorflow.python.data.experimental.ops.io import load
 from tensorflow.python.data.experimental.ops.io import save
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
+from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
+from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
