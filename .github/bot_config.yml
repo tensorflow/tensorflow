@@ -39,6 +39,9 @@ filesystem_security_assignee:
 tflite_micro_path:
    - tensorflow/lite/micro
    
+tfkeras_path:
+   - rthadur
+   
 tflite_micro_comment: >
    Thanks for contributing to TensorFlow Lite Micro.
    
