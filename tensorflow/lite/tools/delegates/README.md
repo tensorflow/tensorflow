@@ -34,7 +34,8 @@ TFLite delegate.
 
 ### GPU delegate provider
 
-Only Android and iOS devices support GPU delegate.
+The GPU deleagte is supported on Android and iOS devices, or platforms where
+the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 
 #### Common options
 *   `use_gpu`: `bool` (default=false) \
@@ -46,6 +47,10 @@ Only Android and iOS devices support GPU delegate.
     will increase.
 *   `gpu_experimental_enable_quant`: `bool` (default=true) \
     Whether to allow the GPU delegate to run a 8-bit quantized model or not.
+*   `gpu_inference_for_sustained_speed`: `bool` (default=false) \
+    Whether to prefer maximizing the throughput. This mode will help when the
+    same delegate will be used repeatedly on multiple inputs. This is supported
+    on non-iOS platforms.
 
 #### Android options
 *  `gpu_backend`: `string` (default="") \

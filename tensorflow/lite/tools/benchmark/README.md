@@ -116,6 +116,7 @@ where applicable. For details about each parameter, please refer to
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
