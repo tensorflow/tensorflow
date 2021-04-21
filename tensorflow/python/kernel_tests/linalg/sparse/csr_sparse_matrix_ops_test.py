@@ -1166,7 +1166,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         ]  #
     ]).astype(np.complex128)
 
-    data_types = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+    data_types = [dtypes.float32, dtypes.float64,
+                  dtypes.complex64, dtypes.complex128]
     for dtype in data_types:
       sparse_matrix = dense_to_csr_sparse_matrix(
           math_ops.cast(dense_mat, dtype))
