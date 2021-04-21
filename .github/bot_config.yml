@@ -39,6 +39,9 @@ filesystem_security_assignee:
 tflite_micro_path:
    - tensorflow/lite/micro
    
+tf_pull_request_owner:
+   -gbaned
+   
 tflite_micro_comment: >
    Thanks for contributing to TensorFlow Lite Micro.
    
