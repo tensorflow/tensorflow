@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.bucket_by_sequence_length()."""
+"""Tests for `tf.data.Dataset.bucket_by_sequence_length()."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,7 +21,6 @@ import random
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -134,13 +133,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     def _test_bucket_by_padding(no_padding):
       dataset = build_dataset(sparse=no_padding)
-      dataset = dataset.apply(
-          grouping.bucket_by_sequence_length(
-              _element_length_fn,
-              boundaries,
-              batch_sizes,
-              no_padding=no_padding,
-              drop_remainder=True))
+      dataset = dataset.bucket_by_sequence_length(
+          element_length_func=_element_length_fn,
+          bucket_boundaries=boundaries,
+          bucket_batch_sizes=batch_sizes,
+          no_padding=no_padding,
+          drop_remainder=True
+      )
 
       get_next = self.getNext(dataset)
       batches = []
@@ -232,12 +231,12 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     def _test_bucket_by_padding(no_padding):
       dataset = build_dataset(sparse=no_padding)
-      dataset = dataset.apply(
-          grouping.bucket_by_sequence_length(
-              _element_length_fn,
-              boundaries,
-              batch_sizes,
-              no_padding=no_padding))
+      dataset = dataset.bucket_by_sequence_length(
+          element_length_func=_element_length_fn,
+          bucket_boundaries=boundaries,
+          bucket_batch_sizes=batch_sizes,
+          no_padding=no_padding
+      )
       get_next = self.getNext(dataset)
       batches = []
       for _ in range(4):
@@ -285,10 +284,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     element_len = lambda el: array_ops.shape(el)[0]
     dataset = dataset_ops.Dataset.from_generator(
-        element_gen, (dtypes.int64,), ([None],)).apply(
-            grouping.bucket_by_sequence_length(
-                element_len, boundaries, batch_sizes,
-                pad_to_bucket_boundary=True))
+        element_gen, (dtypes.int64,), ([None],))
+    dataset = dataset.bucket_by_sequence_length(
+        element_length_func=element_len,
+        bucket_boundaries=boundaries,
+        bucket_batch_sizes=batch_sizes,
+        pad_to_bucket_boundary=True
+    )
     get_next = self.getNext(dataset)
 
     batches = []
@@ -324,10 +326,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     element_len = lambda element: array_ops.shape(element)[0]
     dataset = dataset_ops.Dataset.from_generator(
-        element_gen, (dtypes.int64,), ([None],)).apply(
-            grouping.bucket_by_sequence_length(
-                element_len, boundaries, batch_sizes,
-                pad_to_bucket_boundary=True))
+        element_gen, (dtypes.int64,), ([None],))
+    dataset = dataset.bucket_by_sequence_length(
+        element_length_func=element_len,
+        bucket_boundaries=boundaries,
+        bucket_batch_sizes=batch_sizes,
+        pad_to_bucket_boundary=True
+    )
     get_next = self.getNext(dataset)
 
     batches = []
@@ -370,11 +375,12 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     def _test_tuple_elements_by_padding(no_padding):
       dataset = build_dataset(sparse=no_padding)
-      dataset = dataset.apply(grouping.bucket_by_sequence_length(
+      dataset = dataset.bucket_by_sequence_length(
           element_length_func=_element_length_fn,
           bucket_batch_sizes=[2, 2, 2],
           bucket_boundaries=[0, 8],
-          no_padding=no_padding))
+          no_padding=no_padding
+      )
       shapes = dataset_ops.get_legacy_output_shapes(dataset)
       self.assertEqual([None, None], shapes[0].as_list())
       self.assertEqual([None], shapes[1].as_list())
@@ -454,12 +460,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
       return all_sparse_tensors
     dataset = _build_dataset()
     boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
-    dataset = dataset.apply(
-        grouping.bucket_by_sequence_length(
-            _element_length_fn,
-            boundaries, [batch_size] * (len(boundaries) + 1),
-            no_padding=True,
-            drop_remainder=param_drop_remainder))
+    dataset = dataset.bucket_by_sequence_length(
+        element_length_func=_element_length_fn,
+        bucket_boundaries=boundaries,
+        bucket_batch_sizes=[batch_size] * (len(boundaries) + 1),
+        no_padding=True,
+        drop_remainder=param_drop_remainder
+    )
     batches = _compute_batches(dataset)
     expected_batches = _compute_expected_batches(param_drop_remainder)
     self.assertEqual(batches, expected_batches)
@@ -477,10 +484,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     element_len = lambda element: array_ops.shape(element)[0]
     dataset = dataset_ops.Dataset.from_generator(
-        element_gen, (dtypes.int64,), ([None],)).repeat().apply(
-            grouping.bucket_by_sequence_length(
-                element_len, boundaries, batch_sizes,
-                pad_to_bucket_boundary=True))
+        element_gen, (dtypes.int64,), ([None],)).repeat()
+    dataset = dataset.bucket_by_sequence_length(
+        element_length_func=element_len,
+        bucket_boundaries=boundaries,
+        bucket_batch_sizes=batch_sizes,
+        pad_to_bucket_boundary=True
+    )
     self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
 
 
