@@ -58,6 +58,8 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "FrequencyEstimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
@@ -96,6 +98,8 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "frequency estimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -170,6 +174,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
 
       return Status::OK();
     }
+    case OptimizationAlgorithm::kAssign:
+      *count = 0;
+      return Status::OK();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
@@ -361,6 +368,10 @@ Status GetOptimizationAlgorithmStateVariables(
       }
       break;
     }
+    case OptimizationAlgorithm::kAssign: {
+      add_state_variable("parameters", 0.0);
+      break;
+    }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
       return errors::InvalidArgument("No optimization algorithm specified");
     }
@@ -402,6 +413,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kProximalYogi,
       OptimizationAlgorithm::kFrequencyEstimator,
       OptimizationAlgorithm::kUserDefinedProgram,
+      OptimizationAlgorithm::kAssign,
   };
 }
 

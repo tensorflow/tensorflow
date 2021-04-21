@@ -61,43 +61,103 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     chi2 = np.sum(diff * diff / expected, axis=0)
     return chi2
 
-  def _testSampleFromDatasetsHelper(self, weights, num_datasets, num_samples):
-    # Create a dataset that samples each integer in `[0, num_datasets)`
-    # with probability given by `weights[i]`.
-    dataset = interleave_ops.sample_from_datasets([
-        dataset_ops.Dataset.from_tensors(i).repeat(None)
-        for i in range(num_datasets)
-    ], weights)
-    dataset = dataset.take(num_samples)
-
-    next_element = self.getNext(dataset)
-    freqs = np.zeros([num_datasets])
-    for _ in range(num_samples):
-      freqs[self.evaluate(next_element())] += 1
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element())
-
-    return freqs
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasets(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromDatasets(self, weights_as_dataset):
     random_seed.set_random_seed(1619)
     num_samples = 5000
-    rand_probs = self._normalize(np.random.random_sample((15,)))
+    rand_probs = self._normalize(np.random.random_sample((5,)))
 
     # Use chi-squared test to assert that the observed distribution matches the
     # expected distribution. Based on the implementation in
     # "third_party/tensorflow/python/kernel_tests/multinomial_op_test.py".
     for probs in [[.85, .05, .1], rand_probs, [1.]]:
-      probs = np.asarray(probs)
+      weights = np.asarray(probs)
+      if weights_as_dataset:
+        weights = dataset_ops.Dataset.from_tensors(weights).repeat()
       classes = len(probs)
-      freqs = self._testSampleFromDatasetsHelper(probs, classes, num_samples)
+
+      # Create a dataset that samples each integer in `[0, num_datasets)`
+      # with probability given by `weights[i]`.
+      dataset = interleave_ops.sample_from_datasets([
+          dataset_ops.Dataset.from_tensors(i).repeat()
+          for i in range(classes)
+      ], weights)
+      dataset = dataset.take(num_samples)
+
+      next_element = self.getNext(dataset)
+      freqs = np.zeros([classes])
+      for _ in range(num_samples):
+        freqs[self.evaluate(next_element())] += 1
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(next_element())
+
       self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
-      # Also check that `weights` as a dataset samples correctly.
-      probs_ds = dataset_ops.Dataset.from_tensors(probs).repeat()
-      freqs = self._testSampleFromDatasetsHelper(probs_ds, classes, num_samples)
-      self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromDatasetsStoppingOnEmptyDataset(self, weights_as_dataset):
+    weights = np.asarray([.5, .1, .4])
+    if weights_as_dataset:
+      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+
+    # Sampling stops when the first dataset is exhausted.
+    datasets = [
+        dataset_ops.Dataset.from_tensors(np.int64(-1)),
+        dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
+        dataset_ops.Dataset.range(10).repeat()
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=True)
+
+    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    self.assertEqual(samples_list.count(-1), 1)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromDatasetsSkippingEmptyDataset(self, weights_as_dataset):
+    weights = np.asarray([.5, .1, .4])
+    if weights_as_dataset:
+      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+
+    # Sampling skips the first dataset after it becomes empty.
+    datasets = [
+        dataset_ops.Dataset.from_tensors(np.int64(-1)),
+        dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
+        dataset_ops.Dataset.range(10).repeat()
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=False).take(100)
+
+    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    self.assertLen(samples_list, 100)
+    self.assertEqual(samples_list.count(-1), 1)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromDatasetsWithZeroWeight(self, weights_as_dataset):
+    weights = np.asarray([0., 1.])
+    if weights_as_dataset:
+      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+
+    # Sampling stops when the second dataset is exhausted.
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).repeat(2),
+        dataset_ops.Dataset.from_tensors(1).repeat(2)
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=True)
+
+    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    self.assertEqual(samples_list, [1, 1])
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
@@ -107,7 +167,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testSelectFromDatasets(self):
+  def testChooseFromDatasets(self):
     words = [b"foo", b"bar", b"baz"]
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
     choice_array = np.random.randint(3, size=(15,), dtype=np.int64)
@@ -118,6 +178,37 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       self.assertEqual(words[i], self.evaluate(next_element()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testChooseFromDatasetsStoppingOnEmptyDataset(self):
+    datasets = [
+        dataset_ops.Dataset.from_tensors(b"foo").repeat(2),
+        dataset_ops.Dataset.from_tensors(b"bar").repeat(),
+        dataset_ops.Dataset.from_tensors(b"baz").repeat(),
+    ]
+    choice_array = np.asarray([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=np.int64)
+    choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
+    dataset = interleave_ops.choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset=True)
+    data_list = self.getIteratorOutput(self.getNext(dataset))
+    self.assertEqual(data_list, [b"foo", b"foo"])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testChooseFromDatasetsSkippingEmptyDatasets(self):
+    datasets = [
+        dataset_ops.Dataset.from_tensors(b"foo").repeat(2),
+        dataset_ops.Dataset.from_tensors(b"bar").repeat(),
+        dataset_ops.Dataset.from_tensors(b"baz").repeat(),
+    ]
+    choice_array = np.asarray([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=np.int64)
+    choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
+    dataset = interleave_ops.choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset=False)
+    data_list = self.getIteratorOutput(self.getNext(dataset))
+    # Chooses 2 elements from the first dataset while the selector specifies 3.
+    self.assertEqual(
+        data_list,
+        [b"foo", b"foo", b"bar", b"bar", b"bar", b"baz", b"baz", b"baz"])
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):

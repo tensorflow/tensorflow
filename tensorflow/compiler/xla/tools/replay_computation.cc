@@ -110,16 +110,27 @@ struct Options {
 };
 
 StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
-    const HloSnapshot& module, LocalClient* client) {
+    const HloSnapshot& module, LocalClient* client, const Options& opts) {
   XlaComputation computation(module.hlo().hlo_module());
   std::vector<Shape> argument_layouts;
   argument_layouts.reserve(
       computation.proto().host_program_shape().parameters_size());
   std::vector<const Shape*> argument_layout_ptrs;
-  for (const ShapeProto& param :
-       computation.proto().host_program_shape().parameters()) {
-    argument_layouts.push_back(Shape(param));
-    argument_layout_ptrs.push_back(&argument_layouts.back());
+  if (opts.use_fake_data) {
+    for (const ShapeProto& param :
+         computation.proto().host_program_shape().parameters()) {
+      argument_layouts.push_back(Shape(param));
+      argument_layout_ptrs.push_back(&argument_layouts.back());
+    }
+  } else {
+    for (const auto& proto : module.arguments()) {
+      if (!proto.has_shape()) {
+        return InvalidArgument("LiteralProto has no shape");
+      }
+      Shape shape(proto.shape());
+      argument_layouts.push_back(shape);
+      argument_layout_ptrs.push_back(&argument_layouts.back());
+    }
   }
   ExecutableBuildOptions exec_build_options;
   *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
@@ -452,8 +463,8 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
     for (int64 i = 0; i < snapshots.size(); ++i) {
-      thread_pool.Schedule([&snapshots, &executables, client, i] {
-        executables[i] = CompileExecutable(snapshots[i], client);
+      thread_pool.Schedule([&snapshots, &executables, client, i, &opts] {
+        executables[i] = CompileExecutable(snapshots[i], client, opts);
       });
     }
   }
@@ -511,7 +522,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
 int main(int argc, char** argv) {
   xla::tools::Options opts;
-  const std::vector<tensorflow::Flag> flag_list = {
+  std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("use_fake_data", &opts.use_fake_data,
                        "Replay computation using fake data"),
       tensorflow::Flag("print_result", &opts.print_result,
@@ -536,14 +547,17 @@ int main(int argc, char** argv) {
                        "Whether the input should only be compiled, as opposed "
                        "to compiled and executed."),
   };
+  xla::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {
     LOG(QFATAL) << usage;
   }
-
   absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
+  if (opts.compile_only) {
+    opts.use_fake_data = true;
+  }
   return xla::tools::RealMain(args, opts);
 }

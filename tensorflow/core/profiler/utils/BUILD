@@ -5,7 +5,7 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

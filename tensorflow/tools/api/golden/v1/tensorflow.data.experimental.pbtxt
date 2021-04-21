@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DatasetInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DatasetStructure"
     mtype: "<type \'type\'>"
   }
@@ -130,7 +134,7 @@ tf_module {
   }
   member_method {
     name: "choose_from_datasets"
-    argspec: "args=[\'datasets\', \'choice_dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "copy_to_device"
@@ -181,6 +185,10 @@ tf_module {
     argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
+    name: "index_table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'-1\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
+  }
+  member_method {
     name: "latency_stats"
     argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
@@ -222,7 +230,7 @@ tf_module {
   }
   member_method {
     name: "sample_from_datasets"
-    argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "scan"
@@ -235,6 +243,10 @@ tf_module {
   member_method {
     name: "snapshot"
     argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "take_while"

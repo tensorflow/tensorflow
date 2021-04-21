@@ -160,6 +160,37 @@ PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
 // LOG(FATAL)'s if complex_type is not complex.
 PrimitiveType ComplexComponentType(PrimitiveType complex_type);
 
+// Returns the higher-precision element type if a and b are both floating
+// point types; otherwise, checks that they have the same element type
+// and returns it.
+inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
+  // Returns a tuple where the elements are lexicographically ordered in terms
+  // of importance.
+  auto type_properties = [](PrimitiveType type) {
+    return std::make_tuple(
+        // Prefer floating point types with more range over other
+        // floating-point types or non-floating point types.
+        IsFloatingPointType(type) ? OverflowExponent(type) : -1,
+        // Prefer floating point types with more precision over less precise
+        // types.
+        IsFloatingPointType(type) ? SignificandWidth(type) : -1,
+        // Prefer wider types over narrower types.
+        BitWidth(type),
+        // Prefer signed integer types over unsigned integer types.
+        IsSignedIntegralType(type));
+  };
+  auto a_properties = type_properties(a);
+  auto b_properties = type_properties(b);
+  if (a_properties > b_properties) {
+    return a;
+  }
+  if (b_properties > a_properties) {
+    return b;
+  }
+  CHECK_EQ(a, b);
+  return a;
+}
+
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).
 template <PrimitiveType>

@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -362,6 +363,40 @@ StatusOr<Literal> HloEvaluator::EvaluateElementwiseBinaryOp(
   std::unique_ptr<HloInstruction> cloned_instruction =
       HloInstruction::CreateBinary(lhs.shape(), opcode, lhs_instr.get(),
                                    rhs_instr.get());
+  auto result = Evaluate(cloned_instruction.get());
+
+  return result;
+}
+
+StatusOr<Literal> HloEvaluator::EvaluateElementwiseTernaryOp(
+    HloOpcode opcode, const Literal& lhs, const Literal& rhs,
+    const Literal& ehs) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.Clone());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.Clone());
+  std::unique_ptr<HloInstruction> ehs_instr =
+      HloInstruction::CreateConstant(ehs.Clone());
+  TF_ASSIGN_OR_RETURN(auto output_shape,
+                      ShapeInference::InferTernaryOpShape(
+                          opcode, lhs.shape(), rhs.shape(), ehs.shape()));
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateTernary(output_shape, opcode, lhs_instr.get(),
+                                    rhs_instr.get(), ehs_instr.get());
+  return Evaluate(cloned_instruction.get());
+}
+
+StatusOr<Literal> HloEvaluator::EvaluateElementwiseCompareOp(
+    ComparisonDirection direction, const Literal& lhs, const Literal& rhs) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.Clone());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.Clone());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateCompare(
+          ShapeUtil::ChangeElementType(lhs.shape(), PRED), lhs_instr.get(),
+          rhs_instr.get(), direction);
   auto result = Evaluate(cloned_instruction.get());
 
   return result;

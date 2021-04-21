@@ -25,8 +25,9 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
@@ -58,6 +59,9 @@ and the following optional parameters:
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
+*  `dry_run`: `bool` (default=false) \
+    Whether to run the tool just with simply loading the model, allocating
+    tensors etc. but without actually invoking any op kernels.
 *  `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
@@ -112,6 +116,7 @@ where applicable. For details about each parameter, please refer to
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 

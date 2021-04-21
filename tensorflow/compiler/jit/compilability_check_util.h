@@ -132,6 +132,9 @@ class RecursiveCompilabilityChecker {
 
     // Whether string constants are compilable.
     bool allow_string_consts = true;
+
+    // Whether to allow the compilation of CollectiveReduceV2Op.
+    bool allow_collective_reduce_v2 = true;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,

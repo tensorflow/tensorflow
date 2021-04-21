@@ -9,7 +9,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_fuzz_target(
@@ -170,6 +170,13 @@ tf_py_fuzz_target(
 tf_py_fuzz_target(
     name = "sparseCountSparseOutput_fuzz",
     srcs = ["sparseCountSparseOutput_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "tf2migration_fuzz",
+    srcs = ["tf2migration_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )

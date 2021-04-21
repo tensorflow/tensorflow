@@ -1,0 +1,7 @@
+path: "tensorflow.keras.__internal__.losses"
+tf_module {
+  member_method {
+    name: "compute_weighted_loss"
+    argspec: "args=[\'losses\', \'sample_weight\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'sum_over_batch_size\', \'None\'], "
+  }
+}

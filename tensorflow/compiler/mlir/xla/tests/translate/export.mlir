@@ -1254,3 +1254,37 @@ func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
   %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = false, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = false} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
   return %0: tensor<3x4xf32>
 }
+
+// -----
+
+// CHECK: HloModule
+// CHECK: %[[APPLYFN:.*]] ({{.*}}) -> (f32[], s32[]) {
+// CHECK: %[[A0:.*]] = f32[] parameter(0)
+// CHECK: %[[B0:.*]] = f32[] parameter(2)
+// CHECK: %[[ADDF32:.*]] = f32[] add(f32[] %[[A0]], f32[] %[[B0]])
+// CHECK: %[[A1:.*]] = s32[] parameter(1)
+// CHECK: %[[B1:.*]] = s32[] parameter(3)
+// CHECK: %[[ADDS32:.*]] = s32[] add(s32[] %[[A1]], s32[] %[[B1]])
+// CHECK: ROOT %{{.*}} = (f32[], s32[]) tuple(f32[] %[[ADDF32]], s32[] %[[ADDS32]])
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[4,2] parameter(0)
+// CHECK: %[[ARG1:.*]] = s32[4,2] parameter(1)
+// CHECK: %[[ARG2:.*]] = f32[] parameter(2)
+// CHECK: %[[ARG3:.*]] = s32[] parameter(3)
+// CHECK: (f32[2,2], s32[2,2]) reduce-window(f32[4,2] %[[ARG0]], s32[4,2] %[[ARG1]], f32[] %[[ARG2]], s32[] %[[ARG3]])
+// CHECK-SAME: window={size=5x1 stride=3x1 pad=2_2x0_0}
+// CHECK-SAME: to_apply=%[[APPLYFN]]
+func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):  // no predecessors
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
+  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}

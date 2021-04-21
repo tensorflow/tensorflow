@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -1900,7 +1900,7 @@ TEST(FloatActivationsOpTest, Softmax1DInf) {
   m.Invoke();
   auto output = m.GetOutput();
   for (int i = 0; i < 8; ++i) {
-    EXPECT_TRUE(isnan(output[i]));
+    EXPECT_TRUE(std::isnan(output[i]));
   }
 }
 
@@ -2203,6 +2203,28 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
                                          61, -36, 93, 125,   //
                                          15, -65, 127, -16,  //
+                                     }));
+}
+
+TEST(QuantizedActivationsOpTest, LogSoftmaxInt8LargeNegativeNumber) {
+  const float kLogSoftmaxQuantizedTolerance = 0.06355;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_LOG_SOFTMAX,
+      /*input=*/{TensorType_INT8, {2, 4}, -10, 10},
+      /*output=*/{TensorType_INT8, {}, 0, 0, 16. / 256, 127});
+  m.SetInput<int8_t>({
+      -9.9, -9.9, 0, 0,  //
+      7.8, -2, 2, 1,     //
+  });
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-10.5625, -10.5625, -0.6875, -0.6875, -0.004, -9.8125, -5.75, -6.75},
+          kLogSoftmaxQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         -42, -42, 116, 116,  //
+                                         127, -30, 35, 19,    //
                                      }));
 }
 

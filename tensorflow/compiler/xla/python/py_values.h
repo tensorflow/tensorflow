@@ -64,9 +64,43 @@ struct DevicePutOptions {
   bool force_lazy_arrays = true;
 };
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options,
-                                    PyBuffer* py_buffer = nullptr);
+                                    const DevicePutOptions& options);
 
+// Returns `true` if `arg` is a JAX float0 array.
+bool IsFloat0(pybind11::array arg);
+
+// Describes the abstract shape and dtype of an argument.
+struct PyArgSignature {
+  PyArgSignature(PrimitiveType dtype, absl::Span<const int64> shape,
+                 bool weak_type)
+      : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
+  // This is the XLA dtype of the object.
+  const PrimitiveType dtype;
+  const absl::InlinedVector<int64, 4> shape;
+  // JAX arguments can be of weak type, if and only if they are Python scalars
+  // or `DeviceArray` values such that `aval.weak_type` is true.
+  const bool weak_type;
+  bool operator==(const PyArgSignature& other) const {
+    return std::tie(dtype, weak_type, shape) ==
+           std::tie(other.dtype, other.weak_type, other.shape);
+  }
+  bool operator!=(const PyArgSignature& other) const {
+    return !(*this == other);
+  }
+  std::string DebugString() const;
+};
+
+// Returns the PyArgSignature associated with an argument. Returns an error if
+// the argument is not supported.
+StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
+                                               bool jax_enable_x64);
+
+template <typename H>
+H AbslHashValue(H h, const xla::PyArgSignature& s) {
+  h = H::combine(std::move(h), s.dtype);
+  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
+  return h;
+}
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PY_VALUES_H_

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +34,32 @@ namespace {
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
 constexpr char kNameScopeSeparator = '/';
+constexpr char kOpNameSuffixSeparator = '_';
+
+bool IsInteger(absl::string_view str) {
+  int64_t unused;
+  return absl::SimpleAtoi(str, &unused);
+}
+
+// Returns an op type derived from an op name.
+absl::string_view DeriveOpType(absl::string_view full_op_name) {
+  // Use the op name without name scopes and suffix as an op type. A full op
+  // name consists of name scopes, an op type, and optionally a numeric suffix
+  // (e.g., model/layer/MatMul_1).
+  std::vector<absl::string_view> name_scopes_and_op_name =
+      absl::StrSplit(full_op_name, kNameScopeSeparator);
+  absl::string_view op_name = name_scopes_and_op_name.back();
+  std::vector<absl::string_view> op_type_and_maybe_suffix =
+      absl::StrSplit(op_name, kOpNameSuffixSeparator);
+  absl::string_view maybe_suffix = op_type_and_maybe_suffix.back();
+  absl::string_view op_type = op_name;
+  if (IsInteger(maybe_suffix)) {
+    // NOTE: assuming a numeric suffix is not part of an op type while
+    // technically it is allowed.
+    op_type = op_name.substr(0, op_name.size() - maybe_suffix.size() - 1);
+  }
+  return op_type;
+}
 
 }  // namespace
 
@@ -90,7 +117,7 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   } else if (IsJaxOpType(parts[1])) {
     tf_op = {Category::kJax, parts[0], parts[1]};
   } else if (parts[1].empty()) {
-    tf_op.name = parts[0];  // remove trailing ':'
+    tf_op = {Category::kTensorFlow, parts[0], DeriveOpType(parts[0])};
   }
   return tf_op;
 }

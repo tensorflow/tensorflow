@@ -373,6 +373,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseReducer(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_REDUCE_ALL: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_REDUCE_MAX: {
       return ParseReducer(op, error_reporter, allocator, builtin_data);
     }

@@ -32,6 +32,8 @@ AllOpsResolver::AllOpsResolver() {
   AddConcatenation();
   AddConv2D();
   AddCos();
+  AddCumSum();
+  AddDepthToSpace();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
@@ -39,11 +41,14 @@ AllOpsResolver::AllOpsResolver() {
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
+  AddFloorMod();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddL2Pool2D();
   AddLeakyRelu();
   AddLess();
   AddLessEqual();

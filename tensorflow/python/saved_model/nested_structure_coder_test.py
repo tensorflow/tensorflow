@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 from google.protobuf import text_format
 from tensorflow.core.protobuf import struct_pb2
@@ -28,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
@@ -337,6 +339,46 @@ class NestedStructureTest(test.TestCase):
       pass
 
     self.assertFalse(self._coder.can_encode([NotEncodable()]))
+
+  def testRegisteredTypeSpec(self):
+    expected_warning = ("Encoding a StructuredValue with type "
+                        "NestedStructureTest.RegisteredTypeSpec; loading "
+                        "this StructuredValue will require that this type "
+                        "be imported and registered")
+    structure = {"x": RegisteredTypeSpec()}
+
+    self.assertTrue(self._coder.can_encode(structure))
+    with warnings.catch_warnings(record=True) as w:
+      encoded = self._coder.encode_structure(structure)
+      self.assertLen(w, 1)
+      self.assertIn(expected_warning, str(w[0].message))
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testUnregisteredTypeSpec(self):
+    structure = {"x": UnregisteredTypeSpec()}
+    self.assertFalse(self._coder.can_encode(structure))
+    with self.assertRaises(nested_structure_coder.NotEncodableError):
+      self._coder.encode_structure(structure)
+
+
+# Trivial TypeSpec class for testing.
+class UnregisteredTypeSpec(type_spec.TypeSpec):
+  value_type = property(lambda self: None)
+  _component_specs = property(lambda self: ())
+  _to_components = lambda self, v: ()
+  _from_components = classmethod(lambda cls, c: cls())
+  _serialize = lambda self: ()
+
+
+# Trivial TypeSpec class for testing.
+@type_spec.register("NestedStructureTest.RegisteredTypeSpec")
+class RegisteredTypeSpec(type_spec.TypeSpec):
+  value_type = property(lambda self: None)
+  _component_specs = property(lambda self: ())
+  _to_components = lambda self, v: ()
+  _from_components = classmethod(lambda cls, c: cls())
+  _serialize = lambda self: ()
 
 
 if __name__ == "__main__":

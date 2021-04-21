@@ -219,6 +219,9 @@ struct OpenGlInfo {
   int max_fragment_image_units = 0;
   int max_fragment_uniform_vec4_count = 0;
   int max_color_atttachments = 0;
+  int max_viewport_width = 0;
+  int max_viewport_height = 0;
+  int max_renderbuffer_size = 0;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;

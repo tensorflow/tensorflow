@@ -394,6 +394,15 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     det_l = self.base_operator.determinant()
     return det_c * det_d * det_l
 
+  def _diag_part(self):
+    # [U D V^T]_{ii} = sum_{jk} U_{ij} D_{jk} V_{ik}
+    #                = sum_{j}  U_{ij} D_{jj} V_{ij}
+    product = self.u * math_ops.conj(self.v)
+    if self.diag_update is not None:
+      product *= array_ops.expand_dims(self.diag_update, axis=-2)
+    return (
+        math_ops.reduce_sum(product, axis=-1) + self.base_operator.diag_part())
+
   def _log_abs_determinant(self):
     # Recall
     #   det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)

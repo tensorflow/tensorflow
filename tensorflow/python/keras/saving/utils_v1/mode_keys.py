@@ -16,14 +16,10 @@
 """Utils for managing different mode strings used by Keras and Estimator models.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections.abc as collections_abc
+import collections
 
 
-class KerasModeKeys(object):
+class KerasModeKeys:
   """Standard names for model modes.
 
   The following standard keys are defined:
@@ -39,7 +35,7 @@ class KerasModeKeys(object):
 
 
 # TODO(kathywu): Remove copy in Estimator after nightlies
-class EstimatorModeKeys(object):
+class EstimatorModeKeys:
   """Standard names for Estimator model modes.
 
   The following standard keys are defined:
@@ -66,7 +62,7 @@ def is_train(mode):
   return mode in [KerasModeKeys.TRAIN, EstimatorModeKeys.TRAIN]
 
 
-class ModeKeyMap(collections_abc.Mapping):
+class ModeKeyMap(collections.abc.Mapping):
   """Map using ModeKeys as keys.
 
   This class creates an immutable mapping from modes to values. For example,
