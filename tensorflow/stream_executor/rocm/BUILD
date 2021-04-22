@@ -351,7 +351,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
         name = "rocm_helpers",
         srcs = ["rocm_helpers.cu.cc"],
         deps = 
@@ -362,8 +361,6 @@ cc_library(
     )
 
 cc_library(
-=======
->>>>>>> upstream/master
     name = "all_runtime",
     copts = tf_copts(),
     visibility = ["//visibility:public"],

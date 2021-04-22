@@ -1095,30 +1095,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       device)};
 }
 
-<<<<<<< HEAD
-/* static */ port::Status GpuDriver::GetMFMASupport(bool& supported) {
-  supported = false;
-=======
 /* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
->>>>>>> upstream/master
   hipDeviceProp_t props;
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
   result = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
-<<<<<<< HEAD
-    VLOG(1)<<"GCN arch name " << gcnArchName;
-    auto pos = gcnArchName.find(":");
-    if(pos!=string::npos)
-       gcnArchName = gcnArchName.substr(0, pos);
-    pos = gcnArchName.find("gfx");
-    if(pos!=string::npos)
-       gcnArchName = gcnArchName.substr(pos+3);
-    VLOG(1)<<"GCN arch name (stripped) " << gcnArchName;
-    supported = (gcnArchName=="908" || gcnArchName=="909");
-    return port::Status::OK();
-=======
     VLOG(1) << "GCN arch name " << gcnArchName;
     auto pos = gcnArchName.find(":");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
@@ -1126,7 +1109,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
     VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
     return ((gcnArchName == "908") || (gcnArchName == "909"));
->>>>>>> upstream/master
   }
   return port::Status{
       port::error::INTERNAL,

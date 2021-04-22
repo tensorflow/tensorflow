@@ -451,11 +451,7 @@ class Timeline(object):
       _, op, inputs = self._parse_op_label(nodestats.timeline_label)
     args = {'name': node_name, 'op': op}
     if build_info.build_info['is_rocm_build']:
-<<<<<<< HEAD
-      args["kernel"] = nodestats.timeline_label.split("@@")[0]
-=======
       args['kernel'] = nodestats.timeline_label.split('@@')[0]
->>>>>>> upstream/master
     for i, iname in enumerate(inputs):
       args['input%d' % i] = iname
     self._chrome_trace.emit_region(start, duration, pid, tid, 'Op', op, args)

@@ -1221,13 +1221,7 @@ cc_library(
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
-<<<<<<< HEAD
-        ":infeed_manager",
-        ":gpu_compiler",
-        ":outfeed_manager",
-=======
         ":io_feed_manager",
->>>>>>> upstream/master
         ":target_constants",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -1442,12 +1436,9 @@ tf_cc_test(
     ],
     tags = [
         "gpu",
-<<<<<<< HEAD
         "no_rocm",
-=======
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
         # positives in msan.
->>>>>>> upstream/master
     ],
     deps = [
         ":nvptx_compiler_impl",

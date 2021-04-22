@@ -135,10 +135,6 @@ class RunMetadataTest(test.TestCase):
 
     ret = _extract_node(run_meta, 'MatMul')
     self.assertEqual(len(ret['gpu:0']), 1)
-<<<<<<< HEAD
-    self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
-=======
->>>>>>> upstream/master
 
   @test_util.run_deprecated_v1
   def testAllocationHistory(self):
