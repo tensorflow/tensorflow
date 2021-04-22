@@ -30,28 +30,6 @@ namespace gpu {
 
 namespace {
 
-absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusible(
-    const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return {const_cast<HloInstruction*>(&instr)};
-  }
-
-  HloInstruction* root = instr.fused_expression_root();
-  if (root->opcode() != HloOpcode::kTuple) {
-    return {root};
-  } else {
-    return root->operands();
-  }
-}
-
-size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
-  if (!instr.IsMultiOutputFusion()) {
-    return 1;
-  }
-  const HloInstruction* root = instr.fused_expression_root();
-  return ShapeUtil::TupleElementCount(root->shape());
-}
-
 PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
   auto outputs = GetOutputsOfFusible(fusible);
   CHECK(!outputs.empty());
@@ -65,25 +43,6 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
   }
 
   return first_output_type;
-}
-
-size_t GetInstrCountOfFusible(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return 1;
-  } else {
-    return instr.fused_instruction_count();
-  }
-}
-
-// Creates a kLoop fusion instruction and fuses `fused` into the created
-// fusion instruction.
-HloInstruction* MakeLoopFusionInstruction(HloInstruction* fused) {
-  HloComputation* comp = fused->parent();
-  HloInstruction* fusion_instruction =
-      comp->AddInstruction(HloInstruction::CreateFusion(
-          fused->shape(), HloInstruction::FusionKind::kLoop, fused));
-  TF_CHECK_OK(comp->ReplaceInstruction(fused, fusion_instruction));
-  return fusion_instruction;
 }
 
 class HorizontalLoopFusionImpl {
@@ -183,12 +142,12 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr) {
   if (root->opcode() == HloOpcode::kTuple) {
     // Since all output shapes are the same, use the first shape as the
     // representative.
-    auto shape = root->operand(0)->shape();
+    Shape shape = root->operand(0)->shape();
     if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
       return false;
     }
   } else {
-    auto shape = root->shape();
+    Shape shape = root->shape();
     if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
       return false;
     }
@@ -213,7 +172,7 @@ bool HasOnlyRowMajorLayout(const HloInstruction& instr) {
   }
 
   auto fused_instrs = instr.fused_instructions_computation()->instructions();
-  for (auto i : fused_instrs) {
+  for (HloInstruction* i : fused_instrs) {
     if (i->shape().layout().format() != DENSE) {
       continue;
     }
@@ -243,8 +202,8 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // unsupported/non-profitable cases below.
   absl::flat_hash_set<HloInstruction*> fusible_candidates;
   std::vector<HloInstruction*> ordered_fusible_candidates;
-  for (auto opnd : consumer->operands()) {
-    auto predecessor = opnd->LatestNonGteAncestor();
+  for (HloInstruction* opnd : consumer->operands()) {
+    HloInstruction* predecessor = opnd->LatestNonGteAncestor();
     // We support kLoop fusion and element-wise HLOs now. We may extend the
     // support list if needs arise.
     if (IsFusibleCandidate(*predecessor)) {
@@ -255,7 +214,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     }
   }
 
-  for (auto instr : ordered_fusible_candidates) {
+  for (HloInstruction* instr : ordered_fusible_candidates) {
     if (!IsConsumerTheOnlyNonRootUser(*instr, *consumer)) {
       VLOG(2) << "Reject maybe illegal instr " << instr->ToString()
               << "; including it may create cycles in HLO.";
@@ -373,7 +332,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     auto old_params = fused_fusion_instrs[i]->fused_parameters();
     for (size_t j = 0; j < old_params.size(); ++j) {
-      auto bound_opnd = fused_fusion_instrs[i]->mutable_operand(j);
+      HloInstruction* bound_opnd = fused_fusion_instrs[i]->mutable_operand(j);
       // in a form of param_i_j
       b.AddInstruction(HloInstruction::CreateParameter(
           fused_comp_param_id++, bound_opnd->shape(),
@@ -384,10 +343,10 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   // Always create a dummy tuple instruction to serve as the root of the
   // computation, as the existence of a root instruction is required by the
   // HloComputation. The real root instruction will replace it below.
-  auto dummy_root = b.AddInstruction(
+  HloInstruction* dummy_root = b.AddInstruction(
       HloInstruction::CreateTuple(std::vector<HloInstruction*>{}));
   *uniq_computation = b.Build(dummy_root);
-  auto* comp = uniq_computation->get();
+  HloComputation* comp = uniq_computation->get();
 
   // Preparing clone_map, which maps old operand to new operand.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> clone_map;
@@ -395,8 +354,8 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     auto old_params = fused_fusion_instrs[i]->fused_parameters();
     for (size_t j = 0; j < old_params.size(); ++j) {
-      auto old_param = old_params[j];
-      auto new_param = comp->parameter_instruction(new_param_id++);
+      HloInstruction* old_param = old_params[j];
+      HloInstruction* new_param = comp->parameter_instruction(new_param_id++);
       clone_map.insert({old_param, new_param});
     }
   }
@@ -406,17 +365,17 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
     auto def_to_use_order = fused_fusion_instrs[i]
                                 ->fused_instructions_computation()
                                 ->MakeInstructionPostOrder();
-    for (auto old_instr : def_to_use_order) {
+    for (HloInstruction* old_instr : def_to_use_order) {
       if (old_instr->opcode() == HloOpcode::kParameter) {
         // Parameters have been created.
         continue;
       }
       std::vector<HloInstruction*> new_opnds;
-      for (auto old_opnd : old_instr->operands()) {
+      for (HloInstruction* old_opnd : old_instr->operands()) {
         CHECK(clone_map.find(old_opnd) != clone_map.end());
         new_opnds.push_back(clone_map[old_opnd]);
       }
-      auto new_instr = comp->AddInstruction(
+      HloInstruction* new_instr = comp->AddInstruction(
           old_instr->CloneWithNewOperands(old_instr->shape(), new_opnds));
       clone_map.insert({old_instr, new_instr});
     }
@@ -430,8 +389,9 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   for (size_t i = 0; i < fused_instr_output_size; ++i) {
     std::vector<HloInstruction*> reshapes(fused_fusion_instrs.size());
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
-      auto old_output = GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
-      auto new_output = clone_map[old_output];
+      HloInstruction* old_output =
+          GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
+      HloInstruction* new_output = clone_map[old_output];
       TF_ASSIGN_OR_RETURN(
           reshapes[j],
           MakeReshapeHlo(ShapeUtil::MakeShapeWithLayout(
@@ -440,7 +400,8 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
                              /*minor_to_major=*/std::vector<int64>(1, 0)),
                          new_output));
     }
-    TF_ASSIGN_OR_RETURN(auto concated_output, MakeConcatHlo(reshapes, 0));
+    TF_ASSIGN_OR_RETURN(HloInstruction * concated_output,
+                        MakeConcatHlo(reshapes, 0));
     concated_outputs.push_back(concated_output);
   }
 
@@ -448,12 +409,13 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   std::vector<HloInstruction*> output_slices(concated_outputs.size() *
                                              fused_fusion_instrs.size());
   for (size_t i = 0; i < concated_outputs.size(); ++i) {
-    auto concated_output = concated_outputs[i];
+    HloInstruction* concated_output = concated_outputs[i];
     int64 slice_start = 0;
     // Create a slice per fused computation.
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
-      auto old_output = GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
-      auto shape = old_output->shape();
+      HloInstruction* old_output =
+          GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
+      Shape shape = old_output->shape();
       int64 slice_limit = slice_start + ShapeUtil::ElementsIn(shape);
       TF_ASSIGN_OR_RETURN(
           output_slices[concated_outputs.size() * j + i],
@@ -464,7 +426,8 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   }
 
   // Make a tuple of output_slices.
-  auto tuple = comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
+  HloInstruction* tuple =
+      comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
@@ -478,9 +441,9 @@ Status HorizontalLoopFusionImpl::Fuse(
   std::vector<HloInstruction*> bound_operands;
   TF_RETURN_IF_ERROR(CreateFusedComputation(
       fused_fusion_instrs, &uniq_computation, &bound_operands));
-  auto fused_comp = computation_->parent()->AddEmbeddedComputation(
+  HloComputation* fused_comp = computation_->parent()->AddEmbeddedComputation(
       std::move(uniq_computation));
-  auto hori_fusion_instr =
+  HloInstruction* hori_fusion_instr =
       computation_->AddInstruction(HloInstruction::CreateFusion(
           fused_comp->root_instruction()->shape(),
           HloInstruction::FusionKind::kInput, bound_operands, fused_comp));
@@ -493,19 +456,20 @@ Status HorizontalLoopFusionImpl::Fuse(
   size_t total_output_id = 0;
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     std::vector<HloInstruction*> bitcasts;
-    auto fused_instr = fused_fusion_instrs[i];
-    auto num_outputs = GetOutputSizeOfFusible(*fused_instr);
+    HloInstruction* fused_instr = fused_fusion_instrs[i];
+    size_t num_outputs = GetOutputSizeOfFusible(*fused_instr);
     for (size_t j = 0; j < num_outputs; ++j) {
-      auto output = GetOutputsOfFusible(*fused_instr)[j];
-      TF_ASSIGN_OR_RETURN(auto gep, MakeGetTupleElementHlo(hori_fusion_instr,
-                                                           total_output_id++));
+      HloInstruction* output = GetOutputsOfFusible(*fused_instr)[j];
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * gep,
+          MakeGetTupleElementHlo(hori_fusion_instr, total_output_id++));
       bitcasts.push_back(computation_->AddInstruction(
           HloInstruction::CreateBitcast(output->shape(), gep)));
     }
-    auto bitcast_or_tuple = (bitcasts.size() == 1)
-                                ? bitcasts.at(0)
-                                : computation_->AddInstruction(
-                                      HloInstruction::CreateTuple(bitcasts));
+    HloInstruction* bitcast_or_tuple =
+        (bitcasts.size() == 1) ? bitcasts.at(0)
+                               : computation_->AddInstruction(
+                                     HloInstruction::CreateTuple(bitcasts));
     TF_RETURN_IF_ERROR(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
   }
@@ -521,7 +485,7 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
   for (size_t i = 0; i < def_to_use_order.size(); ++i) {
-    auto consumer = def_to_use_order[i];
+    HloInstruction* consumer = def_to_use_order[i];
     HorizontalLoopFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusibles = fusion_candidates.GetNextSpanOfFusions();
@@ -536,11 +500,14 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
       // Convert fusible into fusion_instrs to simplify the implementation of
       // `Fuse()`.
       std::vector<HloInstruction*> fusion_instrs;
-      for (auto instr : fusibles) {
+      for (HloInstruction* instr : fusibles) {
         if (instr->opcode() == HloOpcode::kFusion) {
           fusion_instrs.push_back(instr);
         } else {
-          fusion_instrs.push_back(MakeLoopFusionInstruction(instr));
+          TF_ASSIGN_OR_RETURN(
+              HloInstruction * fusion_instr,
+              MakeFusionInstruction(instr, HloInstruction::FusionKind::kLoop));
+          fusion_instrs.push_back(fusion_instr);
         }
       }
       TF_RETURN_IF_ERROR(Fuse(absl::MakeSpan(fusion_instrs)));

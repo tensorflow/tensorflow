@@ -541,5 +541,35 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
   });
 }
 
+size_t GetInstrCountOfFusible(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return 1;
+  } else {
+    return instr.fused_instruction_count();
+  }
+}
+
+absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusible(
+    const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return {const_cast<HloInstruction*>(&instr)};
+  }
+
+  HloInstruction* root = instr.fused_expression_root();
+  if (root->opcode() != HloOpcode::kTuple) {
+    return {root};
+  } else {
+    return root->operands();
+  }
+}
+
+size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
+  if (!instr.IsMultiOutputFusion()) {
+    return 1;
+  }
+  const HloInstruction* root = instr.fused_expression_root();
+  return ShapeUtil::TupleElementCount(root->shape());
+}
+
 }  // namespace gpu
 }  // namespace xla

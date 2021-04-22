@@ -109,6 +109,17 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
                                   const HloInstruction& consumer);
 
+// Returns number of instructions in the fusible `instr`. If `instr` is not a
+// fusion instruction, 1 is returned.
+size_t GetInstrCountOfFusible(const HloInstruction& instr);
+
+// Returns the outputs of the fusible `instr`.
+absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusible(
+    const HloInstruction& instr);
+
+// Returns the output size of the fusible `instr`.
+size_t GetOutputSizeOfFusible(const HloInstruction& instr);
+
 }  // namespace gpu
 }  // namespace xla
 

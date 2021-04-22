@@ -44,25 +44,6 @@ Shape GetInputShapeForMultiOutputFusion(const HloInstruction& instr) {
   }
 }
 
-// Creates a kInput fusion instruction and fuses `fused` into the created
-// fusion instruction.
-HloInstruction* MakeInputFusionInstruction(HloInstruction* fused) {
-  HloComputation* comp = fused->parent();
-  HloInstruction* fusion_instruction =
-      comp->AddInstruction(HloInstruction::CreateFusion(
-          fused->shape(), HloInstruction::FusionKind::kInput, fused));
-  TF_CHECK_OK(comp->ReplaceInstruction(fused, fusion_instruction));
-  return fusion_instruction;
-}
-
-size_t GetInstrCountOfFusible(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return 1;
-  } else {
-    return instr.fused_instruction_count();
-  }
-}
-
 class HorizontalInputFusionImpl {
  public:
   explicit HorizontalInputFusionImpl(HloComputation* computation)
@@ -97,7 +78,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
   std::vector<HloInstruction*> fusion_instrs;
-  for (auto opnd : consumer->operands()) {
+  for (HloInstruction* opnd : consumer->operands()) {
     HloInstruction* predecessor = opnd->LatestNonGteAncestor();
     // Find out the input fusion instructions whose only consumer is `consumer`.
     // This guarantees that fusing these candidates will never create cycles, as
@@ -134,7 +115,7 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
   // Using def-to-use order is sound since we do not modify users.
   std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
-  for (auto consumer : def_to_use_order) {
+  for (HloInstruction* consumer : def_to_use_order) {
     auto candidates = FindAndSortFusionCandidates(consumer);
     if (candidates.size() <= 1) {
       continue;
@@ -143,7 +124,11 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
     // Convert candidates into fusions if needed.
     for (size_t j = 0; j < candidates.size(); ++j) {
       if (candidates[j]->opcode() != HloOpcode::kFusion) {
-        candidates[j] = MakeInputFusionInstruction(candidates[j]);
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * fusion_instr,
+            MakeFusionInstruction(candidates[j],
+                                  HloInstruction::FusionKind::kInput));
+        candidates[j] = fusion_instr;
         changed = true;
       }
     }
@@ -181,7 +166,7 @@ StatusOr<bool> GpuHorizontalInputFusion::RunOnComputation(
 StatusOr<bool> GpuHorizontalInputFusion::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Run horizontal input fusion.";
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(changed, RunOnComputation(comp));
   }
 
