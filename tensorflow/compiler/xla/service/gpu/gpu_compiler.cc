@@ -624,7 +624,9 @@ static Status CompileModuleToLlvmIrImpl(
   VLOG(1) << "Buffer Assignment Stats "
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         "after_optimizations");
+                         absl::StrCat("sm_", cuda_compute_capability->cc_major, ".",
+                                      cuda_compute_capability->cc_minor,
+                                      "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
   mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
