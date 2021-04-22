@@ -50,6 +50,10 @@ TfLiteRegistration* Register_LOGISTIC_REF();
 TfLiteRegistration* Register_LOGISTIC_GENERIC_OPT();
 TfLiteRegistration* Register_LOGISTIC_FIXED_POINT_OPT();
 
+// LogSoftmax kernel registrations.
+TfLiteRegistration* Register_LOG_SOFTMAX_REF();
+TfLiteRegistration* Register_LOG_SOFTMAX();
+
 // PRelu kernel registrations.
 TfLiteRegistration* Register_PRELU_REF();
 TfLiteRegistration* Register_PRELU();
@@ -240,6 +244,18 @@ class LogisticOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
     return *kLogisticKernelMap;
+  }
+};
+
+const auto kLogSoftmaxKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_LOG_SOFTMAX_REF()},
+    {"GenericOptimized", ops::builtin::Register_LOG_SOFTMAX()},
+});
+
+class LogSoftmaxOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kLogSoftmaxKernelMap;
   }
 };
 
@@ -2128,8 +2144,8 @@ TEST(QuantizedActivationsOpTest, Softmax2DUint8Int16) {
 //     print('lsm1', sess.run(lsm1))
 //     print('lsm2', sess.run(lsm2))
 
-TEST(FloatActivationsOpTest, LogSoftmax) {
-  FloatActivationsOpModel m(BuiltinOperator_LOG_SOFTMAX,
+TEST_P(LogSoftmaxOpTest, LogSoftmax) {
+  FloatActivationsOpModel m(GetRegistration(), BuiltinOperator_LOG_SOFTMAX,
                             /*input=*/{TensorType_FLOAT32, {2, 4}});
   m.SetInput({
       0, -6, 2, 4,   //
@@ -2142,7 +2158,7 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(BuiltinOperator_LOG_SOFTMAX,
+  FloatActivationsOpModel m2(GetRegistration(), BuiltinOperator_LOG_SOFTMAX,
                              /*input=*/{TensorType_FLOAT32, {4, 2}});
   m2.SetInput({
       0, -6,  //
@@ -2159,11 +2175,11 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
                               })));
 }
 
-TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
+TEST_P(LogSoftmaxOpTest, LogSoftmaxUint8) {
   const float kLogSoftmaxQuantizedTolerance = 16 / 256.0;
   // Corresponds to input scale of 20/255.
   QuantizedActivationsOpModel m(
-      BuiltinOperator_LOG_SOFTMAX,
+      GetRegistration(), BuiltinOperator_LOG_SOFTMAX,
       /*input=*/{TensorType_UINT8, {2, 4}, -10, 10},
       /*output=*/{TensorType_UINT8, {}, 0, 0, 16. / 256, 255});
   m.SetInput<uint8_t>({
@@ -2182,10 +2198,10 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
               ElementsAreArray({189, 93, 221, 253, 142, 63, 255, 111}));
 }
 
-TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
+TEST_P(LogSoftmaxOpTest, LogSoftmaxInt8) {
   const float kLogSoftmaxQuantizedTolerance = 0.06355;
   QuantizedActivationsOpModel m(
-      BuiltinOperator_LOG_SOFTMAX,
+      GetRegistration(), BuiltinOperator_LOG_SOFTMAX,
       /*input=*/{TensorType_INT8, {2, 4}, -10, 10},
       /*output=*/{TensorType_INT8, {}, 0, 0, 16. / 256, 127});
   m.SetInput<int8_t>({
@@ -2511,6 +2527,10 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     LogisticOpTest, LogisticOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogisticKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    LogSoftmaxOpTest, LogSoftmaxOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogSoftmaxKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     PReluOpTest, PReluOpTest,
