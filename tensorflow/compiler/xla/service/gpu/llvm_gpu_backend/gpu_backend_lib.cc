@@ -795,6 +795,13 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, amdgpu_version->first,
                                           device_bitcode_dir_path));
 
+  // If ftz is enabled, set it as an attribute on every function in the module.
+  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+    for (llvm::Function& fn : *module) {
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -874,6 +881,14 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
+
+#if TF_ROCM_VERSION < 40100
+  // Use code-object-v3 for ROCm versions 4.0.1 and lower, since the
+  // HIP runtime for those ROCm versions expects the v3 HSACO objects
+  // Default is now v4 for newer LLVM versions (starting around 210326)
+  FeedLLVMWithFlags({"--amdhsa-code-object-version=3"});
+#endif
+
 #endif
 
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
