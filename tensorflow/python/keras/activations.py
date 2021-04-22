@@ -435,7 +435,7 @@ def hard_sigmoid(x):
 
   A faster approximation of the sigmoid activation. 
   Piecewise linear approximation of the sigmoid function.
-  Ref: 'https://paperswithcode.com/method/hard-sigmoid'
+  Ref: 'https://en.wikipedia.org/wiki/Hard_sigmoid'
 
   For example:
 
