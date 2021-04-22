@@ -182,6 +182,7 @@ tf_py_test(
     srcs = ["data_service_ops_test.py"],
     shard_count = 16,
     tags = [
+        "noasan",  # TODO(b/180454113)
         "notsan",  # TODO(b/180454113)
     ],
     deps = [
