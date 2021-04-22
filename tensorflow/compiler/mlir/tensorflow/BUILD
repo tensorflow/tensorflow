@@ -19,10 +19,10 @@ package_group(
         "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
-        "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
     ],
 )
@@ -958,6 +958,7 @@ cc_library(
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
+        "transforms/cluster_ops_by_policy.cc",
         "transforms/cluster_ops_by_policy_pass.cc",
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
@@ -1010,6 +1011,7 @@ cc_library(
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
+        "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/test_visitor_util.cc",
@@ -1022,7 +1024,6 @@ cc_library(
         "transforms/tpu_compile_op_replication_pass.cc",
         "transforms/tpu_device_propagation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
-        "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_extract_head_tail_outside_compilation.cc",
         "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_host_computation_expansion.cc",
@@ -1044,6 +1045,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
+        "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
         "transforms/passes.h",
@@ -1402,15 +1404,6 @@ cc_library(
 cc_library(
     name = "mlir_roundtrip_pass_registration",
     srcs = ["translate/mlir_roundtrip_pass_registration.cc"],
-    deps = [
-        ":mlir_roundtrip_pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_import_pass_registration",
-    srcs = ["translate/mlir_import_pass_registration.cc"],
     deps = [
         ":mlir_roundtrip_pass",
     ],

@@ -21,6 +21,7 @@ assignees:
 # A list of assignees for compiler folder
 compiler_assignees:
    - joker-eph
+   - sanjoy
 # filesystem path
 filesystem_path:
    - tensorflow/c/experimental/filesystem
@@ -37,6 +38,9 @@ filesystem_security_assignee:
    
 tflite_micro_path:
    - tensorflow/lite/micro
+   
+tf_pull_request_owner:
+   -gbaned
    
 tflite_micro_comment: >
    Thanks for contributing to TensorFlow Lite Micro.

@@ -21,6 +21,12 @@ from tensorflow.compiler.xla.python import xla_extension
 
 Client = xla_extension.Client
 
+class CompiledFunctionCache:
+  def __init__(self, capacity): ...
+  def size(self) -> int: ...
+  def capacity(self) -> int: ...
+  def clear(self): ...
+
 class CompiledFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
   __signature__: inspect.Signature
@@ -59,7 +65,9 @@ def jit(fun: Callable[..., Any],
         cache_miss: Callable[..., Any],
         get_device: Callable[..., Any],
         static_argnums: Sequence[int],
-        static_argnames: Sequence[str]) -> CompiledFunction: ...
+        static_argnames: Sequence[str] = ...,
+        donate_argnums: Sequence[int] = ...,
+        cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
 
 def device_put(
     __obj: Any,

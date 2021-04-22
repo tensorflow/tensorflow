@@ -1175,8 +1175,7 @@ def _flatten_and_filter_composite(maybe_composite, non_composite_output,
   """
 
   if isinstance(maybe_composite, composite_tensor.CompositeTensor):
-    num_components = len(
-        maybe_composite._type_spec._to_components(maybe_composite))  # pylint: disable=protected-access
+    num_components = len(nest.flatten(maybe_composite, expand_composites=True))
     return (composite_output,) * num_components
   return non_composite_output
 

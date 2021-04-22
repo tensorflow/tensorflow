@@ -65,6 +65,12 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
         trt_test.TfTrtIntegrationTestBase.ShouldRunTest(self, run_params))
     if not should_run:
       return should_run, reason_for_skipping
+    # TODO(kyungtaek): The TRTGraphConverterV2 is incapable of reflecting the
+    # _noinline attribute from the SavedModel V1 probouf. We should skip tests
+    # in this case for now. When we fix the code to reflect attributes, we
+    # should remove this elif clause.
+    elif run_params.is_v2:
+      return (False, "Disabling function inlining is not supported for V2")
     else:
       # TODO(kyungtaek): Calibration currently does not run for nodes
       # nested within functions. If this gets fixed, this method should not

@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import inspect
 import linecache
 import re
@@ -37,15 +38,15 @@ from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
 
 
-# TODO(b/184832933): Use ast in 3.9+.
-
-
 PY2_PREAMBLE = textwrap.dedent("""
 from __future__ import division
 from __future__ import print_function
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0
+
+if sys.version_info >= (3, 9):
+  astunparse = ast
 
 if sys.version_info >= (3,):
   STANDARD_PREAMBLE = PY3_PREAMBLE
@@ -392,6 +393,9 @@ def unparse(node, indentation=None, include_encoding_marker=True):
       ast_n = gast.gast_to_ast(n)
     else:
       ast_n = n
+
+    if astunparse is ast:
+      ast.fix_missing_locations(ast_n)  # Only ast needs to call this.
     codes.append(astunparse.unparse(ast_n).strip())
 
   return '\n'.join(codes)

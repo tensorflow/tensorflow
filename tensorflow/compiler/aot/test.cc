@@ -70,9 +70,7 @@ TEST(TEST_NAME, NoCrash) {
 }
 
 // Simple benchmark that repeatedly runs the generated function.
-void BM_NAME(int iters) {
-  testing::StopTiming();
-
+void BM_NAME(benchmark::State& state) {
   Eigen::ThreadPool pool(port::MaxParallelism());
   Eigen::ThreadPoolDevice device(&pool, pool.NumThreads());
 
@@ -80,11 +78,9 @@ void BM_NAME(int iters) {
   computation.set_thread_pool(&device);
   zero_buffers(&computation);
 
-  testing::StartTiming();
-  while (--iters) {
+  for (auto s : state) {
     computation.Run();
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_NAME);
 

@@ -247,7 +247,7 @@ tf_py_test(
     name = "directed_interleave_dataset_test",
     size = "small",
     srcs = ["directed_interleave_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 12,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -272,29 +272,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/experimental/ops:grouping",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "group_by_window_test",
-    size = "small",
-    srcs = ["group_by_window_test.py"],
-    shard_count = 4,
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
@@ -395,10 +372,6 @@ tf_py_test(
     name = "make_saveable_from_iterator_test",
     size = "small",
     srcs = ["make_saveable_from_iterator_test.py"],
-    tags = [
-        "no_tap",  # TODO(b/185378115): test timeout
-        "notsan",  # b/185381928
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
@@ -629,7 +602,6 @@ tf_py_test(
     size = "small",
     srcs = ["prefetch_with_slack_test.py"],
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",

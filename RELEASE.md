@@ -4,6 +4,13 @@
 
 ## Breaking Changes
 
+* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+  the API only works in graph mode and is not customizable. The function is
+  still accessible under
+  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
+  recommended to use the
+  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+  instead.
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -41,12 +48,28 @@
         lower overall memory usage, and a cleaner API. It does not require
         specifying a `delete_key` and `empty_key` that cannot be inserted into
         the table.
+   *    Added support for specifying number of subdivisions in all reduce host
+        collective. This parallelizes work on CPU and speeds up the collective
+        performance. Default behavior is unchanged.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.get_single_element` API to
         `tf.data.Dataset.get_single_element` and deprecating the experimental
         endpoint.
-*  `tf.lite`:
-  * Fix mean op reference quantization rounding issue.
+    *   Promoting `tf.data.experimental.group_by_window` API to
+        `tf.data.Dataset.group_by_window` and deprecating the experimental
+        endpoint.
+    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
+        `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
+        sampling if it encounters an empty dataset. This preserves the sampling
+        ratio throughout training. The prior behavior was to continue sampling,
+        skipping over exhausted datasets, until all datasets are exhausted. By
+        default, the original behavior (`stop_on_empty_dataset=False`) is
+        preserved.
+*   `tf.keras`:
+    *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
+        inputs are `RaggedTensor` objects.
+*   `tf.lite`:
+    *   Fix mean op reference quantization rounding issue.
 
 ## Thanks to our Contributors
 

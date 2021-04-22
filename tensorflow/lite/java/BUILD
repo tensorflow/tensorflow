@@ -245,8 +245,6 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-        # TODO(b/121204962): Re-enable test after fixing leaks when constructor exception thrown.
-        "noasan",
     ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     visibility = ["//visibility:private"],
@@ -324,9 +322,7 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        # TODO(b/121204962): Re-enable test after fixing memory leaks.
-        "noasan",
-        "notsan",  # TODO(b/158651814) Re-enable after fixing racing condition.
+        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],

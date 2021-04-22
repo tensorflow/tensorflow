@@ -122,6 +122,9 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 
 namespace tensorflow {
+
+const char kImportModelDefaultGraphFuncName[] = "main";
+
 using mlir::NamedAttrList;
 using mlir::TensorType;
 using mlir::tf_saved_model::AssetOp;
@@ -2235,11 +2238,7 @@ class GraphDefImporter : public ImporterBase {
   Status GetControlRetsFromGraph(
       llvm::ArrayRef<std::string> control_outputs,
       absl::InlinedVector<Node*, 4>* control_ret_nodes);
-
-  static constexpr char kDefaultGraphFuncName[] = "main";
 };
-
-constexpr char GraphDefImporter::kDefaultGraphFuncName[];
 
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
@@ -2336,7 +2335,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   PopulateTfVersions(module.get(), graph.versions());
 
   const auto& graph_func_name = specs.graph_func_name.empty()
-                                    ? kDefaultGraphFuncName
+                                    ? kImportModelDefaultGraphFuncName
                                     : specs.graph_func_name;
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,

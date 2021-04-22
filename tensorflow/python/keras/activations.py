@@ -8,7 +8,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY backendIND, either express or implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
@@ -505,6 +505,14 @@ def serialize(activation):
       activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
   return serialize_keras_object(activation)
+
+
+# Add additional globals so that deserialize can find these common activation
+# functions
+leaky_relu = nn.leaky_relu
+log_softmax = nn.log_softmax
+relu6 = nn.relu6
+silu = nn.swish
 
 
 @keras_export('keras.activations.deserialize')

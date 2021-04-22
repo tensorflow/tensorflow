@@ -617,6 +617,16 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
+    name = "dataset_ops",
+    api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    op_lib_names = [
+        "dataset_ops",
+        "experimental_dataset_ops",
+    ],
+    pkg = "//tensorflow/core",
+)
+
+tf_gen_op_wrappers_cc(
     name = "cc_ops",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     deps_internal = [
@@ -650,16 +660,21 @@ tf_gen_op_wrappers_cc(
         "ops/array_ops.h",
         "ops/const_op.h",
         "ops/math_ops.h",
+        "ops/dataset_ops.h",
+        "ops/experimental_dataset_ops.h",
         "ops/standard_ops.h",
     ],
     other_hdrs_internal = [
         "ops/array_ops_internal.h",
         "ops/math_ops_internal.h",
+        "ops/dataset_ops_internal.h",
+        "ops/experimental_dataset_ops_internal.h",
     ],
     pkg = "//tensorflow/core",
     deps = [
         ":array_ops",
         ":const_op",
+        ":dataset_ops",
         ":math_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",

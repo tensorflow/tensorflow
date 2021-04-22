@@ -149,6 +149,7 @@ KERAS_API_INIT_FILES = [
     "keras/datasets/reuters/__init__.py",
     "keras/estimator/__init__.py",
     "keras/experimental/__init__.py",
+    # Placeholder for internal API
     "keras/initializers/__init__.py",
     "keras/layers/__init__.py",
     "keras/layers/experimental/__init__.py",

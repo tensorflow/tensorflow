@@ -122,6 +122,8 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 
+  PjRtRuntimeType runtime_type() const override { return kTfrt; }
+
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -135,6 +137,12 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
+
+  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) override {
+    return Unimplemented("Async transfer to buffers not implemented");
+  };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
@@ -401,6 +409,15 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
 
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
+    return Unimplemented("GetOnDeviceSizeInBytes not implemented");
+  }
+
+  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                       std::function<void(Status)> on_ready) override {
+    return Unimplemented("CopyRawToHost not implemented");
+  }
+
   void Delete() override;
 
   bool IsDeleted() override;
@@ -552,6 +569,12 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   bool MustDonateParameter(int parameter) const;
 
+  // Checks that the input buffers passed in by the user have the correct size
+  // on device for the compiled program.
+  Status CheckBufferCompatibilities(
+      absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
+          input_buffers) const;
+
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
@@ -574,6 +597,10 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   BufferAllocation::Index result_buffer_index_;
   // Buffer allocation indices corresponding to each result buffer leaf buffer.
   absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices_;
+
+  // Size on device of each leaf buffer of the compiled program, cached here
+  // for performance reasons.
+  std::vector<int64_t> input_buffer_sizes_in_bytes_;
 
   // A set of parameters that have any aliased buffers and thus must be donated
   // when executing the computation.

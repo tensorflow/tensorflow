@@ -195,6 +195,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
     ],
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 # copybara:uncomment_begin(google-only)

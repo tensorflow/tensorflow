@@ -253,16 +253,12 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
   // Case: SMALL/LARGE/VIEW/OFFSET -> LARGE
   size_t new_cap;
   size_t curr_cap = TF_TString_GetCapacity(str);
-  // We assume SIZE_MAX % 16 == 0.
-  size_t curr_cap_x2 = curr_cap >= SIZE_MAX / 2 ? SIZE_MAX - 1 : curr_cap * 2;
 
   if (new_size < curr_size && new_size < curr_cap / 2) {
     // TODO(dero): Replace with shrink_to_fit flag.
     new_cap = TF_align16(curr_cap / 2 + 1) - 1;
-  } else if (new_size > curr_cap_x2) {
-    new_cap = TF_align16(new_size + 1) - 1;
   } else if (new_size > curr_cap) {
-    new_cap = TF_align16(curr_cap_x2 + 1) - 1;
+    new_cap = TF_align16(new_size + 1) - 1;
   } else {
     new_cap = curr_cap;
   }
