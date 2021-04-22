@@ -1274,6 +1274,12 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
   GpuGemmConfig config;
   BufferAllocation::Slice lhs, rhs, bias, output;
 
+  auto make_thunk_for_gemm = [&](bool implements_whole_instruction) {
+    return absl::make_unique<GemmThunk>(input.thunk_info, std::move(config),
+                                        lhs, rhs, output,
+                                        implements_whole_instruction);
+  };
+
   if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(input.op)) {
     config = build_gemm_config(gemm);
     TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm.lhs()));
@@ -1299,18 +1305,16 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
           /*source_buffer=*/bias,
           /*destination_buffer=*/output,
           /*mem_size=*/ShapeUtil::ByteSizeOf(config.output_shape)));
-      thunks.push_back(absl::make_unique<GemmThunk>(
-          input.thunk_info, std::move(config), lhs, rhs, output,
-          /*implements_whole_instruction=*/false));
+      thunks.push_back(
+          make_thunk_for_gemm(/*implements_whole_instruction=*/false));
       AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
           input.thunk_info, std::move(thunks)));
       return Status::OK();
     }
   }
 
-  AddThunkToThunkSequence(absl::make_unique<GemmThunk>(
-      input.thunk_info, std::move(config), lhs, rhs, output,
-      /*implements_whole_instruction=*/true));
+  AddThunkToThunkSequence(
+      make_thunk_for_gemm(/*implements_whole_instruction=*/true));
   return Status::OK();
 }
 
