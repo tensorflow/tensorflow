@@ -4,7 +4,10 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["parse_headers"],
+    features = [
+        "parse_headers",
+        "-layering_check",
+    ],
     licenses = ["notice"],
 )
 

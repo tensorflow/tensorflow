@@ -293,7 +293,7 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   second = {}
   pixel_mult = 200  # TODO(aselle): multiplier for initial placement
   width_mult = 170  # TODO(aselle): multiplier for initial placement
-  for op_index, op in enumerate(g["operators"]):
+  for op_index, op in enumerate(g["operators"] or []):
 
     for tensor_input_position, tensor_index in enumerate(op["inputs"]):
       if tensor_index not in first:
@@ -487,8 +487,9 @@ def CreateHtmlFile(tflite_input, html_output):
     html += GenerateTableHtml(g["tensors"], tensor_keys_to_display)
 
     # Print the ops.
-    html += "<h3>Ops</h3>\n"
-    html += GenerateTableHtml(g["operators"], op_keys_to_display)
+    if g["operators"]:
+      html += "<h3>Ops</h3>\n"
+      html += GenerateTableHtml(g["operators"], op_keys_to_display)
 
     # Visual graph.
     html += "<svg id='subgraph%d' width='1600' height='900'></svg>\n" % (

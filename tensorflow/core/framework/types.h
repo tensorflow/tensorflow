@@ -544,17 +544,6 @@ bool DataTypeAlwaysOnHost(DataType dt);
 struct TypeRef {
   std::shared_ptr<FullTypeDef> full_type;
 
-  // TypeRef() : full_type(new FullTypeDef()) {}
-
-  // explicit TypeRef(const FullTypeDef& ft)
-  //     : full_type(std::make_shared<FullTypeDef>(ft)) {}
-  //   TypeRef(TypeRef&& t) : full_type(std::move(t.full_type)) {}
-
-  //   TypeRef& operator=(const TypeRef& t) {
-  //     this->full_type = t.full_type;
-  //     return *this;
-  //   }
-
   bool operator==(const TypeRef& other) const {
     // TODO(mdan): This should be more efficient.
     return full_type->SerializeAsString() ==

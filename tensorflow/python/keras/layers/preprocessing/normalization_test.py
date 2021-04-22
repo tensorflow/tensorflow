@@ -263,9 +263,6 @@ class NormalizationAdaptTest(keras_parameterized.TestCase,
     model.summary()
 
   def test_merge_state(self):
-    if not context.executing_eagerly():
-      self.skipTest("`merge_state` only supported in TF2")
-
     data = np.random.rand(30, 10, 2)
     ds = dataset_ops.Dataset.from_tensor_slices(data).batch(2)
     norm = normalization.Normalization(axis=(1, 2))

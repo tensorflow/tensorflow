@@ -381,7 +381,6 @@ tensorflow::tensor_float_32_execution_enabled
 
 [//tensorflow/compiler/jit:get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
-stream_executor::port::internal_statusor::Helper::Crash
 
 [//tensorflow/core/common_runtime/eager:tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
@@ -398,3 +397,7 @@ tensorflow::PythonAPIInfo
 [//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
 tensorflow::ConvertPythonAPIParameters
 tensorflow::CopyPythonAPITensorLists
+
+[//tensorflow/core/platform:statusor] # tfe
+tensorflow::internal_statusor::Helper::Crash
+

@@ -143,7 +143,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
+  return status;
 }
 
 // Builds the XLA computation.
@@ -1364,8 +1364,12 @@ Status XlaCompiler::CompileGraph(
     }
   }
 
-  TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
-                                  flib_runtime_, NextStepId()));
+  Status execute_status = ExecuteGraph(context, std::move(graph), device_,
+                                       flib_runtime_, NextStepId());
+  if (!execute_status.ok()) {
+    VLOG(1) << "Failed executing graph " << name;
+    return execute_status;
+  }
   if (token_input_index != -1) {
     // Add extra token output.
     std::vector<xla::XlaOp> token_inputs;

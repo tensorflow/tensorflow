@@ -26,6 +26,16 @@ func @opaquetensorattr() -> () {
 }
 
 //===--------------------------------------------------------------------===//
+//  Test TF placeholder attribute
+//===--------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @placeholderattr
+func @placeholderattr() -> ()
+// CHECK:    attributes {some_placeholder = #tf.placeholder<"foo">} {
+    attributes {some_placeholder = #tf.placeholder<"foo">} {
+  return
+}
+//===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
 

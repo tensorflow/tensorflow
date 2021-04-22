@@ -65,8 +65,6 @@ struct PmapCacheEntry {
   absl::optional<xla::Status> compilation_error = absl::nullopt;
 
   bool fall_back_to_python = false;
-
-  std::vector<py::object> keepalive;
 };
 
 }  // namespace
@@ -150,11 +148,6 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
       executables_.emplace(signature, std::make_unique<PmapCacheEntry>());
   auto it = result.first;
   PmapCacheEntry* cache_entry = it->second.get();
-  // CallSignatures in the cache own their keyword argument reference.
-  for (const auto& kw : signature.keyword_args) {
-    cache_entry->keepalive.push_back(
-        py::reinterpret_borrow<py::object>(kw.key));
-  }
 
   py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
   CHECK_EQ(tuple.size(), 2);
@@ -196,7 +189,9 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   ParsedArgumentsAsBuffers arguments;
-  if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
+  if (!ParseArguments(args, kwargs, static_argnums_, /*static_argnames=*/{},
+                      arguments)
+           .ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
 
@@ -206,7 +201,7 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
-    arguments.signature.dynamic_args_signatures.push_back(
+    arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
   }
 

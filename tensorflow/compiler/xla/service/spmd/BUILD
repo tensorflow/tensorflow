@@ -19,6 +19,7 @@ cc_library(
     name = "spmd_partitioner",
     srcs = [
         "convolution_handler.cc",
+        "custom_call_handler.cc",
         "dot_handler.cc",
         "fft_handler.cc",
         "gather_scatter_handler.cc",
@@ -27,6 +28,7 @@ cc_library(
     ],
     hdrs = [
         "convolution_handler.h",
+        "custom_call_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],
@@ -39,6 +41,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/service:dot_as_convolution_util",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -46,6 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",

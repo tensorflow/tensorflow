@@ -222,18 +222,6 @@ StatusOr<PrimitiveType> MaybeUpcast(
       *preferred_element_type == from_type) {
     return from_type;
   }
-  if (primitive_util::IsIntegralType(from_type) !=
-      primitive_util::IsIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` and the original type must both be integral "
-        "or both be floating point.");
-  }
-  if (!primitive_util::IsSignedIntegralType(from_type) !=
-      !primitive_util::IsSignedIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` must have the same signedness as the "
-        "original type.");
-  }
   if (!primitive_util::IsFloatingPointType(from_type) &&
       primitive_util::BitWidth(*preferred_element_type) <
           primitive_util::BitWidth(from_type)) {

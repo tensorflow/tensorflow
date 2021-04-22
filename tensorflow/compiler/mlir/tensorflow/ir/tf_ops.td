@@ -34,6 +34,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
@@ -189,7 +190,8 @@ An n-way switch statement, implementing the following:
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins

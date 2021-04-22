@@ -168,8 +168,8 @@ func @constant_tensor_array() -> !tfr.tensor {
   %1 = "tfr.constant_tensor"(%0) : (!tfr.attr) -> !tfr.tensor
   return %1 : !tfr.tensor
 
-// CANON-NEXT: "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CANON-NEXT: "tfr.cast"(%0) : (tensor<3xi64>) -> !tfr.tensor
+// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<3xi64>) -> !tfr.tensor
 // CANON-NEXT: return
 }
 
@@ -182,8 +182,8 @@ func @constant_tensor_scalar() -> !tfr.tensor {
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   return %1 : !tfr.tensor
 
-// CANON-NEXT: "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
-// CANON-NEXT: "tfr.cast"(%0) : (tensor<i32>) -> !tfr.tensor
+// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<i32>) -> !tfr.tensor
 // CANON-NEXT: return
 }
 

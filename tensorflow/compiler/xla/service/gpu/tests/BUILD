@@ -17,6 +17,11 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "if_rocm_is_configured",
+)
 
 package(
     default_visibility = [":friends"],
@@ -79,6 +84,18 @@ cc_library(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "mlir_gemm_test",
+    srcs = ["mlir_gemm_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -589,6 +606,8 @@ tf_cc_binary(
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
     ]),
 )
 

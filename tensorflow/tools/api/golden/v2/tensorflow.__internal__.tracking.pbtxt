@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointInitialValue"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointInitialValueCallable"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ObjectGraphView"
     mtype: "<type \'type\'>"
   }

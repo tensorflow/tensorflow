@@ -254,8 +254,7 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 
 // Registration of the GPU implementations.
 #define REGISTER_SELECT_GPU(type)                                    \

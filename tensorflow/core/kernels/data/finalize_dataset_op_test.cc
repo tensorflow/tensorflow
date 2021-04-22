@@ -271,9 +271,9 @@ TEST_F(FinalizeDatasetOpTest, OptimizationsDefaultNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings({"FinalizeDataset",
-                                   "MaxIntraOpParallelismDataset",
-                                   "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings(
+      {"FinalizeDataset", "PrivateThreadPoolDataset",
+       "MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
 }
 
 TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {

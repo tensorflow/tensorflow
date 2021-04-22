@@ -72,19 +72,20 @@ namespace wrap {
 #endif
 
 // clang-format off
+
 #define FOREACH_HIPSPARSE_API(__macro)          \
   __macro(hipsparseCreate)                      \
   __macro(hipsparseCreateMatDescr)              \
   __macro(hipsparseCcsr2csc)                    \
-  __macro(hipsparseCcsrgeam2)			\
-  __macro(hipsparseCcsrgeam2_bufferSizeExt)	\
+  __macro(hipsparseCcsrgeam2)		                \
+  __macro(hipsparseCcsrgeam2_bufferSizeExt)	    \
   __macro(hipsparseCcsrgemm)                    \
   __macro(hipsparseCcsrmm)                      \
   __macro(hipsparseCcsrmm2)                     \
   __macro(hipsparseCcsrmv)                      \
   __macro(hipsparseDcsr2csc)                    \
-  __macro(hipsparseDcsrgeam2)			\
-  __macro(hipsparseDcsrgeam2_bufferSizeExt)	\
+  __macro(hipsparseDcsrgeam2)                   \
+  __macro(hipsparseDcsrgeam2_bufferSizeExt)     \
   __macro(hipsparseDcsrgemm)                    \
   __macro(hipsparseDcsrmm)                      \
   __macro(hipsparseDcsrmm2)                     \
@@ -112,6 +113,7 @@ namespace wrap {
   __macro(hipsparseZcsrmm)                      \
   __macro(hipsparseZcsrmm2)                     \
   __macro(hipsparseZcsrmv)
+
 
 // clang-format on
 

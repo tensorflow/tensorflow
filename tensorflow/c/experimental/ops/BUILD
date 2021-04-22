@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:tracing_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
     ],
 )
@@ -61,10 +62,12 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:tracing_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
     ],
 )

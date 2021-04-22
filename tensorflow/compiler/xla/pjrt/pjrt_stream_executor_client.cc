@@ -682,7 +682,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
-  VLOG(2) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
+  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString();
   if (shape.IsTuple()) {
     return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
@@ -866,7 +866,7 @@ PjRtStreamExecutorClient::CreateUninitializedBuffer(
     std::shared_ptr<BufferSequencingEvent> definition_event) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::CreateUninitializedBuffer");
-  VLOG(2) << "PjRtStreamExecutorClient::CreateUninitializedBuffer: shape: "
+  VLOG(1) << "PjRtStreamExecutorClient::CreateUninitializedBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
@@ -890,7 +890,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                                 PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostLiteral");
-  VLOG(2) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
+  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
@@ -1008,6 +1008,7 @@ Status PjRtStreamExecutorDevice::TransferToInfeed(const LiteralSlice& literal) {
 
 Status PjRtStreamExecutorDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
+  VLOG(1) << "PjRtStreamExecutorDevice::TransferFromOutfeed";
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
       local_device->device_ordinal(), literal);
@@ -1141,6 +1142,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
 }
 
 void PjRtStreamExecutorBuffer::Delete() {
+  VLOG(1) << "PjRtStreamExecutorBuffer::Delete";
   // When wait_for_reads_to_complete is false, Release should never fail.
   TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
 }
@@ -1230,6 +1232,7 @@ void PjRtStreamExecutorBuffer::DropHold(ScopedHold::Type type,
 
 void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
                                          std::function<void(Status)> on_ready) {
+  VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
     on_ready(InvalidArgument("ToLiteral called on empty tuple"));
     return;
@@ -1362,6 +1365,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     PjRtDevice* dst_device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorBuffer::CopyToDevice");
+  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToDevice";
   if (dst_device == device_) {
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
@@ -1431,12 +1435,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
 
 Status PjRtStreamExecutorBuffer::CopyToRemoteDevice(
     absl::string_view serialized_descriptor) {
+  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
   return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
 Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorBuffer::BlockHostUntilReady");
+  VLOG(1) << "PjRtStreamExecutorBuffer::BlockHostUntilReady";
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   {
     absl::MutexLock lock(&mu_);
@@ -1625,12 +1631,12 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
   int num_partitions;
   if (device_assignment_ == nullptr) {
     // This must go after `executables_` is initialized.
-    VLOG(1) << "PjRtStreamExecutorExecutable portable single-core";
+    VLOG(3) << "PjRtStreamExecutorExecutable portable single-core";
     num_partitions = 1;
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-    VLOG(1) << "PjRtStreamExecutorExecutable device_assignment:\n"
+    VLOG(3) << "PjRtStreamExecutorExecutable device_assignment:\n"
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
     CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
@@ -1812,7 +1818,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);
   if (run_options.launch_id() != 0) {
-    VLOG(1) << "launch id for " << name() << ": " << run_options.launch_id();
+    VLOG(3) << "launch id for " << name() << ": " << run_options.launch_id();
   }
 
   // The choice of where we wait is arbitrary; the reason for the wait is
@@ -1938,7 +1944,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
                            ->device_ordinal();
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorExecutable::ExecuteHelper");
-  VLOG(3) << "Replica " << replica << ", partition " << partition
+  VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   // SPMD sharding produces a single executable for multiple partitions.
@@ -2188,7 +2194,7 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   tensorflow::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
-
+  VLOG(1) << "PjRtStreamExecutorClient::Compile";
   ExecutableBuildOptions& build_options = options.executable_build_options;
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());

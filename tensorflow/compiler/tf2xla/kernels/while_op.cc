@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -119,12 +120,12 @@ void GetLoopInvariants(XlaOpKernelContext* ctx,
                        std::vector<bool>* const loop_invariants) {
   const FunctionBody* body;
   OP_REQUIRES_OK(ctx, ctx->compiler()->FindFunctionBody(body_name_attr, &body));
+  const tensorflow::FunctionLibraryDefinition* fld =
+      ctx->compiler()->flib_runtime()->GetFunctionLibraryDefinition();
   for (int i = 0; i < body->ret_nodes.size(); i++) {
-    const Node* arg = body->arg_nodes[i];
-    const Node* ret = body->ret_nodes[i];
-    const Node* ret_input_0;
-    OP_REQUIRES_OK(ctx, ret->input_node(0, &ret_input_0));
-    (*loop_invariants)[i] = (ret_input_0->id() == arg->id());
+    StatusOr<bool> is_loop_invariant = IsLoopInvariant(body, i, fld);
+    OP_REQUIRES_OK(ctx, is_loop_invariant.status());
+    (*loop_invariants)[i] = *is_loop_invariant;
   }
 }
 

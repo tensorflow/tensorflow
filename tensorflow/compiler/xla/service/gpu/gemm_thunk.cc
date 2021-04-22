@@ -124,7 +124,15 @@ static bool DoGemmWithAlgorithm(
                                             : se::blas::Transpose::kNoTranspose;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
-  if (algorithm) {
+  // Ignore the "algorithm" field on the ROCm platform. This is because
+  // autotuning for GEMM is not yet available on the ROCm platform
+  // The "algorithm" field does not get populated in the "normal" flow
+  // on the ROCm platform, but atleast one unittest directly populates it
+  // and hence the need for this check
+  bool is_rocm_platform =
+      se::MultiPlatformManager::PlatformWithName("ROCM").ok();
+
+  if (algorithm && !is_rocm_platform) {
     // Autotuning is disabled for batch_size != 1.
     CHECK_EQ(1, batch_size);
     return stream
