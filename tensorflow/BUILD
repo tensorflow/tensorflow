@@ -37,10 +37,9 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],
-)
+package(default_visibility = [":internal"])
+
+licenses(["notice"])
 
 exports_files([
     "LICENSE",
