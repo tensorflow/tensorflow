@@ -128,9 +128,9 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig& gemm_config,
                                    se::DeviceMemoryBase lhs_buffer,
                                    se::DeviceMemoryBase rhs_buffer,
                                    se::DeviceMemoryBase output_buffer,
-                                   MatrixDescriptor* lhs_matrix,
-                                   MatrixDescriptor* rhs_matrix,
-                                   MatrixDescriptor* output_matrix);
+                                   MatrixDescriptor& lhs_matrix,
+                                   MatrixDescriptor& rhs_matrix,
+                                   MatrixDescriptor& output_matrix);
 }  // namespace gpu
 }  // namespace xla
 

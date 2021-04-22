@@ -268,7 +268,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   //#if GOOGLE_CUDA && CUDA_VERSION >= 11000
   //#else   // if not GOOGLE_CUDA or CUDA_VERSION < 11000
   absl::optional<se::blas::AlgorithmType> result;
-  if (batch_size != 1) {
+  if (batch_size == 1) {
+    TF_ASSIGN_OR_RETURN(
+        result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
+                                       lhs_buffer, rhs_buffer, output_buffer,
+                                       reference_result_buffer));
+  } else {
     // // TODO(b/112111608): Implement auto tune for batched gemm.
     // VLOG(2) << "Batch size is non-singular, using generic algorithm";
     // result = absl::nullopt;
@@ -279,8 +284,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
     GpuGemmConfig config = GetGpuGemmConfig(instr);
     CHECK(PopulateInputOutputMatrices(config, lhs_buffer, lhs_buffer,
-                                      output_buffer, &lhs_matrix, &rhs_matrix,
-                                      &output_matrix)
+                                      output_buffer, lhs_matrix, rhs_matrix,
+                                      output_matrix)
               .ok());
     DCHECK(!output_matrix.transpose);
     tensorflow::DataType dtype;
@@ -319,8 +324,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     int64 m = output_matrix.num_rows;
     int64 n = output_matrix.num_cols;
     auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
-    // tensorflow::DataType dtype =
-    // tensorflow::DataTypeToEnum<complex64>::value;
+
     tensorflow::BatchMatmulParameters matmul_parameters(
         trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
         /*broadcast_a*/ false, /*broadcast_b*/ false, dtype, dtype, allow_tf32,
@@ -398,9 +402,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
               << " algorithms.";
       se::blas::ProfileResult best_result;
       se::blas::ProfileResult profile_result;
-      // for (const auto& profile_algorithm : plan_and_algorithms->algorithms)
-      // {
-      // std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>profile_algorithm(nullptr);
+
       for (size_t i = 0; i != algorithms.size(); ++i) {
         // Create a new scratch allocator with every autotuning run so that
         // scratch space is deallocated between runs.
@@ -416,7 +418,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         VLOG(4) << "  Autotune algorithm " << i
                 << " result: " << profile_result.elapsed_time_in_ms()
                 << " ms, valid=" << profile_result.is_valid();
-        //<< ", workspace_size=" << profile_algorithm->workspace_size();
 
         if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
                                              best_result.elapsed_time_in_ms()) {
@@ -434,11 +435,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                                                              algorithm_config);
     }
     return {absl::nullopt};
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
-                                       lhs_buffer, rhs_buffer, output_buffer,
-                                       reference_result_buffer));
   }
 
   CHECK(autotune_cache.emplace(key, result).second);

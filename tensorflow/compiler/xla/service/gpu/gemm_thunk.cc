@@ -202,6 +202,7 @@ static bool DoGemmLt(
     se::ScratchAllocator *scratch_allocator,
     std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> &profiled_algorithm,
     se::blas::ProfileResult *output_profile_result) {
+  LOG(INFO) << "CublasLT called";
   DCHECK(!output_matrix.transpose);
   tensorflow::DataType dtype = tensorflow::DataTypeToEnum<ElemType>::value;
   bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
@@ -255,9 +256,9 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
                                    se::DeviceMemoryBase lhs_buffer,
                                    se::DeviceMemoryBase rhs_buffer,
                                    se::DeviceMemoryBase output_buffer,
-                                   MatrixDescriptor *lhs_matrix,
-                                   MatrixDescriptor *rhs_matrix,
-                                   MatrixDescriptor *output_matrix) {
+                                   MatrixDescriptor &lhs_matrix,
+                                   MatrixDescriptor &rhs_matrix,
+                                   MatrixDescriptor &output_matrix) {
   VLOG(2) << "Populate I/O matrices";
   const Shape &output_shape = gemm_config.output_shape;
   const Shape &lhs_shape = gemm_config.lhs_shape;
@@ -321,14 +322,10 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
         shape.dimensions(row_dim + static_cast<int64>(!is_row_major))};
   };
 
-  *lhs_matrix = make_descriptor(
+  lhs_matrix = make_descriptor(
       lhs_buffer, lhs_shape, dim_nums.lhs_contracting_dimensions(0) == row_dim);
-  *rhs_matrix = make_descriptor(
+  rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
-  // std::unique_ptr<ScopedInstructionProfiler> op_profiler =
-  //     profiler ? profiler->MakeScopedInstructionProfiler(
-  //                    implements_whole_instruction ? profile_index : -1)
-  //              : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
@@ -337,7 +334,7 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
 
   MatrixDescriptor out_matrix{output_buffer, /*needs_transpose=*/false,
                               output_num_rows, output_num_cols};
-  *output_matrix = out_matrix;
+  output_matrix = out_matrix;
 
   return Status::OK();
 }
@@ -359,10 +356,9 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   MatrixDescriptor output_matrix;
   const Shape &output_shape = gemm_config.output_shape;
   int64 batch_size = gemm_config.backend_config.batch_size();
-  LOG(INFO) << "Batch Size: " << batch_size;
   CHECK(PopulateInputOutputMatrices(gemm_config, lhs_buffer, lhs_buffer,
-                                    output_buffer, &lhs_matrix, &rhs_matrix,
-                                    &output_matrix)
+                                    output_buffer, lhs_matrix, rhs_matrix,
+                                    output_matrix)
             .ok());
   bool launch_ok = false;
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
