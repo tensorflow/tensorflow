@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 #ifndef TENSOR_ARENA_SIZE
-#define TENSOR_ARENA_SIZE (1024)
+#define TENSOR_ARENA_SIZE (1024 * 3)
 #endif
 
 #ifndef NUM_INFERENCES
@@ -96,7 +96,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   for (int n = 0; n < NUM_INFERENCES; n++) {
     for (size_t i = 0; i < interpreter.inputs_size(); ++i) {
       TfLiteTensor* input = interpreter.input(i);
-      memcpy(input->data.data, input_data[i], input->bytes);
+      memcpy(input->data.data, &input_data[i], input->bytes);
     }
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
@@ -126,7 +126,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
     for (size_t i = 0; i < interpreter.outputs_size(); i++) {
       TfLiteTensor* output = interpreter.output(i);
       for (int j = 0; j < tflite::ElementCount(*(output->dims)); ++j) {
-        check_output_elem(output, expected_output_data[i], j);
+        check_output_elem(output, &expected_output_data[i], j);
       }
     }
 #endif
