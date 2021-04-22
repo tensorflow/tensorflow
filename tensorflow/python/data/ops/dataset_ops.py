@@ -2614,11 +2614,11 @@ name=None))
     wrapped_func = StructuredFunctionWrapper(
         shard_func,
         "save()",
-        input_structure=dataset.element_spec,
+        input_structure=self.element_spec,
         add_to_graph=False)
 
     coder = nested_structure_coder.StructureCoder()
-    encoded = coder.encode_structure(dataset.element_spec)
+    encoded = coder.encode_structure(self.element_spec)
     gfile.MakeDirs(path)
     with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
       f.write(encoded.SerializeToString())
@@ -2628,9 +2628,9 @@ name=None))
     shard_func.add_to_graph(ops.get_default_graph())
 
     # pylint: disable=protected-access
-    dataset = dataset._apply_options()
+    self = self._apply_options()
     ged_ops.save_dataset(
-        dataset._variant_tensor,
+        self._variant_tensor,
         path=path,
         shard_func_other_args=shard_func.captured_inputs,
         compression=compression,
