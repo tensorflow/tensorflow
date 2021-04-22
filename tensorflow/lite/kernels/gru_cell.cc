@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/kernels/gru_cell.h"
+#include "tensorflow/lite/kernels/gru_cell.h"
 
 #include <vector>
 
@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 namespace gru_cell {
 
 using optimized_ops::ArrayMap;
@@ -89,6 +89,6 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
 }
 
 }  // namespace gru_cell
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite

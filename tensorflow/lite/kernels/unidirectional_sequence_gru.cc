@@ -16,14 +16,16 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/kernels/gru_cell.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/gru_cell.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+// Unidirectional_sequence_gru is the fused version of GRU:
+// https://www.tensorflow.org/api_docs/python/tf/keras/layers/GRU.
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 namespace unidirectional_sequence_gru {
 namespace {
 
@@ -263,8 +265,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             candidate_bias, output, output_state, activation, concat,
             cpu_backend_context);
   } else {
-    context->ReportError(context,
-                         "Unsupported combination of data types for GruCell");
+    TF_LITE_KERNEL_LOG(context,
+                       "Unsupported combination of data types for GruCell");
     return kTfLiteError;
   }
 
@@ -280,6 +282,6 @@ TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_GRU() {
   return &r;
 }
 
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite

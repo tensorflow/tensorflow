@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 
 TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_GRU();
 
@@ -139,7 +139,7 @@ TEST(GRUTest, SimpleTest) {
 }
 
 }  // namespace
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
 

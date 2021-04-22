@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_GRU_CELL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_GRU_CELL_H_
+#ifndef TENSORFLOW_LITE_KERNELS_GRU_CELL_H_
+#define TENSORFLOW_LITE_KERNELS_GRU_CELL_H_
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 namespace gru_cell {
 
 void GruCell(const RuntimeShape& input_shape, const float* input,
@@ -39,8 +39,8 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
              tflite::CpuBackendContext* cpu_backend_context);
 
 }  // namespace gru_cell
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_GRU_CELL_H_
+#endif  // TENSORFLOW_LITE_KERNELS_GRU_CELL_H_
