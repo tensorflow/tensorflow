@@ -975,14 +975,13 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
           if (input.empty()) {
             continue;
           }
-          // Currently only support pair of twos.
-          // TODO(b/174534943): extend to arbitrary number of tensors.
+          // Currently only support two values. The first one for input and
+          // the second one for output.
           if (input.size() != 2) {
             return kTfLiteError;
           }
           const int index_1 = input[0];
           const int index_2 = input[1];
-          // TODO(jianlijianli): model input/output.
           TensorT* tensor_1 = subgraph->tensors[op->inputs[index_1]].get();
           TensorT* tensor_2 = subgraph->tensors[op->outputs[index_2]].get();
           const float min_of_min = std::min(tensor_1->quantization->min[0],
