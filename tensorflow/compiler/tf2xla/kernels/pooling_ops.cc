@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -380,7 +381,7 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP(Name("MaxPoolGrad"), MaxPool2DGradOp);
+REGISTER_XLA_OP(Name("MaxPoolGrad"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("MaxPoolGradV2")
                     .CompileTimeConstantInput("ksize")
                     .CompileTimeConstantInput("strides"),
