@@ -232,6 +232,8 @@ class CTCGreedyDecoderOp : public OpKernel {
         int prev_indices = -1;
         for (int t = 0; t < seq_len_t(b); ++t) {
           int max_class_indices;
+          OP_REQUIRES(ctx, input_list_t[t].dimension(1) > 0,
+                      errors::InvalidArgument("Invalid input dimensions."));
           log_prob_t(b, 0) +=
               -RowMax<T>(input_list_t[t], b, &max_class_indices);
           if (max_class_indices != blank_index &&
