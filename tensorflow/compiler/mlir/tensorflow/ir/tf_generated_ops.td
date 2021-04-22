@@ -5646,7 +5646,7 @@ Equivalent to np.irfftn with 3 dimensions.
   TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_IdentityOp : TF_Op<"Identity", [TF_OperandsSameAsResultsTypeOrRef]> {
+def TF_IdentityOp : TF_Op<"Identity", [NoSideEffect, TF_NoConstantFold, TF_OperandsSameAsResultsTypeOrRef]> {
   let summary = [{
 Return a tensor with the same shape and contents as the input tensor or value.
   }];
