@@ -2578,10 +2578,10 @@ name=None))
     tf.Tensor(0, shape=(), dtype=int64)
     tf.Tensor(1, shape=(), dtype=int64)
 
-    The saved dataset is saved in multiple file "shards". By default, the dataset
-    output is divided to shards in a round-robin fashion but custom sharding can
-    be specified via the `shard_func` function. For example, you can save the
-    dataset to using a single shard as follows:
+    The saved dataset is saved in multiple file "shards". By default, the
+    dataset output is divided to shards in a round-robin fashion but custom
+    sharding can be specified via the `shard_func` function. For example, you
+    can save the dataset to using a single shard as follows:
 
     ```python
     dataset = make_dataset()
@@ -2591,18 +2591,19 @@ name=None))
     ```
 
     NOTE: The directory layout and file format used for saving the dataset is
-    considered an implementation detail and may change. For this reason, datasets
-    saved through `tf.data.Dataset.save` should only be consumed through
-    `tf.data.Dataset.load`, which is guaranteed to be backwards compatible.
+    considered an implementation detail and may change. For this reason,
+    datasets saved through `tf.data.Dataset.save` should only be consumed
+    through `tf.data.Dataset.load`, which is guaranteed to be backwards
+    compatible.
 
     Args:
       path: Required. A directory to use for saving the dataset.
       compression: Optional. The algorithm to use to compress data when writing
         it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
-      shard_func: Optional. A function to control the mapping of dataset elements
-        to file shards. The function is expected to map elements of the input
-        dataset to int64 shard IDs. If present, the function will be traced and
-        executed as graph computation.
+      shard_func: Optional. A function to control the mapping of dataset
+        elements to file shards. The function is expected to map elements of
+        the input dataset to int64 shard IDs. If present, the function will be
+        traced and executed as graph computation.
     """
 
     if shard_func is None:
@@ -2654,11 +2655,11 @@ name=None))
     tf.Tensor(0, shape=(), dtype=int64)
     tf.Tensor(1, shape=(), dtype=int64)
 
-
     Note that to load a previously saved dataset, you need to specify
-    `element_spec` -- a type signature of the elements of the saved dataset, which
-    can be obtained via `tf.data.Dataset.element_spec`. This requirement exists so
-    that shape inference of the loaded dataset does not need to perform I/O.
+    `element_spec` -- a type signature of the elements of the saved dataset,
+    which can be obtained via `tf.data.Dataset.element_spec`. This requirement
+    exists so that shape inference of the loaded dataset does not need to
+    perform I/O.
 
     If the default option of sharding the saved dataset was used, the element
     order of the saved dataset will be preserved when loading it.
@@ -2680,14 +2681,15 @@ name=None))
 
     Args:
       path: Required. A path pointing to a previously saved dataset.
-      element_spec: Optional. A nested structure of `tf.TypeSpec` objects matching
-        the structure of an element of the saved dataset and specifying the type
-        of individual element components. If not provided, the nested structure of
-        `tf.TypeSpec` saved with the saved dataset is used.
+      element_spec: Optional. A nested structure of `tf.TypeSpec` objects
+        matching the structure of an element of the saved dataset and specifying
+        the type of individual element components. If not provided, the nested
+        structure of `tf.TypeSpec` saved with the saved dataset is used.
       compression: Optional. The algorithm to use to decompress the data when
         reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
       reader_func: Optional. A function to control how to read data from shards.
-        If present, the function will be traced and executed as graph computation.
+        If present, the function will be traced and executed as graph
+        computation.
 
     Returns:
       A `tf.data.Dataset` instance.
