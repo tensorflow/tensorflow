@@ -23,7 +23,6 @@ import os
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
@@ -238,8 +237,6 @@ class DebugIdentityV2OpUninitializedWriterTest(
 
   @test_util.run_in_graph_and_eager_modes
   def testInvokingDebugIdentityV2OpBeforeCreatingDebugEventsWriterWorks(self):
-    if not compat.forward_compatible(2020, 6, 24):
-      self.skipTest("Functionality currently not supported.")
     circular_buffer_size = 3
 
     @def_function.function

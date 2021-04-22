@@ -24,7 +24,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.service import server_lib
@@ -861,9 +860,6 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
   def testShuffleAcrossIterations(self, distribution, reshuffle):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
-
-    if not reshuffle and not compat.forward_compatible(2020, 5, 22):
-      self.skipTest("Functionality currently not supported.")
 
     dataset = dataset_ops.Dataset.range(12).shuffle(
         12, reshuffle_each_iteration=reshuffle).batch(4)
