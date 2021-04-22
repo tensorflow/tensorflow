@@ -287,6 +287,9 @@ class PjRtClient {
     // complete. Puts all buffers in an error state. For the stream executor
     // client, since error states are not well supported, this triggers a fatal
     // error.
+    //
+    // SetTransferError may be called at most once, and may not be called unless
+    // at least one buffer has not yet had its final transfer initiated.
     virtual void SetTransferError(Status error) = 0;
   };
 
