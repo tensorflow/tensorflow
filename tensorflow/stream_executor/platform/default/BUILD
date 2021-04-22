@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_config_tensorrt//:tensorrt_headers",
     ],
 )

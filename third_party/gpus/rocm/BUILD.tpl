@@ -51,9 +51,9 @@ cc_library(
 )
 
 cc_library(
-    name = "rocfft",
-    srcs = ["rocm/lib/%{rocfft_lib}"],
-    data = ["rocm/lib/%{rocfft_lib}"],
+    name = "%{hipfft_or_rocfft}",
+    srcs = ["rocm/lib/%{hipfft_or_rocfft_lib}"],
+    data = ["rocm/lib/%{hipfft_or_rocfft_lib}"],
     includes = [
         ".",
         "rocm/include",
@@ -106,7 +106,7 @@ cc_library(
         ":rocm_headers",
         ":hip",
         ":rocblas",
-        ":rocfft",
+        ":%{hipfft_or_rocfft}",
         ":hiprand",
         ":miopen",
         ":hipsparse",
