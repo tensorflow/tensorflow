@@ -1775,6 +1775,20 @@ static LogicalResult Verify(MapOp op) {
   return success();
 }
 
+OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
+  mlir::Block& bb = computation().front();
+  mlir::Operation& front_op = bb.front();
+
+  auto ret_op = mlir::dyn_cast<ReturnOp>(front_op);
+  if (!ret_op) return nullptr;
+  if (ret_op.results().size() != 1) return nullptr;
+
+  for (mlir::BlockArgument barg : bb.getArguments()) {
+    if (barg == ret_op.results()[0]) return getOperands()[barg.getArgNumber()];
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//
@@ -1882,23 +1896,23 @@ static TensorType GetReduceResultType(Type operand_ty,
 }
 
 void ReduceOp::build(OpBuilder& builder, OperationState& state,
-                     ValueRange operands, ValueRange init_values,
+                     ValueRange inputs, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
-  result_ty.reserve(operands.size());
+  result_ty.reserve(inputs.size());
 
-  for (Value operand : operands) {
+  for (Value input : inputs) {
     result_ty.push_back(
-        GetReduceResultType(operand.getType(), dimensions, &builder));
+        GetReduceResultType(input.getType(), dimensions, &builder));
   }
-  build(builder, state, result_ty, operands, init_values, dimensions);
+  build(builder, state, result_ty, inputs, init_values, dimensions);
 }
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (dimensions().getNumElements() == 0) {
-    for (Value input : this->operands()) {
+    for (Value input : this->inputs()) {
       results.push_back(input);
     }
     return success();

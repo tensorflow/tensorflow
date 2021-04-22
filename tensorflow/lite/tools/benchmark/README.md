@@ -25,8 +25,9 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
@@ -115,6 +116,7 @@ where applicable. For details about each parameter, please refer to
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
@@ -132,6 +134,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)

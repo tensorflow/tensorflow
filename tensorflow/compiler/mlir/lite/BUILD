@@ -277,6 +277,20 @@ cc_library(
 )
 
 cc_library(
+    name = "variables_utils",
+    srcs = [
+        "utils/variables_utils.cc",
+    ],
+    hdrs = [
+        "utils/variables_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "constant_utils",
     srcs = [
         "utils/constant_utils.cc",
@@ -500,6 +514,7 @@ cc_library(
         ":tensorflow_lite",
         ":tftext_utils",
         ":validators",
+        ":variables_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",

@@ -1098,11 +1098,13 @@ cc_library(
     hdrs = ["optimization_registry.h"],
     copts = tf_copts(),
     deps = [
+        ":composite_device",
         ":device_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1595,6 +1597,7 @@ tf_cuda_library(
         ":collective_param_resolver_local",
         ":collective_rma_local",
         ":collective_util",
+        ":composite_device",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
@@ -2233,7 +2236,7 @@ tf_cuda_cc_test(
     name = "direct_session_test",
     size = "medium",
     srcs = ["direct_session_test.cc"],
-    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
+    args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu",
@@ -2316,7 +2319,7 @@ tf_cc_test(
     name = "direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [

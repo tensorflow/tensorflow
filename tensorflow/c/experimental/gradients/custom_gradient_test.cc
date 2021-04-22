@@ -70,20 +70,17 @@ Status ExpWithPassThroughGrad(AbstractContext* ctx,
                               absl::Span<AbstractTensorHandle*> outputs) {
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch x.
-  std::vector<AbstractTensorHandle*> exp_outputs(1);
-  TF_RETURN_IF_ERROR(
-      ops::Exp(ctx, inputs[0], absl::MakeSpan(exp_outputs), "Exp"));
+  AbstractTensorHandle* exp_output;
+  TF_RETURN_IF_ERROR(ops::Exp(ctx, inputs[0], &exp_output, "Exp"));
   std::unique_ptr<GradientFunction> gradient_function(
       new PassThroughGradientFunction);
-  tape.RecordOperation(inputs, exp_outputs, gradient_function.release());
+  tape.RecordOperation(inputs, {exp_output}, gradient_function.release());
   TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx,
-                                          /*targets*/ exp_outputs,
+                                          /*targets*/ {exp_output},
                                           /*sources=*/inputs,
                                           /*output_gradients=*/{},
                                           /*result=*/outputs));
-  for (auto exp_output : exp_outputs) {
-    exp_output->Unref();
-  }
+  exp_output->Unref();
   return Status::OK();
 }
 

@@ -60,7 +60,10 @@ class GraphPartitionHelper {
         supported_nodes_(
             ConvertVectorToTfLiteIntArray(supported_node_indices)) {}
 
-  virtual ~GraphPartitionHelper() { TfLiteIntArrayFree(supported_nodes_); }
+  virtual ~GraphPartitionHelper() {
+    TfLiteIntArrayFree(supported_nodes_);
+    TfLiteIntArrayFree(original_execution_plan_);
+  }
 
   // Partition the graph into node subsets such that each subset could be
   // replaced with one delegate kernel (i.e. a kTfLiteBuiltinDelegate op).
@@ -108,6 +111,10 @@ class GraphPartitionHelper {
   // managed by the TfLite runtime itself. See
   // TfLiteContext::PreviewDelegatePartitioning for details.
   std::vector<TfLiteDelegateParams*> partitions_;
+
+  // Copy of (pre-delegation) execution plan obtained from TfLiteContext in
+  // PrepareSupportedNodes
+  TfLiteIntArray* original_execution_plan_ = nullptr;
 
  private:
   // Generate a list of supported nodes (i.e. populating 'supported_nodes_') by

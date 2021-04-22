@@ -66,6 +66,12 @@ class ConvertSSDPostProcessFunc {
                              const std::string& attribute,
                              flexbuffers::Builder* builder);
 
+  LogicalResult HasIntAttr(FuncOp func, DictionaryAttr attrs,
+                           const std::string& attribute);
+
+  LogicalResult HasFloatAttr(FuncOp func, DictionaryAttr attrs,
+                             const std::string& attribute);
+
   FuncOp func_;
   mlir::TF::FuncAttr attr_;
 };

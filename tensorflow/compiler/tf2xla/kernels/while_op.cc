@@ -126,6 +126,8 @@ void GetLoopInvariants(XlaOpKernelContext* ctx,
     StatusOr<bool> is_loop_invariant = IsLoopInvariant(body, i, fld);
     OP_REQUIRES_OK(ctx, is_loop_invariant.status());
     (*loop_invariants)[i] = *is_loop_invariant;
+    VLOG(2) << "Arg " << i << " of " << body_name_attr.name() << " is "
+            << ((*loop_invariants)[i] ? "" : "not ") << "loop invariant";
   }
 }
 
@@ -161,6 +163,8 @@ Status ConvertLoopInvariantsToConst(
       ConvertCompileTimeConstArgumentsToConst(ctx, args,
                                               /*xla_expression_offset=*/0,
                                               should_convert_to_const);
+  VLOG(2) << "Converted args to constants: {"
+          << absl::StrJoin(converted_constants, ",") << "}";
   for (int arg_idx : converted_constants) {
     compile_time_const_arg_indices->at(arg_idx) = true;
     (*num_compile_time_const_args)++;

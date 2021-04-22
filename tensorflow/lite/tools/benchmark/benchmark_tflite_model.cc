@@ -562,7 +562,8 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
     case kTfLiteString: {
-      // TODO(haoliang): No need to cache string tensors right now.
+      // Don't populate input for string. Instead, return a default-initialized
+      // `InputTensorData` object directly.
       break;
     }
     case kTfLiteBool: {

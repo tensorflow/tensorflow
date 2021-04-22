@@ -85,6 +85,28 @@ class RewriteXlaHostComputeMlir
       cloned_func =
           llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
       manager.insert(cloned_func);
+      rewriter.setInsertionPointToStart(&cloned_func.body().front());
+      auto result_type =
+          RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
+      auto dynamic_key =
+          rewriter.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+              func.getLoc(), /*program=*/result_type, llvm::ArrayRef<Value>{});
+
+      auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
+          func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
+          op.send_keyAttr(),
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+      for (auto result :
+           llvm::zip(cloned_func.getArguments(), recv_at_host->getResults())) {
+        std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
+      }
+
+      rewriter.setInsertionPoint(cloned_func.body().front().getTerminator());
+      rewriter.create<TF::_XlaSendFromHostOp>(
+          func.getLoc(),
+          cloned_func.body().front().getTerminator()->getOperands(),
+          /*dynamic_key=*/dynamic_key, op.recv_keyAttr(),
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
     }
 
     constexpr int64_t kDefaultCostEstimate = 1000000;

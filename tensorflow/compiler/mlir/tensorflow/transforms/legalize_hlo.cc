@@ -621,7 +621,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     // "mhlo::ReduceOp" only has one input, one init_value and one result.
     if (failed(MatchInitValue(reduce_op.init_values()[0]))) return failure();
 
-    auto input = reduce_op.operands()[0];
+    auto input = reduce_op.inputs()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
@@ -648,12 +648,11 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   // This function tries to match that the "mhlo::ReduceOp" only has one
   // input, one init_value and one result.
   LogicalResult MatchReduceOpInput(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.operands().size() != 1 ||
-        reduce_op.init_values().size() != 1 ||
+    if (reduce_op.inputs().size() != 1 || reduce_op.init_values().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.inputs()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -714,7 +713,7 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.operands().size() != 2) return failure();
+    if (reduce_op.inputs().size() != 2) return failure();
     if (reduce_op.dimensions().getNumElements() != 1) return failure();
 
     // Check that the input init is the expected value.
@@ -731,7 +730,7 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
-    Value iota = reduce_op.operands().back();
+    Value iota = reduce_op.inputs().back();
     mhlo::BroadcastInDimOp iota_broadcast =
         llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
     if (!iota_broadcast ||
@@ -743,7 +742,7 @@ class ConvertReduceOpToTfArgMinMax
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
 
-    Value input = reduce_op.operands().front();
+    Value input = reduce_op.inputs().front();
     int64_t axis = reduce_op.dimensions().getValue<int64_t>({0});
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());

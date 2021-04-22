@@ -292,6 +292,25 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
 
 // -----
 
+// Do not merge assuming ops if witness will not dominate use.
+// CHECK: @do_not_merge_assuming_ops
+func @do_not_merge_assuming_ops() {
+  // CHECK: shape.assuming
+  // CHECK: shape.assuming
+  %0 = "some.witness"() : () -> !shape.witness
+  %1 = shape.assuming %0 -> (!shape.witness) {
+    %2 = "some.witness"() : () -> !shape.witness
+    shape.assuming_yield %2 : !shape.witness
+  }
+  shape.assuming %1 {
+    "some.op"() : () -> ()
+    shape.assuming_yield
+  }
+  return
+}
+
+// -----
+
 // Exemplary IR as it appears in the lowering of two subsequent `tf.Sub` ops.
 // CHECK-LABEL: @sub_sub
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)

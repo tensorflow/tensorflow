@@ -78,7 +78,8 @@ EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
-    DistributedFunctionLibraryRuntime* cluster_flr)
+    DistributedFunctionLibraryRuntime* cluster_flr,
+    bool run_eager_op_as_function)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
@@ -97,7 +98,8 @@ EagerContext::EagerContext(
       env_(opts.env),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
-          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
+      run_eager_op_as_function_(run_eager_op_as_function) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -592,6 +594,10 @@ std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
 }
 
 bool EagerContext::UsesTFRT() { return false; }
+
+bool EagerContext::RunEagerOpAsFunction() const {
+  return run_eager_op_as_function_;
+}
 
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {

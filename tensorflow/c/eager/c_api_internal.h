@@ -34,6 +34,8 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT};
   // If true, use TFRT backend
   bool use_tfrt = false;
+  // Whether to run elementary eager ops wrapped in a call op.
+  bool run_eager_op_as_function = false;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

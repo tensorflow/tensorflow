@@ -1278,7 +1278,10 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
 
   nested_splits_list = [rt.nested_row_splits for rt in (y_true, y_pred)]
   if y_pred_extra_dim:
-    nested_splits_list[1] = nested_splits_list[1][:-1]
+    # The last dimension of a categorical prediction may be ragged or not.
+    rdims = [len(slist) for slist in nested_splits_list]
+    if rdims[0] == rdims[1] - 1:
+      nested_splits_list[1] = nested_splits_list[1][:-1]
 
   map_fn = functools.partial(_wrapper, ragged_output=len(lshape) > 1)
 

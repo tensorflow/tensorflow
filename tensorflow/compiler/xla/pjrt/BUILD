@@ -370,12 +370,28 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tracked_tfrt_cpu_device_buffer",
+    srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
+    hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
     deps = [
         ":pjrt_client",
         ":semaphore",
+        ":tracked_tfrt_cpu_device_buffer",
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
@@ -388,9 +404,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_module_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

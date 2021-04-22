@@ -33,6 +33,7 @@ AllOpsResolver::AllOpsResolver() {
   AddConv2D();
   AddCos();
   AddCumSum();
+  AddDepthToSpace();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();

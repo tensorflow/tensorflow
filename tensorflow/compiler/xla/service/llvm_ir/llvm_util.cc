@@ -590,12 +590,11 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(
-      hlo_module, "",
-      absl::StrCat(suffix, filename_suffix.empty() ? "" : ".", filename_suffix,
-                   ".ll"),
-      DumpModuleToString(llvm_module));
+  string suffix =
+      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
+                   filename_suffix.empty() ? "" : ".", filename_suffix);
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
   // with the constants stripped to get IR that is easier to manipulate.  Skip

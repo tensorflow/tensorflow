@@ -233,6 +233,9 @@ class SignatureRunner(object):
     for input_name, value in kwargs.items():
       self._interpreter._set_input_tensor(
           input_name, value=value, method_name=self._signature_def_name)
+
+    # TODO(b/184696047): Needs to invoke the actual subgraph instead of main
+    #                    graph.
     self._interpreter.invoke()
     result = {}
     for output_name, output_index in self._outputs:

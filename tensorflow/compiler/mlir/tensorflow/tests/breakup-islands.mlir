@@ -406,3 +406,54 @@ func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8
  }
  return
 }
+
+// CHECK: func @stateful_composite_op_control
+func @stateful_composite_op_control(%arg0: tensor<i1>, %arg1: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %output, %control = tf_executor.island {
+      // CHECK: {{%.+}}, [[IF_CONTROL:%.+]] = tf_executor.island wraps "tf.If"
+      %1 = "tf.If"(%arg0, %arg1) {device = "", else_branch = @stateful_composite_op_control_else, is_stateless = false, then_branch = @stateful_composite_op_control_then} : (tensor<i1>, tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+      // CHECK: [[IDENTITY_OUTPUT:%.+]], [[IDENTITY_CONTROL:%.+]] = tf_executor.island wraps "tf.Identity"
+      %2 = "tf.Identity"(%1) {device = ""} : (tensor<i32>) -> tensor<i32>
+
+      // The side effects of the If op might not be executed without an
+      // explicit control dependency on the tf.If op, due to the way the
+      // LowerFunctionalOpsPass in TF operates (b/185483669). Check that we
+      // output an explicit control dependency on the tf.If op in this case to
+      // be on the safe side.
+      // CHECK: [[SINK:%.+]] = tf_executor.island([[IF_CONTROL]], [[IDENTITY_CONTROL]]) wraps "tf.NoOp"
+      tf_executor.yield %2 : tensor<i32>
+    }
+    // CHECK: tf_executor.fetch [[IDENTITY_OUTPUT]], [[SINK]]
+    tf_executor.fetch %output : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_else
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_else(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_then
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_then(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}

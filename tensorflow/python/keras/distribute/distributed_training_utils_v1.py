@@ -21,7 +21,6 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -33,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -1081,7 +1081,7 @@ def distributed_scope(strategy, learning_phase):
 
 
 def is_current_worker_chief():
-  return dc_context.get_current_worker_context().is_chief
+  return dc.get_current_worker_context().is_chief
 
 
 def filter_distributed_callbacks(callbacks_list, model):

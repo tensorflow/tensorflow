@@ -649,3 +649,39 @@ func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (ten
     }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// CHECK-LABEL: @range_int
+func @range_int() -> tensor<?xi32> {
+  %cst = constant dense<0> : tensor<i32>
+  %cst_1 = constant dense<4> : tensor<i32>
+  %cst_2 = constant dense<1> : tensor<i32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: @range_uint
+func @range_uint() -> tensor<?xui32> {
+  %cst = constant dense<0> : tensor<ui32>
+  %cst_1 = constant dense<4> : tensor<ui32>
+  %cst_2 = constant dense<1> : tensor<ui32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xui32>} : () -> tensor<?xui32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<ui32>, tensor<ui32>, tensor<ui32>) -> tensor<?xui32>
+  return %0 : tensor<?xui32>
+}
+
+// CHECK-LABEL: @range_float
+func @range_float() -> tensor<?xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %cst_1 = constant dense<4.0> : tensor<f32>
+  %cst_2 = constant dense<1.0> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}

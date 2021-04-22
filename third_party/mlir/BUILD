@@ -286,6 +286,25 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPILinalg",
+    srcs = [
+        "lib/CAPI/Dialect/Linalg.cpp",
+        "lib/CAPI/Dialect/LinalgPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/Linalg.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":LinalgOps",
+        ":LinalgPassIncGen",
+        ":LinalgTransforms",
+        ":Pass",
+    ],
+)
+
+cc_library(
     name = "CAPIConversion",
     srcs = ["lib/CAPI/Conversion/Passes.cpp"],
     hdrs = ["include/mlir-c/Conversion.h"],
@@ -295,6 +314,18 @@ cc_library(
         ":ConversionPassIncGen",
         ":ConversionPasses",
         ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIDebug",
+    srcs = ["lib/CAPI/Debug/Debug.cpp"],
+    hdrs = ["include/mlir-c/Debug.h"],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":Support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -648,9 +679,15 @@ gentbl(
 
 td_library(
     name = "ArmSVETdFiles",
-    srcs = ["include/mlir/Dialect/ArmSVE/ArmSVE.td"],
+    srcs = [
+        "include/mlir/Dialect/ArmSVE/ArmSVE.td",
+        "include/mlir/Dialect/ArmSVE/ArmSVEOpBase.td",
+    ],
     includes = ["include"],
-    deps = [":SideEffectInterfacesTdFiles"],
+    deps = [
+        ":LLVMOpsTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
 )
 
 gentbl(
@@ -691,6 +728,7 @@ cc_library(
     deps = [
         ":ArmSVEIncGen",
         ":IR",
+        ":LLVMDialect",
         ":SideEffectInterfaces",
         ":VectorOps",
         "@llvm-project//llvm:Core",
@@ -699,91 +737,35 @@ cc_library(
 )
 
 cc_library(
-    name = "ArmSVEToLLVM",
-    srcs = glob([
-        "lib/Conversion/ArmSVEToLLVM/*.cpp",
-    ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = glob([
-        "include/mlir/Conversion/ArmSVEToLLVM/*.h",
-    ]),
+    name = "ArmSVETransforms",
+    srcs = glob(["lib/Dialect/ArmSVE/Transforms/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/ArmSVE/Transforms.h"],
     includes = ["include"],
     deps = [
         ":ArmSVE",
-        ":ConversionPassIncGen",
-        ":EDSC",
         ":IR",
-        ":LLVMArmSVE",
         ":LLVMDialect",
         ":Pass",
         ":StandardOps",
         ":StandardToLLVM",
-        ":Support",
-        ":Transforms",
-        ":VectorOps",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-td_library(
-    name = "LLVMArmSVETdFiles",
-    srcs = ["include/mlir/Dialect/LLVMIR/LLVMArmSVE.td"],
-    includes = ["include"],
-    deps = [":LLVMOpsTdFiles"],
-)
-
-gentbl(
-    name = "LLVMArmSVEIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-dialect-decls -dialect=llvm_arm_sve",
-            "include/mlir/Dialect/LLVMIR/LLVMArmSVEDialect.h.inc",
-        ),
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/LLVMIR/LLVMArmSVE.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/LLVMIR/LLVMArmSVE.cpp.inc",
-        ),
-        (
-            "-gen-op-doc",
-            "g3doc/Dialects/LLVMIR/LLVMArmSVE.md",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMArmSVE.td",
-    deps = [":LLVMArmSVETdFiles"],
-)
-
-cc_library(
-    name = "LLVMArmSVE",
-    srcs = ["lib/Dialect/LLVMIR/IR/LLVMArmSVEDialect.cpp"],
-    hdrs = ["include/mlir/Dialect/LLVMIR/LLVMArmSVEDialect.h"],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":LLVMArmSVEIncGen",
-        ":LLVMDialect",
+        ":TransformUtils",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
 
 gentbl(
-    name = "LLVMArmSVEConversionIncGen",
+    name = "ArmSVEConversionIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-llvmir-conversions",
-            "include/mlir/Dialect/LLVMIR/LLVMArmSVEConversions.inc",
+            "include/mlir/Dialect/ArmSVE/ArmSVEConversions.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMArmSVE.td",
-    deps = [":LLVMArmSVETdFiles"],
+    td_file = "include/mlir/Dialect/ArmSVE/ArmSVE.td",
+    deps = [":ArmSVETdFiles"],
 )
 
 ##---------------------------------------------------------------------------##
@@ -1280,7 +1262,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
@@ -1394,9 +1376,9 @@ cc_library(
         ":Pass",
         ":SCFIncGen",
         ":SCFPassIncGen",
-        ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1680,7 +1662,9 @@ cc_library(
         ":SCFDialect",
         ":StandardOps",
         ":StandardOpsTransformsPassIncGen",
+        ":Support",
         ":Transforms",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -3825,14 +3809,14 @@ cc_library(
 )
 
 cc_library(
-    name = "LLVMArmSVEToLLVMIRTranslation",
-    srcs = glob(["lib/Target/LLVMIR/Dialect/LLVMArmSVE/*.cpp"]),
-    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/LLVMArmSVE/*.h"]),
+    name = "ArmSVEToLLVMIRTranslation",
+    srcs = glob(["lib/Target/LLVMIR/Dialect/ArmSVE/*.cpp"]),
+    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/ArmSVE/*.h"]),
     includes = ["include"],
     deps = [
+        ":ArmSVE",
+        ":ArmSVEConversionIncGen",
         ":IR",
-        ":LLVMArmSVE",
-        ":LLVMArmSVEConversionIncGen",
         ":Support",
         ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
@@ -3912,7 +3896,7 @@ cc_library(
         ":AMXToLLVMIRTranslation",
         ":AVX512ToLLVMIRTranslation",
         ":ArmNeonToLLVMIRTranslation",
-        ":LLVMArmSVEToLLVMIRTranslation",
+        ":ArmSVEToLLVMIRTranslation",
         ":LLVMToLLVMIRTranslation",
         ":NVVMToLLVMIRTranslation",
         ":OpenMPToLLVMIRTranslation",
@@ -4074,7 +4058,7 @@ cc_library(
         ":AffineTransforms",
         ":ArmNeon",
         ":ArmSVE",
-        ":ArmSVEToLLVM",
+        ":ArmSVETransforms",
         ":Async",
         ":AsyncPassIncGen",
         ":AsyncToLLVM",
@@ -4092,7 +4076,6 @@ cc_library(
         ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
-        ":LLVMArmSVE",
         ":LLVMDialect",
         ":LLVMIRTransforms",
         ":LLVMPassIncGen",
@@ -4103,7 +4086,7 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":MathDialect",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":MathTransforms",
         ":MemRefDialect",
         ":NVVMDialect",
@@ -5041,6 +5024,14 @@ gentbl(
             "-gen-pass-decls -name Linalg",
             "include/mlir/Dialect/Linalg/Passes.h.inc",
         ),
+        (
+            "-gen-pass-capi-header --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Linalg/Passes.td",
@@ -5165,12 +5156,11 @@ cc_library(
         ":AVX512Transforms",
         ":ArmNeon",
         ":ArmSVE",
-        ":ArmSVEToLLVM",
+        ":ArmSVETransforms",
         ":ConversionPassIncGen",
         ":DialectUtils",
         ":EDSC",
         ":IR",
-        ":LLVMArmSVE",
         ":LLVMDialect",
         ":MemRefDialect",
         ":Pass",
@@ -5611,13 +5601,13 @@ cc_library(
 )
 
 cc_library(
-    name = "MathToLLVM",
+    name = "MathToLibm",
     srcs = glob([
-        "lib/Conversion/MathToLLVM/*.cpp",
-        "lib/Conversion/MathToLLVM/*.h",
+        "lib/Conversion/MathToLibm/*.cpp",
+        "lib/Conversion/MathToLibm/*.h",
     ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
-        "include/mlir/Conversion/MathToLLVM/*.h",
+        "include/mlir/Conversion/MathToLibm/*.h",
     ]),
     includes = ["include"],
     deps = [
@@ -5626,9 +5616,10 @@ cc_library(
         ":LLVMDialect",
         ":MathDialect",
         ":Pass",
-        ":StandardToLLVM",
+        ":StandardOps",
         ":Support",
         ":Transforms",
+        ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -5753,7 +5744,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Reducer",
             "include/mlir/Reducer/Passes.h.inc",
         ),
     ],
@@ -5774,6 +5765,7 @@ cc_binary(
         "tools/mlir-reduce/Passes/*.cpp",
     ]) + ["lib/Reducer/Tester.cpp"],
     includes = ["include"],
+    local_defines = ["MLIR_INCLUDE_TESTS"],
     stamp = 0,
     deps = [
         ":AllPassesAndDialects",
@@ -5784,5 +5776,6 @@ cc_binary(
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir/test:TestDialect",
     ],
 )

@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -49,6 +52,7 @@ namespace TFTPU {
 namespace {
 
 constexpr char kDeviceAttr[] = "device";
+constexpr char kHostFunctionAttr[] = "host_func";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 struct TPUExtractOutsideCompilation
@@ -56,6 +60,59 @@ struct TPUExtractOutsideCompilation
           TPUExtractOutsideCompilation> {
   void runOnOperation() override;
 };
+
+// Build a function containing `ops` with `inputs` and `outputs` using
+// `builder`.  The `ops` are cloned and modified to use the function arguments
+// as inputs.
+FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
+                     llvm::ArrayRef<Value> inputs,
+                     llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+  llvm::SmallVector<Type, 4> operand_types;
+  operand_types.reserve(inputs.size());
+  for (Value v : inputs) operand_types.emplace_back(v.getType());
+  llvm::SmallVector<Type, 4> output_types;
+  output_types.reserve(outputs.size());
+  for (Value v : outputs) output_types.emplace_back(v.getType());
+
+  auto func_type = builder->getFunctionType(operand_types, output_types);
+
+  FuncOp outlined_func =
+      FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
+
+  // Create function body.
+  Block* outlined_func_block = outlined_func.addEntryBlock();
+
+  // Clone the operations and remap the inputs to use the function arguments.
+  BlockAndValueMapping mapping;
+  mapping.map(inputs, outlined_func.getArguments());
+  builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
+  for (Operation* op : ops) {
+    builder->clone(*op, mapping);
+  }
+
+  // Set the returned values to use cloned ops results using mapping.
+  llvm::SmallVector<Value, 4> results_after_mapping;
+  for (Value result : outputs) {
+    results_after_mapping.push_back(mapping.lookupOrDefault(result));
+  }
+
+  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  return outlined_func;
+}
+
+// Encapsulates `func` in a module and serializes that module.
+// `serialized_func_module` is set to the serialized module.
+void EncapsulateFuncAndSerialize(FuncOp func,
+                                 std::string* serialized_func_module) {
+  // Create a new module to hold func and all referenced functions.
+  OwningModuleRef module_for_func =
+      ModuleOp::create(mlir::UnknownLoc::get(func.getContext()));
+  SymbolTable symbol_table(module_for_func.get());
+
+  symbol_table.insert(func);
+  *serialized_func_module =
+      tensorflow::SerializeMlirModule(module_for_func.get());
+}
 
 // Returns whether `op` or ops nested in `op` are outside compiled.
 bool HasOutsideCompilationNested(Operation* op) {
@@ -196,6 +253,41 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   return launch_op;
 }
 
+// Returns true if `op` has non-static shaped outputs.
+bool HasDynamicOutputs(Operation* op) {
+  for (Value v : op->getResults()) {
+    if (TF::CanBeRefined(v.getType())) return true;
+  }
+  return false;
+}
+
+// Returns true if any op in `cluster_ops` has outputs consumed by ops not
+// `cluster_ops` with a non-static shape.
+bool HasDynamicOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
+  for (Operation* op : cluster_ops) {
+    for (const OpOperand& use : op->getUses()) {
+      if (cluster_ops.count(use.getOwner())) {
+        continue;
+      }
+      if (TF::CanBeRefined(use.get().getType())) return true;
+    }
+  }
+  return false;
+}
+
+bool HasDynamicExternalValues(Operation* op) {
+  return op
+      ->walk([](Operation* walked_op) {
+        for (Value v : walked_op->getOperands()) {
+          if (TF::CanBeRefined(v.getType())) {
+            return WalkResult::interrupt();
+          }
+        }
+        return WalkResult::advance();
+      })
+      .wasInterrupted();
+}
+
 // Returns operands of `cluster_ops` that need to be
 // communicated from device->host. This is for the case when all operands have a
 // static shape.
@@ -228,18 +320,44 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
   return external_values;
 }
 
+// Returns every operand of `cluster_ops` that does not come from an op in
+// `cluster_ops`.
+llvm::SmallSetVector<Value, 4> GetAllExternalOperands(
+    const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
+  llvm::SmallSetVector<Value, 4> external_values;
+  for (Operation* op : cluster_ops) {
+    op->walk([&](Operation* walked_op) {
+      for (Value v : walked_op->getOperands()) {
+        Operation* defining_op = v.getDefiningOp();
+        if (!defining_op || !cluster_ops.count(defining_op)) {
+          external_values.insert(v);
+        }
+      }
+    });
+  }
+  return external_values;
+}
+
 // Returns a SmallSetVector containing all of the operands that need to be
 // communicated from device->host.
 llvm::SmallSetVector<Value, 4> GetExternalOperands(
     tf_device::ClusterOp tpu_cluster,
     const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
-  return GetStaticExternalOperands(tpu_cluster, cluster_ops);
+  // If there are any dynamic outputs, get all of the operands which are defined
+  // external to `cluster_ops`.
+  bool has_dynamic_outputs = HasDynamicOutputs(cluster_ops);
+  if (has_dynamic_outputs) {
+    return GetAllExternalOperands(cluster_ops);
+  } else {
+    return GetStaticExternalOperands(tpu_cluster, cluster_ops);
+  }
 }
 
 // Gets all outputs that need to be communicated from host->device.
 llvm::SmallSetVector<Value, 4> GetExternalOutputs(
     const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_outputs;
+  bool has_dynamic_outputs = HasDynamicOutputs(cluster_ops);
   for (Operation* op : cluster_ops) {
     for (Operation* user : op->getUsers()) {
       // We skip any operations that are in the same outside compilation
@@ -248,7 +366,9 @@ llvm::SmallSetVector<Value, 4> GetExternalOutputs(
       if (cluster_ops.count(user)) {
         continue;
       }
-      if (!HasOutsideCompilationAncestor(user)) {
+      // This is pessimistic and in some cases will add extra communication.
+      if (!HasOutsideCompilationAncestor(user) || has_dynamic_outputs ||
+          HasDynamicOutputs(user)) {
         for (Value v : user->getOperands()) {
           if (v.getDefiningOp() == op) external_outputs.insert(v);
         }
@@ -283,7 +403,26 @@ void MarkOutsideCompiled(Operation* op) {
               StringAttr::get(op->getContext(), "temp"));
 }
 
+// Returns whether an outside compilation cluster should be closed.  True when:
+// 1. There is a dynamically shaped output consumed by a non-outside compiled
+// op.
+// 2. There is no dynamically shaped output.
+bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
+  bool has_dynamic_output = false;
+  for (Value v : outputs) {
+    if (TF::CanBeRefined(v.getType())) {
+      has_dynamic_output = true;
+      for (Operation* user : v.getUsers()) {
+        if (!HasOutsideCompilationAncestor(user)) return true;
+      }
+    }
+  }
+  return !has_dynamic_output;
+}
+
 // Replaces `external_operands` with the results from `recv_at_host`.
+// For non-static shapes, only replace operand usage if op is in the same
+// region as insertion.
 // For static-shapes, Replace operand usages if op is in the same region as
 // insertion or if the op is outside compiled and will be moved to host later.
 void ReplaceExternalOperandUsage(
@@ -291,6 +430,10 @@ void ReplaceExternalOperandUsage(
     Operation* recv_at_host, Operation* insertion_point,
     Block* original_op_block) {
   auto replace_operand_usage = [&](OpOperand& operand) {
+    if (TF::CanBeRefined(operand.get().getType())) {
+      return insertion_point->getParentRegion()->isAncestor(
+          operand.getOwner()->getParentRegion());
+    }
     return insertion_point->getParentRegion()->isAncestor(
                operand.getOwner()->getParentRegion()) ||
            (HasOutsideCompilationAncestor(operand.getOwner()) &&
@@ -303,17 +446,36 @@ void ReplaceExternalOperandUsage(
   }
 }
 
+bool HasDynamicOutputs(llvm::ArrayRef<Value> outputs) {
+  for (Value v : outputs) {
+    if (TF::CanBeRefined(v.getType())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Replaces usages of `external_outputs` which are values returned by outside
 // compilation with the corresponding outputs from `host_compute`.
 void ReplaceExternalOutputUsage(
     const llvm::SmallSetVector<Value, 4>& external_outputs,
     TF::_XlaHostComputeMlirOp host_compute) {
+  bool has_dynamic_outputs = HasDynamicOutputs(external_outputs.getArrayRef());
+
   auto replace_output_usage = [&](OpOperand& operand) {
-    // Don't replace output usages in host computation or for outside
-    // compiled ops.
-    return !operand.get().getDefiningOp()->getParentRegion()->isAncestor(
-               operand.getOwner()->getParentRegion()) &&
-           !HasOutsideCompilationAncestor(operand.getOwner());
+    // Don't replace output usages if in host computation (defining op and user
+    // in same region).
+    bool in_same_region =
+        operand.get().getDefiningOp()->getParentRegion()->isAncestor(
+            operand.getOwner()->getParentRegion());
+    if (has_dynamic_outputs || HasDynamicOutputs(operand.getOwner())) {
+      return !in_same_region;
+    } else {
+      // Don't replace output usages in host computation or for outside
+      // compiled ops.
+      return !in_same_region &&
+             !HasOutsideCompilationAncestor(operand.getOwner());
+    }
   };
   for (auto result : llvm::zip(external_outputs, host_compute.getResults())) {
     Value external_output = std::get<0>(result);
@@ -351,6 +513,12 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   }
 
   std::string serialized_func_module;
+  if (HasDynamicOutputs(external_outputs.getArrayRef())) {
+    FuncOp shape_op = BuildFunction(clustered_ops.getArrayRef(),
+                                    external_operands.getArrayRef(),
+                                    external_outputs.getArrayRef(), &builder);
+    EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
+  }
 
   builder.setInsertionPoint(&op);
   auto host_compute =
@@ -420,34 +588,36 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
         !op.hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       continue;
 
+    // We want to move the clustered_ops if the op to be added has all
+    // statically shaped operands since we can't ensure that the static shapes
+    // has been sent back to host in all cases.  See
+    // @static_shapes_sandwiched_outside_compilation MLIR test for an example.
+    if (!HasDynamicExternalValues(&op) && !clustered_ops.empty()) {
+      llvm::SmallSetVector<Value, 4> external_operands =
+          GetExternalOperands(tpu_cluster, clustered_ops);
+      llvm::SmallSetVector<Value, 4> external_outputs =
+          GetExternalOutputs(clustered_ops);
+      MoveOpsToHost(clustered_ops, external_operands, external_outputs,
+                    insertion_point, compilation_key, device_ordinal,
+                    communication_key_index);
+      clustered_ops.clear();
+    }
+
     clustered_ops.insert(&op);
 
-    // Get the operands and outputs that need to be communicated between host
-    // and device.  External operands are from device -> host and external
-    // outputs are from host -> device.
-    llvm::SmallSetVector<Value, 4> external_operands =
-        GetExternalOperands(tpu_cluster, clustered_ops);
+    // Get the outputs that need to be communicated from host -> device.
     llvm::SmallSetVector<Value, 4> external_outputs =
         GetExternalOutputs(clustered_ops);
 
-    // Check if any of the outside compiled input/output shapes can be refined.
-    for (const auto& operand : external_operands) {
-      if (TF::CanBeRefined(operand.getType()))
-        return op.emitOpError(
-            "is outside compiled contains dynamically shaped input which is "
-            "not currently supported.  See b/177523289.");
+    if (ShouldCloseCluster(external_outputs.getArrayRef())) {
+      // Get the operands that need to be communicated from device -> host.
+      llvm::SmallSetVector<Value, 4> external_operands =
+          GetExternalOperands(tpu_cluster, clustered_ops);
+      MoveOpsToHost(clustered_ops, external_operands, external_outputs,
+                    insertion_point, compilation_key, device_ordinal,
+                    communication_key_index);
+      clustered_ops.clear();
     }
-    for (const auto& output : external_outputs) {
-      if (TF::CanBeRefined(output.getType()))
-        return op.emitOpError(
-            "is outside compiled contains dynamically shaped output which is "
-            "not currently supported.  See b/177523289.");
-    }
-
-    MoveOpsToHost(clustered_ops, external_operands, external_outputs,
-                  insertion_point, compilation_key, device_ordinal,
-                  communication_key_index);
-    clustered_ops.clear();
   }
   return success();
 }
@@ -616,8 +786,11 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                        &host_device);
+      if (failed(tensorflow::CheckNoModelParallelism(tpu_cluster)))
+        return signalPassFailure();
+      if (failed(tensorflow::GetHostDeviceOutsideComputation(
+              devices, tpu_cluster, &host_device)))
+        return signalPassFailure();
       if (failed(CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                             host_device)))
         return signalPassFailure();

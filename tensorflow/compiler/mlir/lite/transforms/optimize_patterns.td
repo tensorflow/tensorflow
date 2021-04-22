@@ -277,7 +277,6 @@ def MatchHardSwishPattern2 : Pat<
 
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
-// TODO(b/149735743): We should make the placement automatically.
 def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp

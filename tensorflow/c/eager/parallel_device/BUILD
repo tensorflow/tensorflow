@@ -149,7 +149,7 @@ tf_cc_test(
     srcs = ["parallel_device_remote_test.cc"],
     # TODO(b/136478427): Enable global heap checking when servers shut down
     # cleanly.
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     deps = [
         ":parallel_device",
         ":parallel_device_testlib",
