@@ -5404,7 +5404,7 @@ class _GroupByWindowDataset(UnaryDataset):
     return "Dataset.group_by_window()"
 
 
-class _LoadDataset(dataset_ops.DatasetSource):
+class _LoadDataset(DatasetSource):
   """A dataset that loads previously saved dataset."""
 
   def __init__(self, path, element_spec=None, compression=None,
