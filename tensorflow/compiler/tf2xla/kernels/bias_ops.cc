@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <numeric>
 
-#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -73,7 +72,7 @@ class BiasOp : public XlaOpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_XLA_OP(Name("BiasAdd"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("BiasAdd"), BiasOp);
 REGISTER_XLA_OP(Name("BiasAddV1"), BiasOp);
 
 class BiasAddGradOp : public XlaOpKernel {
