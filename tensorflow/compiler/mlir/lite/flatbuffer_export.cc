@@ -535,13 +535,10 @@ class Translator {
       const Optional<BufferOffset<tflite::QuantizationParameters>>&
           quant_parameters);
 
-  // TODO(b/137395003): Legalize control flow ops to TFLite dialect, and remove
-  // these 2 functions here.
+  // TODO(b/137395003): Legalize tf.IfOp to TFLite dialect, and change the
+  // following method to handle TFL::IfOp.
   BufferOffset<tflite::Operator> BuildIfOperator(
       mlir::TF::IfOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  BufferOffset<tflite::Operator> BuildWhileOperator(
-      mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
@@ -911,22 +908,6 @@ BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
                                 builtin_options);
 }
 
-BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
-    mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
-  int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
-  int body_subgraph_index = subgraph_index_map_.at(op.body().str());
-  auto builtin_options = tflite::CreateWhileOptions(
-                             builder_, cond_subgraph_index, body_subgraph_index)
-                             .Union();
-  auto inputs = builder_.CreateVector(operands);
-  auto outputs = builder_.CreateVector(results);
-  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
-                                tflite::BuiltinOptions_WhileOptions,
-                                builtin_options);
-}
-
 Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
     mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
@@ -1199,8 +1180,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (dialect == tf_dialect_) {
     if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
       return BuildIfOperator(ifOp, operands, results);
-    } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
-      return BuildWhileOperator(whileOp, operands, results);
     }
 
     CustomOptionsOffset custom_options;
