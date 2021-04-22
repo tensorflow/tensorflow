@@ -1473,8 +1473,8 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
         })) {
       return failure();
     }
-    Value result = lmhlo::HloOpToStdScalarOp::map<OpTy>(op, args[0].getType(),
-                                                        args, &rewriter);
+    Value result = lmhlo::HloOpToStdScalarOp::map<OpTy>(
+        op, getElementTypeOrSelf(op.getType()), args, &rewriter);
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -1518,58 +1518,65 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
       ConversionPatternRewriter& rewriter) const final {
     Location loc = op.getLoc();
     mhlo::ReduceOp::Adaptor adaptor(args);
-    if (op.getNumOperands() != 2) {
-      return op.emitError("expects exactly two operands");
-    }
-    Value src = adaptor.inputs()[0];
-    auto src_type = src.getType().cast<ShapedType>();
+
+    int num_inputs = static_cast<int>(adaptor.inputs().size());
+    auto src_type = adaptor.inputs()[0].getType().cast<ShapedType>();
     int src_rank = src_type.getRank();
     if (!src_rank) {
       return rewriter.notifyMatchFailure(op, "expects known-rank args");
     }
 
-    // Check if init_value is constant. If so, inline the value into the region.
-    Value init_value = adaptor.init_values()[0];
-    Attribute init_const_val = GetInitValueAsConst(init_value);
-    if (init_const_val) {
-      init_value = rewriter.create<ConstantOp>(
-          init_value.getDefiningOp()->getLoc(), init_const_val);
-    } else {
-      init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
+    SmallVector<int64_t, 4> reduction_dims = Extract1DVector(op.dimensions());
+
+    SmallVector<Value> inputs, outputs;
+    SmallVector<AffineMap, 3> indexing_maps;
+    for (int i = 0; i < num_inputs; ++i) {
+      Value src = adaptor.inputs()[i];
+      if (src.getType() != src_type) return failure();
+
+      // Check if init_value is constant. If so, inline the value into the
+      // region.
+      Value init_value = adaptor.init_values()[i];
+      Attribute init_const_val = GetInitValueAsConst(init_value);
+      if (init_const_val) {
+        init_value = rewriter.create<ConstantOp>(
+            init_value.getDefiningOp()->getLoc(), init_const_val);
+      } else {
+        init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
+      }
+
+      inputs.push_back(src);
+      auto result_type = op.getResult(i).getType().cast<ShapedType>();
+      SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
+          rewriter, loc, src, result_type, reduction_dims);
+      auto init_tensor = GetInitTensor(rewriter, loc, result_type, dyn_shape);
+      Value filled_tensor =
+          rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+              .result();
+      outputs.push_back(filled_tensor);
     }
 
-    // Prepare indexing maps for linalg generic op. The elements are for src and
-    // dst. Transpose `src` to make the reduction loops be the innermost,
+    // Prepare indexing maps for linalg generic op. The elements are for src
+    // and dst. Transpose `src` to make the reduction loops be the innermost,
     // because it's easier to fully utilize processors.
-    SmallVector<AffineMap, 3> indexing_maps;
-    SmallVector<int64_t, 4> reduction_dims = Extract1DVector(op.dimensions());
-    indexing_maps.emplace_back(GetTransposeMapForReduction(
-        rewriter.getContext(), src_rank, reduction_dims));
+    indexing_maps.append(
+        num_inputs, GetTransposeMapForReduction(rewriter.getContext(), src_rank,
+                                                reduction_dims));
 
     // The indexing map of `dst` should drop the reduction loops. Since the
     // reduction loops now are all in the innermost, drops
-    // `reduction_dims.size()` dimensions. We don't need an inverse permutation
-    // here because they are the same.
+    // `reduction_dims.size()` dimensions. We don't need an inverse
+    // permutation here because they are the same.
     SmallVector<AffineExpr, 4> exprs;
     for (int i = 0, e = src_rank - reduction_dims.size(); i < e; ++i)
       exprs.push_back(rewriter.getAffineDimExpr(i));
-    indexing_maps.emplace_back(AffineMap::get(src_rank, /*symbolCount=*/0,
-                                              exprs, rewriter.getContext()));
-
-    SmallVector<Value, 2> inputs = {adaptor.inputs()[0]};
-    Type result_type = op.getResult(0).getType();
-    auto shaped_type = result_type.cast<ShapedType>();
-    SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
-        rewriter, loc, adaptor.inputs()[0], result_type.cast<ShapedType>(),
-        reduction_dims);
-    auto init_tensor = GetInitTensor(rewriter, loc, shaped_type, dyn_shape);
-    Value filled_tensor =
-        rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
-            .getResult(0);
+    indexing_maps.append(num_inputs,
+                         AffineMap::get(src_rank, /*symbolCount=*/0, exprs,
+                                        rewriter.getContext()));
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/op.getResultTypes(), inputs,
-        /*outputBuffers=*/ValueRange{filled_tensor}, indexing_maps,
+        /*outputBuffers=*/ValueRange{outputs}, indexing_maps,
         GetParallelAndReductionIterators(src_rank, reduction_dims.size()));
 
     // Convert the signature of the body. The reduce op region apply function
@@ -1579,10 +1586,10 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     // be converted to "(f32, f32, f32)".
     Region& region = linalg_op.region();
     rewriter.inlineRegionBefore(op.body(), region, region.end());
-    TypeConverter::SignatureConversion signatureConverter(2);
-    signatureConverter.addInputs(0, src_type.getElementType());
-    signatureConverter.addInputs(1, src_type.getElementType());
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    TypeConverter::SignatureConversion signature_converter(num_inputs * 2);
+    for (int i = 0; i < num_inputs * 2; ++i)
+      signature_converter.addInputs(i, src_type.getElementType());
+    rewriter.applySignatureConversion(&region, signature_converter);
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
   }
@@ -2272,6 +2279,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    ReduceRegionXLAOpConversion<mhlo::MaxOp>,
                    ReduceRegionXLAOpConversion<mhlo::AndOp>,
                    ReduceRegionXLAOpConversion<mhlo::OrOp>,
+                   ReduceRegionXLAOpConversion<mhlo::SelectOp>,
+                   ReduceRegionXLAOpConversion<mhlo::CompareOp>,
                    ReduceRegionReturnOpConversion>(context);
 }
 
