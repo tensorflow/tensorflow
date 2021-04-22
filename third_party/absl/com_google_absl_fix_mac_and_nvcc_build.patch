@@ -207,7 +207,7 @@ index 02bfd03..d25d96d 100644
  
    template <int I>
    ElemT<I>& get() & {
--    return internal_compressed_tuple::Storage<ElemT<I>, I>::get();
+-    return StorageT<I>::get();
 +    return internal_compressed_tuple::Storage<CompressedTuple, I>::get();
    }
  
