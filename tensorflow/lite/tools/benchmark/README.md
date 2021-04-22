@@ -134,6 +134,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
