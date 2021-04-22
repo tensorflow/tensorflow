@@ -15,6 +15,11 @@ jobs:
       with:
         path: "/home/runner/.cache/bazel"
         key: bazelcache
+    
+    - name: Install dependenceies
+      run: |
+        pip install -U pip numpy wheel
+        pip install -U keras_preprocessing --no-deps
 
     - name: Install bazelisk
       run: |
