@@ -796,11 +796,13 @@ void TPUExtractOutsideCompilation::runOnOperation() {
         return signalPassFailure();
     }
   });
-  // No constant should have an "_xla_outside_compilation" attribute left.
-  // TODO(kfranko): We likely should revisit where is the best place for this
-  // logic to live (canonicalization pattern?).
+  // Remove `_xla_outside_compilation` attribute from all ops.  These ops will
+  // be outside of the device cluster. The `_xla_outside_compilation` attribute
+  // on ops outside of tf_device.cluster don't have any meaning and can lead to
+  // errors later on.  These ops were likely lifted out of the the
+  // tf_device.cluster in an earlier pass.
   module.walk(
-      [&](TF::ConstOp op) { op->removeAttr("_xla_outside_compilation"); });
+      [](Operation* op) { op->removeAttr("_xla_outside_compilation"); });
 }
 
 }  // namespace
