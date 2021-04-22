@@ -625,7 +625,10 @@ def tf_protos_grappler():
     )
 
 def tf_additional_device_tracer_srcs():
-    return ["device_tracer.cc"]
+    return [
+        "device_tracer_cuda.cc",
+        "device_tracer_rocm.cc",
+    ]
 
 def tf_additional_cupti_utils_cuda_deps():
     return []

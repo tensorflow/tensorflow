@@ -21,6 +21,7 @@ cc_library(
         ".",
         "rocm/include",
         "rocm/include/rocrand",
+        "rocm/include/roctracer",
     ],
     visibility = ["//visibility:public"],
 )
@@ -109,6 +110,7 @@ cc_library(
         ":hiprand",
         ":miopen",
         ":hipsparse",
+        ":roctracer",
         ":rocsolver",
     ],
 )
@@ -142,6 +144,11 @@ cc_library(
 cc_library(
     name = "hipsparse",
     data = ["rocm/lib/%{hipsparse_lib}"],
+)
+
+cc_library(
+    name = "roctracer",
+    data = ["rocm/lib/%{roctracer_lib}"],
 )
 
 cc_library(
