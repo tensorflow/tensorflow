@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -4451,6 +4452,79 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def TFL_IfOp : Op<TFL_Dialect, "if", [
+    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">, RecursiveSideEffects,
+    NoRegionArguments]> {
+  let summary = [{if-then-else operation}];
+
+  let description = [{
+    The `tfl.if` operation represents an if-then-else construct for
+    conditionally executing two regions of code. The operand to an if operation
+    is a boolean value. For example:
+
+    ```mlir
+    tfl.if %b  {
+      ...
+    } else {
+      ...
+    }
+    ```
+
+    `tfl.if` may also return results that are defined in its regions. The
+    values defined are determined by which execution path is taken.
+
+    Example:
+
+    ```mlir
+    %x, %y = tfl.if %b -> (tensor<f32>, tensor<f32>) {
+      %x_true = ...
+      %y_true = ...
+      tfl.yield %x_true, %y_true : tensor<f32>, tensor<f32>
+    } else {
+      %x_false = ...
+      %y_false = ...
+      tfl.yield %x_false, %y_false : tensor<f32>, tensor<f32>
+    }
+    ```
+
+    `tfl.if` regions are always terminated with "tfl.yield". If "tfl.if"
+    defines no values, the "tfl.yield" can be left out, and will be inserted
+    implicitly. Otherwise, it must be explicit.
+    Also, if "tfl.if" defines one or more values, the 'else' block cannot be
+    omitted.
+
+    Example:
+
+    ```mlir
+    tfl.if %b  {
+      ...
+    }
+    ```
+  }];
+
+  let arguments = (ins TFL_BoolTensor:$cond);
+  let results = (outs Variadic<AnyTensor>:$results);
+  let regions = (region SizedRegion<1>:$then_region, AnyRegion:$else_region);
+
+  let extraClassDeclaration = [{
+    OpBuilder getThenBodyBuilder(OpBuilder::Listener *listener = nullptr) {
+      Block* body = getBody(0);
+      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+                               : OpBuilder::atBlockEnd(body, listener);
+    }
+    OpBuilder getElseBodyBuilder(OpBuilder::Listener *listener = nullptr) {
+      Block* body = getBody(1);
+      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+                               : OpBuilder::atBlockEnd(body, listener);
+    }
+  }];
+
+  // Canonicalizer wasn't defined for this one. In practise, we legalize the
+  // tf.IfOp to scf.If op first and then legalize it to tfl.if to reduce
+  // code redundancy.
 }
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
