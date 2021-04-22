@@ -63,7 +63,6 @@ typedef struct {
 } TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
-// TODO(aselle): rename to TfLiteActivation
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
