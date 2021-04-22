@@ -786,8 +786,11 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                        &host_device);
+      if (failed(tensorflow::CheckNoModelParallelism(tpu_cluster)))
+        return signalPassFailure();
+      if (failed(tensorflow::GetHostDeviceOutsideComputation(
+              devices, tpu_cluster, &host_device)))
+        return signalPassFailure();
       if (failed(CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                             host_device)))
         return signalPassFailure();
