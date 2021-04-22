@@ -18,26 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import multiprocessing
-import os
-
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_experimental_dataset_ops
-from tensorflow.python.platform import gfile
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
-COMPRESSION_GZIP = "GZIP"
-COMPRESSION_SNAPPY = "NONE"
-DATASET_SPEC_FILENAME = "dataset_spec.pb"
-# TODO(b/176933539): Use the regular import.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
-
-
+@deprecation.deprecated(None, "Use `tf.data.Dataset.save(...)`.")
 @tf_export("data.experimental.save", v1=[])
 def save(dataset, path, compression=None, shard_func=None):
   """Saves the content of the given dataset.
@@ -64,8 +49,11 @@ def save(dataset, path, compression=None, shard_func=None):
   dataset = make_dataset()
   def custom_shard_func(element):
     return 0
-  dataset = tf.data.experimental.save(
-      path="/path/to/data", ..., shard_func=custom_shard_func)
+  tf.data.experimental.save(
+    dataset=dataset,
+    path="/path/to/data",
+    shard_func=custom_shard_func
+  )
   ```
 
   NOTE: The directory layout and file format used for saving the dataset is
@@ -84,86 +72,10 @@ def save(dataset, path, compression=None, shard_func=None):
       executed as graph computation.
   """
 
-  if shard_func is None:
-    use_shard_func = False
-    shard_func = lambda *x: None  # a dummy function that will not be used
-  else:
-    use_shard_func = True
-
-  wrapped_func = dataset_ops.StructuredFunctionWrapper(
-      shard_func,
-      "save()",
-      input_structure=dataset.element_spec,
-      add_to_graph=False)
-
-  coder = nested_structure_coder.StructureCoder()
-  encoded = coder.encode_structure(dataset.element_spec)
-  gfile.MakeDirs(path)
-  with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
-    f.write(encoded.SerializeToString())
-
-  path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
-  shard_func = wrapped_func.function
-  shard_func.add_to_graph(ops.get_default_graph())
-
-  # pylint: disable=protected-access
-  dataset = dataset._apply_options()
-  gen_experimental_dataset_ops.save_dataset(
-      dataset._variant_tensor,
-      path=path,
-      shard_func_other_args=shard_func.captured_inputs,
-      compression=compression,
-      shard_func=shard_func,
-      use_shard_func=use_shard_func)
+  dataset.save(path=path, compression=compression, shard_func=shard_func)
 
 
-class _LoadDataset(dataset_ops.DatasetSource):
-  """A dataset that loads previously saved dataset."""
-
-  def __init__(self, path, element_spec=None, compression=None,
-               reader_func=None):
-
-    if reader_func is None:
-      reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
-          lambda x: x,
-          cycle_length=multiprocessing.cpu_count(),
-          num_parallel_calls=dataset_ops.AUTOTUNE)
-
-    self._path = path
-    if element_spec is None:
-      with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
-        encoded_spec = f.read()
-      struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
-      struct_pb.ParseFromString(encoded_spec)
-      coder = nested_structure_coder.StructureCoder()
-      spec = coder.decode_proto(struct_pb)
-      self._element_spec = spec
-    else:
-      self._element_spec = element_spec
-    self._compression = compression
-    self._reader_func = dataset_ops.StructuredFunctionWrapper(
-        reader_func,
-        "load()",
-        # Dataset of datasets of input elements
-        input_structure=dataset_ops.DatasetSpec(
-            dataset_ops.DatasetSpec(self._element_spec)))
-
-    variant_tensor = gen_experimental_dataset_ops.load_dataset(
-        path,
-        reader_func_other_args=self._reader_func.function.captured_inputs,
-        compression=compression,
-        reader_func=self._reader_func.function,
-        **self._flat_structure)
-    super(_LoadDataset, self).__init__(variant_tensor)
-
-  def _functions(self):
-    return [self._reader_func]
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-
+@deprecation.deprecated(None, "Use `tf.data.Dataset.load(...)`.")
 @tf_export("data.experimental.load", v1=[])
 def load(path, element_spec=None, compression=None, reader_func=None):
   """Loads a previously saved dataset.
@@ -224,7 +136,7 @@ def load(path, element_spec=None, compression=None, reader_func=None):
       structure of `tf.TypeSpec` can not be located with the saved dataset.
   """
 
-  return _LoadDataset(
+  return dataset_ops.DatasetV2.load(
       path=path,
       element_spec=element_spec,
       compression=compression,
