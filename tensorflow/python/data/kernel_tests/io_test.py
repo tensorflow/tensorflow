@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the `tf.data.experimental.{save,load}` operations."""
+"""Tests for the `tf.data.Dataset.{save,load}` operations."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,7 +22,6 @@ import shutil
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import io
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -48,23 +47,32 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
                          combinations.combine(compression=[None, "GZIP"])))
   def testBasic(self, compression):
     dataset = dataset_ops.Dataset.range(42)
-    io.save(dataset, self._test_dir, compression=compression)
-    dataset2 = io.load(
-        self._test_dir, dataset.element_spec, compression=compression)
+    dataset.save(path=self._test_dir, compression=compression)
+    dataset2 = dataset_ops.Dataset.load(
+        path=self._test_dir,
+        element_spec=dataset.element_spec,
+        compression=compression
+    )
     self.assertDatasetProduces(dataset2, range(42))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCardinality(self):
     dataset = dataset_ops.Dataset.range(42)
-    io.save(dataset, self._test_dir)
-    dataset2 = io.load(self._test_dir, dataset.element_spec)
+    dataset.save(path=self._test_dir)
+    dataset2 = dataset_ops.Dataset.load(
+        path=self._test_dir,
+        element_spec=dataset.element_spec
+    )
     self.assertEqual(self.evaluate(dataset2.cardinality()), 42)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCustomShardFunction(self):
     dataset = dataset_ops.Dataset.range(42)
-    io.save(dataset, self._test_dir, shard_func=lambda x: x // 21)
-    dataset2 = io.load(self._test_dir, dataset.element_spec)
+    dataset.save(path=self._test_dir, shard_func=lambda x: x // 21)
+    dataset2 = dataset_ops.Dataset.load(
+        path=self._test_dir,
+        element_spec=dataset.element_spec
+    )
     expected = []
     for i in range(21):
       expected.extend([i, i + 21])
@@ -73,11 +81,12 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testCustomReaderFunction(self):
     dataset = dataset_ops.Dataset.range(42)
-    io.save(dataset, self._test_dir, shard_func=lambda x: x % 7)
-    dataset2 = io.load(
-        self._test_dir,
-        dataset.element_spec,
-        reader_func=lambda x: x.flat_map(lambda y: y))
+    dataset.save(path=self._test_dir, shard_func=lambda x: x % 7)
+    dataset2 = dataset_ops.Dataset.load(
+        path=self._test_dir,
+        element_spec=dataset.element_spec,
+        reader_func=lambda x: x.flat_map(lambda y: y)
+    )
     expected = []
     for i in range(7):
       expected.extend(range(i, 42, 7))
@@ -92,11 +101,14 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @def_function.function
     def save_fn():
-      io.save(dataset, self._test_dir, compression=compression)
+      dataset.save(path=self._test_dir, compression=compression)
 
     save_fn()
-    dataset = io.load(
-        self._test_dir, dataset.element_spec, compression=compression)
+    dataset = dataset_ops.Dataset.load(
+        path=self._test_dir,
+        element_spec=dataset.element_spec,
+        compression=compression
+    )
     self.assertDatasetProduces(dataset, range(42))
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -107,8 +119,8 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     tuple_dataset = dataset_ops.Dataset.from_tensor_slices(([1, 2], [3, 4]))
     dataset = dataset_ops.Dataset.zip((range_dataset, dict_dataset,
                                        tuple_dataset))
-    io.save(dataset, self._test_dir)
-    dataset_loaded = io.load(self._test_dir)
+    dataset.save(path=self._test_dir)
+    dataset_loaded = dataset_ops.Dataset.load(path=self._test_dir)
     self.assertDatasetsEqual(dataset, dataset_loaded)
 
 

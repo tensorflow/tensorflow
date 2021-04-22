@@ -174,7 +174,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )

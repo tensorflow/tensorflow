@@ -136,7 +136,7 @@ def load(path, element_spec=None, compression=None, reader_func=None):
       structure of `tf.TypeSpec` can not be located with the saved dataset.
   """
 
-  return dataset_ops.DatasetV2.load(
+  return dataset_ops.Dataset.load(
       path=path,
       element_spec=element_spec,
       compression=compression,

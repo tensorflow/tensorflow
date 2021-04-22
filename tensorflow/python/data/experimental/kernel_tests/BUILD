@@ -301,19 +301,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "io_test",
-    size = "small",
-    srcs = ["io_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:io",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "lookup_ops_test",
     size = "small",
     srcs = ["lookup_ops_test.py"],

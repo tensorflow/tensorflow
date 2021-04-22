@@ -410,6 +410,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "io_test",
+    size = "small",
+    srcs = ["io_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "iterator_cluster_test",
     size = "small",
     srcs = ["iterator_cluster_test.py"],
