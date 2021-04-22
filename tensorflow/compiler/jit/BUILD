@@ -21,7 +21,6 @@ load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 package(
     default_visibility = [
         ":internal",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
     ],
     licenses = ["notice"],
@@ -382,10 +381,7 @@ cc_library(
     hdrs = [
         "defs.h",
     ],
-    visibility = [
-        ":friends",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
-    ],
+    visibility = [":friends"],
 )
 
 # Internal targets below this point.
