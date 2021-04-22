@@ -218,29 +218,6 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   }];
 }
 
-def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", []> {
-  let summary = "An Op to permute tensors across replicated TPU instances.";
-
-  let description = [{
-Each instance supplies its own input.
-
-For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
-source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
-`[D, A, B, C]`.
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
-    I32Tensor:$source_target_pairs
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
   let summary = "An Op to reduce inputs across replicated TPU instances.";
 
@@ -273,29 +250,6 @@ element_shape: a shape compatible with that of elements in the list.
     TF_I32OrI64Tensor:$element_shape,
     TF_Int32Tensor:$max_num_elements
   );
-}
-
-// TODO(fengliuai): The tf.Identity is side-effect free and it doesn't change
-// the status of the system during the execution. However it shouldn't be folded
-// in general if it used to serve for caching and some other invariant checks,
-// so we removed the side-effect free property in the op definition. This is a
-// hack, and we should fix it if we have a better way to model it.
-def TF_IdentityOp : TF_Op<"Identity", [TF_OperandsSameAsResultsTypeOrRef]> {
-  let summary = "Identity op";
-
-  let description = [{
-Returns a tensor with the same shape and contents as input.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$input
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_IfOp : TF_Op<"If", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
@@ -542,49 +496,6 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
   }];
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall",
-                                 [CallOpInterface, NoSideEffect]> {
-  let summary =
-    "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
-
-  let description = [{
-Asynchronously executes a function, potentially across multiple devices but
-within a single process. The kernel places and partitions a given function's
-underlying graph, and executes each of the partitioned subgraphs as a function.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$args,
-
-    SymbolRefAttr:$f,
-    StrAttr:$config,
-    StrAttr:$config_proto,
-    StrAttr:$executor_type
-  );
-
-  let results = (outs
-    Variadic<TF_Tensor>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let extraClassDeclaration = [{
-    // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
-
-    // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
-
-    // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
-    }
-  }];
-
-  let verifier = [{ return VerifyPartitionedCall(*this); }];
-}
-
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
   let summary = "Placeholder op";
 
@@ -810,36 +721,6 @@ element_dtype: the desired type of elements in the list.
   );
 }
 
-// This operation when auto-generated is marked as NoSideEffect because it isn't
-// stateful in TensorFlow. However it is kept alive through control dependency,
-// and does not have any output. When placed in an island it wouldn't be kept
-// alive in any way and the canonicalizer would just always fold it away.
-def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", []> {
-  let summary = [{
-Metadata indicating how the TPU computation should be replicated.
-  }];
-
-  let description = [{
-This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
-  }];
-
-  let arguments = (ins
-    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
-    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
-    StrAttr:$topology,
-    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
-    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
-    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
-    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
-  );
-
-  let results = (outs);
-}
-
 def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
@@ -897,47 +778,6 @@ Example:
   }];
 }
 
-def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
-  let summary = [{
-An op that enqueues a list of input batch tensors to TPUEmbedding.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_StrTensor>:$batch,
-    TF_StrTensor:$mode_override,
-
-    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
-// Updated the op description text from the auto-generated op definition.
-def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
-  let summary = [{
-Receives deduplication data (indices and weights).
-  }];
-
-  let description = [{
-The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
-XLA nested tuple containing N elements. Each element of the nested tuple is a
-tuple of rank 1 tensors. Each tensor either contains indices (DT_INT32) for
-embedding lookup or weights (DT_FLOAT) to apply to the output of the embedding
-lookup operation.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    TF_VariantTensor:$output
-  );
-}
-
 def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 An op which shards the input based on the given sharding attribute.
@@ -991,6 +831,8 @@ Feeds multiple Tensor values into the computation as an XLA tuple.
   let results = (outs);
 }
 
+// This op is manually defined because the attribute name `template` (which is
+// a keyword) is changed to `strtemplate`.
 def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
   let summary = "Formats a string template using a list of tensors.";
 
@@ -1017,110 +859,6 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 // tf.data ops
 //===----------------------------------------------------------------------===//
 
-def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
-  let summary = [{
-Creates a dataset that batches `batch_size` elements from `input_dataset`.
-  }];
-
-  let arguments = (ins
-    TF_VariantTensor:$input_dataset,
-    TF_Int64Tensor:$batch_size,
-    TF_BoolTensor:$drop_remainder,
-
-    DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-}
-
-def TF_MapDatasetOp : TF_Op<"MapDataset", [NoSideEffect]> {
-  let summary = [{
-    Creates a dataset that applies `f` to the outputs of `input_dataset`.
-  }];
-
-  let arguments = (ins
-    TF_VariantTensor:$input_dataset,
-    Variadic<TF_Tensor>:$other_arguments,
-
-    SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
-}
-
-def TF_MapAndBatchDatasetOp : TF_Op<"MapAndBatchDataset", [NoSideEffect]> {
-  let summary = "Creates a dataset that fuses mapping with batching.";
-
-  let description = [{
-Creates a dataset that applies `f` to the outputs of `input_dataset` and then
-batches `batch_size` of them.
-
-Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
-to `batch_size * num_parallel_batches` copies of `f` in parallel.
-  }];
-
-  let arguments = (ins
-    TF_VariantTensor:$input_dataset,
-    Variadic<TF_Tensor>:$other_arguments,
-    TF_Int64Tensor:$batch_size,
-    TF_Int64Tensor:$num_parallel_calls,
-    TF_BoolTensor:$drop_remainder,
-
-    SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
-}
-
-def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
-  let summary = [{
-    Creates a dataset that applies `f` to the outputs of `input_dataset`.
-  }];
-
-  let description = [{
-    Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes
-    up to `num_parallel_calls` copies of `f` in parallel.
-  }];
-
-  let arguments = (ins
-    TF_VariantTensor:$input_dataset,
-    Variadic<TF_Tensor>:$other_arguments,
-    TF_Int32Tensor:$num_parallel_calls,
-
-    SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
-    DefaultValuedAttr<BoolAttr, "false">:$sloppy,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
-}
-
 def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   let summary = [{
     Reduces the input dataset to a singleton using a reduce function.
@@ -1144,6 +882,7 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   );
 }
 
+// Manually defined to restrict result type to `0DTensorOf<[I1]>`.
 def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
@@ -1256,193 +995,6 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
-}
-
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                 WithBroadcastableBinOpBuilder {
-  let summary = "Returns x + y element-wise.";
-
-  let description = [{
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
-
-  let hasFolder = 1;
-}
-
-def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                    WithBroadcastableBinOpBuilder {
-  let summary = "Returns 0 if the denominator is zero.";
-
-  let description = [{
-*NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$x,
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                   WithBroadcastableBinOpBuilder {
-  let summary = "Returns the max of x and y (i.e. x > y ? x : y) element-wise.";
-
-  let description = [{
-*NOTE*: `Maximum` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$x,
-    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary]>,
-                   WithBroadcastableBinOpBuilder {
-  let summary = "Returns x / y element-wise for real types.";
-
-  let description = [{
-If `x` and `y` are reals, this will return the floating-point division.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
-
-  let hasFolder = 1;
-}
-
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
-               WithBroadcastableBinOpBuilder {
-  let summary = "Returns x + y element-wise.";
-
-  let description = [{
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
-
-Both input and output have a range `(-inf, inf)`.
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_NumberNotQuantizedOrStr]>:$x,
-    TensorOf<[TF_NumberNotQuantizedOrStr]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[TF_NumberNotQuantizedOrStr]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
-}
-
-def TF_StatefulStandardNormalV2Op : TF_Op<"StatefulStandardNormalV2", []> {
-  let summary = "Outputs random values from a normal distribution.";
-
-  let description = [{
-The generated values will have mean 0 and standard deviation 1.
-  }];
-
-  let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    TF_Int64Tensor:$algorithm,
-    TF_I32OrI64Tensor:$shape
-  );
-
-  let results = (outs
-    TF_FloatTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_StatefulTruncatedNormalOp : TF_Op<"StatefulTruncatedNormal", []> {
-  let summary = "Outputs random values from a truncated normal distribution.";
-
-  let description = [{
-The generated values follow a normal distribution with mean 0 and standard
-deviation 1, except that values whose magnitude is more than 2 standard
-deviations from the mean are dropped and re-picked.
-  }];
-
-  let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    TF_Int64Tensor:$algorithm,
-    TF_I32OrI64Tensor:$shape
-  );
-
-  let results = (outs
-    TF_FloatTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_StatefulUniformOp : TF_Op<"StatefulUniform", []> {
-  let summary = "Outputs random values from a uniform distribution.";
-
-  let description = [{
-The generated values follow a uniform distribution in the range `[0, 1)`. The
-lower bound 0 is included in the range, while the upper bound 1 is excluded.
-  }];
-
-  let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    TF_Int64Tensor:$algorithm,
-    TF_I32OrI64Tensor:$shape
-  );
-
-  let results = (outs
-    TF_FloatTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
@@ -1844,65 +1396,6 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
-  let summary = "";
-
-  let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
-    TF_VariantTensor:$dataset
-  );
-
-  let results = (outs);
-}
-
-// TODO(b/168035831): Model filename read.
-def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
-  let summary = "Initializes a table from a text file.";
-
-  let description = [{
-It inserts one key-value pair into the table for each line of the file.
-The key and value is extracted from the whole line content, elements from the
-split line based on `delimiter` or the line number (starting from zero).
-Where to extract the key and value from a line is specified by `key_index` and
-`value_index`.
-
-- A value of -1 means use the line number(starting from zero), expects `int64`.
-- A value of -2 means use the whole line content, expects `string`.
-- A value >= 0 means use the index (starting at zero) of the split line based
-  on `delimiter`.
-  }];
-
-  let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
-    TF_StrTensor:$filename,
-
-    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
-    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
-    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
-    DefaultValuedAttr<StrAttr, "\t">:$delimiter
-  );
-
-  let results = (outs);
-}
-
-// TODO(b/168035831): Model filename read.
-def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_VariantTensor:$input_dataset,
-    TF_StrTensor:$filename,
-    Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
-
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-}
-
 def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
   let summary = [{
 Placeholder device ordinal that represents device ordinal of a replicated op.
@@ -1921,32 +1414,6 @@ operations inside a TPU host.
   let results = (outs
     TF_Int64Tensor:$device_ordinal
   );
-}
-
-def TF_AssignOp : TF_Op<"Assign", []> {
-  let summary = "Update 'ref' by assigning 'value' to it.";
-
-  let description = [{
-This operation outputs "ref" after the assignment is done.
-This makes it easier to chain operations that need to use the reset value.
-
-This is a side-effecting operation because it will change the value of its
-argument "ref" in addition to returning the results.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$ref,
-    TF_Tensor:$value,
-
-    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
-    DefaultValuedAttr<BoolAttr, "true">:$use_locking
-  );
-
-  let results = (outs
-    TF_Tensor:$output_ref
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
