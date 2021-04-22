@@ -262,7 +262,7 @@ class SoftmaxOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
     return *kSoftmaxKernelMap;
-      }
+  }
 };
 
 const auto kLogSoftmaxKernelMap = new std::map<string, TfLiteRegistration*>({
