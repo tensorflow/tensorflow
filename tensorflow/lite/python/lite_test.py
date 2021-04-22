@@ -2867,5 +2867,21 @@ class ControlFlowV1OpsTest(LiteTest):
         'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
 
 
+class QuantizationModeTest(LiteTest, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('size', lite.Optimize.OPTIMIZE_FOR_SIZE),
+      ('latency', lite.Optimize.OPTIMIZE_FOR_LATENCY))
+  def testDeprecatedOptionWarning(self, optimization):
+    """Test if the warning message when using TOCO is logged."""
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'please use optimizations=[Optimize.DEFAULT] instead.'
+    lite.QuantizationMode([optimization], lite.TargetSpec(), None, None)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
+
+
 if __name__ == '__main__':
   test.main()

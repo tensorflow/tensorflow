@@ -223,6 +223,14 @@ class QuantizationMode(object):
   def __init__(self, optimizations, target_spec, representative_dataset,
                graph_def, disable_per_channel=False):
     self._optimizations = optimizations
+    for deprecated_optimization in [
+        Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
+    ]:
+      if deprecated_optimization in self._optimizations:
+        logging.warning(
+            "Optimization option %s is deprecated, please use optimizations="
+            "[Optimize.DEFAULT] instead.", deprecated_optimization)
+
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
