@@ -294,6 +294,7 @@ cc_library(
         "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
@@ -985,6 +986,20 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_test",
+    srcs = [
+        "resize_bilinear_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
