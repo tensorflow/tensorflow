@@ -24,9 +24,9 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.lite.experimental.quantization_debugger import debugger
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
+from tensorflow.lite.tools.optimize.debugging.python import debugger
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
@@ -151,8 +151,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         self.assertIsNotNone(
             re.match(value, actual_values[key]),
             'String is different from expected string. Please fix test code if'
-            " it's being affected by graph manipulation changes."
-        )
+            " it's being affected by graph manipulation changes.")
       elif isinstance(value, list):
         self.assertAlmostEqual(
             value[0], float(actual_values[key][1:-1]), places=5)
@@ -244,8 +243,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
   def test_quantization_debugger_creation_counter(self, increase_call):
     debug_model = QuantizationDebuggerTest.debug_model_float
     debugger.QuantizationDebugger(
-        quant_debug_model_content=debug_model,
-        debug_dataset=_calibration_gen)
+        quant_debug_model_content=debug_model, debug_dataset=_calibration_gen)
     increase_call.assert_called_once()
 
 

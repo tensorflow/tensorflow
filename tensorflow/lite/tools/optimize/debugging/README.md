@@ -57,7 +57,7 @@ return convert.mlir_quantize(calibrated, enable_numeric_verify=True)
 Initialize debugger with the debug model. This can be done in two ways.
 
 ```python
-from tensorflow.lite.experimental.quantization_debugger import debugger
+from tensorflow.lite.tools.optimize.debugging.python import debugger
 
 # `debug_dataset` accpets the same type as `converter.representative_dataset`.
 quant_debugger = debugger.QuantizationDebugger(
