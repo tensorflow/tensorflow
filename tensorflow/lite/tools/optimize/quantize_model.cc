@@ -704,8 +704,7 @@ TfLiteStatus QuantizeOpInput(
         return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
                                                      error_reporter);
       } else {
-        // Only 8, 16, 32, 10 are supported.
-        // TODO(jianlijianli): extend this to support arbitrary bits.
+        // Currently supports only 8, 16, 32, 10 bits.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "Unable to quantize buffer or min/max value for input %d "
