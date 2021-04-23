@@ -136,6 +136,7 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
   return Status::OK();
 }
 
+// Note that this behaves deterministically for repeat calls on the same device.
 template <typename InputIteratorT, typename OutputIteratorT,
           typename OffsetIteratorT, typename ReduceOp, typename T>
 Status GpuSegmentedReduce(

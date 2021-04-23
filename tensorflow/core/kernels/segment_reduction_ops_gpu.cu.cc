@@ -214,7 +214,7 @@ template <typename T, typename ReduceOp>
 __device__ T ReduceBlockAlongCols(ReduceOp reduce_op, const T& value,
                                   bool is_valid) {
   GPU_DYNAMIC_SHARED_MEM_DECL(/*ALIGN=*/16, char, shared_memory_raw);
-  T* const shared_memory =
+  T* const shared_partial_reduction =
       reinterpret_cast<T*>(shared_memory_raw);  // [blockDim.y, blockDim.x]
   const int x = threadIdx.x;
   const int y = threadIdx.y;
@@ -222,11 +222,12 @@ __device__ T ReduceBlockAlongCols(ReduceOp reduce_op, const T& value,
   // Reduce over the y dimension of the block.
   for (unsigned k = blockDim.y / 2; k > 0; k /= 2) {
     if (is_valid && y < 2 * k) {
-      shared_memory[y * blockDim.x + x] = reduced;
+      shared_partial_reduction[y * blockDim.x + x] = reduced;
     }
     __syncthreads();
     if (is_valid && y < k) {
-      reduced = reduce_op(reduced, shared_memory[(y + k) * blockDim.x + x]);
+      reduced = reduce_op(reduced,
+                          shared_partial_reduction[(y + k) * blockDim.x + x]);
     }
     __syncthreads();
   }
