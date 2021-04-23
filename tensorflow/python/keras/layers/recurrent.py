@@ -1320,6 +1320,9 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     else:
       self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(SimpleRNNCell, self).__init__(**kwargs)
+    if units < 0:
+      raise ValueError("Received a negative value for `units`, ",
+                       "expected a positive value.")
     self.units = units
     self.activation = activations.get(activation)
     self.use_bias = use_bias
@@ -1758,6 +1761,9 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     else:
       self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(GRUCell, self).__init__(**kwargs)
+    if units < 0:
+      raise ValueError("Received an negative value for `units`, "
+                       "expected a positive value.")
     self.units = units
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
@@ -2318,6 +2324,9 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     else:
       self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(LSTMCell, self).__init__(**kwargs)
+    if units < 0:
+      raise ValueError("Received a negative value for `units`, "
+                       "expected a postiive value.")
     self.units = units
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
