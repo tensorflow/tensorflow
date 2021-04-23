@@ -805,6 +805,17 @@ std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
+bool IsMonotonicWithDim0Major(mlir::Operation* op) {
+  if (mlir::DenseIntElementsAttr attr = mlir::GetLayoutFromMlirHlo(op)) {
+    return absl::c_is_sorted(
+        attr, [](const llvm::APInt& lhs, const llvm::APInt& rhs) {
+          return lhs.getZExtValue() > rhs.getZExtValue();
+        });
+  }
+  // Dim0 is major(row major) by default.
+  return true;
+}
+
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
   llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
   mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
