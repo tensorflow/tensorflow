@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iostream>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -56,10 +55,6 @@ void TestGatherNd(const int* param_dims, const ParamType* param_data,
   TfLiteTensor* actual_output_tensor = &tensors[2];
   TfLiteIntArray* actual_output_dims = actual_output_tensor->dims;
   const int output_size = ElementCount(*actual_output_dims);
-  std::cout << "output_size: " << output_size << std::endl; 
-  for (int i = 0; i < output_size; ++i) {
-    std::cout << " i: " << i << ";  output_data: " << output_data[i] << std::endl;
-  }
   for (int i = 0; i < output_size; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
@@ -71,7 +66,6 @@ void TestGatherNd(const int* param_dims, const ParamType* param_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-#if 0
 TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoMatrix) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
@@ -85,7 +79,6 @@ TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoMatrix) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoMatrix) {
@@ -116,7 +109,6 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix1) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix2) {
@@ -132,7 +124,6 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix2) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoMatrix) {
@@ -165,7 +156,6 @@ TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoRank3Tensor) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoRank3Tensor) {
@@ -184,7 +174,6 @@ TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoRank3Tensor) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor1) {
@@ -202,9 +191,7 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor1) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
-#endif
 
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor2) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
@@ -222,10 +209,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor2) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
-#if 0
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor3) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
@@ -242,7 +227,6 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor3) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor4) {
@@ -260,7 +244,6 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor4) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoRank3Tensor) {
@@ -278,7 +261,6 @@ TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoRank3Tensor) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_Float32Int32) {
@@ -296,7 +278,6 @@ TF_LITE_MICRO_TEST(GatherNd_Float32Int32) {
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TEST(GatherNd_Int8Int32) {
@@ -314,8 +295,6 @@ TF_LITE_MICRO_TEST(GatherNd_Int8Int32) {
   tflite::testing::TestGatherNd<int8_t, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
-  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
-#endif
 
 TF_LITE_MICRO_TESTS_END
