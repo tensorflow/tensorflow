@@ -36,13 +36,11 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs, bool preserve_all_tensors,
-                           int tensor_alignment)
+                           bool preserve_all_tensors, int tensor_alignment)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
-      preserve_inputs_(preserve_inputs),
       preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 
@@ -132,13 +130,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
   }
 
-  // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
-  // sure they never be overwritten.
+  // Queue all graph inputs for allocation and make sure they are never
+  // overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
-      if (preserve_inputs_) {
-        refcounts[tensor_index]++;
-      }
+      refcounts[tensor_index]++;
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }

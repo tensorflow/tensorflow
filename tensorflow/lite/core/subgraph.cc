@@ -952,8 +952,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        /*preserve_inputs=*/true, preserve_all_tensors_,
-        kDefaultTensorAlignment));
+        preserve_all_tensors_, kDefaultTensorAlignment));
     memory_planner_->PlanAllocations();
   }
 
