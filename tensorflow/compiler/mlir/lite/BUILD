@@ -287,6 +287,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
     ],
 )
 

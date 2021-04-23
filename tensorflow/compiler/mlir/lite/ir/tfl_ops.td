@@ -4722,8 +4722,7 @@ this value or a subsequent newer value of the variable.
     // TODO(b/149099381): Remove integer IDs after adding the new variable
     // handle type.
     TFL_TensorOf<[I32]>:$resource_id,
-    // TODO(b/149099381): Support other types too.
-    TFL_TensorOf<[F32]>:$value
+    TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
   let results = (outs);
@@ -4742,8 +4741,7 @@ Read variable data identified by 'resource_id'.
     TFL_TensorOf<[I32]>:$resource_id
   );
 
-  // TODO(b/149099381): Support other types too.
-  let results = (outs TFL_TensorOf<[F32]>:$result);
+  let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);
 }
 
 def TFL_Conv3DOp : TFL_Op<"conv_3d", [
