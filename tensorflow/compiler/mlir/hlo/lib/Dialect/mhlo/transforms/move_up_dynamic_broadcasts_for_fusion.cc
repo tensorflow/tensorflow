@@ -305,17 +305,18 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
   }
 };
 
-// Eliminate casted extent tensors. Instead, produce the concrete extent tensor
+// Eliminate extent tensor casts. Instead, produce the concrete extent tensor
 // type where possible.
-struct CanonicalizeCastedShapeOfOpPattern
+template <typename OpTy>
+struct CanonicalizeCastedExtentTensorOpPattern
     : public OpRewritePattern<tensor::CastOp> {
   using OpRewritePattern<tensor::CastOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(tensor::CastOp op,
                                 PatternRewriter &rewriter) const override {
-    // Only merge tensor cast into `shape_of` ops.
-    auto shape_of_op = op.source().getDefiningOp<shape::ShapeOfOp>();
-    if (!shape_of_op) return failure();
+    // Only merge tensor cast into a producer op if we know it supports it.
+    auto producer_op = op.source().getDefiningOp<OpTy>();
+    if (!producer_op) return failure();
 
     // Desired type must be an extent tensor type.
     auto result_ty = op.getType().dyn_cast<RankedTensorType>();
@@ -323,9 +324,9 @@ struct CanonicalizeCastedShapeOfOpPattern
         !result_ty.getElementType().isIndex())
       return failure();
 
-    rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(op, result_ty,
-                                                  shape_of_op.arg());
-    if (shape_of_op->getUses().empty()) rewriter.eraseOp(shape_of_op);
+    rewriter.replaceOpWithNewOp<OpTy>(op, result_ty, producer_op->getOperands(),
+                                      producer_op->getAttrs());
+    if (producer_op->getUses().empty()) rewriter.eraseOp(producer_op);
     return success();
   }
 };
@@ -401,7 +402,8 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
-      CanonicalizeCastedShapeOfOpPattern,
+      CanonicalizeCastedExtentTensorOpPattern<shape::ShapeOfOp>,
+      CanonicalizeCastedExtentTensorOpPattern<shape::BroadcastOp>,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveIntoAssumingOpPattern<shape::ShapeOfOp>,
