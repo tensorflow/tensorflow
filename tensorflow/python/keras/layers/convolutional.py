@@ -233,9 +233,9 @@ class Conv(Layer):
     
     # Check if output shapes are valid
     # They must not have 0 entries along any dimension
-    output_shapes = self.compute_output_shape(input_shape).as_list()
-    output_shapes = list(filter((None).__ne__, output_shapes))
-    if not all(output_shapes):
+    output_shape = self.compute_output_shape(input_shape).as_list()
+    output_shape = list(filter((None).__ne__, output_shape))
+    if 0 in output_shape:
       raise ValueError('One of the dimensions in output tensor is less than or'
       ' equal to zero. Please check the input shape. '
       ' Recieved input: %s'%input_shape)
