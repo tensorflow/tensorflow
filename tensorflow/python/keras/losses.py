@@ -655,7 +655,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
-               axis=-1
+               axis=-1,
                reduction=losses_utils.ReductionV2.AUTO,
                name='categorical_crossentropy'):
     """Initializes `CategoricalCrossentropy` instance.
