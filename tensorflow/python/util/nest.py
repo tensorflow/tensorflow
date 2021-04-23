@@ -102,7 +102,7 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
-def is_namedtuple(instance, strict=False):
+def _is_namedtuple(instance, strict=False):
   """Returns True iff `instance` is a `namedtuple`.
 
   Args:
@@ -117,7 +117,6 @@ def is_namedtuple(instance, strict=False):
   """
   return _pywrap_utils.IsNamedtuple(instance, strict)
 
-_is_namedtuple = is_namedtuple  # This function was private up to TF2.5.
 
 # See the swig file (util.i) for documentation.
 _is_mapping_view = _pywrap_utils.IsMappingView
@@ -185,7 +184,7 @@ def _sequence_like(instance, args):
   elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
-  elif is_namedtuple(instance) or _is_attrs(instance):
+  elif _is_namedtuple(instance) or _is_attrs(instance):
     if isinstance(instance, _wrapt.ObjectProxy):
       instance_type = type(instance.__wrapped__)
     else:
@@ -249,7 +248,7 @@ def _yield_sorted_items(iterable):
   elif _is_attrs(iterable):
     for item in _get_attrs_items(iterable):
       yield item
-  elif is_namedtuple(iterable):
+  elif _is_namedtuple(iterable):
     for field in iterable._fields:
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
@@ -418,8 +417,7 @@ def flatten(structure, expand_composites=False):
 
 
 # See the swig file (util.i) for documentation.
-same_namedtuples = _pywrap_utils.SameNamedtuples
-_same_namedtuples = same_namedtuples  # This function was private up to TF2.5.
+_same_namedtuples = _pywrap_utils.SameNamedtuples
 
 
 class _DotString(object):
@@ -1039,10 +1037,10 @@ def assert_shallow_structure(shallow_tree,
     if check_types and not isinstance(input_tree, shallow_type):
       # Duck-typing means that nest should be fine with two different
       # namedtuples with identical name and fields.
-      shallow_is_namedtuple = is_namedtuple(shallow_tree, False)
-      input_is_namedtuple = is_namedtuple(input_tree, False)
+      shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
+      input_is_namedtuple = _is_namedtuple(input_tree, False)
       if shallow_is_namedtuple and input_is_namedtuple:
-        if not same_namedtuples(shallow_tree, input_tree):
+        if not _same_namedtuples(shallow_tree, input_tree):
           raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
               input_type=type(input_tree),
               shallow_type=type(shallow_tree)))
