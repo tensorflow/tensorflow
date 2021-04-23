@@ -175,12 +175,12 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
 class ArenaPlannerTest : public ::testing::Test {
  protected:
   void SetGraph(TestGraph* graph, bool preserve_inputs = false,
-                bool preserve_intermediates = false) {
+                bool preserve_all_tensors = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
-        preserve_inputs, preserve_intermediates, kTensorAlignment));
+        preserve_inputs, preserve_all_tensors, kTensorAlignment));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -765,7 +765,7 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
                       {{4}, {3}, {7}}      // Third op, with temporary
                   },
                   {3});
-  SetGraph(&graph, false, /*preserve_intermediates=*/false);
+  SetGraph(&graph, false, /*preserve_all_tensors=*/false);
   Execute(0, 10);
 
   // Memory of temporary tensors are shared by default.
@@ -773,7 +773,7 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
   EXPECT_EQ(GetOffset(6), 0);
   EXPECT_EQ(GetOffset(7), 0);
 
-  SetGraph(&graph, false, /*preserve_intermediates=*/true);
+  SetGraph(&graph, false, /*preserve_all_tensors=*/true);
   Execute(0, 10);
 
   std::set<std::ptrdiff_t> tensorOffsets;
@@ -781,7 +781,7 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
     tensorOffsets.insert(GetOffset(i));
   }
   // Every tensor should have unique memory allocation with
-  // preserve_intermediates.
+  // preserve_all_tensors.
   EXPECT_EQ(tensorOffsets.size(), 8);
 }
 

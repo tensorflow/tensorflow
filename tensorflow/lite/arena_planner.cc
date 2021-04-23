@@ -36,14 +36,14 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs, bool preserve_intermediates,
+                           bool preserve_inputs, bool preserve_all_tensors,
                            int tensor_alignment)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
       preserve_inputs_(preserve_inputs),
-      preserve_intermediates_(preserve_intermediates),
+      preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 
 ArenaPlanner::~ArenaPlanner() {}
@@ -168,7 +168,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
     // them for deallocation.
-    if (!preserve_intermediates_) {
+    if (!preserve_all_tensors_) {
       TfLiteIntArray* node_inputs = node.inputs;
       for (int j = 0; j < node_inputs->size; ++j) {
         int tensor_index = node_inputs->data[j];
@@ -203,7 +203,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
       alloc_node_[tensor_index] = i;
-      if (!preserve_intermediates_) {
+      if (!preserve_all_tensors_) {
         dealloc_node_[tensor_index] = i;
       }
     }
