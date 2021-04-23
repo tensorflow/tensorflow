@@ -23,6 +23,7 @@ package_group(
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
+        "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/python/...",
     ],
 )
