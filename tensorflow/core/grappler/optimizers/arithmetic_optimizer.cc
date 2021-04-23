@@ -2070,17 +2070,6 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
  private:
   // Returns whether `reshape` is an identity op.
   bool InputMatchesTargetShape(const NodeDef& reshape) {
-    NodeDef* input_reshape;
-    NodeDef* input_shape;
-    NodeDef* input_reshape_shape;
-    if (GetInputNode(reshape.input(0), &input_reshape).ok() &&
-        (IsReshape(*input_reshape) || IsBroadcastTo(*input_reshape)) &&
-        GetInputNode(reshape.input(1), &input_shape).ok() &&
-        GetInputNode(input_reshape->input(1), &input_reshape_shape).ok() &&
-        input_reshape_shape == input_shape) {
-      return true;
-    }
-
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
     if (!GetTensorProperties(reshape.name(), &reshape_props).ok() ||
