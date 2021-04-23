@@ -44,9 +44,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Params of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(params->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Params of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(params->type));
       return kTfLiteError;
       break;
   }
@@ -54,9 +54,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Indices of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(indices->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Indices of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(indices->type));
       return kTfLiteError;
   }
 
@@ -77,9 +77,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
   if (indices_nd > MAX_INDICES_ND) {
-    TF_LITE_KERNEL_LOG(
-        context, "Index innermost dimension length must not exceed %d.",
-        MAX_INDICES_ND);
+    TF_LITE_KERNEL_LOG(context,
+                       "Index innermost dimension length must not exceed %d.",
+                       MAX_INDICES_ND);
     return kTfLiteError;
   }
 
@@ -159,9 +159,9 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context,
       return GatherNd<int8_t, IndicesT>(params, indices, output);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Params type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(params->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Params type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(params->type));
       return kTfLiteError;
   }
 }
@@ -179,9 +179,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalGatherNd<int32_t>(context, params, indices, output);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Indices of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(indices->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Indices of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(indices->type));
       return kTfLiteError;
   }
 }
