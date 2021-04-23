@@ -95,7 +95,7 @@ class StructField(
         `value_type`.
     """
     try:
-      validate_field_value_type(value_type)
+      validate_field_value_type(value_type, allow_forward_references=True)
     except TypeError as e:
       raise TypeError(f'In field {name!r}: {e}')
 
