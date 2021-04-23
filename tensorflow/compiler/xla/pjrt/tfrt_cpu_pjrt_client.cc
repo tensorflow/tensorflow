@@ -1142,6 +1142,14 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
+  auto hlo_cost_analysis =
+      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  // Cache to avoid std::map lookup in flop_count() on critical path.
+  // The magic constant 1000 is determined by correlating computation with flop
+  // estimate. It is a crude heuristic to find computation less than the thread
+  // context switch time (~5us).
+  cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
+
   const auto& computation_layout =
       cpu_executable_->module().entry_computation_layout();
   if (computation_layout.parameter_count() == 0) {
@@ -1165,14 +1173,6 @@ TfrtCpuExecutable::TfrtCpuExecutable(
           computation_layout.parameter_shape(0).tuple_shapes(i)));
     }
   }
-
-  auto hlo_cost_analysis =
-      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
-  // Cache to avoid std::map lookup in flop_count() on critical path.
-  // The magic constant 1000 is determined by correlating computation with flop
-  // estimate. It is a crude heuristic to find computation less than the thread
-  // context switch time (~5us).
-  cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 }
 
 void TfrtCpuExecutable::Delete() {}
