@@ -1165,6 +1165,14 @@ TfrtCpuExecutable::TfrtCpuExecutable(
           computation_layout.parameter_shape(0).tuple_shapes(i)));
     }
   }
+
+  auto hlo_cost_analysis =
+      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  // Cache to avoid std::map lookup in flop_count() on critical path.
+  // The magic constant 1000 is determined by correlating computation with flop
+  // estimate. It is a crude heuristic to find computation less than the thread
+  // context switch time (~5us).
+  cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 }
 
 void TfrtCpuExecutable::Delete() {}
@@ -1430,7 +1438,7 @@ TfrtCpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(last_collective_launch_event));
   }
 
-  if (input_deps.empty()) {
+  if (input_deps.empty() && cheap_computation_) {
     // Synchronously call generated function.
     execute_event = GetOrCreateReadyEvent(host_context);
 
