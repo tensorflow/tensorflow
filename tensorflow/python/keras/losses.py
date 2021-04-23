@@ -1657,7 +1657,8 @@ def categorical_crossentropy(y_true,
 def _ragged_tensor_categorical_crossentropy(y_true,
                                             y_pred,
                                             from_logits=False,
-                                            label_smoothing=0):
+                                            label_smoothing=0,
+                                            axis=-1):
   """Implements support for handling RaggedTensors.
 
   Args:
@@ -1685,7 +1686,8 @@ def _ragged_tensor_categorical_crossentropy(y_true,
   fn = functools.partial(
       categorical_crossentropy,
       from_logits=from_logits,
-      label_smoothing=label_smoothing)
+      label_smoothing=label_smoothing,
+      axis=axis)
   return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
@@ -1774,7 +1776,8 @@ def binary_crossentropy(y_true,
 def _ragged_tensor_binary_crossentropy(y_true,
                                        y_pred,
                                        from_logits=False,
-                                       label_smoothing=0):
+                                       label_smoothing=0,
+                                       axis=-1):
   """Implements support for handling RaggedTensors.
 
   Args:
@@ -1800,7 +1803,8 @@ def _ragged_tensor_binary_crossentropy(y_true,
   fn = functools.partial(
       binary_crossentropy,
       from_logits=from_logits,
-      label_smoothing=label_smoothing)
+      label_smoothing=label_smoothing,
+      axis=axis)
   return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
