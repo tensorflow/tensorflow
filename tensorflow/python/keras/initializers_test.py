@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
@@ -57,14 +58,15 @@ def _compute_fans(shape):
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class KerasInitializersTest(test.TestCase):
 
-  def _runner(self, init, shape, target_mean=None, target_std=None,
+  def _runner(self, init, shape, dtype=dtypes.float32,
+              target_mean=None, target_std=None,
               target_max=None, target_min=None):
-    variable = backend.variable(init(shape))
+    variable = backend.variable(init(shape, dtype))
     output = backend.get_value(variable)
     # Test serialization (assumes deterministic behavior).
     config = init.get_config()
     reconstructed_init = init.__class__.from_config(config)
-    variable = backend.variable(reconstructed_init(shape))
+    variable = backend.variable(reconstructed_init(shape, dtype))
     output_2 = backend.get_value(variable)
     self.assertAllClose(output, output_2, atol=1e-4)
 
@@ -78,12 +80,27 @@ class KerasInitializersTest(test.TestCase):
           target_max=1,
           target_min=-1)
 
+      self._runner(
+          initializers.RandomUniformV2(minval=-1, maxval=1, seed=124),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_max=1,
+          target_min=-1)
+
   def test_normal(self):
     tensor_shape = (8, 12, 99)
     with self.cached_session():
       self._runner(
           initializers.RandomNormalV2(mean=0, stddev=1, seed=153),
           tensor_shape,
+          target_mean=0.,
+          target_std=1)
+
+      self._runner(
+          initializers.RandomNormalV2(mean=0, stddev=1, seed=153),
+          tensor_shape,
+          dtypes.complex64,
           target_mean=0.,
           target_std=1)
 
@@ -97,12 +114,28 @@ class KerasInitializersTest(test.TestCase):
           target_max=2,
           target_min=-2)
 
+      self._runner(
+          initializers.TruncatedNormalV2(mean=0, stddev=1, seed=126),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_max=2,
+          target_min=-2)
+
   def test_constant(self):
     tensor_shape = (5, 6, 4)
     with self.cached_session():
       self._runner(
           initializers.ConstantV2(2.),
           tensor_shape,
+          target_mean=2,
+          target_max=2,
+          target_min=2)
+
+      self._runner(
+          initializers.ConstantV2(2.),
+          tensor_shape,
+          dtypes.complex64,
           target_mean=2,
           target_max=2,
           target_min=2)
@@ -118,6 +151,13 @@ class KerasInitializersTest(test.TestCase):
           target_mean=0.,
           target_std=std)
 
+      self._runner(
+          initializers.LecunUniformV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_std=std)
+
   def test_glorot_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -126,6 +166,13 @@ class KerasInitializersTest(test.TestCase):
       self._runner(
           initializers.GlorotUniformV2(seed=123),
           tensor_shape,
+          target_mean=0.,
+          target_std=std)
+
+      self._runner(
+          initializers.GlorotUniformV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
           target_mean=0.,
           target_std=std)
 
@@ -140,6 +187,13 @@ class KerasInitializersTest(test.TestCase):
           target_mean=0.,
           target_std=std)
 
+      self._runner(
+          initializers.HeUniformV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_std=std)
+
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -148,6 +202,13 @@ class KerasInitializersTest(test.TestCase):
       self._runner(
           initializers.LecunNormalV2(seed=123),
           tensor_shape,
+          target_mean=0.,
+          target_std=std)
+
+      self._runner(
+          initializers.LecunNormalV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
           target_mean=0.,
           target_std=std)
 
@@ -162,6 +223,13 @@ class KerasInitializersTest(test.TestCase):
           target_mean=0.,
           target_std=std)
 
+      self._runner(
+          initializers.GlorotNormalV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_std=std)
+
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -173,11 +241,21 @@ class KerasInitializersTest(test.TestCase):
           target_mean=0.,
           target_std=std)
 
+      self._runner(
+          initializers.HeNormalV2(seed=123),
+          tensor_shape,
+          dtypes.complex64,
+          target_mean=0.,
+          target_std=std)
+
   def test_orthogonal(self):
     tensor_shape = (20, 20)
     with self.cached_session():
       self._runner(
           initializers.OrthogonalV2(seed=123), tensor_shape, target_mean=0.)
+      self._runner(
+          initializers.OrthogonalV2(seed=123), tensor_shape,
+          dtypes.complex64, target_mean=0.)
 
   def test_identity(self):
     with self.cached_session():
@@ -189,10 +267,24 @@ class KerasInitializersTest(test.TestCase):
             target_mean=1. / tensor_shape[0],
             target_max=1.)
 
+        self._runner(
+            initializers.IdentityV2(),
+            tensor_shape,
+            dtypes.complex64,
+            target_mean=1. / tensor_shape[0],
+            target_max=1.)
+
       tensor_shape = (3, 3)
       self._runner(
           initializers.IdentityV2(),
           tensor_shape,
+          target_mean=1. / tensor_shape[0],
+          target_max=1.)
+
+      self._runner(
+          initializers.IdentityV2(),
+          tensor_shape,
+          dtypes.complex64,
           target_mean=1. / tensor_shape[0],
           target_max=1.)
 
@@ -201,12 +293,18 @@ class KerasInitializersTest(test.TestCase):
     with self.cached_session():
       self._runner(
           initializers.ZerosV2(), tensor_shape, target_mean=0., target_max=0.)
+      self._runner(
+          initializers.ZerosV2(), tensor_shape, dtypes.complex64,
+          target_mean=0., target_max=0.)
 
   def test_one(self):
     tensor_shape = (4, 5)
     with self.cached_session():
       self._runner(
           initializers.OnesV2(), tensor_shape, target_mean=1., target_max=1.)
+      self._runner(
+          initializers.OnesV2(), tensor_shape, dtypes.complex64,
+          target_mean=1., target_max=1.)
 
   def test_default_random_uniform(self):
     ru = initializers.get('uniform')
