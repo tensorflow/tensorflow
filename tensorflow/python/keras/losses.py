@@ -573,6 +573,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
+               axis=-1,
                reduction=losses_utils.ReductionV2.AUTO,
                name='binary_crossentropy'):
     """Initializes `BinaryCrossentropy` instance.
@@ -601,7 +602,8 @@ class BinaryCrossentropy(LossFunctionWrapper):
         name=name,
         reduction=reduction,
         from_logits=from_logits,
-        label_smoothing=label_smoothing)
+        label_smoothing=label_smoothing,
+        axis=axis)
     self.from_logits = from_logits
 
 
@@ -653,6 +655,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
+               axis=-1
                reduction=losses_utils.ReductionV2.AUTO,
                name='categorical_crossentropy'):
     """Initializes `CategoricalCrossentropy` instance.
@@ -680,7 +683,8 @@ class CategoricalCrossentropy(LossFunctionWrapper):
         name=name,
         reduction=reduction,
         from_logits=from_logits,
-        label_smoothing=label_smoothing)
+        label_smoothing=label_smoothing,
+        axis=axis)
 
 
 @keras_export('keras.losses.SparseCategoricalCrossentropy')
