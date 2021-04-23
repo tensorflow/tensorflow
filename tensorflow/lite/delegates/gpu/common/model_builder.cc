@@ -705,6 +705,42 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
   }
 };
 
+class DepthToSpaceOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    const TfLiteDepthToSpaceParams* d2s_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &d2s_params));
+    if (d2s_params->block_size == 1) {
+      return absl::InvalidArgumentError(
+          "DEPTH_TO_SPACE block_size = 1 is a no-op.");
+    }
+    if (d2s_params->block_size < 1) {
+      return absl::InvalidArgumentError(
+          "DEPTH_TO_SPACE block_size must be > 1.");
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::DEPTH_TO_SPACE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    const TfLiteDepthToSpaceParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    SpaceToDepthAttributes attr;
+    attr.block_size = tf_options->block_size;
+    node->operation.attributes = attr;
+    return absl::OkStatus();
+  }
+};
+
 class DequantizeOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2765,6 +2801,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ElementwiseOperationParser>(OperationType::COS);
     case kTfLiteBuiltinDepthwiseConv2d:
       return std::make_unique<DepthwiseConvolutionOperationParser>();
+    case kTfLiteBuiltinDepthToSpace:
+      return std::make_unique<DepthToSpaceOperationParser>();
     case kTfLiteBuiltinDequantize:
       if (allow_quant_ops) {
         return std::make_unique<DequantizeOperationParser>();
