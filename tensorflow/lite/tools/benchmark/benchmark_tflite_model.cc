@@ -749,8 +749,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
-  // TODO(ycling): Consider to make this an error again when the new converter
-  // create tensors with consistent naming.
   for (int j = 0; j < inputs_.size(); ++j) {
     const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
@@ -760,7 +758,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " but flags call it " << input.name;
     }
 
-    if (input.shape.size() != t->dims->size) {
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
       TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
                         << t->dims->size << " dimensions!";
       return kTfLiteError;
