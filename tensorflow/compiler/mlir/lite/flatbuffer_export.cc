@@ -830,9 +830,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     q_params = tflite::CreateQuantizationParameters(
-        // TODO(fengliuai): min and max values are not stored in the
-        // quantized type, so both are set to 0. The model couldn't be imported
-        // to TensorFlow because of this.
+        // min and max values are not stored in the quantized type from MLIR, so
+        // both are set to 0 in the flatbuffer when they are exported.
         builder_, /*min=*/0, /*max=*/0,
         builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
         builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
