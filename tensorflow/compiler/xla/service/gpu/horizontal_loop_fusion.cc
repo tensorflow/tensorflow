@@ -349,7 +349,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   HloComputation* comp = uniq_computation->get();
 
   // Preparing clone_map, which maps old operand to new operand.
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> clone_map;
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> clone_map;
   size_t new_param_id = 0;
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     auto old_params = fused_fusion_instrs[i]->fused_parameters();
@@ -389,7 +389,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   for (size_t i = 0; i < fused_instr_output_size; ++i) {
     std::vector<HloInstruction*> reshapes(fused_fusion_instrs.size());
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
-      HloInstruction* old_output =
+      const HloInstruction* old_output =
           GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
       HloInstruction* new_output = clone_map[old_output];
       TF_ASSIGN_OR_RETURN(
@@ -413,7 +413,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
     int64 slice_start = 0;
     // Create a slice per fused computation.
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
-      HloInstruction* old_output =
+      const HloInstruction* old_output =
           GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
       Shape shape = old_output->shape();
       int64 slice_limit = slice_start + ShapeUtil::ElementsIn(shape);
@@ -459,7 +459,7 @@ Status HorizontalLoopFusionImpl::Fuse(
     HloInstruction* fused_instr = fused_fusion_instrs[i];
     size_t num_outputs = GetOutputSizeOfFusible(*fused_instr);
     for (size_t j = 0; j < num_outputs; ++j) {
-      HloInstruction* output = GetOutputsOfFusible(*fused_instr)[j];
+      const HloInstruction* output = GetOutputsOfFusible(*fused_instr)[j];
       TF_ASSIGN_OR_RETURN(
           HloInstruction * gep,
           MakeGetTupleElementHlo(hori_fusion_instr, total_output_id++));

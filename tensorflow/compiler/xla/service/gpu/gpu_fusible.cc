@@ -549,17 +549,18 @@ size_t GetInstrCountOfFusible(const HloInstruction& instr) {
   }
 }
 
-absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusible(
+absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
-    return {const_cast<HloInstruction*>(&instr)};
+    return {&instr};
   }
 
   HloInstruction* root = instr.fused_expression_root();
   if (root->opcode() != HloOpcode::kTuple) {
     return {root};
   } else {
-    return root->operands();
+    auto v = root->operands();
+    return absl::InlinedVector<const HloInstruction*, 2>(v.begin(), v.end());
   }
 }
 

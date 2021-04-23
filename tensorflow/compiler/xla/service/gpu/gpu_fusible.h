@@ -114,7 +114,7 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
 size_t GetInstrCountOfFusible(const HloInstruction& instr);
 
 // Returns the outputs of the fusible `instr`.
-absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusible(
+absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
     const HloInstruction& instr);
 
 // Returns the output size of the fusible `instr`.
