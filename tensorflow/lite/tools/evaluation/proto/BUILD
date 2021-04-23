@@ -15,7 +15,7 @@
 
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "py_proto_library",
+    "tf_proto_library",
 )
 
 package(
@@ -35,6 +35,23 @@ proto_library(
 cc_proto_library(
     name = "evaluation_stages_cc_proto",
     deps = ["evaluation_stages_proto"],
+)
+
+tf_proto_library(
+    name = "evaluation_stages",  # bzl adds _py
+    srcs = [
+        "evaluation_stages.proto",
+    ],
+    protodeps = [":preprocessing_steps"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "preprocessing_steps",
+    srcs = [
+        "preprocessing_steps.proto",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 proto_library(
@@ -69,8 +86,11 @@ cc_proto_library(
     deps = ["preprocessing_steps_proto"],
 )
 
-py_proto_library(
-    name = "evaluation_stages_py_pb2",
-    visibility = ["//visibility:public"],
-    deps = [":evaluation_stages_proto"],
-)
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "evaluation_stages_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":evaluation_stages_proto"],
+# )
+# copybara:uncomment_end

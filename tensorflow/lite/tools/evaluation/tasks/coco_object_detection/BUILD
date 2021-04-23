@@ -15,7 +15,7 @@ py_binary(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py_pb2",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py",
         "@absl_py//absl/logging",
     ],
 )
