@@ -462,13 +462,13 @@ command to generate a subfolder containing the required source files in this
 structure:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_hello_world_mbed_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=disco_f746ng OPTIMIZED_KERNEL_DIR=cmsis_nn generate_hello_world_mbed_project
 ```
 
 This will result in the creation of a new folder:
 
 ```
-tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/hello_world/mbed
+tensorflow/lite/micro/tools/make/gen/disco_f746ng_cortex-m4_default/prj/hello_world/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
