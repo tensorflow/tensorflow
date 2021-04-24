@@ -1980,8 +1980,6 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status AddReshapeForConcate(
       NodeDef* reshape, NodeDef* concate_node, int port) {
     // Replace concate input with reshape
-    const int offset = concate_node->op() == "Concat" ? 1 : 0;
-    port += offset;
     const string concate_input = concate_node->input(port);
 
     if (reshape->name() == NodeName(concate_input)) {
