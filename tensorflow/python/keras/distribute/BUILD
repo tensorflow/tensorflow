@@ -250,6 +250,7 @@ distribute_py_test(
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", # flaky/timeout with ROCm 4.1
     ],
     deps = [
         ":strategy_combinations",
@@ -272,6 +273,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # TODO(b/170954243)
+        "no_rocm", # flaky/timeout with ROCm 4.1
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
@@ -898,6 +900,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_tfrt",
         "notpu",
+        "no_rocm", # times out
     ],
     deps = [
         "//tensorflow/python:array_ops",
