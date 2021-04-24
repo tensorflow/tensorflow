@@ -27,11 +27,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <fp16.h>
 #include <xnnpack.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
@@ -3057,7 +3058,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       continue;  // Soft error (skip this node).
     }
 
-    // Prepare to unpack FP16 tensors.
+    // Prepare to unpack FP16/INT8 tensors.
     if (registration->builtin_code == kTfLiteBuiltinDequantize &&
         node->inputs->size == 1 && node->outputs->size == 1) {
       const TfLiteTensor& input_tensor =
@@ -3066,7 +3067,8 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           context->tensors[node->outputs->data[0]];
       if ((input_tensor.allocation_type == kTfLiteMmapRo ||
            quasi_static_tensors.count(node->inputs->data[0]) != 0) &&
-          input_tensor.type == kTfLiteFloat16 &&
+          (input_tensor.type == kTfLiteFloat16 ||
+           input_tensor.type == kTfLiteInt8) &&
           output_tensor.type == kTfLiteFloat32) {
         static_unpack_nodes_.insert(node_index);
         quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
@@ -3234,29 +3236,47 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             : static_cast<const char*>(input_tensor.data.data);
     switch (registration->builtin_code) {
       case kTfLiteBuiltinDequantize: {
-        if (input_tensor.type != kTfLiteFloat16) {
-          TF_LITE_KERNEL_LOG(
-              context, "unexpected tensor %d data type (%s) in node %d",
-              node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
-              producer_index);
-          TfLiteIntArrayFree(nodes_to_delegate);
-          return nullptr;  // Hard error.
-        }
-
         if (input_tensor.sparsity != nullptr) {
           TF_LITE_KERNEL_LOG(context,
-                             "unexpected FP16 sparse tensor %d in node %d",
+                             "unexpected FP16/INT8 sparse tensor %d in node %d",
                              node->inputs->data[0], producer_index);
           TfLiteIntArrayFree(nodes_to_delegate);
           return nullptr;  // Hard error.
         }
 
         // Actual data unpacking
-        float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
-        const uint16_t* packed_fp16_data =
-            reinterpret_cast<const uint16_t*>(packed_data);
-        for (size_t i = 0; i < tensor_elements; i++) {
-          unpacked_fp32_data[i] = fp16_ieee_to_fp32_value(packed_fp16_data[i]);
+        switch (input_tensor.type) {
+          case kTfLiteFloat16:
+            DequantizeFloat16(reinterpret_cast<const uint16_t*>(packed_data),
+                              reinterpret_cast<float*>(unpacked_data),
+                              tensor_elements);
+            break;
+          case kTfLiteInt8: {
+            TfLiteAffineQuantization *quant_params =
+                static_cast<TfLiteAffineQuantization *>(input_tensor.quantization.params);
+
+            if (quant_params->scale->size != 1) {
+              TF_LITE_KERNEL_LOG(context,
+                                 "unsupported per channel dequantization for INT8 "
+                                 "tensor %d in XNNPACK delegate",
+                                 t);
+              return nullptr;  // Hard error.
+            }
+
+            DequantizeInt8(reinterpret_cast<const int8_t *>(packed_data),
+                           reinterpret_cast<float *>(unpacked_data),
+                           GetTensorShape(&input_tensor),
+                           input_tensor.params.zero_point,
+                           input_tensor.params.scale);
+            break;
+          }
+          default:
+            TF_LITE_KERNEL_LOG(
+                context, "unexpected tensor %d data type (%s) in node %d",
+                node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
+                producer_index);
+            TfLiteIntArrayFree(nodes_to_delegate);
+            return nullptr;  // Hard error.
         }
         break;
       }

@@ -31,7 +31,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "@FP16",
+        ":quantization_util",
         "@XNNPACK//:xnnpack_for_tflite",
     ],
 )
@@ -59,8 +59,19 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "@FP16",
+        ":quantization_util",
         "@XNNPACK",
+    ],
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    deps = [
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:types",
+         "@FP16",
     ],
 )
 
@@ -957,6 +968,20 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantization_util",
+        ":test_main",
         "@com_google_googletest//:gtest",
     ],
 )
