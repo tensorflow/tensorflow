@@ -786,18 +786,23 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                        &host_device);
+      if (failed(tensorflow::CheckNoModelParallelism(tpu_cluster)))
+        return signalPassFailure();
+      if (failed(tensorflow::GetHostDeviceOutsideComputation(
+              devices, tpu_cluster, &host_device)))
+        return signalPassFailure();
       if (failed(CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                             host_device)))
         return signalPassFailure();
     }
   });
-  // No constant should have an "_xla_outside_compilation" attribute left.
-  // TODO(kfranko): We likely should revisit where is the best place for this
-  // logic to live (canonicalization pattern?).
+  // Remove `_xla_outside_compilation` attribute from all ops.  These ops will
+  // be outside of the device cluster. The `_xla_outside_compilation` attribute
+  // on ops outside of tf_device.cluster don't have any meaning and can lead to
+  // errors later on.  These ops were likely lifted out of the the
+  // tf_device.cluster in an earlier pass.
   module.walk(
-      [&](TF::ConstOp op) { op->removeAttr("_xla_outside_compilation"); });
+      [](Operation* op) { op->removeAttr("_xla_outside_compilation"); });
 }
 
 }  // namespace

@@ -1618,7 +1618,7 @@ static LogicalResult inferConvReturnTypes(
                              "D tensor");
 
   if (padding == tensorflow::Padding::EXPLICIT) {
-    if (explicit_padding.size() == 0) {
+    if (explicit_padding.empty()) {
       return emitOptionalError(location,
                                "requires attribute 'explicit_paddings' with "
                                "'EXPLICIT' padding mode");

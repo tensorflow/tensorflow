@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/variables_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -97,6 +98,7 @@ class LegalizeVariablesPattern : public mlir::OpConversionPattern<T> {
       T var_op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
     auto* op = var_op.getOperation();
+    if (!utils::IsSupportedVariableType(op)) return failure();
     auto func = var_op->template getParentOfType<FuncOp>();
     if (!func) return failure();
     auto global_tensor = GetGlobalTensor<T>(symbol_table_, var_op, func);

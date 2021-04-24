@@ -237,13 +237,6 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 
-# Image recognition experimental uses uint8 quantization and is no longer
-# supported (See #44912 for more details). We should consider deleting
-# the image_recognition_experimental example.
-EXCLUDED_EXAMPLE_TESTS := \
-  tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
-MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
-
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
@@ -307,6 +300,7 @@ tensorflow/lite/micro/kernels/quantization_util_test.cc \
 tensorflow/lite/micro/kernels/quantize_test.cc \
 tensorflow/lite/micro/kernels/reduce_test.cc \
 tensorflow/lite/micro/kernels/reshape_test.cc \
+tensorflow/lite/micro/kernels/resize_bilinear_test.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
 tensorflow/lite/micro/kernels/round_test.cc \
 tensorflow/lite/micro/kernels/shape_test.cc \
@@ -375,6 +369,7 @@ tensorflow/lite/micro/kernels/quantize.cc \
 tensorflow/lite/micro/kernels/quantize_common.cc \
 tensorflow/lite/micro/kernels/reduce.cc \
 tensorflow/lite/micro/kernels/reshape.cc \
+tensorflow/lite/micro/kernels/resize_bilinear.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
 tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
@@ -474,6 +469,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_bilinear.h \
 tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \

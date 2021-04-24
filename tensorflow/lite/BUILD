@@ -498,8 +498,9 @@ cc_library(
     name = "tflite_with_xnnpack_default",
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
-    # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
-    # once we have a good testing coverage on these two platforms.
+    # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
+    # configuration conditions will make TFLite interpreter to apply XNNPACK
+    # delegate by default.
     deps = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
@@ -753,6 +754,21 @@ cc_test(
     deps = [
         ":stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "optional_debug_tools_test",
+    size = "small",
+    srcs = ["optional_debug_tools_test.cc"],
+    data = ["testdata/add.bin"],
+    deps = [
+        ":framework",
+        ":optional_debug_tools",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -286,6 +286,25 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPILinalg",
+    srcs = [
+        "lib/CAPI/Dialect/Linalg.cpp",
+        "lib/CAPI/Dialect/LinalgPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/Linalg.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":LinalgOps",
+        ":LinalgPassIncGen",
+        ":LinalgTransforms",
+        ":Pass",
+    ],
+)
+
+cc_library(
     name = "CAPIConversion",
     srcs = ["lib/CAPI/Conversion/Passes.cpp"],
     hdrs = ["include/mlir-c/Conversion.h"],
@@ -295,6 +314,18 @@ cc_library(
         ":ConversionPassIncGen",
         ":ConversionPasses",
         ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIDebug",
+    srcs = ["lib/CAPI/Debug/Debug.cpp"],
+    hdrs = ["include/mlir-c/Debug.h"],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":Support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1231,7 +1262,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
@@ -1694,6 +1725,28 @@ cc_library(
 )
 
 cc_library(
+    name = "MlirLspServerLib",
+    srcs = glob(
+        [
+            "lib/Tools/mlir-lsp-server/*.cpp",
+            "lib/Tools/mlir-lsp-server/*.h",
+            "lib/Tools/mlir-lsp-server/lsp/*.cpp",
+            "lib/Tools/mlir-lsp-server/lsp/*.h",
+        ],
+    ),
+    hdrs = glob(
+        ["include/mlir/Tools/mlir-lsp-server/*.h"],
+    ),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ParserTokenKinds",
     # strip_include_prefix does not apply to textual_hdrs.
     hdrs = ["lib/Parser/TokenKinds.def"],
@@ -1707,7 +1760,11 @@ cc_library(
         "lib/Parser/*.cpp",
         "lib/Parser/*.h",
     ]),
-    hdrs = ["include/mlir/Parser.h"],
+    hdrs = glob([
+        "include/mlir/Parser/*.h",
+    ]) + [
+        "include/mlir/Parser.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -4053,7 +4110,7 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":MathDialect",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":MathTransforms",
         ":MemRefDialect",
         ":MemRefTransforms",
@@ -4105,6 +4162,17 @@ alias(
     name = "AllPassesAndDialectsNoRegistration",
     actual = ":AllPassesAndDialects",
     deprecation = "Use AllPassesAndDialects instead",
+)
+
+cc_binary(
+    name = "mlir-lsp-server",
+    srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialects",
+        ":IR",
+        ":MlirLspServerLib",
+    ],
 )
 
 cc_binary(
@@ -4995,6 +5063,14 @@ gentbl(
             "-gen-pass-decls -name Linalg",
             "include/mlir/Dialect/Linalg/Passes.h.inc",
         ),
+        (
+            "-gen-pass-capi-header --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Linalg",
+            "include/mlir/Dialect/Linalg/Passes.capi.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Linalg/Passes.td",
@@ -5564,13 +5640,13 @@ cc_library(
 )
 
 cc_library(
-    name = "MathToLLVM",
+    name = "MathToLibm",
     srcs = glob([
-        "lib/Conversion/MathToLLVM/*.cpp",
-        "lib/Conversion/MathToLLVM/*.h",
+        "lib/Conversion/MathToLibm/*.cpp",
+        "lib/Conversion/MathToLibm/*.h",
     ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
-        "include/mlir/Conversion/MathToLLVM/*.h",
+        "include/mlir/Conversion/MathToLibm/*.h",
     ]),
     includes = ["include"],
     deps = [
@@ -5579,9 +5655,10 @@ cc_library(
         ":LLVMDialect",
         ":MathDialect",
         ":Pass",
-        ":StandardToLLVM",
+        ":StandardOps",
         ":Support",
         ":Transforms",
+        ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],

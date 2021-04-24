@@ -16002,29 +16002,6 @@ func TensorListFromTensor(scope *Scope, tensor tf.Output, element_shape tf.Outpu
 	return op.Output(0)
 }
 
-// Splits a tensor into a list.
-//
-// list[i] corresponds to lengths[i] tensors from the input tensor.
-// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
-//
-// tensor: The input tensor.
-// element_shape: A shape compatible with that of elements in the tensor.
-// lengths: Vector of sizes of the 0th dimension of tensors in the list.
-// output_handle: The list.
-func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSplit",
-		Input: []tf.Input{
-			tensor, element_shape, lengths,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17204,6 +17181,29 @@ func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Splits a tensor into a list.
+//
+// list[i] corresponds to lengths[i] tensors from the input tensor.
+// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
+//
+// tensor: The input tensor.
+// element_shape: A shape compatible with that of elements in the tensor.
+// lengths: Vector of sizes of the 0th dimension of tensors in the list.
+// output_handle: The list.
+func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSplit",
+		Input: []tf.Input{
+			tensor, element_shape, lengths,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ParseSingleSequenceExampleAttr is an optional argument to ParseSingleSequenceExample.
@@ -19105,6 +19105,14 @@ func CollectiveReduceV2CommunicationHint(value string) CollectiveReduceV2Attr {
 func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_seconds"] = value
+	}
+}
+
+// CollectiveReduceV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
+// If not specified, defaults to -1
+func CollectiveReduceV2MaxSubdivsPerDevice(value int64) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["max_subdivs_per_device"] = value
 	}
 }
 

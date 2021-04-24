@@ -182,6 +182,7 @@ tf_py_test(
     srcs = ["data_service_ops_test.py"],
     shard_count = 16,
     tags = [
+        "noasan",  # TODO(b/180454113)
         "notsan",  # TODO(b/180454113)
     ],
     deps = [
@@ -372,10 +373,6 @@ tf_py_test(
     name = "make_saveable_from_iterator_test",
     size = "small",
     srcs = ["make_saveable_from_iterator_test.py"],
-    tags = [
-        "no_tap",  # TODO(b/185378115): test timeout
-        "notsan",  # b/185381928
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",

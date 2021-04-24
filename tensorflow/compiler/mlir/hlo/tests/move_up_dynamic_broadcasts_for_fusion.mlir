@@ -311,6 +311,20 @@ func @do_not_merge_assuming_ops() {
 
 // -----
 
+// CHECK:      @eliminate_extent_tensor_cast
+// CHECK-SAME: (%[[ARG:.*]]: tensor<2x?x4xf32>)
+func @eliminate_extent_tensor_cast(%arg : tensor<2x?x4xf32>) {
+  // CHECK-NOT:  shape_of
+  // CHECK:      %[[RESULT:.*]] = shape.shape_of %[[ARG]] : tensor<2x?x4xf32> -> tensor<3xindex>
+  // CHECK-NEXT: "use"(%[[RESULT]]) : (tensor<3xindex>) -> ()
+  %0 = shape.shape_of %arg : tensor<2x?x4xf32> -> tensor<?xindex>
+  %1 = tensor.cast %0 : tensor<?xindex> to tensor<3xindex>
+  "use"(%1) : (tensor<3xindex>) -> ()
+  return
+}
+
+// -----
+
 // Exemplary IR as it appears in the lowering of two subsequent `tf.Sub` ops.
 // CHECK-LABEL: @sub_sub
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -110,7 +111,7 @@ class SoftmaxOp : public XlaOpKernel {
   bool log_;
 };
 
-REGISTER_XLA_OP(Name("Softmax"), SoftmaxOp);
+REGISTER_XLA_OP(Name("Softmax"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("LogSoftmax"), SoftmaxOp);
 
 std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(

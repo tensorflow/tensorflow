@@ -138,6 +138,12 @@ message NNAPISettings {
   // float16 (16-bit floating point) arithmetic when doing calculations on
   // float32 (32-bit floating point).
   optional bool allow_fp16_precision_for_fp32 = 10;
+
+  // Whether to use NNAPI Burst mode.
+  // Burst mode allows accelerators to efficiently manage resources, which
+  // would significantly reduce overhead especially if the same delegate
+  // instance is to be used for multiple inferences.
+  optional bool use_burst_computation = 11;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL

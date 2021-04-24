@@ -98,6 +98,8 @@ std::string ToString(enum OperationType op) {
       return "cos";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
+    case OperationType::DEPTH_TO_SPACE:
+      return "depth_to_space";
     case OperationType::DIV:
       return "div";
     case OperationType::ELU:
@@ -223,6 +225,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
+          {"depth_to_space", OperationType::DEPTH_TO_SPACE},
           {"div", OperationType::DIV},
           {"elu", OperationType::ELU},
           {"equal", OperationType::EQUAL},

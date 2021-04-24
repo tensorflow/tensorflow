@@ -177,7 +177,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp,
                         chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
-                        memref::BufferCastOp>();
+                        memref::BufferCastOp, linalg::TensorReshapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&

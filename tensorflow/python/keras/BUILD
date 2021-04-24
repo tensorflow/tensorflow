@@ -467,6 +467,9 @@ tf_py_test(
     size = "small",
     srcs = ["losses_test.py"],
     python_version = "PY3",
+    tags = [
+        "noasan",  # b/186128525
+    ],
     deps = [
         ":backend",
         ":combinations",
