@@ -126,8 +126,10 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
   return result;
 }
 
-#ifdef INTEL_MKL
 bool IsMKLEnabled() {
+#ifndef INTEL_MKL
+  return false;
+#endif  // !INTEL_MKL
   static absl::once_flag once;
 #ifdef ENABLE_MKL
   // Keeping TF_DISABLE_MKL env variable for legacy reasons.
@@ -163,6 +165,5 @@ bool IsMKLEnabled() {
   return oneDNN_enabled;
 #endif  // ENABLE_MKL
 }
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow
