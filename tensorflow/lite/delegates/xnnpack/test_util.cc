@@ -13,25 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 
-#include <cstdint>
-#include <cstddef>
+#include <algorithm>
+#include <limits>
 
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 namespace xnnpack {
 
-void DequantizeInt8(const int8_t* packed_s8_data, float* unpacked_fp32_data,
-                    const RuntimeShape& tensor_shape,
-                    int32_t zero_point, double scale);
+int8_t QuantizeInt8(float value, int32_t zero_point, double scale) {
+  static constexpr int32_t min_val = std::numeric_limits<int8_t>::min();
+  static constexpr int32_t max_val = std::numeric_limits<int8_t>::max();
 
-void DequantizeFloat16(const uint16_t* packed_fp16_data, float* unpacked_fp32_data,
-                       size_t tensor_elements);
+  int32_t unclamped =
+      static_cast<int32_t>(TfLiteRound(value / static_cast<float>(scale))) +
+      zero_point;
+  int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
+  return static_cast<int8_t>(clamped);
+}
 
 }  // namespace xnnpack
 }  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_

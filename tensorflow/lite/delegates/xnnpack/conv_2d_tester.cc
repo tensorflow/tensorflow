@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -130,7 +131,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
     const std::array<int32_t, 1> densify_filter_inputs{{0}};
     const std::array<int32_t, 1> densify_filter_outputs{
-        {FP16Weights() ? 1 : 2}};
+        {(FP16Weights() || INT8Weights()) ? 1 : 2}};
     operators.emplace_back(CreateOperator(
         builder, /*opcode_index=*/operator_codes.size() - 1,
         builder.CreateVector<int32_t>(densify_filter_inputs.data(),
@@ -179,6 +180,68 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
                              sizeof(uint16_t) * bias_data.size())));
+
+    const std::array<int32_t, 1> dequantize_filter_inputs{
+        {SparseWeights() ? 1 : 0}};
+    const std::array<int32_t, 1> dequantize_filter_outputs{
+        {SparseWeights() ? 4 : 3}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/operator_codes.size() - 1,
+        builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                      dequantize_filter_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                      dequantize_filter_outputs.size())));
+    const std::array<int32_t, 1> dequantize_bias_inputs{
+        {SparseWeights() ? 2 : 1}};
+    const std::array<int32_t, 1> dequantize_bias_outputs{
+        {SparseWeights() ? 5 : 4}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/operator_codes.size() - 1,
+        builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
+                                      dequantize_bias_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
+                                      dequantize_bias_outputs.size())));
+  } else if (INT8Weights()) {
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+
+    std::vector<int8_t> filter_data(OutputChannels() * KernelHeight() *
+                                    KernelWidth() * InputChannels());
+    std::vector<int8_t> bias_data(OutputChannels());
+    for (int32_t oc = 0; oc < OutputChannels(); oc++) {
+      // Use the same range of all-positive or all-negative values to generate
+      // all weights within the same output channel, but different ranges for
+      // different output channels. This ensures that no catastrophic
+      // cancellation occur, but test covers both positive and negative inputs.
+      const float range = range_rng();
+      auto value_rng =
+          std::bind(QuantizeInt8,
+                    std::bind(std::uniform_real_distribution<float>(
+                                  std::min(range, 0.0f), std::max(range, 0.0f)),
+                              std::ref(rng)),
+                    weights_zero_point_, weights_scale_);
+      bias_data[oc] = value_rng();
+      for (int32_t ic = 0; ic < InputChannels(); ic++) {
+        for (int32_t y = 0; y < KernelHeight(); y++) {
+          for (int32_t x = 0; x < KernelWidth(); x++) {
+            const int32_t index =
+                ((oc * KernelHeight() + y) * KernelWidth() + x) *
+                    InputChannels() +
+                ic;
+            filter_data[index] = value_rng();
+          }
+        }
+      }
+    }
+
+    buffers.emplace_back(CreateBuffer(
+        builder, builder.CreateVector(
+                     reinterpret_cast<const uint8_t*>(filter_data.data()),
+                     sizeof(int8_t) * filter_data.size())));
+    buffers.emplace_back(CreateBuffer(
+        builder,
+        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
+                             sizeof(int8_t) * bias_data.size())));
 
     const std::array<int32_t, 1> dequantize_filter_inputs{
         {SparseWeights() ? 1 : 0}};
@@ -265,12 +328,25 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
     flatbuffers::Offset<SparsityParameters> sparsity_param =
         CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
                                  0, builder.CreateVector(dim_metadata));
-    tensors.emplace_back(CreateTensor(
-        builder,
-        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-        /*type=*/FP16Weights() ? TensorType_FLOAT16 : TensorType_FLOAT32,
-        /*buffer=*/1, /*name=*/0, /*quantization=*/0,
-        /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    if (INT8Weights()) {
+      tensors.emplace_back(CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+          /*type=*/TensorType_INT8,
+          /*buffer=*/1, /*name=*/0,
+          CreateQuantizationParameters(
+              builder, /*min=*/0, /*max=*/0,
+              builder.CreateVector<float>({weights_scale_}),
+              builder.CreateVector<int64_t>({weights_zero_point_})),
+          /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    } else {
+      tensors.emplace_back(CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+          /*type=*/FP16Weights() ? TensorType_FLOAT16 : TensorType_FLOAT32,
+          /*buffer=*/1, /*name=*/0, /*quantization=*/0,
+          /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    }
   }
   if (FP16Weights()) {
     tensors.emplace_back(CreateTensor(
@@ -281,6 +357,23 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
         TensorType_FLOAT16, /*buffer=*/2));
+  } else if (INT8Weights()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_INT8, /*buffer=*/SparseWeights() ? 0 : 1, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({weights_scale_}),
+            builder.CreateVector<int64_t>({weights_zero_point_}))));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        TensorType_INT8, /*buffer=*/2, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({weights_scale_}),
+            builder.CreateVector<int64_t>({weights_zero_point_}))));
   }
   tensors.emplace_back(CreateTensor(
       builder,
@@ -289,11 +382,12 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() || SparseWeights() ? 0 : 1));
+      TensorType_FLOAT32, /*buffer=*/(FP16Weights() || INT8Weights() ||
+                                      SparseWeights()) ? 0 : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 2));
+      TensorType_FLOAT32, /*buffer=*/(FP16Weights() || INT8Weights()) ? 0 : 2));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),

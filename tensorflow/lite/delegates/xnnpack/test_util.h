@@ -13,25 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_XNNPACK_TEST_UTIL_H_
 
 #include <cstdint>
-#include <cstddef>
-
-#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace xnnpack {
 
-void DequantizeInt8(const int8_t* packed_s8_data, float* unpacked_fp32_data,
-                    const RuntimeShape& tensor_shape,
-                    int32_t zero_point, double scale);
-
-void DequantizeFloat16(const uint16_t* packed_fp16_data, float* unpacked_fp32_data,
-                       size_t tensor_elements);
+int8_t QuantizeInt8(float value, int32_t zero_point, double scale);
 
 }  // namespace xnnpack
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZATION_UTIL_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_TEST_UTIL_H_

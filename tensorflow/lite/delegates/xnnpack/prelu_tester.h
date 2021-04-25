@@ -62,6 +62,13 @@ class PreluTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline PreluTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
   inline PreluTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -79,7 +86,10 @@ class PreluTester {
   std::vector<int32_t> input_shape_;
   std::vector<int32_t> slope_shape_;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
   bool sparse_weights_ = false;
+  int8_t slope_zero_point_ = 0;
+  float slope_scale_ = 0.75f;
 };
 
 }  // namespace xnnpack

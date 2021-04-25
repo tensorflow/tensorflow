@@ -78,6 +78,13 @@ class FullyConnectedTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline FullyConnectedTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
   inline FullyConnectedTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -110,6 +117,9 @@ class FullyConnectedTester {
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
+  int8_t weights_zero_point_ = 0;
+  float weights_scale_ = 0.75f;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

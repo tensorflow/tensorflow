@@ -78,11 +78,22 @@ cc_library(
 ################################ Tester classes ################################
 
 cc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        "//tensorflow/lite/kernels/internal:cppmath",
+    ],
+)
+
+cc_library(
     name = "binary_elementwise_tester",
     testonly = 1,
     srcs = ["binary_elementwise_tester.cc"],
     hdrs = ["binary_elementwise_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -101,6 +112,7 @@ cc_library(
     srcs = ["conv_2d_tester.cc"],
     hdrs = ["conv_2d_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -136,6 +148,7 @@ cc_library(
     srcs = ["depthwise_conv_2d_tester.cc"],
     hdrs = ["depthwise_conv_2d_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -154,6 +167,7 @@ cc_library(
     srcs = ["fully_connected_tester.cc"],
     hdrs = ["fully_connected_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -223,6 +237,7 @@ cc_library(
     srcs = ["prelu_tester.cc"],
     hdrs = ["prelu_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",

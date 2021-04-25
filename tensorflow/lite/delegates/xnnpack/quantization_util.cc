@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,21 +21,9 @@ limitations under the License.
 #include <fp16.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 namespace xnnpack {
-
-int8_t QuantizeInt8(float value, int32_t zero_point, double scale) {
-  static constexpr int32_t min_val = std::numeric_limits<int8_t>::min();
-  static constexpr int32_t max_val = std::numeric_limits<int8_t>::max();
-
-  int32_t unclamped =
-      static_cast<int32_t>(TfLiteRound(value / static_cast<float>(scale))) +
-      zero_point;
-  int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
-  return static_cast<int8_t>(clamped);
-}
 
 void DequantizeFloat16(const uint16_t *packed_fp16_data, float *unpacked_fp32_data,
                        size_t tensor_elements) {
