@@ -3103,6 +3103,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.sparsity != nullptr &&
           (input_tensor.type == kTfLiteFloat16 ||
+           input_tensor.type == kTfLiteInt8 ||
            input_tensor.type == kTfLiteFloat32) &&
           output_tensor.type == input_tensor.type) {
         static_unpack_nodes_.insert(node_index);
@@ -3212,6 +3213,9 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       case kTfLiteFloat16:
         tensor_elements /= sizeof(uint16_t);
         break;
+      case kTfLiteInt8:
+        tensor_elements /= sizeof(int8_t);
+        break;
       default: {
         TF_LITE_KERNEL_LOG(context,
                            "unexpected datatype (%s) in tensor %d in node %d",
@@ -3315,6 +3319,18 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             converter.SparseToDense(
                 static_cast<const Eigen::half*>(input_tensor.data.data),
                 dense_size, unpacked_fp16_data, context);
+            break;
+          }
+          case kTfLiteInt8: {
+            const size_t dense_size =
+                context->tensors[t].bytes / sizeof(int8_t);
+            int8_t* unpacked_int8_data =
+                reinterpret_cast<int8_t*>(unpacked_data);
+            tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+                vector_shape, *input_tensor.sparsity);
+            converter.SparseToDense(
+                static_cast<const int8_t*>(input_tensor.data.data),
+                dense_size, unpacked_int8_data, context);
             break;
           }
           default: {
