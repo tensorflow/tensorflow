@@ -19,16 +19,21 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.structured import structured_array_ops
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import nest
 
 
 # TODO(martinz):create StructuredTensorTestCase.
@@ -41,14 +46,24 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     if not (isinstance(a, structured_tensor.StructuredTensor) or
             isinstance(b, structured_tensor.StructuredTensor)):
       return super(StructuredArrayOpsTest, self).assertAllEqual(a, b, msg)
+
     if not isinstance(a, structured_tensor.StructuredTensor):
       a = structured_tensor.StructuredTensor.from_pyval(a)
-      self._assertStructuredEqual(a, b, msg, False)
     elif not isinstance(b, structured_tensor.StructuredTensor):
       b = structured_tensor.StructuredTensor.from_pyval(b)
-      self._assertStructuredEqual(a, b, msg, False)
-    else:
-      self._assertStructuredEqual(a, b, msg, True)
+
+    try:
+      nest.assert_same_structure(a, b, expand_composites=True)
+    except (TypeError, ValueError) as e:
+      self.assertIsNone(e, (msg + ": " if msg else "") + str(e))
+    a_tensors = [x for x in nest.flatten(a, expand_composites=True)
+                 if isinstance(x, ops.Tensor)]
+    b_tensors = [x for x in nest.flatten(b, expand_composites=True)
+                 if isinstance(x, ops.Tensor)]
+    self.assertLen(a_tensors, len(b_tensors))
+    a_arrays, b_arrays = self.evaluate((a_tensors, b_tensors))
+    for a_array, b_array in zip(a_arrays, b_arrays):
+      self.assertAllEqual(a_array, b_array, msg)
 
   def _assertStructuredEqual(self, a, b, msg, check_shape):
     if check_shape:
@@ -273,8 +288,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
                                       row_partitions=row_partitions)
     # NOTE: zeros_like is very robust. There aren't arguments that
     # should cause this operation to fail.
-    actual = structured_array_ops.zeros_like_object(st, dtype)
+    actual = array_ops.zeros_like(st, dtype)
     self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.zeros_like_v2(st, dtype)
+    self.assertAllEqual(actual2, expected)
 
   @parameterized.named_parameters([
       dict(
@@ -312,8 +330,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval(values)
     # NOTE: zeros_like is very robust. There aren't arguments that
     # should cause this operation to fail.
-    actual = structured_array_ops.zeros_like_object(st, dtype)
+    actual = array_ops.zeros_like(st, dtype)
     self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.zeros_like_v2(st, dtype)
+    self.assertAllEqual(actual2, expected)
 
   @parameterized.named_parameters([
       dict(
@@ -485,6 +506,47 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     with self.assertRaisesRegex(ValueError, "List cannot be empty"):
       structured_array_ops._extend_op([], leaf_op)
 
+  def testRandomShuffle2021(self):
+    original = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}}])  # pyformat: disable
+    random_seed.set_seed(1066)
+    result = random_ops.random_shuffle(original, seed=2021)
+    expected = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},])  # pyformat: disable
+    self.assertAllEqual(result, expected)
+
+  def testRandomShuffle2022Eager(self):
+    original = StructuredTensor.from_pyval([
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}}])  # pyformat: disable
+    expected = StructuredTensor.from_pyval([
+        {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+        {"x0": 0, "y": {"z": [[3, 13]]}},
+        {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+        {"x0": 4, "y": {"z": [[3], [4]]}},
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}}])  # pyformat: disable
+    random_seed.set_seed(1066)
+    result = structured_array_ops.random_shuffle(original, seed=2022)
+    self.assertAllEqual(result, expected)
+
+  def testRandomShuffleScalarError(self):
+    original = StructuredTensor.from_pyval(
+        {"x0": 2, "y": {"z": [[3, 5], [4]]}})  # pyformat: disable
+
+    with self.assertRaisesRegex(ValueError, "scalar"):
+      random_ops.random_shuffle(original)
+
   def testStructuredTensorArrayLikeNoRank(self):
     """Test when the rank is unknown."""
     @def_function.function
@@ -544,6 +606,233 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
         array_ops.zeros(shape=[5, 3]), [0, 3, 5])
     result = structured_array_ops._structured_tensor_like(rt)
     self.assertEqual(3, result.rank)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="list_empty",
+          params=[{}, {}, {}],
+          indices=[0, 2],
+          axis=0,
+          batch_dims=0,
+          expected=[{}, {}]),
+      dict(
+          testcase_name="list_of_lists_empty",
+          params=[[{}, {}], [{}], [{}, {}, {}]],
+          indices=[2, 0],
+          axis=0,
+          batch_dims=0,
+          expected=[[{}, {}, {}], [{}, {}]]),
+      dict(
+          testcase_name="list_with_fields",
+          params=[{"a": 4, "b": [3, 4]}, {"a": 5, "b": [5, 6]},
+                  {"a": 7, "b": [9, 10]}],
+          indices=[2, 0, 0],
+          axis=0,
+          batch_dims=0,
+          expected=[{"a": 7, "b": [9, 10]}, {"a": 4, "b": [3, 4]},
+                    {"a": 4, "b": [3, 4]}]),
+      dict(
+          testcase_name="list_with_submessages",
+          params=[{"a": {"foo": 3}, "b": [3, 4]},
+                  {"a": {"foo": 4}, "b": [5, 6]},
+                  {"a": {"foo": 7}, "b": [9, 10]}],
+          indices=[2, 0],
+          axis=0,
+          batch_dims=0,
+          expected=[{"a": {"foo": 7}, "b": [9, 10]},
+                    {"a": {"foo": 3}, "b": [3, 4]}]),
+      dict(
+          testcase_name="list_with_empty_submessages",
+          params=[{"a": {}, "b": [3, 4]},
+                  {"a": {}, "b": [5, 6]},
+                  {"a": {}, "b": [9, 10]}],
+          indices=[2, 0],
+          axis=0,
+          batch_dims=0,
+          expected=[{"a": {}, "b": [9, 10]},
+                    {"a": {}, "b": [3, 4]}]),
+      dict(
+          testcase_name="lists_of_lists",
+          params=[[{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                  [{"a": {}, "b": [7, 8, 9]}],
+                  [{"a": {}, "b": []}]],
+          indices=[2, 0, 0],
+          axis=0,
+          batch_dims=0,
+          expected=[[{"a": {}, "b": []}],
+                    [{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                    [{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}]]),
+      dict(
+          testcase_name="lists_of_lists_axis_1",
+          params=[[{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                  [{"a": {}, "b": [7, 8, 9]}, {"a": {}, "b": [2, 8, 2]}],
+                  [{"a": {}, "b": []}, {"a": {}, "b": [4]}]],
+          indices=[1, 0],
+          axis=1,
+          batch_dims=0,
+          expected=[[{"a": {}, "b": [5]}, {"a": {}, "b": [3, 4]}],
+                    [{"a": {}, "b": [2, 8, 2]}, {"a": {}, "b": [7, 8, 9]}],
+                    [{"a": {}, "b": [4]}, {"a": {}, "b": []}]]),
+      dict(
+          testcase_name="lists_of_lists_axis_minus_2",
+          params=[[{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                  [{"a": {}, "b": [7, 8, 9]}],
+                  [{"a": {}, "b": []}]],
+          indices=[2, 0, 0],
+          axis=-2,  # same as 0
+          batch_dims=0,
+          expected=[[{"a": {}, "b": []}],
+                    [{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                    [{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}]]),
+      dict(
+          testcase_name="lists_of_lists_axis_minus_1",
+          params=[[{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
+                  [{"a": {}, "b": [7, 8, 9]}, {"a": {}, "b": [2, 8, 2]}],
+                  [{"a": {}, "b": []}, {"a": {}, "b": [4]}]],
+          indices=[1, 0],
+          axis=-1,  # same as 1
+          batch_dims=0,
+          expected=[[{"a": {}, "b": [5]}, {"a": {}, "b": [3, 4]}],
+                    [{"a": {}, "b": [2, 8, 2]}, {"a": {}, "b": [7, 8, 9]}],
+                    [{"a": {}, "b": [4]}, {"a": {}, "b": []}]]),
+      dict(
+          testcase_name="from_structured_tensor_util_test",
+          params=[{"x0": 0, "y": {"z": [[3, 13]]}},
+                  {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+                  {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+                  {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+                  {"x0": 4, "y": {"z": [[3], [4]]}}],
+          indices=[1, 0, 4, 3, 2],
+          axis=0,
+          batch_dims=0,
+          expected=[{"x0": 1, "y": {"z": [[3], [4, 13]]}},
+                    {"x0": 0, "y": {"z": [[3, 13]]}},
+                    {"x0": 4, "y": {"z": [[3], [4]]}},
+                    {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+                    {"x0": 2, "y": {"z": [[3, 5], [4]]}}]),
+      dict(
+          testcase_name="scalar_index_axis_0",
+          params=[{"x0": 0, "y": {"z": [[3, 13]]}},
+                  {"x0": 1, "y": {"z": [[3], [4, 13]]}},
+                  {"x0": 2, "y": {"z": [[3, 5], [4]]}},
+                  {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+                  {"x0": 4, "y": {"z": [[3], [4]]}}],
+          indices=3,
+          axis=0,
+          batch_dims=0,
+          expected={"x0": 3, "y": {"z": [[3, 7, 1], [4]]}}),
+      dict(
+          testcase_name="params_2D_vector_index_axis_1_batch_dims_1",
+          params=[[{"x0": 0, "y": {"z": [[3, 13]]}},
+                   {"x0": 1, "y": {"z": [[3], [4, 13]]}}],
+                  [{"x0": 2, "y": {"z": [[3, 5], [4]]}},
+                   {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+                   {"x0": 4, "y": {"z": [[3], [4]]}}]],
+          indices=[1, 0],
+          axis=1,
+          batch_dims=1,
+          expected=[{"x0": 1, "y": {"z": [[3], [4, 13]]}},
+                    {"x0": 2, "y": {"z": [[3, 5], [4]]}}]),
+  ])  # pyformat: disable
+  def testGather(self, params, indices, axis, batch_dims, expected):
+    params = StructuredTensor.from_pyval(params)
+    # validate_indices isn't actually used, and we aren't testing names
+    actual = array_ops.gather(
+        params,
+        indices,
+        validate_indices=True,
+        axis=axis,
+        name=None,
+        batch_dims=batch_dims)
+    self.assertAllEqual(actual, expected)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="params_2D_index_2D_axis_1_batch_dims_1",
+          params=[[{"x0": 0, "y": {"z": [[3, 13]]}},
+                   {"x0": 1, "y": {"z": [[3], [4, 13]]}}],
+                  [{"x0": 2, "y": {"z": [[3, 5], [4]]}},
+                   {"x0": 3, "y": {"z": [[3, 7, 1], [4]]}},
+                   {"x0": 4, "y": {"z": [[3], [4]]}}]],
+          indices=[[1, 0], [0, 2]],
+          axis=1,
+          batch_dims=1,
+          expected=[[{"x0": 1, "y": {"z": [[3], [4, 13]]}},
+                     {"x0": 0, "y": {"z": [[3, 13]]}}],
+                    [{"x0": 2, "y": {"z": [[3, 5], [4]]}},
+                     {"x0": 4, "y": {"z": [[3], [4]]}}]]),
+      dict(
+          testcase_name="params_1D_index_2D_axis_0_batch_dims_0",
+          params=[{"x0": 0, "y": {"z": [[3, 13]]}}],
+          indices=[[0], [0, 0]],
+          axis=0,
+          batch_dims=0,
+          expected=[[{"x0": 0, "y": {"z": [[3, 13]]}}],
+                    [{"x0": 0, "y": {"z": [[3, 13]]}},
+                     {"x0": 0, "y": {"z": [[3, 13]]}}]]),
+  ])  # pyformat: disable
+  def testGatherRagged(self, params, indices, axis, batch_dims, expected):
+    params = StructuredTensor.from_pyval(params)
+    # Shouldn't need to do this, but see cl/366396997
+    indices = ragged_factory_ops.constant(indices)
+    # validate_indices isn't actually used, and we aren't testing names
+    actual = array_ops.gather(
+        params,
+        indices,
+        validate_indices=True,
+        axis=axis,
+        name=None,
+        batch_dims=batch_dims)
+    self.assertAllEqual(actual, expected)
+
+  @parameterized.named_parameters([
+      dict(testcase_name="params_scalar",
+           params={"a": [3]},
+           indices=0,
+           axis=0,
+           batch_dims=0,
+           error_type=ValueError,
+           error_regex="axis=0 out of bounds",
+          ),
+      dict(testcase_name="axis_large",
+           params=[{"a": [3]}],
+           indices=0,
+           axis=1,
+           batch_dims=0,
+           error_type=ValueError,
+           error_regex="axis=1 out of bounds",
+          ),
+      dict(testcase_name="axis_large_neg",
+           params=[{"a": [3]}],
+           indices=0,
+           axis=-2,
+           batch_dims=0,
+           error_type=ValueError,
+           error_regex="axis=-2 out of bounds",
+          ),
+      dict(testcase_name="batch_large",
+           params=[[{"a": [3]}]],
+           indices=0,
+           axis=0,
+           batch_dims=1,
+           error_type=ValueError,
+           error_regex="batch_dims=1 out of bounds",
+          ),
+  ])  # pyformat: disable
+  def testGatherError(self,
+                      params,
+                      indices, axis, batch_dims,
+                      error_type,
+                      error_regex):
+    params = StructuredTensor.from_pyval(params)
+    with self.assertRaisesRegex(error_type, error_regex):
+      structured_array_ops.gather(
+          params,
+          indices,
+          validate_indices=True,
+          axis=axis,
+          name=None,
+          batch_dims=batch_dims)
 
 
 if __name__ == "__main__":

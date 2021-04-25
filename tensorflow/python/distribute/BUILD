@@ -1092,6 +1092,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # b/173031470
+        "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [
         ":collective_util",
@@ -1765,6 +1766,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "notsan",  # TODO(b/160006974)
+        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -1797,6 +1799,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # TODO(b/160006974)
+        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [

@@ -41,6 +41,8 @@
 ^tensorflow/python/framework/dtypes.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/framework/dtypes_test.py.*\[W0611.*unused-import
 ^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline
+^tensorflow/python/framework/immutable_dict_test\.py.*\[E1137.*unsupported-assignment-operation
+^tensorflow/python/framework/immutable_dict_test\.py.*\[E1138.*unsupported-delete-operation
 ^tensorflow/python/framework/op_callbacks_test.py.*\[E1102.*not-callable
 ^tensorflow/python/framework/ops.py.*\[E1102.*not-callable
 ^tensorflow/python/framework/ops_test.py.*\[E1130.*invalid-unary-operand-type

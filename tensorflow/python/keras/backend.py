@@ -32,8 +32,6 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager.context import get_config
@@ -49,6 +47,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import object_identity
@@ -313,6 +312,9 @@ def clear_session():
     _GRAPH_LEARNING_PHASES.setdefault(graph)
     _GRAPH_VARIABLES.pop(graph, None)
     _GRAPH_TF_OPTIMIZERS.pop(graph, None)
+  if context.executing_eagerly():
+    # Clear pending nodes in eager executors, kernel caches and step_containers.
+    context.context().clear_kernel_cache()
 
 # Inject the clear_session function to keras_deps to remove the dependency
 # from TFLite to Keras.
@@ -1102,6 +1104,7 @@ def track_tf_optimizer(tf_optimizer):
   optimizers.add(tf_optimizer)
 
 
+@keras_export('keras.__internal__.backend.track_variable', v1=[])
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
@@ -1180,6 +1183,7 @@ def _get_variables(graph=None):
   return variables
 
 
+@keras_export('keras.__internal__.backend.initialize_variables', v1=[])
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
   variables = _get_variables(get_graph())
@@ -3697,7 +3701,7 @@ _VALUE_SET_CODE_STRING = """
 def get_value(x):
   """Returns the value of a variable.
 
-  `backend.get_value` is the compliment of `backend.set_value`, and provides
+  `backend.get_value` is the complement of `backend.set_value`, and provides
   a generic interface for reading from variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3758,7 +3762,7 @@ def batch_get_value(tensors):
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
-  `backend.set_value` is the compliment of `backend.get_value`, and provides
+  `backend.set_value` is the complement of `backend.get_value`, and provides
   a generic interface for assigning to variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3769,7 +3773,7 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value, dtype=dtype(x))
+  value = np.asarray(value, dtype=dtype_numpy(x))
   if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
@@ -3811,7 +3815,7 @@ def batch_set_value(tuples):
         assign_ops = []
         feed_dict = {}
         for x, value in tuples:
-          value = np.asarray(value, dtype=dtype(x))
+          value = np.asarray(value, dtype=dtype_numpy(x))
           tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
           if hasattr(x, '_assign_placeholder'):
             assign_placeholder = x._assign_placeholder
@@ -4051,7 +4055,7 @@ class GraphExecutionFunction:
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(
-            np.asarray(self.feed_dict[key], dtype=key.dtype.base_dtype.name))
+            np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
 
     # Refresh callable if anything has changed.
     if (self._callable_fn is None or feed_arrays != self._feed_arrays or
@@ -6446,7 +6450,7 @@ def configure_and_create_distributed_session(distribution_strategy):
       master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
       session = session_module.Session(config=session_config, target=master)
     else:
-      worker_context = dc_context.get_current_worker_context()
+      worker_context = dc.get_current_worker_context()
       if worker_context:
         dc_session_config = worker_context.session_config
         # Merge the default session config to the one from distribute
@@ -6464,8 +6468,7 @@ def configure_and_create_distributed_session(distribution_strategy):
   if distribution_strategy.extended._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
-        distribution_strategy,
-        mode='independent_worker')
+        distribution_strategy)
   else:
     _create_session(distribution_strategy)
 

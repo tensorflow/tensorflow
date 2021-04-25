@@ -1196,6 +1196,23 @@ inline void GetActivationParams(const P& params, int64_t* min, int64_t* max) {
   *min = params.int64_activation_min;
   *max = params.int64_activation_max;
 }
+
+// Type trait to check of given type has size smaller than 4 bytes.
+template <typename T>
+struct is_small_integer
+    : public std::integral_constant<bool,
+                                    std::is_same<T, int8_t>::value ||
+                                        std::is_same<T, uint8_t>::value ||
+                                        std::is_same<T, int16_t>::value ||
+                                        std::is_same<T, uint16_t>::value> {};
+
+// Type trait to check of given type is int32 or int64.
+template <typename T>
+struct is_int32_or_int64
+    : public std::integral_constant<bool, std::is_same<T, int32_t>::value ||
+                                              std::is_same<T, int64_t>::value> {
+};
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_

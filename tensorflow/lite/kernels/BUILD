@@ -736,18 +736,36 @@ cc_test(
 )
 
 cc_library(
+    name = "gru_cell",
+    srcs = ["gru_cell.cc"],
+    hdrs = ["gru_cell.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "custom_ops",
     srcs = [
         "multinomial.cc",
         "random_standard_normal.cc",
         "random_uniform.cc",
+        "unidirectional_sequence_gru.cc",
     ],
     hdrs = ["custom_ops_register.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":gru_cell",
         ":kernel_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "@ruy//ruy/profiler:instrumentation",
@@ -2473,6 +2491,19 @@ cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unidirectional_sequence_gru_test",
+    size = "small",
+    srcs = ["unidirectional_sequence_gru_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":custom_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

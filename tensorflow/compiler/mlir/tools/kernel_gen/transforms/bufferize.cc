@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -408,15 +409,36 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
     return success();
   }
 };
+
+// Bufferize linalg.tensor_reshape to linalg.reshape. This changes the semantics
+// from value based to metadata-only, so it's only safe to use within
+// kernelgen's environment.
+// TODO(pifon): Revisit this when tensor.reshape lands.
+class BufferizeTensorReshapeOp
+    : public OpConversionPattern<linalg::TensorReshapeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      linalg::TensorReshapeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    linalg::TensorReshapeOp::Adaptor adaptor(operands);
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
+    auto memref_type =
+        MemRefType::get(result_type.getShape(), result_type.getElementType());
+    rewriter.replaceOpWithNewOp<linalg::ReshapeOp>(
+        op, memref_type, adaptor.src(), op.getReassociationExprs());
+    return success();
+  }
+};
 }  // namespace
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       RewritePatternSet *patterns) {
-  patterns
-      ->insert<BufferizeConstantOp, BufferizeDimOp,
-               BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(
-          *converter, context);
+  patterns->insert<BufferizeConstantOp, BufferizeDimOp,
+                   BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp,
+                   BufferizeTensorReshapeOp>(*converter, context);
 }
 
 }  // namespace transforms

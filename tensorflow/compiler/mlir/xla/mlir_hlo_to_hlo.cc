@@ -898,7 +898,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
       failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
   }

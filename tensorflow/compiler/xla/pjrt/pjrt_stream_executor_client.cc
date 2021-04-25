@@ -1280,6 +1280,26 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
               /*prefer_to_retain_reference=*/true);
 }
 
+StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
+  absl::MutexLock lock(&mu_);
+  if (device_buffer_ == nullptr) {
+    return InvalidArgument(
+        "GetOnDeviceSizeInBytes called on deleted or donated buffer");
+  }
+  if (device_buffer_->device_memory().size() != 1) {
+    return InvalidArgument(
+        "GetOnDeviceSizeInBytes called on tuple-shaped buffer");
+  }
+  return device_buffer_->device_memory()[0].size();
+}
+
+Status PjRtStreamExecutorBuffer::CopyRawToHost(
+    void* dst, int64 offset, int64 transfer_size,
+    std::function<void(Status)> on_ready) {
+  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
+                                         std::move(on_ready));
+}
+
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
   absl::MutexLock lock(&mu_);
   if (device_buffer_ == nullptr) {

@@ -89,8 +89,9 @@ class LocalDeviceState {
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                   AllocationModel allocation_model, bool asynchronous,
-                   bool allow_event_reuse, bool use_callback_stream);
+                   AllocationModel allocation_model,
+                   int max_inflight_computations, bool allow_event_reuse,
+                   bool use_callback_stream);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }

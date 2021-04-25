@@ -263,7 +263,7 @@ tf_cuda_cc_test(
     srcs = [
         "gradients_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -300,7 +300,7 @@ tf_cuda_cc_test(
     srcs = [
         "unified_api_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
     deps = [
@@ -344,7 +344,7 @@ tf_cuda_cc_test(
     srcs = [
         "gradient_checker_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/175330074
@@ -715,7 +715,7 @@ tf_cuda_cc_test(
         "c_api_remote_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -747,7 +747,7 @@ tf_cuda_cc_test(
         "c_api_remote_function_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -765,7 +765,7 @@ tf_cuda_cc_test(
         "c_api_distributed_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
         "noasan",  # leaks gRPC server instances
@@ -798,7 +798,7 @@ tf_cuda_cc_test(
         "c_api_cluster_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -904,7 +904,7 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -927,7 +927,7 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_unified_experimental_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [

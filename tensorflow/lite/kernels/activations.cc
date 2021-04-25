@@ -638,6 +638,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(input->dims));
 }
 
+template <KernelType kernel_type>
 TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   LogSoftmaxOpData* data = reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
 
@@ -658,11 +659,28 @@ TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     if (input->type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 127);
     }
-    data->params.table = data->f_table;
-    optimized_ops::PopulateSoftmaxLookupTable(&data->params,
-                                              input->params.scale, kBeta);
-    data->params.zero_point = output->params.zero_point;
-    data->params.scale = output->params.scale;
+
+    if (kernel_type == kReference) {
+      const int kScaledDiffIntegerBits = 5;
+      int input_left_shift;
+      int reverse_scaling_right_shift;
+      tflite::PreprocessLogSoftmaxScalingExp(
+          kBeta, static_cast<double>(input->params.scale),
+          kScaledDiffIntegerBits, &data->params.input_multiplier,
+          &input_left_shift, &data->params.reverse_scaling_divisor,
+          &reverse_scaling_right_shift);
+      reverse_scaling_right_shift *= -1;
+      data->params.input_left_shift = input_left_shift;
+      data->params.reverse_scaling_right_shift = reverse_scaling_right_shift;
+      data->params.diff_min = -tflite::CalculateInputRadius(
+          kScaledDiffIntegerBits, input_left_shift);
+    } else {
+      data->params.table = data->f_table;
+      optimized_ops::PopulateSoftmaxLookupTable(&data->params,
+                                                input->params.scale, kBeta);
+      data->params.zero_point = output->params.zero_point;
+      data->params.scale = output->params.scale;
+    }
   }
 
   return context->ResizeTensor(context, output,
@@ -1188,7 +1206,7 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      SoftmaxParams op_params = data->params;
+      const SoftmaxParams& op_params = data->params;
       if (kernel_type == kGenericOptimized) {
         optimized_ops::LogSoftmax(
             op_params, input->params.scale, GetTensorShape(input),
@@ -1202,8 +1220,8 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
+      const SoftmaxParams& op_params = data->params;
       if (kernel_type == kGenericOptimized) {
-        SoftmaxParams op_params = data->params;
         optimized_ops::LogSoftmax(
             op_params, input->params.scale, GetTensorShape(input),
             GetTensorData<int8_t>(input), GetTensorShape(output),
@@ -1217,9 +1235,10 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         const int depth =
             MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
         reference_integer_ops::LogSoftmax(
-            data->input_multiplier, data->input_left_shift,
-            data->reverse_scaling_divisor, data->reverse_scaling_right_shift,
-            data->diff_min, outer_size, depth, GetTensorData<int8_t>(input),
+            op_params.input_multiplier, op_params.input_left_shift,
+            op_params.reverse_scaling_divisor,
+            op_params.reverse_scaling_right_shift, op_params.diff_min,
+            outer_size, depth, GetTensorData<int8_t>(input),
             GetTensorData<int8_t>(output));
       }
       return kTfLiteOk;
@@ -1534,7 +1553,7 @@ TfLiteRegistration* Register_SOFTMAX() {
 TfLiteRegistration* Register_LOG_SOFTMAX_REF() {
   static TfLiteRegistration r = {
       activations::LogSoftmaxInit, activations::LogSoftmaxFree,
-      activations::LogSoftmaxPrepare,
+      activations::LogSoftmaxPrepare<activations::kReference>,
       activations::LogSoftmaxEval<activations::kReference>};
   return &r;
 }
@@ -1542,7 +1561,7 @@ TfLiteRegistration* Register_LOG_SOFTMAX_REF() {
 TfLiteRegistration* Register_LOG_SOFTMAX() {
   static TfLiteRegistration r = {
       activations::LogSoftmaxInit, activations::LogSoftmaxFree,
-      activations::LogSoftmaxPrepare,
+      activations::LogSoftmaxPrepare<activations::kGenericOptimized>,
       activations::LogSoftmaxEval<activations::kGenericOptimized>};
   return &r;
 }

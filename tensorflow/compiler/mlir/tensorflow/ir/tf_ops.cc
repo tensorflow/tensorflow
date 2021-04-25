@@ -98,7 +98,8 @@ struct TFConstantFoldInterface : public DialectFoldInterface {
 struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
   TFDecodeAttributesInterface(Dialect *dialect)
       : DialectDecodeAttributesInterface(dialect) {}
-  LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) const {
+  LogicalResult decode(OpaqueElementsAttr input,
+                       ElementsAttr &output) const override {
     return TensorFlowDialect::decode(input, output);
   }
 };
@@ -271,82 +272,6 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
-namespace {
-
-ShapeAttr ParseShapeAttr(MLIRContext *context, StringRef spec, Location loc) {
-  auto emit_error = [&, spec]() {
-    emitError(loc, "invalid TensorFlow shape attribute: ") << spec;
-    return nullptr;
-  };
-
-  if (!spec.consume_front("shape<")) return emit_error();
-
-  if (spec.consume_front("*>"))
-    return mlir::TF::ShapeAttr::get(context, llvm::None);
-
-  SmallVector<int64_t, 4> shape;
-  while (!spec.consume_front(">")) {
-    int64_t dim;
-
-    if (spec.consume_front("?"))
-      dim = -1;
-    else if (spec.consumeInteger(10, dim) || dim < 0)
-      return emit_error();
-
-    spec.consume_front("x");
-
-    shape.push_back(dim);
-  }
-
-  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(shape));
-}
-
-void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
-  os << "shape";
-
-  os << "<";
-  if (attr.hasRank()) {
-    auto print_dim = [&](int64_t dim) {
-      if (dim > -1)
-        os << dim;
-      else
-        os << "?";
-    };
-    llvm::interleave(attr.getShape(), os, print_dim, "x");
-  } else {
-    os << "*";
-  }
-  os << ">";
-}
-
-}  // namespace
-
-Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
-                                            Type type) const {
-  auto spec = parser.getFullSymbolSpec();
-  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
-
-  if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
-
-  {
-    StringRef attrTag;
-    if (failed(parser.parseKeyword(&attrTag))) return Attribute();
-    Attribute attr;
-    OptionalParseResult parseResult =
-        ParseTensorFlowAttribute(getContext(), parser, attrTag, type, attr);
-    if (parseResult.hasValue()) return attr;
-  }
-
-  return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
-}
-
-void TensorFlowDialect::printAttribute(Attribute attr,
-                                       DialectAsmPrinter &os) const {
-  if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
-    PrintShapeAttr(shape_attr, os);
-  else
-    printTensorFlowAttribute(attr, os);
-}
 
 // Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {

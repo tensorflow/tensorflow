@@ -24,13 +24,13 @@ mbed. Here's an example on how to do that. Start by generating an mbed project.
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn \
-generate_person_detection_mbed_project
+generate_person_detection_int8_mbed_project
 ```
 
 Go into the generated mbed project folder, currently:
 
 ```
-tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/person_detection_int8/mbed
+tensorflow/lite/micro/tools/make/gen/linux_x86_64_default/prj/person_detection_int8/mbed
 ```
 
 and setup mbed.
@@ -51,7 +51,7 @@ There's also a dependency to an old cmsis_gcc.h, which you can fix with the
 following:
 
 ```
-tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
 cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
 ```
 

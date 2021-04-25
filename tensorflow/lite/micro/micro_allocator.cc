@@ -1080,6 +1080,9 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
                                    memory_allocator_->GetHeadBuffer(),
                                    allocation_info, allocation_info_count));
+#ifdef TF_LITE_SHOW_MEMORY_USE
+  planner.PrintMemoryPlan(error_reporter_);
+#endif
   head_usage = planner.GetMaximumMemorySize();
 
   // The head is used to store memory plans for one model at a time during the

@@ -4618,7 +4618,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -5768,10 +5774,6 @@ cc_library(
 )
 
 # Android libraries -----------------------------------------------------------
-
-# Changes to the Android srcs here should be replicated in
-# tensorflow/contrib/makefile/tf_op_files.txt
-# LINT.IfChange
 filegroup(
     name = "mobile_srcs",
     srcs = [
@@ -5809,7 +5811,7 @@ alias(
 # Core kernels we want on Android. Only a subset of kernels to keep
 # base library small.
 filegroup(
-    name = "android_core_ops",
+    name = "portable_core_ops",
     srcs = [
         "aggregate_ops.cc",
         "aggregate_ops.h",
@@ -5922,7 +5924,7 @@ filegroup(
         "variable_ops.cc",
         "variable_ops.h",
     ] + [
-        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",
     ],
@@ -5936,17 +5938,17 @@ filegroup(
 # organizational reasons; you should not depend on any
 # of those groups independently.
 filegroup(
-    name = "android_extended_ops",
+    name = "portable_extended_ops",
     srcs = [
-        ":android_extended_ops_group1",
-        ":android_extended_ops_group2",
-        ":android_quantized_ops",
+        ":portable_extended_ops_group1",
+        ":portable_extended_ops_group2",
+        ":portable_quantized_ops",
     ],
     visibility = ["//visibility:public"],
 )
 
 filegroup(
-    name = "android_extended_ops_headers",
+    name = "portable_extended_ops_headers",
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
@@ -6060,9 +6062,9 @@ filegroup(
 )
 
 filegroup(
-    name = "android_extended_ops_group1",
+    name = "portable_extended_ops_group1",
     srcs = [
-        ":android_extended_ops_headers",
+        ":portable_extended_ops_headers",
         "argmax_op.cc",
         "avgpooling_op.cc",
         "batch_norm_op.cc",
@@ -6202,9 +6204,10 @@ filegroup(
 )
 
 filegroup(
-    name = "android_extended_ops_group2",
+    name = "portable_extended_ops_group2",
     srcs = [
-        ":android_extended_ops_headers",
+        ":portable_extended_ops_headers",
+        "as_string_op.cc",
         "base64_ops.cc",
         "batchtospace_op.cc",
         "bincount_op.cc",
@@ -6359,6 +6362,8 @@ filegroup(
         "xent_op.cc",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
+        # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
+        "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
@@ -6401,7 +6406,7 @@ filegroup(
 )
 
 filegroup(
-    name = "android_quantized_ops",
+    name = "portable_quantized_ops",
     srcs = [
         "dequantize_op.cc",
         "meta_support.cc",
@@ -6442,15 +6447,15 @@ ANDROID_TEXTUAL_HDRS = [
 ]
 
 # A file group which contains nearly all available operators which
-# may work on Android. This is intended to be used with selective
+# may work on mobile environment. This is intended to be used with selective
 # registration.
 filegroup(
-    name = "android_all_ops",
+    name = "portable_all_ops",
     srcs = [
-        "//tensorflow/c/kernels:android_all_op_kernels",
-        "//tensorflow/core/kernels/data:android_all_op_kernels",
-        "//tensorflow/core/kernels/image:android_all_op_kernels",
-        "//tensorflow/core/kernels/linalg:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
+        "//tensorflow/core/kernels/data:portable_all_op_kernels",
+        "//tensorflow/core/kernels/image:portable_all_op_kernels",
+        "//tensorflow/core/kernels/linalg:portable_all_op_kernels",
     ] + glob(
         [
             "*.cc",
@@ -6517,21 +6522,30 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "android_all_ops",
+    actual = ":portable_all_ops",
+)
+
 filegroup(
-    name = "android_all_ops_textual_hdrs",
+    name = "portable_all_ops_textual_hdrs",
     srcs = ANDROID_TEXTUAL_HDRS + [
-        "//tensorflow/core/kernels/image:android_all_ops_textual_hdrs",
+        "//tensorflow/core/kernels/image:portable_all_ops_textual_hdrs",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
     visibility = ["//visibility:public"],
 )
-# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
+
+alias(
+    name = "android_all_ops_textual_hdrs",
+    actual = "portable_all_ops_textual_hdrs",
+)
 
 cc_library(
     name = "portable_tensorflow_kernels",
     srcs = if_mobile([
-        "//tensorflow/core/kernels:android_core_ops",
-        "//tensorflow/core/kernels:android_extended_ops",
+        "//tensorflow/core/kernels:portable_core_ops",
+        "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
     linkopts = if_android(["-ldl"]),

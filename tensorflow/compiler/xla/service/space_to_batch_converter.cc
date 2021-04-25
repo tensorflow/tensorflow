@@ -2198,7 +2198,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     if (spatial_split_size < new_space_size) {
       // If there's a stride mismatch, we change the new_space_size be
       // smaller (equal to spatial_split_size).
-      if (new_space_size % c.stride != 0) {
+      if (new_space_size % c.stride != 0 || c.base_dilation_factor != 1) {
         TF_ASSIGN_OR_RETURN(
             activations_new,
             DecreaseSpatialSizeOnSpaceToBatchedShape(
@@ -2706,6 +2706,10 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
           << inherent_low_padding << " inherent_high_padding "
           << inherent_high_padding;
 
+  const int64 total_overlap_count =
+      overlap_count + (inherent_low_padding > 0 ? inherent_low_padding : 0) +
+      (inherent_high_padding > 0 ? inherent_high_padding : 0);
+
   // Insert original activations.
   for (int64 i = 0; i < overlap_count; ++i) {
     HloInstruction* activations_to_use = nullptr;
@@ -2760,6 +2764,8 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     input_sizes.push_back(1);
     TF_ASSIGN_OR_RETURN(activations_chunks[i],
                         MakeReshapeHlo(input_sizes, activations_chunks[i]));
+    VLOG(1) << "new_spatial_dimension " << new_spatial_dimension << " slice "
+            << activations_chunks[i]->ToString();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -2785,7 +2791,13 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   auto window_dim = new_window.add_dimensions();
   window_dim->set_base_dilation(1);
   window_dim->set_size(1);
-  window_dim->set_stride(1);
+  int64 stride = 1;
+  // This condition means there's only a single overlap possible (as the shapes
+  // were grown due to padding). In this case, we increase the stride.
+  if (activations_chunks.size() > total_overlap_count) {
+    stride = activations_chunks.size();
+  }
+  window_dim->set_stride(stride);
   window_dim->set_padding_low(0);
   window_dim->set_padding_high(0);
   window_dim->set_window_reversal(false);

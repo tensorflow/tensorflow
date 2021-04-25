@@ -104,7 +104,7 @@ class TimelineTest(test.TestCase):
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in devices)
-    self.assertTrue('/device:GPU:0/stream:all' in devices)
+    self.assertIn('/device:GPU:0/stream:all', devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
