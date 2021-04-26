@@ -502,43 +502,16 @@ class StructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(toy_info.boxes['green'], [b'car'])
     self.assertAllEqual(toy_info.boxes['blue'], ['car', 'book', 'book'])
 
-    if context.executing_eagerly():
-      expected_repr = (
-          "ToyInfo(version='1.0 alpha', "
-          "toys=(('car', <tf.Tensor: shape=(), dtype=float32, numpy=1.0>, "
-          'ImmutableDict('
-          "{'size': <tf.Tensor: shape=(3,), dtype=int32, "
-          'numpy=array([8, 3, 2], dtype=int32)>, '
-          "'color': <tf.Tensor: shape=(3,), dtype=float32, "
-          'numpy=array([0.3, 0.2, 0.8], dtype=float32)>})), '
-          "('book', <tf.Tensor: shape=(), dtype=float32, numpy=3.7>, "
-          'ImmutableDict('
-          "{'authors': <tf.RaggedTensor [[b'A', b'Aardvark'], "
-          "[b'Z', b'Zhook']]>}))), "
-          'boxes=ImmutableDict('
-          "{'green': <tf.Tensor: shape=(1,), dtype=string, "
-          "numpy=array([b'car'], dtype=object)>, "
-          "'blue': <tf.Tensor: shape=(3,), "
-          "dtype=string, numpy=array([b'car', b'book', b'book'], "
-          'dtype=object)>}))')
-    else:
-      expected_repr = (
-          "ToyInfo(version='1.0 alpha', "
-          "toys=(('car', <tf.Tensor 'Const:0' shape=() dtype=float32>, "
-          'ImmutableDict('
-          "{'size': <tf.Tensor 'Const_1:0' shape=(3,) dtype=int32>, "
-          "'color': <tf.Tensor 'Const_2:0' shape=(3,) dtype=float32>})), "
-          "('book', <tf.Tensor 'Const_3:0' shape=() dtype=float32>, "
-          'ImmutableDict('
-          "{'authors': tf.RaggedTensor(values=Tensor("
-          '"RaggedConstant/values:0", shape=(4,), dtype=string), '
-          'row_splits=Tensor("RaggedConstant/Const:0", shape=(3,), '
-          'dtype=int64))}))), '
-          'boxes=ImmutableDict({'
-          "'green': <tf.Tensor 'Const_4:0' shape=(1,) dtype=string>, "
-          "'blue': <tf.Tensor 'Const_5:0' shape=(3,) dtype=string>}))")
+    expected_repr = (
+        r"ToyInfo\(version='1.0 alpha', toys=\("
+        r"\('car', <tf.Tensor[^>]*>, ImmutableDict\("
+        r"{'size': <tf.Tensor[^>]*>, 'color': <tf.Tensor[^>]*>}\)\), "
+        r"\('book', <tf.Tensor[^>]*>, ImmutableDict\("
+        r"{'authors': (<tf.RaggedTensor[^>]*>|tf.RaggedTensor\(.*\))}\)\)\), "
+        r'boxes=ImmutableDict\('
+        r"{'green': <tf.Tensor[^>]*>, 'blue': <tf.Tensor[^>]*>}\)\)")
 
-    self.assertEqual(repr(toy_info), expected_repr)
+    self.assertRegex(repr(toy_info), expected_repr)
 
   def testNestedStructs(self):
     MaskedTensor = build_simple_masked_tensor_type()

@@ -1655,7 +1655,6 @@ tf_py_test(
     srcs = ["tensor_struct_test.py"],
     main = "tensor_struct_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],  # b/186273855
     deps = [
         ":tensor_struct",
         ":test_lib",
