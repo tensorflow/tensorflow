@@ -68,6 +68,7 @@
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
+    *   Add `keepdims` argument to all `GlobalPooling` layers.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
 
