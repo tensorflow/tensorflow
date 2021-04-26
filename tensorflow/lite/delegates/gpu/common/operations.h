@@ -45,6 +45,7 @@ enum class OperationType {
   COPY,
   COS,
   DEPTHWISE_CONVOLUTION,
+  DEPTH_TO_SPACE,
   DIV,
   ELU,
   EQUAL,

@@ -1982,6 +1982,8 @@ XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
 XLA_NULLOP_PATTERN(Iota)
 XLA_NULLOP_PATTERN(Rng)
+XLA_NULLOP_PATTERN(PartitionId)
+XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.

@@ -1976,8 +1976,8 @@ class CosineSimilarity(LossFunctionWrapper):
   >>> y_pred = [[1., 0.], [1., 1.]]
   >>> # Using 'auto'/'sum_over_batch_size' reduction type.
   >>> cosine_loss = tf.keras.losses.CosineSimilarity(axis=1)
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414, 1./1.414]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414, 1./1.414]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #       = -((0. + 0.) +  (0.5 + 0.5)) / 2

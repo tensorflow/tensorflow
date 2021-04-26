@@ -596,7 +596,7 @@ Status GetOrCreateKernelAndDevice(
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
-      DVLOG(4) << "Available kernels for " << op->Name() << "are "
+      DVLOG(4) << "Available kernels for " << op->Name() << " are"
                << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
     }

@@ -20,6 +20,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   // CHECK-LABEL: func @no_outside_compilation
   func @no_outside_compilation() -> tensor<2xi32> {
+    // CHECK-NOT: "tf_device.parallel_execute"
     %0 = "tf_device.cluster"() ( {
       %1 = "tf.A"() : () -> tensor<2xi32>
       %2 = "tf.B"(%1) : (tensor<2xi32>) -> tensor<2xi32>
@@ -28,7 +29,17 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return %0 : tensor<2xi32>
   }
 
-  // CHECK-NOT: "tf_device.parallel_execute"
+  // CHECK-LABEL: func @attribute_outside_of_cluster
+  func @attribute_outside_of_cluster() -> tensor<2xi32> {
+    // CHECK-NOT: _xla_outside_compilation
+    %0 = "tf_device.cluster"() ( {
+      %1 = "tf.A"() : () -> tensor<2xi32>
+      tf_device.return %1 : tensor<2xi32>
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+    %2 = "tf.B"(%0) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+
 
   // Tests extraction of a single outside compiled cluster with no input or output dependencies.
 

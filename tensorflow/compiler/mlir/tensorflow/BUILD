@@ -23,6 +23,7 @@ package_group(
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
+        "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/python/...",
     ],
 )
@@ -983,6 +984,7 @@ cc_library(
         "transforms/gpu_fusion.cc",
         "transforms/graph_pruning.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
@@ -1308,7 +1310,6 @@ cc_library(
         ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

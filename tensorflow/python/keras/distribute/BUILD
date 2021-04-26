@@ -32,6 +32,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":distribute_coordinator_utils",
         ":sidecar_evaluator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
@@ -50,7 +51,6 @@ py_library(
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -898,6 +898,8 @@ distribute_py_test(
     shard_count = 1,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # TODO(b/186361027)
+        "no_oss",  # TODO(b/186248973)
         "no_tfrt",
         "notpu",
         "no_rocm", # times out

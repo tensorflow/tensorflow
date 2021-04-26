@@ -1049,6 +1049,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
+  m.def("TFE_ContextOptionsSetTfrtDistributedRuntime",
+        &TFE_ContextOptionsSetTfrtDistributedRuntime);
   // Experimental feature, intentionally not exposed as a C API yet.
   m.def("TFE_ContextOptionsSetRunEagerOpAsFunction",
         [](TFE_ContextOptions* options, bool run_eager_op_as_function) {

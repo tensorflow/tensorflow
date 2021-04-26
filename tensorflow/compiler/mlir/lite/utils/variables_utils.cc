@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/utils/variables_utils.h"
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -28,7 +29,26 @@ bool IsSupportedVariableType(Operation* op) {
   } else if (llvm::isa<TF::AssignVariableOp>(op)) {
     type = op->getOperand(1).getType().cast<ShapedType>();
   }
-  return type.getElementType().isF32();
+  auto element_type = type.getElementType();
+  // Check complex types.
+  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+    auto complex_element_type = complex_type.getElementType();
+    if (complex_element_type.isF32() || complex_element_type.isF64())
+      return true;
+  }
+  // Check quantized types.
+  if (auto quant_type = element_type.dyn_cast<mlir::quant::QuantizedType>()) {
+    // TFLite supports QI16, QI32, QI8, and QUI8
+    if ((quant_type.getStorageTypeIntegralWidth() == 16 &&
+         quant_type.isSigned()) ||
+        quant_type.getStorageTypeIntegralWidth() == 8 ||
+        (quant_type.getStorageTypeIntegralWidth() == 32 &&
+         quant_type.isSigned()))
+      return true;
+  }
+  return element_type.isF32() || element_type.isF64() ||
+         element_type.isInteger(1) || element_type.isInteger(8) ||
+         element_type.isInteger(32) || element_type.isSignlessInteger(64);
 }
 
 }  // namespace utils

@@ -37,10 +37,9 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],
-)
+package(default_visibility = [":internal"])
+
+licenses(["notice"])
 
 exports_files([
     "LICENSE",
@@ -983,6 +982,17 @@ tf_cc_shared_object(
         ],
         "//tensorflow:windows": [
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:asan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # "//tools/cpp:msan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # "//tools/cpp:tsan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # copybara:uncomment_end
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
