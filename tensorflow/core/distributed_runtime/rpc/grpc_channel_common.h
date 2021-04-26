@@ -59,7 +59,9 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
     {
       mutex_lock l(mu_);
-      auto [iter, was_inserted] = channels_.insert({target, new_chan_state});
+      typename absl::flat_hash_map<string, ChannelState>::iterator iter;
+      bool was_inserted;
+      std::tie(iter, was_inserted) = channels_.insert({target, new_chan_state});
       VLOG(2) << "Channel cache for target: " << target
               << " Size: " << new_chan_state.channels.size()
               << " insertion: " << was_inserted;
