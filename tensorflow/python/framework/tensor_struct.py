@@ -415,10 +415,24 @@ def _wrap_user_constructor(cls):
 # TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_struct_constructor(cls):
   """Builds a constructor for tf.Struct subclass `cls`."""
+  fields = cls._tf_struct_fields()  # pylint: disable=protected-access
+
+  # Check that no-default fields don't follow default fields.  (Otherwise, we
+  # can't build a well-formed constructor.)
+  default_fields = []
+  for field in fields:
+    if field.default is not struct_field.StructField.NO_DEFAULT:
+      default_fields.append(field.name)
+    elif default_fields:
+      raise ValueError(
+          f'In definition for {cls.__name__}: Field without default '
+          f'{field.name!r} follows field with default {default_fields[-1]!r}.  '
+          f'Either add a default value for {field.name!r}, or move it before '
+          f'{default_fields[0]!r} in the field annotations.')
 
   params = []
   kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
-  for field in cls._tf_struct_fields():  # pylint: disable=protected-access
+  for field in fields:
     if field.default is struct_field.StructField.NO_DEFAULT:
       default = tf_inspect.Parameter.empty
     else:

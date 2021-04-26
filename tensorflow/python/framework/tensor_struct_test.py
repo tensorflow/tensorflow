@@ -203,6 +203,39 @@ class StructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(x.mean, 3.5)
     self.assertAllEqual(x.max, 6)
 
+  class Node(tensor_struct.Struct):
+    x: ops.Tensor
+    y: typing.Optional[str] = None
+    children: typing.Tuple['StructTest.Node', ...] = ()
+
+  def testCustomConstructorWithDefaultValues(self):
+    a = StructTest.Node(5)
+    self.assertAllEqual(a.x, 5)
+    self.assertIsNone(a.y)
+    self.assertEqual(a.children, ())
+
+    b = StructTest.Node(6, 'blue')
+    self.assertAllEqual(b.x, 6)
+    self.assertEqual(b.y, 'blue')
+    self.assertEqual(b.children, ())
+
+    c = StructTest.Node(7, children=(a, b))
+    self.assertAllEqual(c.x, 7)
+    self.assertIsNone(c.y)
+    self.assertEqual(c.children, (a, b))
+
+  def testCustomConstructorNondefaultCanotFollowDefault(self):
+    with self.assertRaisesRegex(
+        ValueError, "Field without default 'd' follows field with default 'c'"):
+
+      class MyStruct(tensor_struct.Struct):
+        a: int
+        b: str = 'Hello world'
+        c: typing.Optional[ops.Tensor] = None
+        d: ops.Tensor
+
+      del MyStruct
+
   def testCustomConstrutorCantMutateNestedValues(self):
 
     class Foo(tensor_struct.Struct):
