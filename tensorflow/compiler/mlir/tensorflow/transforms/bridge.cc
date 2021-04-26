@@ -85,11 +85,11 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addPass(CreateTPUClusterFormationPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
-    pm.addPass(CreateTPUClusterFormationPass());
-    pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
