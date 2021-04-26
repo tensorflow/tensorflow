@@ -518,8 +518,8 @@ flatbuffer_cc_library(
     srcs = ["serialization.fbs"],
     flatc_args = [
         "--scoped-enums",
+        "-I " + workspace_root,
     ],
-    include_paths = [workspace_root],
     includes = [
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
     ],
