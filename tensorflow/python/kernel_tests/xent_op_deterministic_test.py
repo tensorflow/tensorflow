@@ -20,11 +20,16 @@ from __future__ import print_function
 
 import os
 
+import numpy as np
+
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import nn_ops
+# The following import is required to register the gradient function.
+from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
@@ -51,9 +56,70 @@ class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
             errors_impl.UnimplementedError,
             "Deterministic GPU implementation of " +
             "SoftmaxCrossEntropyWithLogits not available."):
-          result = nn_ops.softmax_cross_entropy_with_logits(
+          result = nn_ops.softmax_cross_entropy_with_logits_v2(
               labels=labels, logits=logits)
           self.evaluate(result)
+
+
+class SoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
+  """Test that SoftmaxCrossEntropyWithLogits operates reproducibly."""
+
+  def _randomFloats(self, shape, dtype, normalized_rows=False):
+    a = (2 * np.random.random_sample(shape) - 1).astype(dtype)
+
+    if normalized_rows:
+
+      def normalize(row):
+        return row / row.sum()
+
+      a = np.apply_along_axis(normalize, 1, a)
+
+    return constant_op.constant(a)
+
+  def _generateInputs(self, dtype, seed=123):
+    batch_size = 1024
+    classes_count = 1000
+    shape = (batch_size, classes_count)
+    np.random.seed(seed)
+    labels = self._randomFloats(shape, dtype, normalized_rows=True)
+    logits = self._randomFloats(shape, dtype)
+    return labels, logits
+
+  @test_util.run_in_graph_and_eager_modes
+  def testForward(self):
+    with self.session(), test_util.force_cpu():
+      for dtype in [np.float16, np.float32, np.float64]:
+        for trial in range(5):
+          seed = 123 + trial
+          labels, logits = self._generateInputs(dtype, seed=seed)
+          result_a = nn_ops.softmax_cross_entropy_with_logits_v2(
+              labels=labels, logits=logits)
+          result_b = nn_ops.softmax_cross_entropy_with_logits_v2(
+              labels=labels, logits=logits)
+          self.assertAllEqual(result_a, result_b)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBackward(self):
+    with self.session(), test_util.force_cpu():
+      for dtype in [np.float16, np.float32, np.float64]:
+        labels, logits = self._generateInputs(dtype, seed=456)
+        output_shape = labels.shape[0]
+
+        def gradients(seed=789):
+          np.random.seed(seed)
+          upstream_gradients = self._randomFloats(output_shape, dtype)
+          with backprop.GradientTape(persistent=True) as tape:
+            tape.watch(logits)
+            op_output = nn_ops.softmax_cross_entropy_with_logits_v2(
+                labels=labels, logits=logits)
+            gradient_injector_output = op_output * upstream_gradients
+          return tape.gradient(gradient_injector_output, logits)
+
+        for trial in range(5):
+          seed = 456 + trial
+          result_a = gradients(seed=seed)
+          result_b = gradients(seed=seed)
+          self.assertAllEqual(result_a, result_b)
 
 
 if __name__ == "__main__":

@@ -1278,7 +1278,10 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
 
   nested_splits_list = [rt.nested_row_splits for rt in (y_true, y_pred)]
   if y_pred_extra_dim:
-    nested_splits_list[1] = nested_splits_list[1][:-1]
+    # The last dimension of a categorical prediction may be ragged or not.
+    rdims = [len(slist) for slist in nested_splits_list]
+    if rdims[0] == rdims[1] - 1:
+      nested_splits_list[1] = nested_splits_list[1][:-1]
 
   map_fn = functools.partial(_wrapper, ragged_output=len(lshape) > 1)
 
@@ -1973,8 +1976,8 @@ class CosineSimilarity(LossFunctionWrapper):
   >>> y_pred = [[1., 0.], [1., 1.]]
   >>> # Using 'auto'/'sum_over_batch_size' reduction type.
   >>> cosine_loss = tf.keras.losses.CosineSimilarity(axis=1)
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414, 1./1.414]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414, 1./1.414]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #       = -((0. + 0.) +  (0.5 + 0.5)) / 2

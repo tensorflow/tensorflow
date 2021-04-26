@@ -333,6 +333,69 @@ class CastOperationParser : public TFLiteOperationParser {
   }
 };
 
+class ClampOperationsParser : public TFLiteOperationParser {
+ public:
+  explicit ClampOperationsParser(float clamp_a, float clamp_b)
+      : clamp_a_(clamp_a), clamp_b_(clamp_b) {}
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    // clamp(v, a, b) = clamp(v - a, 0.0, b - a) + a;
+    // We replace clamp(...) with sequence of elementwise ops:
+    // substaction -> usual relu with alpha = 0.0 -> addition.
+    // node_sub = v0 = v - a // add op (add -a)
+    // node_relu = v1 = clamp(v0, 0.0, clip); // relu op alpha = 0.0,
+    // clip = b - a;
+    // node_add = v2 = v1 + a // add op (add a)
+    Node* node_sub = graph->NewNode();
+    Node* node_relu = graph->NewNode();
+    Node* node_add = graph->NewNode();
+
+    ElementwiseAttributes sub_attr;
+    sub_attr.param = -clamp_a_;
+    node_sub->operation.type = ToString(OperationType::ADD);
+    node_sub->operation.attributes = std::move(sub_attr);
+
+    ReLUAttributes relu_attr;
+    relu_attr.alpha = 0.0f;
+    relu_attr.clip = clamp_b_ - clamp_a_;
+    node_relu->operation.type = ToString(OperationType::RELU);
+    node_relu->operation.attributes = relu_attr;
+
+    ElementwiseAttributes add_attr;
+    add_attr.param = clamp_a_;
+    node_add->operation.type = ToString(OperationType::ADD);
+    node_add->operation.attributes = std::move(add_attr);
+
+    RETURN_IF_ERROR(reader->AddInput(node_sub, 0));
+    auto input = graph->FindInputs(node_sub->id)[0];
+
+    Value* v0 = graph->NewValue();
+    Value* v1 = graph->NewValue();
+    v0->tensor.type = input->tensor.type;
+    v0->tensor.shape = input->tensor.shape;
+    v1->tensor.type = input->tensor.type;
+    v1->tensor.shape = input->tensor.shape;
+
+    RETURN_IF_ERROR(graph->SetProducer(node_sub->id, v0->id));
+    RETURN_IF_ERROR(graph->AddConsumer(node_relu->id, v0->id));
+    RETURN_IF_ERROR(graph->SetProducer(node_relu->id, v1->id));
+    RETURN_IF_ERROR(graph->AddConsumer(node_add->id, v1->id));
+
+    RETURN_IF_ERROR(reader->AddOutputs(node_add));
+    return absl::OkStatus();
+  }
+
+ private:
+  const float clamp_a_, clamp_b_;
+};
+
 class ConcatenationOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -639,6 +702,42 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
       }
     }
     attr->weights = std::move(weights);
+  }
+};
+
+class DepthToSpaceOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    const TfLiteDepthToSpaceParams* d2s_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &d2s_params));
+    if (d2s_params->block_size == 1) {
+      return absl::InvalidArgumentError(
+          "DEPTH_TO_SPACE block_size = 1 is a no-op.");
+    }
+    if (d2s_params->block_size < 1) {
+      return absl::InvalidArgumentError(
+          "DEPTH_TO_SPACE block_size must be > 1.");
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::DEPTH_TO_SPACE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    const TfLiteDepthToSpaceParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    SpaceToDepthAttributes attr;
+    attr.block_size = tf_options->block_size;
+    node->operation.attributes = attr;
+    return absl::OkStatus();
   }
 };
 
@@ -2702,6 +2801,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ElementwiseOperationParser>(OperationType::COS);
     case kTfLiteBuiltinDepthwiseConv2d:
       return std::make_unique<DepthwiseConvolutionOperationParser>();
+    case kTfLiteBuiltinDepthToSpace:
+      return std::make_unique<DepthToSpaceOperationParser>();
     case kTfLiteBuiltinDequantize:
       if (allow_quant_ops) {
         return std::make_unique<DequantizeOperationParser>();
@@ -2788,6 +2889,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ReLUOperationParser>(0);
     case kTfLiteBuiltinRelu6:
       return std::make_unique<ReLUOperationParser>(6);
+    case kTfLiteBuiltinReluN1To1:
+      return std::make_unique<ClampOperationsParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:
       return std::make_unique<ReLUOperationParser>(0);
     case kTfLiteBuiltinPrelu:

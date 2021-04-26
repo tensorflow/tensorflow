@@ -22,7 +22,8 @@ include(FetchContent)
 OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
-  GIT_TAG v1.12.0 # TODO: What version does TFLite need?
+  # Sync with tensorflow/third_party/flatbuffers/workspace.bzl
+  GIT_TAG v1.12.0
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"

@@ -24,7 +24,6 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/tfr/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
     ],

@@ -180,7 +180,6 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       graphdef_file.write(graph_def_str)
       graphdef_file.flush()
 
-      # TODO(aselle): Switch this to subprocess at some point.
       if options.run_with_flex:
         opts += " --enable_select_tf_ops --force_select_tf_ops"
       cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %

@@ -8026,6 +8026,13 @@ op {
     }
     has_minimum: true
   }
+  attr {
+    name: "max_subdivs_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
   is_stateful: true
 }
 op {
@@ -13373,6 +13380,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "stop_on_empty_dataset"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Div"
@@ -17141,6 +17155,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
         type: DT_UINT64
         type: DT_BFLOAT16
         type: DT_HALF
@@ -35962,6 +35977,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
       }
     }
   }

@@ -245,10 +245,12 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
 
   LogicalResult matchAndRewrite(shape::AssumingOp op,
                                 PatternRewriter &rewriter) const override {
-    // Merge assuming op with directly preceding one.
+    // Merge assuming op with directly preceding one if both witnesses are
+    // availiable.
     auto preceding_op =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
     if (!preceding_op) return failure();
+    if (op.witness().getDefiningOp() == preceding_op) return failure();
 
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);
@@ -299,6 +301,31 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
     size_t split_at = preceding_op->getNumResults();
     rewriter.replaceOp(preceding_op, new_results.take_front(split_at));
     rewriter.replaceOp(op, new_results.drop_front(split_at));
+    return success();
+  }
+};
+
+// Eliminate casted extent tensors. Instead, produce the concrete extent tensor
+// type where possible.
+struct CanonicalizeCastedShapeOfOpPattern
+    : public OpRewritePattern<tensor::CastOp> {
+  using OpRewritePattern<tensor::CastOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::CastOp op,
+                                PatternRewriter &rewriter) const override {
+    // Only merge tensor cast into `shape_of` ops.
+    auto shape_of_op = op.source().getDefiningOp<shape::ShapeOfOp>();
+    if (!shape_of_op) return failure();
+
+    // Desired type must be an extent tensor type.
+    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty || result_ty.getRank() != 1 ||
+        !result_ty.getElementType().isIndex())
+      return failure();
+
+    rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(op, result_ty,
+                                                  shape_of_op.arg());
+    if (shape_of_op->getUses().empty()) rewriter.eraseOp(shape_of_op);
     return success();
   }
 };
@@ -374,6 +401,7 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      CanonicalizeCastedShapeOfOpPattern,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveIntoAssumingOpPattern<shape::ShapeOfOp>,

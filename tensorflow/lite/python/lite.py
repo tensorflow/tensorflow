@@ -102,11 +102,15 @@ class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating a tflite model.
 
   DEFAULT
-      Default optimization strategy that quantizes model weights. Enhanced
-      optimizations are gained by providing a representative dataset that
-      quantizes biases and activations as well.
-      Converter will do its best to reduce size and latency, while minimizing
-      the loss in accuracy.
+      Default optimization strategy.
+
+      When enabled, converter quantizes static tensors (weights, bias etc).
+
+      Enhanced optimizations are gained by providing representative_dataset in
+      the converter so activations are quantized as well.
+
+      In any case, converter will do its best to reduce size and latency, while
+      minimizing the loss in accuracy from optimization.
 
   OPTIMIZE_FOR_SIZE
       Deprecated. Does the same as DEFAULT.
@@ -223,6 +227,14 @@ class QuantizationMode(object):
   def __init__(self, optimizations, target_spec, representative_dataset,
                graph_def, disable_per_channel=False):
     self._optimizations = optimizations
+    for deprecated_optimization in [
+        Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
+    ]:
+      if deprecated_optimization in self._optimizations:
+        logging.warning(
+            "Optimization option %s is deprecated, please use optimizations="
+            "[Optimize.DEFAULT] instead.", deprecated_optimization)
+
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
@@ -389,7 +401,7 @@ class QuantizationMode(object):
         raise ValueError(
             "Provide an input generator for representative_dataset")
     else:
-      # TODO(b/150661651): Relax this check for QAT.
+      # TODO(b/162537905): Relax this check for QAT.
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
 
@@ -1276,8 +1288,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       signature_keys = saved_model.signatures
 
-    if len(signature_keys) != 1:
-      raise ValueError("Only support a single signature key.")
+    if not signature_keys:
+      raise ValueError("Only support at least one signature key.")
 
     funcs = []
     for key in signature_keys:

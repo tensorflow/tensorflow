@@ -77,7 +77,10 @@ class LHLO_UnaryElementwiseOp<string mnemonic,
                        Arg<BufferType, "", [MemWrite]>:$output);
 }
 
-def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
+// Abs supports complex to real, so element type is not guaranteed to match.
+def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs", LHLO_Buffer, [SameOperandsShape]>, BASE_HLO_AbsOp {
+  let verifier = [{ return Verify(*this); }];
+}
 
 // TODO(timshen): add a custom verifier.
 def LHLO_BitcastConvertOp:

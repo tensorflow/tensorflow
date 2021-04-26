@@ -52,8 +52,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
             func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
-      // TODO(jaesung): There could be multiple entry functions. Let's handle
-      // such cases if there are any needs for that.
+      // TODO(b/184697652): There could be multiple entry functions. Let's
+      // handle such cases if there are any needs for that.
       if (entry_function != nullptr) {
         return errors::InvalidArgument(
             "There should be only one tf.entry_function");
@@ -150,8 +150,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
-  if (exported_names.size() != 1) {
-    return errors::Unimplemented("Only support a single exported name.");
+  if (exported_names.empty()) {
+    return errors::Unimplemented("Need at least one exported name.");
   }
 
   tensorflow::GraphImportConfig specs;

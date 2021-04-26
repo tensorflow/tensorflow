@@ -1789,6 +1789,17 @@ def _dummy_tensor_fn(value_structure):
 
   def create_dummy_tensor(spec):
     """Create a dummy tensor with possible batch dimensions set to 0."""
+    if hasattr(spec, "_create_empty_value"):
+      # Type spec may overwrite default dummy values behavior by declaring the
+      # `_create_empty_value(self)` method. This method must return a value
+      # compatible with the type spec with batch dimensions set to 0 or fail if
+      # such a value does not exist. This allows a composite tensor to customize
+      # dummy values creation as, in general, its dummy value is not composed
+      # from dummy components (e.g. `row_splits` tensor of a RaggedTensor is
+      # never allowed to be empty). See b/183969859 for more discussions.
+      # TODO(b/186079336): reconsider CompositeTensor support.
+      return spec._create_empty_value()  # pylint: disable=protected-access
+
     if isinstance(spec, ragged_tensor.RaggedTensorSpec):
       # Splice out the ragged dimensions.
       # pylint: disable=protected-access

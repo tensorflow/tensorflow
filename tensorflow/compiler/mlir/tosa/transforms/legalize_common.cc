@@ -1347,7 +1347,7 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
     // Remove only specified dims.
     // First sort the array so they can be picked off in sequence.
     std::sort(squeeze_dims.begin(), squeeze_dims.end(),
-              [](const int32_t& a, const int32_t& b) { return a < b; });
+              [](const int32_t a, const int32_t b) { return a < b; });
 
     int pos = 0;
     auto dim = squeeze_dims[pos];

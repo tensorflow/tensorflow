@@ -74,7 +74,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // currently not the case (see b/177478741).
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {
       "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedInput", "tf.TPUReplicatedOutput"};
+      "tf.TPUReplicatedOutput"};
   pm.addNestedPass<FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -85,11 +85,11 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addPass(CreateTPUClusterFormationPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
-    pm.addPass(CreateTPUClusterFormationPass());
-    pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
@@ -133,7 +133,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
-  pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());

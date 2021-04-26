@@ -218,11 +218,12 @@ bool AllRegularInputsEqual(const NodeDef& node) {
 
 // Replace a node with NoOp and reset shape inference results for it..
 void ReplaceWithNoOp(NodeDef* node, const GraphOptimizerContext& ctx) {
-  node->clear_input();
-  EraseRegularNodeAttributes(node);
-  node->set_op("NoOp");
+  ctx.node_map->RemoveInputs(node->name());
   ctx.graph_properties->ClearInputProperties(node->name());
   ctx.graph_properties->ClearOutputProperties(node->name());
+  EraseRegularNodeAttributes(node);
+  node->set_op("NoOp");
+  node->clear_input();
 }
 
 // Graph optimizer context extension specific to ArithmeticOptimizer.
@@ -252,24 +253,37 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
   }
 
   // Update consumers of node to take new_input as input instead.
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
-    const string& node_name = node->name();
-    const string new_node_name = NodeName(new_input);
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
+  Status UpdateConsumers(NodeDef* node, const string& new_input) {
+    const auto consumers = ctx().node_map->GetOutputs(node->name());
+    if (consumers.empty()) return Status::OK();
+    const TensorId new_tensor = ParseTensorName(new_input);
     for (NodeDef* consumer : consumers) {
-      if (consumer->name() == new_node_name) continue;
+      if (consumer->name() == new_tensor.node()) continue;
       bool updated = false;
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name) {
+        const TensorId input_tensor = ParseTensorName(consumer->input(i));
+        if (input_tensor.node() == node->name()) {
+          if (new_tensor.index() < 0 && input_tensor.index() >= 0) {
+            // Overwriting a data input with a control input will make the graph
+            // invalid.
+            return errors::InvalidArgument(
+                "Cannot override data input ", input_tensor.ToString(),
+                " with control input ", new_tensor.ToString());
+          }
+          consumer->set_input(i, input_tensor.index() < 0
+                                     ? absl::StrCat("^", new_tensor.node())
+                                     : new_input);
+          ctx().node_map->UpdateInput(consumer->name(), node->name(),
+                                      new_input);
           updated = true;
-          consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
         }
       }
       if (updated) {
+        DedupControlInputs(consumer);
         AddToOptimizationQueue(consumer);
       }
     }
+    return Status::OK();
   }
 
   // TODO(ezhulenev): remove this method from ArithmeticOptimizer when all
@@ -1671,7 +1685,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       // Handle split nodes by looking forwards in the graph.
       const auto& outputs = ctx().node_map->GetOutputs(node.name());
       for (NodeDef* output : outputs) {
-        if (IsControlInput(output->input(0))) continue;
+        if (output->input_size() == 0 || IsControlInput(output->input(0))) {
+          continue;
+        }
         TensorId tensor_id = ParseTensorName(output->input(0));
         if (tensor_id.node() == node.name()) {
           tails->insert(ChainLink(output, tensor_id.index()));
@@ -1766,7 +1782,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       if (concat_port == first_input) {
         // Update the consumers of concat to consume the end of the chain
         // instead.
-        UpdateConsumers(concat_node, concat_input);
+        TF_RETURN_IF_ERROR(UpdateConsumers(concat_node, concat_input));
         // Reuse nodes in the first chain to process output of concat.
         tail->set_input(0, concat_name);
         ctx().node_map->UpdateInput(tail->name(), tail_input, concat_name);
@@ -1818,10 +1834,10 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     // Connect all consumers of the tail nodes directly to the
     // output port of Split from which the chain started.
     for (const auto& link : tails) {
-      UpdateConsumers(link.node,
-                      link.port_origin == 0
-                          ? split_name
-                          : strings::StrCat(split_name, ":", link.port_origin));
+      TF_RETURN_IF_ERROR(UpdateConsumers(
+          link.node, link.port_origin == 0
+                         ? split_name
+                         : strings::StrCat(split_name, ":", link.port_origin)));
     }
     return Status::OK();
   }
@@ -1999,7 +2015,10 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
     // chain of unary elementwise ops that are not outputs.
     if (IsReshape(*node)) {
       bool skip = false;
-      const auto predicate_fn = [this, node, &skip](const NodeDef& input) {
+      gtl::InlinedVector<const NodeDef*, 4> nodes_in_chain;
+      const auto predicate_fn = [this, node, &skip,
+                                 &nodes_in_chain](const NodeDef& input) {
+        nodes_in_chain.push_back(&input);
         if ((input.name() != node->name() &&
              NumNonControlOutputs(input, *ctx().node_map) > 1) ||
             IsInPreserveSet(input) || ModifiesFrameInfo(input)) {
@@ -2024,21 +2043,23 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
              IsInPreserveSet(*reshape_to_bypass))) {
           return Status::OK();
         }
+        // Clearing invalid shape inference results of nodes in chain.
+        for (const NodeDef* node_in_chain : nodes_in_chain) {
+          ctx().graph_properties->ClearInputProperties(node_in_chain->name());
+          if (node_in_chain != node) {
+            ctx().graph_properties->ClearOutputProperties(
+                node_in_chain->name());
+          }
+        }
         // We now have
         //    reshape_to_bypass -> tail -> ... -> node
         // where tail maybe equal to node.
-        UpdateConsumers(reshape_to_bypass, reshape_to_bypass->input(0));
+        TF_RETURN_IF_ERROR(
+            UpdateConsumers(reshape_to_bypass, reshape_to_bypass->input(0)));
         ForwardControlDependencies(tail, {reshape_to_bypass});
-        // Clear invalid shape inference results and change removed reshape
-        // to NoOp.
-        ctx().graph_properties->ClearInputProperties(node->name());
-        if (tail != node) {
-          ctx().graph_properties->ClearInputProperties(tail->name());
-          ctx().graph_properties->ClearOutputProperties(tail->name());
-        }
+        // Change the bypassed reshape to NoOp.
         ReplaceWithNoOp(reshape_to_bypass, ctx());
         *simplified_node_name = node->name();
-        AddToOptimizationQueue(tail);
         return Status::OK();
       }
     }
@@ -2051,7 +2072,6 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
   bool InputMatchesTargetShape(const NodeDef& reshape) {
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
-
     if (!GetTensorProperties(reshape.name(), &reshape_props).ok() ||
         !GetTensorProperties(reshape.input(0), &input_props).ok()) {
       return false;
@@ -2096,6 +2116,12 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
     NodeDef* producer;
+
+    if (consumer->input_size() < 1) {
+      return errors::FailedPrecondition("Node ", simplified_node_name,
+                                        " lacks inputs");
+    }
+
     TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
     const bool producer_is_cast = IsCastLike(*producer);
     const bool can_optimize =
@@ -2498,6 +2524,11 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
+    if (!node || node->input_size() < 2) {
+      // Invalid node
+      return false;
+    }
+
     return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 
@@ -3486,7 +3517,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       ctx().node_map->UpdateInput(reduction_node->name(),
                                   inner_function->name(), inner_input->name());
       inner_function->set_input(0, reduction_node->name());
-      UpdateConsumers(reduction_node, inner_function->name());
+      TF_RETURN_IF_ERROR(
+          UpdateConsumers(reduction_node, inner_function->name()));
       ctx().node_map->UpdateInput(inner_function->name(), inner_input->name(),
                                   reduction_node->name());
       if (!is_non_decreasing) {
@@ -3506,21 +3538,6 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       AddToOptimizationQueue(inner_input);
     }
     return Status::OK();
-  }
-
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
-    const string& node_name = node->name();
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
-    for (NodeDef* consumer : consumers) {
-      for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name &&
-            consumer->name() != NodeName(new_input)) {
-          consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
-        }
-      }
-      AddToOptimizationQueue(consumer);
-    }
   }
 
  private:
@@ -4394,7 +4411,6 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Perform the optimizations.
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps(can_use_shapes));
-
   *optimized_graph = std::move(*optimized_graph_);
   return Status::OK();
 }

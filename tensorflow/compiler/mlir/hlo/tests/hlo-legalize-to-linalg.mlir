@@ -1506,6 +1506,49 @@ func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32
 
 // -----
 
+func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (tensor<2xi32>, tensor<2xi32>) {
+  %cst0 = mhlo.constant dense<-2147483648> : tensor<i32>
+  %cst1 = mhlo.constant dense<0> : tensor<i32>
+  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ( {
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg15: tensor<i32>, %arg16: tensor<i32>):  // no predecessors
+    %669 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = "GE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %670 = "mhlo.select"(%669, %arg2, %arg15) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    %671 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %672 = mhlo.minimum %arg3, %arg16 : tensor<i32>
+    %673 = "mhlo.select"(%669, %arg3, %arg16) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    %674 = "mhlo.select"(%671, %672, %673) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    "mhlo.return"(%670, %674) : (tensor<i32>, tensor<i32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<9x2xi32>, tensor<9x2xi32>, tensor<i32>, tensor<i32>) -> (tensor<2xi32>, tensor<2xi32>)
+  return %res0, %res1 : tensor<2xi32>, tensor<2xi32>
+}
+// CHECK-DAG:  #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK-DAG:  #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK:      func @variadic_reduce
+// CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:        %[[CST0:.*]] = constant -2147483648 : i32
+// CHECK:        %[[INIT0:.*]] = linalg.init_tensor [2] : tensor<2xi32>
+// CHECK:        %[[FILL0:.*]] = linalg.fill(%[[INIT0]], %[[CST0]])
+// CHECK:        %[[CST1:.*]] = constant 0 : i32
+// CHECK:        %[[INIT1:.*]] = linalg.init_tensor [2] : tensor<2xi32>
+// CHECK:        %[[FILL1:.*]] = linalg.fill(%[[INIT1]], %[[CST1]])
+// CHECK:        %[[RES:.+]]:2 = linalg.generic {
+// CHECK-SAME:     indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP1]], #[[MAP1]]]
+// CHECK-SAME:     iterator_types = ["parallel", "reduction"]
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<9x2xi32>, tensor<9x2xi32>)
+// CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<2xi32>, tensor<2xi32>)
+// CHECK-NEXT:   ^bb0(%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32):
+// CHECK-NEXT:     %[[T1:.*]] = cmpi sge, %[[IN0]], %[[OUT0]] : i32
+// CHECK-NEXT:     %[[T2:.*]] = select %[[T1]], %[[IN0]], %[[OUT0]] : i32
+// CHECK-NEXT:     %[[T3:.*]] = cmpi eq, %[[IN0]], %[[OUT0]] : i32
+// CHECK-NEXT:     %[[T4:.*]] = cmpi slt, %[[IN1]], %[[OUT1]] : i32
+// CHECK-NEXT:     %[[T5:.*]] = select %[[T4]], %[[IN1]], %[[OUT1]] : i32
+// CHECK-NEXT:     %[[T6:.*]] = select %[[T1]], %[[IN1]], %[[OUT1]] : i32
+// CHECK-NEXT:     %[[T7:.*]] = select %[[T3]], %[[T5]], %[[T6]] : i32
+// CHECK-NEXT:     linalg.yield %[[T2]], %[[T7]]
+
+// -----
+
 func @slice_whole_stride(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
   %0 = "mhlo.slice"(%arg0) {
     start_indices = dense<[1, 0]> : tensor<2xi64>,
@@ -2098,3 +2141,58 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 //      CHECK:       %[[POS:.+]] = index_cast %[[ARG4]]
 //      CHECK:       %[[YIELD:.+]] = tensor.extract %[[INPUT]][%[[ARG0]], %[[ARG1]], %[[POS]], %[[ARG3]]]
 //      CHECK:       linalg.yield %[[YIELD]]
+
+// -----
+
+// CHECK-LABEL:   func @concatenate(
+// CHECK-SAME:   %[[VAL_0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[VAL_1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[VAL_2:[a-zA-Z0-9_]*]]
+// CHECK:           %[[VAL_3:.*]] = constant 0 : index
+// CHECK:           %[[VAL_4:.*]] = constant 0 : index
+// CHECK:           %[[VAL_5:.*]] = memref.dim %[[VAL_0]], %[[VAL_4]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_6:.*]] = constant 1 : index
+// CHECK:           %[[VAL_7:.*]] = memref.dim %[[VAL_0]], %[[VAL_6]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_8:.*]] = constant 1 : index
+// CHECK:           %[[VAL_9:.*]] = memref.dim %[[VAL_1]], %[[VAL_8]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_10:.*]] = addi %[[VAL_7]], %[[VAL_9]] : index
+// CHECK:           %[[VAL_11:.*]] = constant 1 : index
+// CHECK:           %[[VAL_12:.*]] = memref.dim %[[VAL_2]], %[[VAL_11]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_13:.*]] = addi %[[VAL_10]], %[[VAL_12]] : index
+// CHECK:           %[[VAL_14:.*]] = linalg.init_tensor [%[[VAL_5]], %[[VAL_13]]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_15:.*]] = linalg.indexed_generic {indexing_maps = [#map], iterator_types = ["parallel", "parallel"]} outs(%[[VAL_14]] : tensor<?x?xi32>) {
+// CHECK:           ^bb0(%[[VAL_16:.*]]: index, %[[VAL_17:.*]]: index, %[[VAL_18:.*]]: i32):
+// CHECK:             %[[VAL_19:.*]] = constant 1 : index
+// CHECK:             %[[VAL_20:.*]] = memref.dim %[[VAL_0]], %[[VAL_19]] : tensor<?x?xi32>
+// CHECK:             %[[VAL_21:.*]] = addi %[[VAL_3]], %[[VAL_20]] : index
+// CHECK:             %[[VAL_22:.*]] = cmpi ult, %[[VAL_17]], %[[VAL_21]] : index
+// CHECK:             %[[VAL_23:.*]] = scf.if %[[VAL_22]] -> (i32) {
+// CHECK:               %[[VAL_24:.*]] = subi %[[VAL_17]], %[[VAL_3]] : index
+// CHECK:               %[[VAL_25:.*]] = tensor.extract %[[VAL_0]][%[[VAL_16]], %[[VAL_24]]] : tensor<?x?xi32>
+// CHECK:               scf.yield %[[VAL_25]] : i32
+// CHECK:             } else {
+// CHECK:               %[[VAL_26:.*]] = constant 1 : index
+// CHECK:               %[[VAL_27:.*]] = memref.dim %[[VAL_1]], %[[VAL_26]] : tensor<?x?xi32>
+// CHECK:               %[[VAL_28:.*]] = addi %[[VAL_21]], %[[VAL_27]] : index
+// CHECK:               %[[VAL_29:.*]] = cmpi ult, %[[VAL_17]], %[[VAL_28]] : index
+// CHECK:               %[[VAL_30:.*]] = scf.if %[[VAL_29]] -> (i32) {
+// CHECK:                 %[[VAL_31:.*]] = subi %[[VAL_17]], %[[VAL_21]] : index
+// CHECK:                 %[[VAL_32:.*]] = tensor.extract %[[VAL_1]][%[[VAL_16]], %[[VAL_31]]] : tensor<?x?xi32>
+// CHECK:                 scf.yield %[[VAL_32]] : i32
+// CHECK:               } else {
+// CHECK:                 %[[VAL_33:.*]] = subi %[[VAL_17]], %[[VAL_28]] : index
+// CHECK:                 %[[VAL_34:.*]] = tensor.extract %[[VAL_2]][%[[VAL_16]], %[[VAL_33]]] : tensor<?x?xi32>
+// CHECK:                 scf.yield %[[VAL_34]] : i32
+// CHECK:               }
+// CHECK:               scf.yield %[[VAL_35:.*]] : i32
+// CHECK:             }
+// CHECK:             linalg.yield %[[VAL_36:.*]] : i32
+// CHECK:           } -> tensor<?x?xi32>
+// CHECK:           return %[[VAL_37:.*]] : tensor<?x?xi32>
+// CHECK:         }
+func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
+    %concat = "mhlo.concatenate"(%a, %b, %c) {
+      dimension = 1
+    } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+    return %concat : tensor<?x?xi32>
+}

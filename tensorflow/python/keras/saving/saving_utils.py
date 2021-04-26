@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utils related to keras model saving."""
 
-import collections.abc as collections_abc
+import collections
 import copy
 import os
 
@@ -78,7 +78,7 @@ def model_input_signature(model, keep_original_batch_size=False):
   input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs,
-                collections_abc.Sequence) and len(input_specs) == 1:
+                collections.abc.Sequence) and len(input_specs) == 1:
     # Note that the isinstance check filters out single-element dictionaries,
     # which should also be wrapped as a single-element list.
     return input_specs

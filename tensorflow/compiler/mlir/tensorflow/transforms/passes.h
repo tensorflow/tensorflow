@@ -330,6 +330,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
 // TensorFlow dialect op in the body based on its `device` attribute and the
 // `devices` attribute on the `tf_device.replicate`.
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateTFDeviceReplicationPass();
+
+// Creates a pass that extracts ops in tf_device.launch op with host device
+// assignment and adds an `_xla_outside_compilation` attribute value.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateHostLaunchToOutsideCompiledPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -348,10 +354,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass();
 // Creates a pass that allows TPU program inputs to have layouts determined at
 // run time.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass();
-
-// Creates a pass that remaps and assigns padding map from a
-// `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
 // Creates a pass that adds `tf.ReadVariableOp` to a TPU cluster for resources
 // the cluster only writes to.
