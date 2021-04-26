@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -79,6 +80,15 @@ StatusOr<py::bytes> GetComputationSerializedProto(
   return py::bytes(result);
 }
 
+// Converts a hlo module to a serialized HloModuleProto.
+StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
+  std::string result;
+  if (!module.ToProto().SerializeToString(&result)) {
+    return Unknown("Failed to serialize the HloModuleProto.");
+  }
+  return py::bytes(result);
+}
+
 StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
@@ -120,9 +130,17 @@ StatusOr<uint64> HashComputation(const XlaComputation& computation) {
 // invalid input.
 StatusOr<Shape> MakeShapeWithLayout(
     PrimitiveType element_type, absl::Span<const int64> dims,
-    absl::optional<absl::Span<const int64>> minor_to_major) {
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dims));
+    absl::optional<absl::Span<const int64>> minor_to_major,
+    absl::optional<const std::vector<bool>> dynamic_dimensions) {
+  Shape shape;
+  if (dynamic_dimensions) {
+    TF_ASSIGN_OR_RETURN(
+        shape, ShapeUtil::MakeValidatedShape(element_type, dims,
+                                             dynamic_dimensions.value()));
+  } else {
+    TF_ASSIGN_OR_RETURN(shape,
+                        ShapeUtil::MakeValidatedShape(element_type, dims));
+  }
   if (minor_to_major) {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
     TF_RETURN_IF_ERROR(
@@ -172,33 +190,56 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_static(
           "array_shape",
           [](PrimitiveType type, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
+             absl::optional<py::object> layout_seq,
+             absl::optional<std::vector<bool>> dynamic_dimensions)
+              -> StatusOr<Shape> {
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout,
+                                         dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt);
+              return MakeShapeWithLayout(type, dims, absl::nullopt,
+                                         dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt)
+          py::arg("layout") = absl::nullopt,
+          py::arg("dynamic_dimensions") = absl::nullopt)
       .def_static(
           "array_shape",
           [](py::dtype dtype, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
+             absl::optional<py::object> layout_seq,
+             absl::optional<std::vector<bool>> dynamic_dimensions)
+              -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout,
+                                         dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt);
+              return MakeShapeWithLayout(type, dims, absl::nullopt,
+                                         dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt)
+          py::arg("layout") = absl::nullopt,
+          py::arg("dynamic_dimensions") = absl::nullopt)
       .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
+      .def_static(
+          "scalar_shape",
+          [](PrimitiveType type) -> Shape {
+            return ShapeUtil::MakeScalarShape(type);
+          },
+          "Constructs a scalar shape.", py::arg("type"))
+      .def_static(
+          "scalar_shape",
+          [](py::dtype dtype) -> StatusOr<Shape> {
+            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+            return ShapeUtil::MakeScalarShape(type);
+          },
+          "Constructs a scalar shape.", py::arg("type"))
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
              return IntSpanToTuple(shape.dimensions());
@@ -217,6 +258,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            })
       .def("is_tuple", &Shape::IsTuple)
       .def("is_array", &Shape::IsArray)
+      .def("is_token", &Shape::IsToken)
+      .def("is_static", &Shape::is_static)
+      .def("is_dynamic", &Shape::is_dynamic)
+      .def("is_dynamic_dimension", &Shape::is_dynamic_dimension,
+           py::arg("dimension"))
+      .def("set_dynamic_dimension", &Shape::set_dynamic_dimension,
+           py::arg("dimension"), py::arg("is_dynamic"))
       .def("rank", &Shape::rank)
       .def("to_serialized_proto",
            [](const Shape& shape) {
@@ -272,9 +320,6 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);
-  py::class_<LiteralSlice> literal_slice(m, "LiteralSlice");
-  py::implicitly_convertible<Literal, LiteralSlice>();
-  py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
@@ -348,11 +393,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
-  hlo_module_class.def(
-      "to_string",
-      static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
-          &HloModule::ToString),
-      py::arg("options") = HloPrintOptions());
+  hlo_module_class
+      .def(
+          "to_string",
+          static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
+              &HloModule::ToString),
+          py::arg("options") = HloPrintOptions())
+      .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto);
 
   m.def("hlo_module_to_dot_graph",
         [](const HloModule& hlo_module) -> StatusOr<std::string> {
@@ -364,7 +411,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       "hlo_module_cost_analysis",
       [](PyClient* client,
          const HloModule& module) -> StatusOr<std::map<string, float>> {
-        auto analysis = client->pjrt_client()->GetHloCostAnalysis();
+        TF_ASSIGN_OR_RETURN(auto analysis,
+                            client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
         return analysis->properties();
       });
@@ -493,6 +541,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
+      .def_property("xla_backend_optimization_level",
+                    &DebugOptions::xla_backend_optimization_level,
+                    &DebugOptions::set_xla_backend_optimization_level)
       .def_property("xla_cpu_enable_fast_math",
                     &DebugOptions::xla_cpu_enable_fast_math,
                     &DebugOptions::set_xla_cpu_enable_fast_math)
@@ -508,12 +559,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_fast_math_honor_functions",
                     &DebugOptions::xla_cpu_fast_math_honor_functions,
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
+      .def_property("xla_detailed_logging_and_dumping",
+                    &DebugOptions::xla_detailed_logging_and_dumping,
+                    &DebugOptions::set_xla_detailed_logging_and_dumping)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
-      .def_property("xla_backend_optimization_level",
-                    &DebugOptions::xla_backend_optimization_level,
-                    &DebugOptions::set_xla_backend_optimization_level)
       .def_property("xla_cpu_enable_xprof_traceme",
                     &DebugOptions::xla_cpu_enable_xprof_traceme,
                     &DebugOptions::set_xla_cpu_enable_xprof_traceme)

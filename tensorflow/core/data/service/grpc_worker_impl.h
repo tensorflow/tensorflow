@@ -33,7 +33,16 @@ class GrpcWorkerImpl : public WorkerService::Service {
                           ::grpc::ServerBuilder& server_builder);
   ~GrpcWorkerImpl() override {}
 
-  Status Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address,
+               const std::string& transfer_address);
+  void Stop();
+
+  std::function<Status(const GetElementRequest*, GetElementResult*)>
+  get_element_getter() {
+    return [this](const GetElementRequest* request, GetElementResult* result) {
+      return impl_.GetElementResult(request, result);
+    };
+  }
 
 #define HANDLER(method)                                 \
   ::grpc::Status method(::grpc::ServerContext* context, \

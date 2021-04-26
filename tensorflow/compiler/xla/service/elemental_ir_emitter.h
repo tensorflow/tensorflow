@@ -57,6 +57,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Module* module() { return module_; }
 
  protected:
+  virtual llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
+      const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {
+    return index.SourceIndexOfBitcast(hlo->shape(), hlo->operand(0)->shape(),
+                                      b_);
+  }
+
   virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                                    llvm::Value* lhs_value,
                                                    llvm::Value* rhs_value);
@@ -105,10 +111,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                      llvm::Value* rhs_value);
 
   virtual llvm::Value* EmitFloatMax(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name);
 
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name);
 
   llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
@@ -117,7 +125,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                bool is_signed);
 
   virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                           llvm::Value* lhs, llvm::Value* rhs);
+                                           llvm::Value* lhs, llvm::Value* rhs,
+                                           absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value);
@@ -141,13 +150,15 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                          llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                         llvm::Value* value);
+                                         llvm::Value* value,
+                                         absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                            llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs);
+                                         llvm::Value* lhs, llvm::Value* rhs,
+                                         absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
@@ -179,9 +190,18 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                   PrimitiveType prim_type,
                                                   llvm::Value* operand_value);
 
+  StatusOr<llvm::Value*> EmitAccumResult(
+      absl::Span<llvm::Value* const> accumulator_addrs,
+      llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic);
+
   // Composes a complex struct. imag may be nullptr for simple cast operations.
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
+
+  // Emit `accumulator + lhs * rhs` for the given primitive type.
+  llvm::Value* EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
+                          llvm::Value* accumulator,
+                          xla::PrimitiveType primitive_type);
 
   // Identifier of the thread unique among all threads on the device
   virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
@@ -236,8 +256,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   StatusOr<llvm::Value*> EmitElementalReduceWindow(
       const HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& initial_value_generator,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
   StatusOr<llvm::Value*> EmitElementalReduce(

@@ -33,6 +33,7 @@ from __future__ import print_function
 import collections
 import functools
 
+import warnings
 import six
 
 from tensorflow.core.protobuf import struct_pb2
@@ -46,19 +47,21 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 class NotEncodableError(Exception):
   """Error raised when a coder cannot encode an object."""
 
 
+@tf_export("__internal__.saved_model.StructureCoder", v1=[])
 class StructureCoder(object):
   """Encoder and decoder for nested structures into protos."""
 
@@ -517,8 +520,6 @@ class _TypeSpecCodec(object):
           resource_variable_ops.VariableSpec,
       struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC:
           row_partition.RowPartitionSpec,
-      struct_pb2.TypeSpecProto.NDARRAY_SPEC:
-          np_arrays.NdarraySpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.
@@ -526,19 +527,41 @@ class _TypeSpecCodec(object):
       (cls, enum) for (enum, cls) in TYPE_SPEC_CLASS_FROM_PROTO.items())
 
   def can_encode(self, pyobj):
-    # pylint: disable=unidiomatic-typecheck
-    return type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO
+    """Returns true if `pyboj` can be encoded as a TypeSpec."""
+    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:  # pylint: disable=unidiomatic-typecheck
+      return True
+
+    # Check if it's a registered type.
+    if isinstance(pyobj, type_spec.TypeSpec):
+      try:
+        type_spec.get_name(type(pyobj))
+        return True
+      except ValueError:
+        return False
+
+    return False
 
   def do_encode(self, type_spec_value, encode_fn):
     """Returns an encoded proto for the given `tf.TypeSpec`."""
-    type_spec_class = self.TYPE_SPEC_CLASS_TO_PROTO[type(type_spec_value)]
+    type_spec_class = self.TYPE_SPEC_CLASS_TO_PROTO.get(type(type_spec_value))
+    type_spec_class_name = type(type_spec_value).__name__
+
+    if type_spec_class is None:
+      type_spec_class_name = type_spec.get_name(type(type_spec_value))
+      type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
+      # Support for saving registered TypeSpecs is currently experimental.
+      # Issue a warning to indicate the limitations.
+      warnings.warn("Encoding a StructuredValue with type %s; loading this "
+                    "StructuredValue will require that this type be "
+                    "imported and registered." % type_spec_class_name)
+
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
     encoded_type_spec = struct_pb2.StructuredValue()
     encoded_type_spec.type_spec_value.CopyFrom(
         struct_pb2.TypeSpecProto(
             type_spec_class=type_spec_class,
             type_state=encode_fn(type_state),
-            type_spec_class_name=type(type_spec_value).__name__))
+            type_spec_class_name=type_spec_class_name))
     return encoded_type_spec
 
   def can_decode(self, value):
@@ -548,13 +571,24 @@ class _TypeSpecCodec(object):
     """Returns the `tf.TypeSpec` encoded by the proto `value`."""
     type_spec_proto = value.type_spec_value
     type_spec_class_enum = type_spec_proto.type_spec_class
-    if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
-      raise ValueError(
-          "The type '%s' is not supported by this version of TensorFlow. "
-          "(The object you are loading must have been created with a newer "
-          "version of TensorFlow.)" % type_spec_proto.type_spec_class_name)
+    class_name = type_spec_proto.type_spec_class_name
 
-    type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
+    if type_spec_class_enum == struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC:
+      try:
+        type_spec_class = type_spec.lookup(class_name)
+      except ValueError as e:
+        raise ValueError(
+            "The type '%s' has not been registered.  It must be registered "
+            "before you load this object (typically by importing its module)."
+            % class_name) from e
+    else:
+      if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
+        raise ValueError(
+            "The type '%s' is not supported by this version of TensorFlow. "
+            "(The object you are loading must have been created with a newer "
+            "version of TensorFlow.)" % class_name)
+      type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
+
     # pylint: disable=protected-access
     return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))
 

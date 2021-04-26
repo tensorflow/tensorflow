@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
+load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 genrule(
@@ -32,6 +33,7 @@ genrule(
     $(location {}) --proto -o $(@D) $(location :configuration.proto)
     perl -p -i -e 's/tflite.proto/tflite/' $(@D)/configuration.fbs
     """.format(flatc_path),
+    compatible_with = get_compatible_with_portable(),
     tools = [
         flatc_path,
     ],
@@ -47,6 +49,8 @@ genrule(
       echo ')Delimiter";' >> $(@)
     """,
 )
+
+exports_files(["configuration.proto"])
 
 proto_library(
     name = "configuration_proto",
@@ -68,6 +72,8 @@ java_lite_proto_library(
 flatbuffer_cc_library(
     name = "configuration_fbs",
     srcs = [":configuration.fbs"],
+    compatible_with = get_compatible_with_portable(),
+    flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
 )
 
 flatbuffer_java_library(
@@ -78,14 +84,12 @@ flatbuffer_java_library(
 cc_library(
     name = "proto_to_flatbuffer",
     srcs = [
-        "configuration_fbs_contents-inl.h",
         "proto_to_flatbuffer.cc",
     ],
     hdrs = ["proto_to_flatbuffer.h"],
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/lite:minimal_logging",
         "@flatbuffers",
     ],
@@ -104,11 +108,24 @@ cc_library(
 
 cc_library(
     name = "nnapi_plugin",
+    deps = [
+        ":nnapi_plugin_impl",
+    ],
+)
+
+cc_library(
+    name = "nnapi_plugin_impl",
     srcs = ["nnapi_plugin.cc"],
+    hdrs = ["nnapi_plugin.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
+    ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,  # For registration to always run.
@@ -159,6 +176,18 @@ cc_library(
         ":configuration_fbs",
         ":delegate_registry",
         "//tensorflow/lite/delegates/gpu:delegate",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,  # For registration to always run.
+)
+
+cc_library(
+    name = "xnnpack_plugin",
+    srcs = ["xnnpack_plugin.cc"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,  # For registration to always run.

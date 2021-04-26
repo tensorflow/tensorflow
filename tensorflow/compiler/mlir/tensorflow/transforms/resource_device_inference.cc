@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -192,7 +192,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
             if (auto device = result->DeviceForResource(output)) {
               LLVM_DEBUG(llvm::dbgs()
                          << " Setting device = " << *device << "\n");
-              identity.setAttr(kDeviceAttr, builder.getStringAttr(*device));
+              identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
             }
           }
         } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {

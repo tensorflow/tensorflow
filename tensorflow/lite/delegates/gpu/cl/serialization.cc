@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
@@ -53,7 +53,25 @@ data::DataType ToFB(DataType type) {
       return data::DataType::FLOAT16;
     case DataType::FLOAT32:
       return data::DataType::FLOAT32;
-    default:
+    case DataType::FLOAT64:
+      return data::DataType::FLOAT64;
+    case DataType::UINT8:
+      return data::DataType::UINT8;
+    case DataType::INT8:
+      return data::DataType::INT8;
+    case DataType::UINT16:
+      return data::DataType::UINT16;
+    case DataType::INT16:
+      return data::DataType::INT16;
+    case DataType::UINT32:
+      return data::DataType::UINT32;
+    case DataType::INT32:
+      return data::DataType::INT32;
+    case DataType::UINT64:
+      return data::DataType::UINT64;
+    case DataType::INT64:
+      return data::DataType::INT64;
+    case DataType::UNKNOWN:
       return data::DataType::UNKNOWN;
   }
 }
@@ -118,7 +136,25 @@ DataType ToEnum(data::DataType type) {
       return DataType::FLOAT16;
     case data::DataType::FLOAT32:
       return DataType::FLOAT32;
-    default:
+    case data::DataType::FLOAT64:
+      return DataType::FLOAT64;
+    case data::DataType::UINT8:
+      return DataType::UINT8;
+    case data::DataType::INT8:
+      return DataType::INT8;
+    case data::DataType::UINT16:
+      return DataType::UINT16;
+    case data::DataType::INT16:
+      return DataType::INT16;
+    case data::DataType::UINT32:
+      return DataType::UINT32;
+    case data::DataType::INT32:
+      return DataType::INT32;
+    case data::DataType::UINT64:
+      return DataType::UINT64;
+    case data::DataType::INT64:
+      return DataType::INT64;
+    case data::DataType::UNKNOWN:
       return DataType::UNKNOWN;
   }
 }
@@ -187,10 +223,6 @@ Layout ToEnum(data::Layout type) {
       return Layout::UNKNOWN;
   }
 }
-}  // namespace
-
-namespace cl {
-namespace {
 
 data::CalculationsPrecision ToFB(CalculationsPrecision type) {
   switch (type) {
@@ -279,7 +311,6 @@ CompilerOptions ToEnum(data::CompilerOptions type) {
 }
 
 }  // namespace
-}  // namespace cl
 
 flatbuffers::Offset<data::Int2> Encode(
     const int2& v, flatbuffers::FlatBufferBuilder* builder) {
@@ -732,7 +763,6 @@ flatbuffers::Offset<data::Arguments> Encode(
   return arguments_builder.Finish();
 }
 
-namespace cl {
 flatbuffers::Offset<data::OperationDef> Encode(
     const OperationDef& def, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
@@ -771,22 +801,6 @@ void Decode(const data::OperationDef* fb_def, OperationDef* def) {
     def->dst_tensors.push_back(std::move(desc));
   }
   def->precision = ToEnum(fb_def->precision());
-}
-
-flatbuffers::Offset<data::TensorDescWithId> Encode(
-    const TensorDescriptor& desc, const ValueId& id,
-    flatbuffers::FlatBufferBuilder* builder) {
-  auto desc_fb = Encode(desc, builder);
-  data::TensorDescWithIdBuilder desc_builder(*builder);
-  desc_builder.add_desc(desc_fb);
-  desc_builder.add_id(id);
-  return desc_builder.Finish();
-}
-
-void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
-            ValueId* id) {
-  Decode(fb_desc->desc(), desc);
-  *id = fb_desc->id();
 }
 
 absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
@@ -879,6 +893,24 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_linkable_count(op.linkable_count_);
   op_builder.add_elementwise_code(elementwise_code_fb);
   return op_builder.Finish();
+}
+
+namespace cl {
+
+flatbuffers::Offset<data::TensorDescWithId> Encode(
+    const TensorDescriptor& desc, const ValueId& id,
+    flatbuffers::FlatBufferBuilder* builder) {
+  auto desc_fb = Encode(desc, builder);
+  data::TensorDescWithIdBuilder desc_builder(*builder);
+  desc_builder.add_desc(desc_fb);
+  desc_builder.add_id(id);
+  return desc_builder.Finish();
+}
+
+void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
+            ValueId* id) {
+  Decode(fb_desc->desc(), desc);
+  *id = fb_desc->id();
 }
 
 flatbuffers::Offset<data::CLNode> Encode(

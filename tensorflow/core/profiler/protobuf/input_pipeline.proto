@@ -50,6 +50,8 @@ message StepSummary {
 message PerGenericStepDetails {
   // The step number of a step.
   int32 step_number = 1;
+  // The step name.
+  string step_name = 14;
   // The step time (in ms).
   double step_time_ms = 2;
   // Breakdown of the step time in different event categories.

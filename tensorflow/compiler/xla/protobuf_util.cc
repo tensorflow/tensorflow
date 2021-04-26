@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/protobuf_util.h"
 
+#include "absl/hash/hash.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -36,6 +37,15 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   m1.AppendToString(&serialized1);
   m2.AppendToString(&serialized2);
   return (serialized1 == serialized2);
+}
+
+size_t ProtobufHash(const tensorflow::protobuf::Message& m) {
+  // This is a bit fast and loose, but avoids introducing a dependency on
+  // the much more complex protobuf::util::MessageDifferencer class.
+  // We perform the hash on their serialized representation.
+  string serialized;
+  m.AppendToString(&serialized);
+  return absl::Hash<string>()(serialized);
 }
 
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,

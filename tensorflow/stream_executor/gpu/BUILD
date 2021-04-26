@@ -22,7 +22,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for the dependency check.
@@ -45,6 +45,7 @@ cc_library(
     srcs = if_gpu_is_configured(["gpu_activation.cc"]),
     hdrs = if_gpu_is_configured(["gpu_activation.h"]),
     deps = if_gpu_is_configured([
+        ":gpu_executor_header",
         ":gpu_activation_header",
         ":gpu_driver_header",
         "//tensorflow/stream_executor",
@@ -109,6 +110,7 @@ cc_library(
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor:stream_executor_internal",
+        "//tensorflow/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
@@ -231,7 +233,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
-        "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
@@ -252,7 +253,7 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
-    ]),
+    ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 
 cc_library(

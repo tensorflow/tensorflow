@@ -16,15 +16,13 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/util/mkl_util.h"
-
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/mkl_types.h"
 
 namespace tensorflow {
 namespace {
 
 TEST(MklUtilTest, MklDnnTfShape) {
-  auto cpu_engine = engine(ENGINE_CPU, 0);
+  auto cpu_engine = engine(engine::kind::cpu, 0);
   MklDnnData<float> a(&cpu_engine);
 
   const int N = 1, C = 2, H = 3, W = 4;
@@ -32,7 +30,8 @@ TEST(MklUtilTest, MklDnnTfShape) {
   MklDnnShape a_mkldnn_shape;
   a_mkldnn_shape.SetMklTensor(true);
   // Create TF layout in NCHW.
-  a_mkldnn_shape.SetTfLayout(a_dims.size(), a_dims, MKL_TENSOR_FORMAT_NCHW);
+  a_mkldnn_shape.SetTfLayout(a_dims.size(), a_dims,
+                             MklTensorFormat::FORMAT_NCHW);
   TensorShape a_tf_shape_nchw({N, C, H, W});
   TensorShape a_tf_shape_nhwc({N, H, W, C});
   TensorShape a_mkldnn_tf_shape = a_mkldnn_shape.GetTfShape();
@@ -44,7 +43,8 @@ TEST(MklUtilTest, MklDnnTfShape) {
   MklDnnShape b_mkldnn_shape;
   b_mkldnn_shape.SetMklTensor(true);
   // Create TF layout in NHWC.
-  b_mkldnn_shape.SetTfLayout(b_dims.size(), b_dims, MKL_TENSOR_FORMAT_NHWC);
+  b_mkldnn_shape.SetTfLayout(b_dims.size(), b_dims,
+                             MklTensorFormat::FORMAT_NHWC);
   TensorShape b_tf_shape_nhwc({N, H, W, C});
   TensorShape b_tf_shape_nchw({N, C, H, W});
   TensorShape b_mkldnn_tf_shape = b_mkldnn_shape.GetTfShape();
@@ -56,7 +56,7 @@ TEST(MklUtilTest, MklDnnTfShape) {
 TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   // Let's create 2D tensor of shape {3, 4} with 3 being innermost dimension
   // first (case 1) and then it being outermost dimension (case 2).
-  auto cpu_engine = engine(ENGINE_CPU, 0);
+  auto cpu_engine = engine(engine::kind::cpu, 0);
 
   // Setting for case 1
   MklDnnData<float> a(&cpu_engine);

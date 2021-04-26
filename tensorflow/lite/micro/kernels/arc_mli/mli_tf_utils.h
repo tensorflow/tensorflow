@@ -96,7 +96,11 @@ inline void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
 template <typename datatype>
 inline void MliTensorAttachBuffer(const TfLiteEvalTensor* tfT,
                                   mli_tensor* mliT) {
-  mliT->data = static_cast<void*>(tflite::micro::GetTensorData<datatype>(tfT));
+  // "const_cast" here used to attach const data buffer to the initially
+  // non-const mli_tensor. This is required by current implementation of MLI
+  // backend and planned for redesign due to this and some other aspects.
+  mliT->data = const_cast<void*>(
+      static_cast<const void*>(tflite::micro::GetTensorData<datatype>(tfT)));
 }
 
 inline void ConvertToMliTensor(const TfLiteTensor* tfT, mli_tensor* mliT) {

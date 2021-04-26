@@ -17,10 +17,6 @@
 # pylint: disable=wildcard-import
 # pylint: disable=unused-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from tensorflow.python import tf2
@@ -48,35 +44,25 @@ from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.layers import wrappers
 from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import category_encoding
-from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import discretization
 from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
-from tensorflow.python.keras.layers.preprocessing import integer_lookup as preprocessing_integer_lookup
-from tensorflow.python.keras.layers.preprocessing import integer_lookup_v1 as preprocessing_integer_lookup_v1
+from tensorflow.python.keras.layers.preprocessing import integer_lookup
 from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
-from tensorflow.python.keras.layers.preprocessing import normalization_v1 as preprocessing_normalization_v1
-from tensorflow.python.keras.layers.preprocessing import string_lookup as preprocessing_string_lookup
-from tensorflow.python.keras.layers.preprocessing import string_lookup_v1 as preprocessing_string_lookup_v1
-from tensorflow.python.keras.layers.preprocessing import text_vectorization as preprocessing_text_vectorization
-from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1 as preprocessing_text_vectorization_v1
+from tensorflow.python.keras.layers.preprocessing import string_lookup
+from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
-
 ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, cudnn_recurrent, dense_attention,
                embeddings, einsum_dense, local, merge, noise, normalization,
-               pooling, image_preprocessing, preprocessing_integer_lookup_v1,
-               preprocessing_normalization_v1, preprocessing_string_lookup_v1,
-               preprocessing_text_vectorization_v1, recurrent, wrappers,
-               hashing, category_crossing, category_encoding_v1, discretization,
-               multi_head_attention)
-ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2,
-                  preprocessing_integer_lookup, preprocessing_normalization,
-                  preprocessing_string_lookup, preprocessing_text_vectorization,
-                  category_encoding)
+               pooling, image_preprocessing, recurrent, wrappers, hashing,
+               category_crossing, category_encoding, discretization,
+               multi_head_attention, integer_lookup,
+               preprocessing_normalization, string_lookup, text_vectorization)
+ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()
@@ -161,7 +147,7 @@ def serialize(layer):
 def deserialize(config, custom_objects=None):
   """Instantiates a layer from a config dictionary.
 
-  Arguments:
+  Args:
       config: dict of the form {'class_name': str, 'config': dict}
       custom_objects: dict mapping class names (or function names)
           of custom (non-Keras) objects to class/functions

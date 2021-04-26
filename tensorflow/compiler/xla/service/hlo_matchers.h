@@ -209,6 +209,7 @@ HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Bitcast);
+HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
@@ -415,6 +416,11 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloShardingMatcher(absl::nullopt));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(::xla::HloOpcode::kDot, {}));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(

@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -150,6 +150,7 @@ cc_library(
         ":model_builder_helper",
         ":model_transformer",
         ":object_reader",
+        ":operation_parser",
         ":operations",
         ":shape",
         ":status",
@@ -369,6 +370,22 @@ cc_test(
     deps = [
         ":memory_management",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "operation_parser",
+    srcs = ["operation_parser.cc"],
+    hdrs = ["operation_parser.h"],
+    deps = [
+        ":model",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 

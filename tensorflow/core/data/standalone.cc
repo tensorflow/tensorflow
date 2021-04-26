@@ -139,6 +139,8 @@ Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
   return dataset_->MakeSplitProvider(result);
 }
 
+const DatasetBase* Dataset::Get() const { return dataset_; }
+
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
                  ProcessFunctionLibraryRuntime* pflr,
                  FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool)

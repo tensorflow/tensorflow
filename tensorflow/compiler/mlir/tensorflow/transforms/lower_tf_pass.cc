@@ -27,10 +27,10 @@ namespace {
 struct LowerTF : public PassWrapper<LowerTF, FunctionPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
 
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

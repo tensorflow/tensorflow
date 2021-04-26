@@ -137,6 +137,23 @@ class DefaultTensorTie : public TensorTie {
       return absl::InvalidArgumentError("Given object is not valid");
     }
     external_obj_ = obj;
+
+    // Internal object is not initialized when external object is going to be
+    // used as is, with not conversion. In this case we don't need to have a
+    // separate internal object, we are just registering the appropriate
+    // external object in the object manager for the future binding in the
+    // inference runner.
+    if (!IsObjectInitialized(internal_obj_)) {
+      if (def().external_def.object_def.object_type ==
+          gpu::ObjectType::OPENGL_SSBO) {
+        auto ssbo = absl::get_if<OpenGlBuffer>(&obj);
+        GlBuffer buffer;
+        RETURN_IF_ERROR(WrapSSBO(*ssbo, &buffer));
+        RETURN_IF_ERROR(objects_->RegisterBuffer(def().id, std::move(buffer)));
+      } else {
+        return absl::InternalError("Unexpected object type.");
+      }
+    }
     return absl::OkStatus();
   }
 
@@ -172,6 +189,16 @@ class DefaultTensorTie : public TensorTie {
 
     if (external_def.user_provided) {
       if (is_same_def) {
+        // Entering this scope indicates that external object is used with no
+        // conversion to internal one. We still need to register the stub buffer
+        // in the object manager, even that the real external object is not
+        // available yet. Later, when the SetExternalObject() is called, the
+        // proper external object will rewrite this record. The stub value will
+        // allow us to correctly prepare the runtime for the late binding of
+        // this object.
+        GlBuffer invalid_buffer;
+        RETURN_IF_ERROR(
+            objects_->RegisterBuffer(def().id, std::move(invalid_buffer)));
         return absl::OkStatus();
       }
       // Object is provided by a user, but runtime expects different object
@@ -365,64 +392,65 @@ class InferenceRunnerImpl : public InferenceRunner {
  public:
   InferenceRunnerImpl(std::unique_ptr<Runtime> runtime,
                       std::unique_ptr<ObjectManager> objects)
-      : runtime_(std::move(runtime)), objects_(std::move(objects)) {}
+      : runtime_(std::move(runtime)), external_objects_(std::move(objects)) {}
 
-  absl::Status Initialize(const std::vector<TensorTieDef>& inputs,
-                          const std::vector<TensorTieDef>& outputs,
+  absl::Status Initialize(const std::vector<TensorTieDef>& input_defs,
+                          const std::vector<TensorTieDef>& output_defs,
                           TensorTieFactory* tie_factory) {
-    RETURN_IF_ERROR(LinkTensors(inputs, tie_factory, &inputs_));
-    RETURN_IF_ERROR(LinkTensors(outputs, tie_factory, &outputs_));
-    for (const auto& def : outputs) {
-      output_to_cpu_ |= def.external_def.object_def.object_type ==
+    RETURN_IF_ERROR(LinkTensors(input_defs, tie_factory, &input_tensor_ties_));
+    RETURN_IF_ERROR(
+        LinkTensors(output_defs, tie_factory, &output_tensor_ties_));
+    for (const auto& output_def : output_defs) {
+      output_to_cpu_ |= output_def.external_def.object_def.object_type ==
                         gpu::ObjectType::CPU_MEMORY;
     }
     return absl::OkStatus();
   }
 
   std::vector<TensorObjectDef> inputs() const override {
-    return GetExternalDefinitions(inputs_);
+    return GetExternalDefinitions(input_tensor_ties_);
   }
 
   std::vector<TensorObjectDef> outputs() const override {
-    return GetExternalDefinitions(outputs_);
+    return GetExternalDefinitions(output_tensor_ties_);
   }
 
   absl::Status GetInputObject(int index, TensorObject* object) override {
-    if (index < 0 || index >= inputs_.size()) {
+    if (index < 0 || index >= input_tensor_ties_.size()) {
       return absl::OutOfRangeError("Index is out of range");
     }
-    *object = inputs_[index]->GetExternalObject();
+    *object = input_tensor_ties_[index]->GetExternalObject();
     return absl::OkStatus();
   }
 
   absl::Status GetOutputObject(int index, TensorObject* object) override {
-    if (index < 0 || index >= outputs_.size()) {
+    if (index < 0 || index >= output_tensor_ties_.size()) {
       return absl::OutOfRangeError("Index is out of range");
     }
-    *object = outputs_[index]->GetExternalObject();
+    *object = output_tensor_ties_[index]->GetExternalObject();
     return absl::OkStatus();
   }
 
   absl::Status SetInputObject(int index, TensorObject object) override {
-    if (index < 0 || index >= inputs_.size()) {
+    if (index < 0 || index >= input_tensor_ties_.size()) {
       return absl::OutOfRangeError("Index is out of range");
     }
-    return inputs_[index]->SetExternalObject(object);
+    return input_tensor_ties_[index]->SetExternalObject(object);
   }
 
   absl::Status SetOutputObject(int index, TensorObject object) override {
-    if (index < 0 || index >= outputs_.size()) {
+    if (index < 0 || index >= output_tensor_ties_.size()) {
       return absl::OutOfRangeError("Index is out of range");
     }
-    return outputs_[index]->SetExternalObject(object);
+    return output_tensor_ties_[index]->SetExternalObject(object);
   }
 
   absl::Status Run() override {
-    for (auto& obj : inputs_) {
+    for (auto& obj : input_tensor_ties_) {
       RETURN_IF_ERROR(obj->CopyFromExternalObject());
     }
     RETURN_IF_ERROR(runtime_->Execute());
-    for (auto& obj : outputs_) {
+    for (auto& obj : output_tensor_ties_) {
       RETURN_IF_ERROR(obj->CopyToExternalObject());
     }
     RETURN_IF_ERROR(runtime_->command_queue()->Flush());
@@ -439,7 +467,8 @@ class InferenceRunnerImpl : public InferenceRunner {
     objects->reserve(defs.size());
     for (auto& def : defs) {
       std::unique_ptr<TensorTie> object;
-      RETURN_IF_ERROR(tie_factory->NewTensorTie(def, objects_.get(), &object));
+      RETURN_IF_ERROR(
+          tie_factory->NewTensorTie(def, external_objects_.get(), &object));
       objects->push_back(std::move(object));
     }
     return absl::OkStatus();
@@ -456,9 +485,9 @@ class InferenceRunnerImpl : public InferenceRunner {
   }
 
   std::unique_ptr<Runtime> runtime_;
-  std::unique_ptr<ObjectManager> objects_;
-  std::vector<std::unique_ptr<TensorTie>> inputs_;
-  std::vector<std::unique_ptr<TensorTie>> outputs_;
+  std::unique_ptr<ObjectManager> external_objects_;
+  std::vector<std::unique_ptr<TensorTie>> input_tensor_ties_;
+  std::vector<std::unique_ptr<TensorTie>> output_tensor_ties_;
   bool output_to_cpu_ = false;
 };
 

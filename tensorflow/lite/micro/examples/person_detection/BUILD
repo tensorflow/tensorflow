@@ -1,14 +1,10 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers Vision Example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
-
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
 
 cc_library(
     name = "model_settings",
@@ -28,6 +24,9 @@ cc_library(
     hdrs = [
         "person_detect_model_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
 )
 
 cc_library(
@@ -40,19 +39,24 @@ cc_library(
         "no_person_image_data.h",
         "person_image_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":model_settings",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "person_detection_test",
     srcs = ["person_detection_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":model_settings",
         ":person_detect_model_data",
         ":simple_images_test_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
@@ -77,7 +81,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "image_provider_test",
     srcs = [
         "image_provider_test.cc",
@@ -105,7 +109,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "detection_responder_test",
     srcs = [
         "detection_responder_test.cc",
@@ -123,21 +127,18 @@ cc_binary(
         "main_functions.cc",
         "main_functions.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":detection_responder",
         ":image_provider",
         ":model_settings",
         ":person_detect_model_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/schema:schema_fbs",
     ],
-)
-
-sh_test(
-    name = "person_detection_binary_test",
-    srcs = ["person_detection_binary_test.sh"],
-    data = [":person_detection"],
 )

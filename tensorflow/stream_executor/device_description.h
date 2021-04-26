@@ -138,6 +138,13 @@ class DeviceDescription {
   // and the return value will be false.
   bool rocm_amdgpu_isa_version(int *version) const;
 
+  // Returns the
+  // * AMDGPU GCN Architecture Name if we're running on the ROCm platform.
+  // * kUndefinedString otherwise
+  const std::string rocm_amdgpu_gcn_arch_name() const {
+    return rocm_amdgpu_gcn_arch_name_;
+  }
+
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
   // devices). Note that some devices, such as NVIDIA's have a configurable
@@ -202,6 +209,9 @@ class DeviceDescription {
 
   // ROCM AMDGPU ISA version, 0 if not available.
   int rocm_amdgpu_isa_version_;
+
+  // ROCm AMDGPU GCN Architecture name, "" if not available.
+  std::string rocm_amdgpu_gcn_arch_name_;
 
   int numa_node_;
   int core_count_;
@@ -292,6 +302,10 @@ class DeviceDescriptionBuilder {
 
   void set_rocm_amdgpu_isa_version(int version) {
     device_description_->rocm_amdgpu_isa_version_ = version;
+  }
+
+  void set_rocm_amdgpu_gcn_arch_name(const std::string &gcn_arch_name) {
+    device_description_->rocm_amdgpu_gcn_arch_name_ = gcn_arch_name;
   }
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }

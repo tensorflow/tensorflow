@@ -148,22 +148,13 @@ Status CondBuilder::SetColocationAndFinalize(NodeBuilder node_builder,
 Status CondBuilder::CreatePivotNodes() {
   // Construct the basic cond body (consisting of feeding in the predicate to
   // create pivot nodes).
-
-  // This is a special pivot switch node for lowering. We mark this with a
-  // special _PivotSwitch attr on it as later on in the graph partitioner we
-  // do some special placement for Switch nodes and its necessary to distinguish
-  // between a "normal" Switch node and one of these pivot switches. We would
-  // like to place this node on the CPU always as the pred_ will be on the CPU
-  // as well (either a CPU op output or a GPU op with HostMemory annotation).
-  // TODO(b/171321391): Fix this for NUMA cases.
   Node* switch_pred;
   TF_RETURN_IF_ERROR(
       SetColocationAndFinalize(NodeBuilder(NewName("switch_pred"), "Switch",
                                            graph_->op_registry(), &debug_info_)
                                    .Input(NodeOut(pred_))
                                    .Input(NodeOut(pred_))
-                                   .Attr("_PivotSwitch", true)
-                                   .Device("/CPU:0"),
+                                   .Device(if_op_->requested_device()),
                                graph_, &switch_pred));
   control_predecessor_ = switch_pred;
   TF_RETURN_IF_ERROR(

@@ -29,11 +29,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -100,13 +100,14 @@ class QuantizationDriver {
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
-                              bool enforce_fixed_output_range)
+                              bool infer_tensor_range, bool legacy_float_scale)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
-        enforce_fixed_output_range_(enforce_fixed_output_range) {}
+        infer_tensor_range_(infer_tensor_range),
+        legacy_float_scale_(legacy_float_scale) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -291,7 +292,7 @@ class QuantizationDriver {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (op->isKnownTerminator() ||
+      if (op->hasTrait<OpTrait::IsTerminator>() ||
           op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
           llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
               op))
@@ -384,7 +385,13 @@ class QuantizationDriver {
 
   OpQuantSpecGetter op_quant_spec_getter_;
 
-  bool enforce_fixed_output_range_;
+  // Infer output ranges for activation ops and constants. This is usually
+  // required for post-training quantization.
+  bool infer_tensor_range_;
+
+  // Calculate scales in float instead of double, so that the scales and
+  // quantized values are exactly the same with the TOCO quantizer.
+  bool legacy_float_scale_;
 };
 }  // namespace
 
@@ -436,13 +443,13 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
     // per-axis quantization weight, with symmetric min/max enforced.
     final_type = GetUniformQuantizedPerAxisTypeForWeight(
         attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
-        /*narrow_range=*/true);
+        /*narrow_range=*/true, legacy_float_scale_);
   } else {
     // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
         attr, /*symmetric=*/is_weight && is_signed_,
         /*num_bits=*/8, is_signed_,
-        /*narrow_range_=*/is_weight);
+        /*narrow_range_=*/is_weight, legacy_float_scale_);
   }
   if (auto quant_type = final_type.dyn_cast_or_null<quant::QuantizedType>()) {
     return SetResultParams(op, 0, quant_type);
@@ -481,7 +488,7 @@ QuantParams QuantizationDriver::GetBiasParams(
     op_types.push_back(non_bias_type.params);
   }
   if (op_types.empty()) return {};
-  return func(op_types);
+  return func(op_types, legacy_float_scale_);
 }
 
 bool QuantizationDriver::SetOperandParams(Operation *op, int index,
@@ -505,7 +512,7 @@ bool QuantizationDriver::SetOperandParams(Operation *op, int index,
 
 void QuantizationDriver::QuantizeOpResult(Operation *op, int index,
                                           QuantParams params) {
-  builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  builder_.setInsertionPointAfter(op);
   Value original_result = op->getResult(index);
   QuantizeValue(original_result, params, op->getLoc());
 }
@@ -530,7 +537,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
   // TODO(fengliuai): make the attribute being part of op definition.
-  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+  quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
@@ -707,10 +714,11 @@ void QuantizationDriver::PreprocessConstantOps() {
         // so the quantization parameter are propagated from or determined by
         // other values. Duplicate this constant in case it is shared by
         // different users.
-        if (indexed_use.index() > 0) {
-          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        if (uses.size() > 1) {
+          auto new_cst =
+              builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+          user->setOperand(operand_num, new_cst);
         }
-        user->setOperand(operand_num, cst);
       }
     }
   });
@@ -733,10 +741,9 @@ void QuantizationDriver::SetupAllStates() {
   }
 
   fn_.walk([&](Operation *op) {
-    if (op->isKnownTerminator() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
+    if (IsOpNotQuantizable(op)) {
       return;
+    }
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
@@ -796,12 +803,14 @@ bool QuantizationDriver::PropagateParams() {
     quantized_.insert(op);
 
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
-      // If it isn't a weight or has been quantized, skip.
-      if (!IsWeight(cst) || IsQuantized(op)) continue;
-
-      // The quantization parameters are determined by the content of the
-      // constant.
-      changed |= SetConstantResultParams(op);
+      // If the workflow requires inferring ranges from the content
+      // (post-training quantization) and it is weight (filter) and hasn't
+      // been quantized, we infer the quantization parameters from the content.
+      if (infer_tensor_range_ && IsWeight(cst) && !IsQuantized(op)) {
+        // The quantization parameters are determined by the content of the
+        // constant.
+        changed |= SetConstantResultParams(op);
+      }
       continue;
     }
 
@@ -836,7 +845,9 @@ bool QuantizationDriver::PropagateParams() {
 
     // TODO(fengliuai): make the bit width configurable.
     auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
-    if (restricted && enforce_fixed_output_range_) {
+    if (restricted && infer_tensor_range_) {
+      // Infer ranges from the activation ops. This is usually required for
+      // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
       auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
       for (auto i = 0; i < op->getNumResults(); ++i) {
@@ -913,9 +924,10 @@ void QuantizationDriver::Run() {
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool post_training_quantization) {
+                                        bool infer_tensor_ranges,
+                                        bool legacy_float_scale) {
   QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     post_training_quantization)
+                     infer_tensor_ranges, legacy_float_scale)
       .Run();
 }
 

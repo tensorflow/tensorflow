@@ -185,7 +185,7 @@ class MklSlicePrimitive : public MklPrimitive {
 
   void Execute(const MklSliceParams& sliceParams,
                std::shared_ptr<stream> slice_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(sliceParams.from->get_data_handle(),
                                       *slice_stream);
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle(),
@@ -193,7 +193,7 @@ class MklSlicePrimitive : public MklPrimitive {
 #else
     context_.src_mem->set_data_handle(sliceParams.from->get_data_handle());
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
     execute_primitives(context_.slice_primitives, slice_stream,
                        context_.slice_primitives_args);
@@ -230,8 +230,6 @@ class MklSlicePrimitive : public MklPrimitive {
         new memory(sliceParams.from->get_desc(), cpu_engine_, DummyData));
     context_.dst_mem.reset(
         new memory(sliceParams.to->get_desc(), cpu_engine_, DummyData));
-    auto src_pd = context_.src_mem->get_desc();
-    auto dst_pd = context_.dst_mem->get_desc();
 
     auto src_sub_desc = context_.src_mem->get_desc().submemory_desc(
         sliceParams.size_dims, sliceParams.begin_dims);
@@ -276,7 +274,6 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = sliceParams.from->get_desc().data;
     auto const& to_desc = sliceParams.to->get_desc().data;
-    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
 
@@ -456,7 +453,8 @@ class MklSliceOp : public OpKernel {
           MklSlicePrimitiveFactory<T>::Get(sliceParams);
       // Execute slice reorder.
       std::shared_ptr<stream> slice_stream;
-      slice_stream.reset(CreateStream(context, reorder_prim->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      slice_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
       reorder_prim->Execute(sliceParams, slice_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

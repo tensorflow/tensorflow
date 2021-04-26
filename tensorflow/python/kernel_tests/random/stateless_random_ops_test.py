@@ -216,6 +216,17 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       pure = stateless_op(seed=preseed)
       self.assertAllEqual(stateful, pure)
 
+  def _test_match_stateless_cpu_gpu(self, case, seed):
+    # Stateless ops should produce the same result on CPUs and GPUs.
+    _, stateless_op, _ = case
+
+    with ops.device('CPU'):
+      result_cpu = stateless_op(seed=seed)
+
+    with ops.device(get_device().name):
+      result_gpu = stateless_op(seed=seed)
+      self.assertAllClose(result_cpu, result_gpu)
+
   def _test_old_and_new_stateless_match(self, case, seed):
     """Tests that the new stateless ops match the old stateless ones."""
     with ops.device(get_device().name):
@@ -229,7 +240,7 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
   def _test_determinism(self, case, seed_type):
     # Stateless values should be equal iff the seeds are equal (roughly)
     seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
-    with self.test_session(use_gpu=True), ops.device(get_device().name):
+    with self.test_session(), ops.device(get_device().name):
       _, stateless_op, _ = case
       if context.executing_eagerly():
         values = [
@@ -305,6 +316,18 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       # CPU kernels.
       self.skipTest('Lacking XLA kernel')
     self._test_match(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      for seed_id, seed in enumerate(SEEDS)
+      for case_id, case in enumerate(gamma_cases()))
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  def testStatelessGammaCpuGpuMatch(self, case, seed):
+    if get_device().device_type != 'GPU':
+      # This test compares the numbers produced by the CPU and GPU kernel for
+      # stateless_random_gamma.
+      self.skipTest('This test requires GPU')
+    self._test_match_stateless_cpu_gpu(case, seed)
 
   @parameterized.named_parameters(
       ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
@@ -387,10 +410,6 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       for case_id, case in enumerate(gamma_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismGamma(self, case, seed_type):
-    if get_device().device_type == 'GPU':
-      # This test was passing before because soft placement silently picked the
-      # CPU kernels.
-      self.skipTest('Lacking GPU kernel')
     if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
       # This test was passing before because soft placement silently picked the
       # CPU kernels.

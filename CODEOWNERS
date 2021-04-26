@@ -3,6 +3,8 @@
 /tensorflow/c/eager @qqfish @kkimdev
 /tensorflow/core/common_runtime/eager @qqfish @kkimdev
 /tenosrflow/core/debug @caisq
+/tensorflow/core/kernels/mkl/ @penpornk
+/tensorflow/core/kernels/sparse/ @penpornk
 /tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mihaimaruseac
 /tensorflow/lite/experimental/micro @petewarden @advaitjain

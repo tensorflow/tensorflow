@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_UTILS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_UTILS_H_
 
+#include <numeric>
+
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
@@ -58,6 +60,52 @@ class DeviceIdUtil {
         << " TF " << type << " id: " << tf_device_id << ", platform " << type
         << " id: " << platform_device_id
         << ", visible device count: " << visible_device_count;
+  }
+
+  // Parse `visible_device_list` into a list of platform Device ids.
+  static Status ParseVisibleDeviceList(
+      const string& visible_device_list, const int visible_device_count,
+      std::vector<PlatformDeviceId>* visible_device_order) {
+    visible_device_order->clear();
+
+    // If the user wants to remap the visible to virtual Device mapping,
+    // check for that here.
+    if (visible_device_list.empty()) {
+      visible_device_order->resize(visible_device_count);
+      // By default, visible to virtual mapping is unchanged.
+      std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
+    } else {
+      const std::vector<string> order_str =
+          str_util::Split(visible_device_list, ',');
+      for (const string& platform_device_id_str : order_str) {
+        int32 platform_device_id;
+        if (!strings::safe_strto32(platform_device_id_str,
+                                   &platform_device_id)) {
+          return errors::InvalidArgument(
+              "Could not parse entry in 'visible_device_list': '",
+              platform_device_id_str,
+              "'. visible_device_list = ", visible_device_list);
+        }
+        if (platform_device_id < 0 ||
+            platform_device_id >= visible_device_count) {
+          return errors::InvalidArgument(
+              "'visible_device_list' listed an invalid Device id '",
+              platform_device_id, "' but visible device count is ",
+              visible_device_count);
+        }
+        visible_device_order->push_back(PlatformDeviceId(platform_device_id));
+      }
+    }
+
+    // Validate no repeats.
+    std::set<PlatformDeviceId> visible_device_set(visible_device_order->begin(),
+                                                  visible_device_order->end());
+    if (visible_device_set.size() != visible_device_order->size()) {
+      return errors::InvalidArgument(
+          "visible_device_list contained a duplicate entry: ",
+          visible_device_list);
+    }
+    return Status::OK();
   }
 };
 

@@ -50,12 +50,18 @@ void BuildOpsSubmodule(py::module* m) {
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
+  py::enum_<RandomAlgorithm>(ops, "RandomAlgorithm")
+      .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
+      .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
+      .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("channel_id") = absl::nullopt,
-          py::arg("shape_with_layout") = absl::nullopt);
+          py::arg("shape_with_layout") = absl::nullopt,
+          py::arg("use_global_device_ids") = absl::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(
@@ -70,13 +76,6 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
-  ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
-          py::arg("source_target_pairs"));
-  ops.def("CreateToken", &CreateToken, py::arg("builder"));
-  ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
-              &CrossReplicaSum),
-          py::arg("operand"), py::arg("replica_groups") = py::list());
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
@@ -87,6 +86,8 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
   ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
+  ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
+          py::arg("source_target_pairs"));
   ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
           py::arg("dimension"));
   ops.def("Conditional",
@@ -112,6 +113,11 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("preferred_element_type") = absl::nullopt);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
+  ops.def("CreateToken", &CreateToken, py::arg("builder"));
+  ops.def("CrossReplicaSum",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
+              &CrossReplicaSum),
+          py::arg("operand"), py::arg("replica_groups") = py::list());
   ops.def(
       "CustomCall",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
@@ -142,6 +148,13 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);
+  ops.def(
+      "DynamicReshape",
+      static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
+                            absl::Span<const int64>, const std::vector<bool>&)>(
+          &DynamicReshape),
+      py::arg("operand"), py::arg("dim_sizes"), py::arg("new_size_bounds"),
+      py::arg("dims_are_dynamic"));
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice),
@@ -150,13 +163,22 @@ void BuildOpsSubmodule(py::module* m) {
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
               &DynamicUpdateSlice),
           py::arg("operand"), py::arg("update"), py::arg("start_indices"));
-
+  ops.def(
+      "Eigh",
+      [](XlaOp a, bool lower, int64 max_iter,
+         float epsilon) -> std::pair<XlaOp, XlaOp> {
+        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
+        return std::make_pair(eigh.v, eigh.w);
+      },
+      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
+      py::arg("epsilon") = 1e-6);
   ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
           py::arg("fft_length"));
-
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
           py::arg("indices_are_sorted") = false);
+  ops.def("GetDimensionSize", &GetDimensionSize, py::arg("operand"),
+          py::arg("dimension"));
   ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
           py::arg("index"));
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
@@ -167,6 +189,13 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota),
           py::arg("builder"), py::arg("type"), py::arg("size"));
+  ops.def(
+      "LU",
+      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
+        LuDecompositionResult lu = LuDecomposition(a);
+        return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
+      },
+      py::arg("operand"));
   ops.def("Map", &Map, py::arg("builder"), py::arg("operands"),
           py::arg("computation"), py::arg("dimensions"),
           py::arg("static_operands") = py::list());
@@ -186,34 +215,11 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-        TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-        return std::make_pair(qr.q, qr.r);
+        XlaOp q, r;
+        QrExplicit(a, full_matrices, q, r);
+        return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
-  ops.def(
-      "LU",
-      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
-        LuDecompositionResult lu = LuDecomposition(a);
-        return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
-      },
-      py::arg("operand"));
-  ops.def(
-      "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter,
-         float epsilon) -> std::pair<XlaOp, XlaOp> {
-        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
-        return std::make_pair(eigh.v, eigh.w);
-      },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
-  ops.def(
-      "SVD",
-      [](XlaOp a, int64 max_iter,
-         float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
-        auto svd = SVD(a, max_iter, epsilon);
-        return std::make_tuple(svd.u, svd.d, svd.v);
-      },
-      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
@@ -222,11 +228,31 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("computation"), py::arg("dimensions_to_reduce"));
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding,
-          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
-          py::arg("window_dimensions"), py::arg("window_strides"),
-          py::arg("base_dilations"), py::arg("window_dilations"),
-          py::arg("padding"));
+  ops.def(
+      "ReduceWindowWithGeneralPadding",
+      static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const std::pair<int64, int64>>)>(
+          &ReduceWindowWithGeneralPadding),
+      py::arg("operand"), py::arg("init_value"), py::arg("computation"),
+      py::arg("window_dimensions"), py::arg("window_strides"),
+      py::arg("base_dilations"), py::arg("window_dilations"),
+      py::arg("padding"));
+  ops.def(
+      "ReduceWindowWithGeneralPadding",
+      static_cast<XlaOp (*)(absl::Span<const XlaOp>, absl::Span<const XlaOp>,
+                            const XlaComputation&, absl::Span<const int64>,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const int64>,
+                            absl::Span<const std::pair<int64, int64>>)>(
+          &ReduceWindowWithGeneralPadding),
+      py::arg("operands"), py::arg("init_values"), py::arg("computation"),
+      py::arg("window_dimensions"), py::arg("window_strides"),
+      py::arg("base_dilations"), py::arg("window_dilations"),
+      py::arg("padding"));
+  ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
+          py::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
   ops.def("Reshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
@@ -236,6 +262,8 @@ void BuildOpsSubmodule(py::module* m) {
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape),
           py::arg("operand"), py::arg("new_sizes"));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
+  ops.def("RngBitGenerator", &RngBitGenerator, py::arg("algorithm"),
+          py::arg("initial_state"), py::arg("shape"));
   ops.def("RngNormal", &RngNormal, py::arg("mu"), py::arg("sigma"),
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
@@ -251,6 +279,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("select"), py::arg("window_dimensions"),
           py::arg("window_strides"), py::arg("padding"), py::arg("source"),
           py::arg("init_value"), py::arg("scatter"));
+  ops.def("SetDimensionSize", &SetDimensionSize, py::arg("operand"),
+          py::arg("val"), py::arg("dimension"));
   ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),
           py::arg("limit_indices"), py::arg("strides"));
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
@@ -279,6 +309,14 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("builder"), py::arg("operands"),
       py::arg("comparator") = absl::nullopt, py::arg("dimension") = -1,
       py::arg("is_stable") = false);
+  ops.def(
+      "SVD",
+      [](XlaOp a, int64 max_iter,
+         float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
+        auto svd = SVD(a, max_iter, epsilon);
+        return std::make_tuple(svd.u, svd.d, svd.v);
+      },
+      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
   ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
   ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),

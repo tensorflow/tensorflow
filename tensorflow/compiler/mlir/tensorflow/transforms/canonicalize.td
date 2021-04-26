@@ -55,6 +55,16 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
 // BatchMatMul op patterns.
 //===----------------------------------------------------------------------===//
 
+// Static shaped operands in a legal BatchMatMul op will have matching batch
+// dimensions and can be upgraded to the BatchMatMulV2 op. Canonicalizing
+// dynamically shaped operands is not correct as that will execute ops that
+// have non matching batch dimensions but are broadcastable which should fail
+// with V1.
+def BatchMatMulToV2 :
+  Pat<(TF_BatchMatMulOp AnyStaticShapeTensor:$x, AnyStaticShapeTensor:$y,
+                        $adj_x, $adj_y),
+      (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y)>;
+
 def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
@@ -179,6 +189,16 @@ def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                                 (GetStrAttr<"LEFT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV2Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis),
+  (TF_QuantizeAndDequantizeV4Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis)>;
+
+//===----------------------------------------------------------------------===//
 // RealDiv op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -199,25 +219,9 @@ def RealDivWithConstDivisor : Pat<
 def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
                            (TF_ReshapeOp $arg, $shape)>;
 
-def ReshapeToSelfShape : Pat<(TF_ReshapeOp $x, (TF_ShapeOp $x)),
-                         (replaceWithValue $x)>;
-
-//===----------------------------------------------------------------------===//
-// Select op patterns.
-//===----------------------------------------------------------------------===//
-
-def ReshapeSelectPredIfNecessary : NativeCodeCall<
-  "ReshapeSelectPredIfNecessary(&($_builder), $0.getOwner()->getLoc(), $1, "
-  "$2.getType().cast<RankedTensorType>().getRank())">;
-
-// Select supports tensor `condition` where the shape is equal to the first
-// dimension of t and e. SelectV2 op supports normal broadcasting, so in these
-// cases the condition needs to be reshaped.
-def SelectToSelectV2 : Pat<
-  (TF_SelectOp:$op StaticShapeTensorOf<[AnyType]>:$cond,
-                   StaticShapeTensorOf<[AnyType]>:$t,
-                   StaticShapeTensorOf<[AnyType]>:$e),
-  (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
+                         (replaceWithValue $x),
+                         [(SingleResultAndOperandHaveSameType $x, $op)]>;
 
 //===----------------------------------------------------------------------===//
 // Square op patterns.
@@ -255,3 +259,8 @@ def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOnlyReadVariableOpUsers $output)]>;
 
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Variable ops to tf.VariableV2 ops
+//===----------------------------------------------------------------------===//
+
+def VariableToVariableV2 : Pat<(TF_VariableOp $shape, $container, $shard_name), (TF_VariableV2Op $shape, $container, $shard_name)>;

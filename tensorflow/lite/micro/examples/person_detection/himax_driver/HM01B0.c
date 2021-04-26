@@ -673,7 +673,8 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
 
   am_util_stdio_printf("[%s] +\n", __func__);
 #ifdef ENABLE_ASYNC
-  while (!s_bVsyncAsserted);
+  while (!s_bVsyncAsserted)
+    ;
 
   while (s_bVsyncAsserted) {
     // we don't check HSYNC here on the basis of assuming HM01B0 in the gated
@@ -687,18 +688,21 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
         goto end;
       }
 
-      while (read_pclk());
+      while (read_pclk())
+        ;
     }
   }
 #else
   uint32_t ui32HsyncCnt = 0x00;
 
   while ((ui32HsyncCnt < HM01B0_PIXEL_Y_NUM)) {
-    while (0x00 == read_hsync());
+    while (0x00 == read_hsync())
+      ;
 
     // read one row
     while (read_hsync()) {
-      while (0x00 == read_pclk());
+      while (0x00 == read_pclk())
+        ;
 
       *(pui8Buffer + ui32Idx++) = read_byte();
 
@@ -706,7 +710,8 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
         goto end;
       }
 
-      while (read_pclk());
+      while (read_pclk())
+        ;
     }
 
     ui32HsyncCnt++;

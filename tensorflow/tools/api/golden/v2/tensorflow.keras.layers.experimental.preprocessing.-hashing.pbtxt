@@ -1,7 +1,6 @@
 path: "tensorflow.keras.layers.experimental.preprocessing.Hashing"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.hashing.Hashing\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.PreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -130,11 +129,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_bins\', \'salt\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "adapt"
-    argspec: "args=[\'self\', \'data\', \'reset_state\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'self\', \'num_bins\', \'mask_value\', \'salt\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

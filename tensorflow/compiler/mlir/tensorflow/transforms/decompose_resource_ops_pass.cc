@@ -43,10 +43,10 @@ struct DecomposeResourceOps
     : public PassWrapper<DecomposeResourceOps, FunctionPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     mlir::TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

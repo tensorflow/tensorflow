@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_
 
-static unsigned char expected_output_data[1][4] = {6, 8, 14, 16};
+static unsigned char expected_output_data[1][4] = {{6, 8, 14, 16}};
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_

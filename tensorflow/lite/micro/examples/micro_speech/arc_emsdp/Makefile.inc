@@ -4,7 +4,7 @@ ifeq ($(TARGET), arc_emsdp)
 # In particular:
 # - Extend Heap and stack size for application needs
 # - Use Linker command file with better usage of fast memory
-# - Optional (TAGS=reduce_codesize): In case project was 
+# - Optional (ARC_TAGS=reduce_codesize): In case project was 
 #   generated with MLI usage, reduce scratch buffers.
 
   MICRO_SPEECH_HDRS += \
@@ -36,7 +36,7 @@ ifeq ($(TARGET), arc_emsdp)
 	@echo Makefile: No Reference fallback for MLI supported functions >> $@
 
 
-ifneq ($(filter $(ALL_TAGS), reduce_codesize),)
+ifneq ($(filter $(ARC_TAGS), reduce_codesize),)
 # In case 'reduce_codesize' tag is present, we replace common MLI functions with 
 # specializations appropriate for this particular graph. But such changes of code 
 # with high probability may not be acceptable for other graphs and will need 

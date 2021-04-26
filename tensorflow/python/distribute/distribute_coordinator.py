@@ -169,7 +169,7 @@ class _WorkerContext(object):
   def _get_master_target(self):
     """Return the master target for a task."""
     # If cluster_spec is None or empty, we use local master.
-    if not self._cluster_spec:
+    if not self._cluster_spec or self._task_type == _TaskType.EVALUATOR:
       return ""
 
     # If task_type is None, then it is in-graph replicated training. In this
@@ -842,7 +842,8 @@ def run_distribute_coordinator(worker_fn,
                                               session_config, cluster_spec,
                                               task_type, task_id)
 
-    if not getattr(strategy.extended, "_std_server_started", False):
+    if (task_type != _TaskType.EVALUATOR and
+        not getattr(strategy.extended, "_std_server_started", False)):
       # Right now, with eager mode, context is configured with a std server at
       # the very beginning while with graph mode the std server is started when
       # distribute coordinator is called. We should consolidate these two paths.

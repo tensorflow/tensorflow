@@ -702,11 +702,11 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
   Status status = ColocateNodes(*src, src_root_id, *dst, dst_root_id);
   if (!status.ok()) {
     return AttachDef(
-        errors::InvalidArgument("Nodes were connected by a "
-                                "reference connection (requiring them to "
-                                "be on the same device), but the two nodes "
-                                "were assigned two different devices: ",
-                                status.error_message()),
+        errors::InvalidArgument(
+            "Nodes were connected by a reference or resource connection "
+            "(requiring them to be on the same device), but the two nodes "
+            "were assigned two different devices: ",
+            status.error_message()),
         *dst);
   }
   return Status::OK();

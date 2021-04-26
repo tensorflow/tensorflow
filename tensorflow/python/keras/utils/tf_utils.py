@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow-related utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
@@ -39,6 +36,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 
 
 def is_tensor_or_tensor_list(v):
@@ -84,7 +82,7 @@ def get_reachable_from_inputs(inputs, targets=None):
       except AttributeError:
         # Variables can be created in an Eager context.
         outputs = []
-    elif tensor_util.is_tensor(x):
+    elif tensor_util.is_tf_type(x):
       outputs = x.consumers()
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
@@ -107,7 +105,7 @@ def get_reachable_from_inputs(inputs, targets=None):
 def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
   """Maps the atomic elements of a nested structure.
 
-  Arguments:
+  Args:
     is_atomic_fn: A function that determines if an element of `nested` is
       atomic.
     map_fn: The function to apply to atomic elements of `nested`.
@@ -161,7 +159,7 @@ def convert_shapes(input_shape, to_tuples=True):
   - ints
   - None
 
-  Arguments:
+  Args:
     input_shape: A nested structure of objects to be converted to TensorShapes.
     to_tuples: If `True`, converts all TensorShape to tuples. Otherwise converts
       all tuples representing shapes to TensorShapes.
@@ -211,7 +209,7 @@ class ListWrapper(object):
 def convert_inner_node_data(nested, wrap=False):
   """Either wraps or unwraps innermost node data lists in `ListWrapper` objects.
 
-  Arguments:
+  Args:
     nested: A nested data structure.
     wrap: If `True`, wrap innermost lists in `ListWrapper` objects. If `False`,
       unwraps `ListWrapper` objects into lists.
@@ -224,7 +222,7 @@ def convert_inner_node_data(nested, wrap=False):
     # Node data can be of form `[layer_name, node_id, tensor_id]` or
     # `[layer_name, node_id, tensor_id, kwargs]`.
     if (isinstance(nested, list) and (len(nested) in [3, 4]) and
-        isinstance(nested[0], six.string_types)):
+        isinstance(nested[0], str)):
       return True
     return False
 
@@ -258,7 +256,7 @@ def shape_type_conversion(fn):
 
   Used in `compute_output_shape` and `build`.
 
-  Arguments:
+  Args:
     fn: function to wrap.
 
   Returns:
@@ -294,7 +292,7 @@ def is_extension_type(tensor):
   but this will be changed to use an appropriate extensiontype protocol
   check once ExtensionType is made public.
 
-  Arguments:
+  Args:
     tensor: An object to test
 
   Returns:
@@ -309,7 +307,7 @@ def is_symbolic_tensor(tensor):
   A Variable can be seen as either: it is considered symbolic
   when we are in a graph scope, and eager when we are in an eager scope.
 
-  Arguments:
+  Args:
     tensor: A tensor instance to test.
 
   Returns:
@@ -335,12 +333,13 @@ def is_symbolic_tensor(tensor):
     return False
 
 
+@keras_export('keras.__internal__.utils.register_symbolic_tensor_type', v1=[])
 def register_symbolic_tensor_type(cls):
   """Allows users to specify types regarded as symbolic `Tensor`s.
 
   Used in conjunction with `tf.register_tensor_conversion_function`, calling
-  `tf.keras.utils.register_symbolic_tensor_type(cls)` allows non-`Tensor`
-  objects to be plumbed through Keras layers.
+  `tf.keras.__internal__.utils.register_symbolic_tensor_type(cls)`
+  allows non-`Tensor` objects to be plumbed through Keras layers.
 
   Example:
 
@@ -355,13 +354,13 @@ def register_symbolic_tensor_type(cls):
   tf.register_tensor_conversion_function(
       Foo, lambda x, *args, **kwargs: x.value())
 
-  tf.keras.utils.register_symbolic_tensor_type(Foo)
+  tf.keras.__internal__.utils.register_symbolic_tensor_type(Foo)
 
   # User-land.
   layer = tf.keras.layers.Lambda(lambda input_: Foo(input_))
   ```
 
-  Arguments:
+  Args:
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
@@ -391,7 +390,7 @@ def is_ragged(tensor):
 
 
 def is_tensor_or_variable(x):
-  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+  return tensor_util.is_tf_type(x) or isinstance(x, variables.Variable)
 
 
 def assert_no_legacy_layers(layers):
@@ -423,7 +422,7 @@ def assert_no_legacy_layers(layers):
 def maybe_init_scope(layer):
   """Open an `init_scope` if in V2 mode and using the keras graph.
 
-  Arguments:
+  Args:
     layer: The Layer/Model that is currently active.
 
   Yields:
@@ -488,8 +487,8 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
   # pylint: enable=protected-access
 
 
-def to_numpy_or_python_type(tensors):
-  """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
+def sync_to_numpy_or_python_type(tensors):
+  """Syncs and converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
 
   For each tensor, it calls `tensor.numpy()`. If the result is a scalar value,
   it converts it to a Python type, such as a float or int, by calling
@@ -499,6 +498,10 @@ def to_numpy_or_python_type(tensors):
   with. This is especially useful for bfloat16 Numpy scalars, which don't
   support as many operations as other Numpy values.
 
+  Async strategies (such as `TPUStrategy` and `ParameterServerStrategy`) are
+  forced to
+  sync during this process.
+
   Args:
     tensors: A structure of tensors.
 
@@ -506,6 +509,9 @@ def to_numpy_or_python_type(tensors):
     `tensors`, but scalar tensors are converted to Python types and non-scalar
     tensors are converted to Numpy arrays.
   """
+  if isinstance(tensors, coordinator_lib.RemoteValue):
+    return tensors.fetch()
+
   def _to_single_numpy_or_python_type(t):
     if isinstance(t, ops.Tensor):
       x = t.numpy()

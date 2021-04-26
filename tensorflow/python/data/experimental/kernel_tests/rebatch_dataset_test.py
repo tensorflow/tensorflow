@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -623,6 +624,36 @@ class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.zip((dataset.batch(4), dataset.batch(8)))
     batch_size = distribute.compute_batch_size(dataset)
     self.assertEqual(-1, self.evaluate(batch_size))
+
+
+class LegacyRebatchDatasetCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset(num_elements, batch_size):
+      return distribute._LegacyRebatchDataset(
+          dataset_ops.Dataset.range(num_elements).batch(
+              4 * batch_size, drop_remainder=True),
+          num_replicas=4)
+
+    self.run_core_tests(lambda: build_dataset(64, 8), 8)
+
+
+class RebatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                   parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset(num_elements, batch_size):
+      return distribute._RebatchDataset(
+          dataset_ops.Dataset.range(num_elements).batch(
+              2 * batch_size, drop_remainder=True),
+          batch_sizes=[batch_size, batch_size])
+
+    self.run_core_tests(lambda: build_dataset(64, 8), 8)
 
 
 if __name__ == "__main__":

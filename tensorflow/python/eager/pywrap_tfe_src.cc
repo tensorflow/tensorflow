@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <unordered_map>
 
+#include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
@@ -42,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -866,7 +867,7 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   if (!out_status->status.ok()) return;
 
   tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -1327,10 +1328,10 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   tensorflow::Status CallBackwardFunction(
-      PyBackwardFunction* backward_function,
+      const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<tensorflow::int64>& unneeded_gradients,
       tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
-      std::vector<PyObject*>* result) const final {
+      absl::Span<PyObject*> result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
       if (output_gradients[i] == nullptr) {
@@ -1346,7 +1347,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
-    result->clear();
     PyObject* seq =
         PySequence_Fast(py_result, "expected a sequence of gradients");
     if (seq == nullptr) {
@@ -1354,16 +1354,21 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
           "gradient function did not return a list");
     }
     int len = PySequence_Fast_GET_SIZE(seq);
+    if (len != result.size()) {
+      return tensorflow::errors::Internal(
+          "Recorded operation '", op_type,
+          "' returned too few gradients. Expected ", result.size(),
+          " but received ", len);
+    }
     PyObject** seq_array = PySequence_Fast_ITEMS(seq);
     VLOG(1) << "Gradient length is " << len;
-    result->reserve(len);
     for (int i = 0; i < len; ++i) {
       PyObject* item = seq_array[i];
       if (item == Py_None) {
-        result->push_back(nullptr);
+        result[i] = nullptr;
       } else {
         Py_INCREF(item);
-        result->push_back(item);
+        result[i] = item;
       }
     }
     Py_DECREF(seq);
@@ -1444,6 +1449,12 @@ PyObject* PyTapeTensor::OnesLike() const {
 }
 
 PyObject* PyTapeTensor::ZerosLike() const {
+  if (GetDType() == tensorflow::DT_RESOURCE) {
+    // Gradient functions for ops which return resource tensors accept
+    // None. This is the behavior of py_vspace->Zeros, but checking here avoids
+    // issues with ZerosLike.
+    Py_RETURN_NONE;
+  }
   if (shape_.index() == 1) {
     PyObject* tensor = absl::get<1>(shape_);
     return py_vspace->ZerosLike(tensor);
@@ -2081,6 +2092,14 @@ bool ListContainsNone(PyObject* list) {
   return false;
 }
 
+// As an optimization, the tape generally keeps only the shape and dtype of
+// tensors, and uses this information to generate ones/zeros tensors. However,
+// some tensors require OnesLike/ZerosLike because their gradients do not match
+// their inference shape/dtype.
+bool DTypeNeedsHandleData(tensorflow::DataType dtype) {
+  return dtype == tensorflow::DT_VARIANT || dtype == tensorflow::DT_RESOURCE;
+}
+
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     tensorflow::ImmediateExecutionTensorHandle* handle =
@@ -2088,7 +2107,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
         static_cast<tensorflow::DataType>(handle->DataType());
-    if (dtype == tensorflow::DT_VARIANT) {
+    if (DTypeNeedsHandleData(dtype)) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
@@ -2134,7 +2153,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
                         tensorflow::TensorShape({}));
   }
 
-  if (ListContainsNone(shape_tuple.get()) || dtype == tensorflow::DT_VARIANT) {
+  if (ListContainsNone(shape_tuple.get()) || DTypeNeedsHandleData(dtype)) {
     return PyTapeTensor(id, dtype, tensor);
   }
 
@@ -2774,10 +2793,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       Py_INCREF(tensor);
     }
   }
-  std::vector<PyObject*> result;
+  std::vector<PyObject*> result(sources_vec.size());
   status->status = tape_obj->tape->ComputeGradient(
       *py_vspace, target_vec, sources_vec, source_tensors_that_are_targets,
-      outgrad_vec, &result);
+      outgrad_vec, absl::MakeSpan(result));
   if (!status->status.ok()) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
@@ -3631,7 +3650,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
 
   tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;
@@ -4293,6 +4312,7 @@ void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
                                      PyObject* device_spec) {
   DCheckPyGilState();
   if (eager_context_thread_local_data_defaults == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_defaults =
         new EagerContextThreadLocalDataDefaultsMap();
   }
@@ -4328,6 +4348,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   }
 
   if (eager_context_thread_local_data_map == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_map = new EagerContextThreadLocalDataMap();
   }
   auto& thread_local_data =

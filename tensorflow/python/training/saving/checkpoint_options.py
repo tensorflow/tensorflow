@@ -25,15 +25,16 @@ from tensorflow.python.util.tf_export import tf_export
 class CheckpointOptions(object):
   """Options for constructing a Checkpoint.
 
-  Used as the `_options` argument to the `tf.Checkpoint` constructor to adjust
-  how variables are saved.
+  Used as the `options` argument to either `tf.train.Checkpoint.save()` or
+  `tf.train.Checkpoint.restore()` methods to adjust how variables are
+  saved/restored.
 
   Example: Run IO ops on "localhost" while saving a checkpoint:
 
   ```
   step = tf.Variable(0, name="step")
-  checkpoint = tf.Checkpoint(step=step)
-  options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+  checkpoint = tf.train.Checkpoint(step=step)
+  options = tf.train.CheckpointOptions(experimental_io_device="/job:localhost")
   checkpoint.save("/tmp/ckpt", options=options)
   ```
   """

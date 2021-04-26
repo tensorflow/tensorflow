@@ -13,14 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Functions that save the model's config into different formats.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Functions that save the model's config into different formats."""
 
-import json
-
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
@@ -44,7 +39,7 @@ def model_from_config(config, custom_objects=None):
   tf.keras.Sequential().from_config(model.get_config())
   ```
 
-  Arguments:
+  Args:
       config: Configuration dictionary.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -80,7 +75,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   ... except ImportError:
   ...   pass
 
-  Arguments:
+  Args:
       yaml_string: YAML string or open file encoding a model configuration.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -117,7 +112,7 @@ def model_from_json(json_string, custom_objects=None):
   >>> config = model.to_json()
   >>> loaded_model = tf.keras.models.model_from_json(config)
 
-  Arguments:
+  Args:
       json_string: JSON string encoding a model configuration.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -126,6 +121,6 @@ def model_from_json(json_string, custom_objects=None):
   Returns:
       A Keras model instance (uncompiled).
   """
-  config = json.loads(json_string)
+  config = json_utils.decode(json_string)
   from tensorflow.python.keras.layers import deserialize  # pylint: disable=g-import-not-at-top
   return deserialize(config, custom_objects=custom_objects)

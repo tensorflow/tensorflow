@@ -31,12 +31,32 @@ namespace tflite {
 // (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
 // have their Register function declarations in the tflite namespace.
 
+TfLiteRegistration Register_ADD_N();
+TfLiteRegistration Register_BATCH_TO_SPACE_ND();
+TfLiteRegistration Register_CAST();
 TfLiteRegistration Register_CONV_2D();
+TfLiteRegistration Register_CUMSUM();
+TfLiteRegistration Register_DEPTH_TO_SPACE();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
+TfLiteRegistration Register_DIV();
+TfLiteRegistration Register_ELU();
+TfLiteRegistration Register_EXP();
+TfLiteRegistration Register_EXPAND_DIMS();
+TfLiteRegistration Register_FILL();
+TfLiteRegistration Register_FLOOR_DIV();
+TfLiteRegistration Register_FLOOR_MOD();
+TfLiteRegistration Register_L2_POOL_2D();
+TfLiteRegistration Register_LEAKY_RELU();
+TfLiteRegistration Register_LOG_SOFTMAX();
 TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();
+TfLiteRegistration Register_SPACE_TO_BATCH_ND();
+TfLiteRegistration Register_SQUEEZE();
 TfLiteRegistration Register_SVDF();
+TfLiteRegistration Register_TRANSPOSE_CONV();
+TfLiteRegistration Register_ZEROS_LIKE();
 
 namespace ops {
 namespace micro {

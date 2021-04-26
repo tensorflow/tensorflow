@@ -168,7 +168,7 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
   iterator_stat.set_duration_ps(iterator_stat.duration_ps() +
                                 visitor.DurationPs());
   int64 self_time_ps = visitor.DurationPs();
-  tensorflow::profiler::Timespan self_time_span = visitor.GetTimespan();
+  Timespan self_time_span = visitor.GetTimespan();
   for (EventNode* child : iterator_event.GetChildren()) {
     const XEventVisitor& child_visitor = child->GetEventVisitor();
     if (ParseTfOpFullname(child_visitor.Name()).category == Category::kTfData) {

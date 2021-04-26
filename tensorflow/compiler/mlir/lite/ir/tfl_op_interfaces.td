@@ -20,6 +20,31 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
+def TFL_Dialect : Dialect {
+  let name = "tfl";
+
+  let description = [{
+    The TensorFlow Lite dialect.
+
+    This dialect maps to TensorFlow Lite operations.
+
+    Invariants:
+
+    * All values are of Tensor type (in particular, scalars are
+      represented using zero-dimensional tensors);
+  }];
+
+  let cppNamespace = "::mlir::TFL";
+}
+
+// Attributes used for encoding sparse tensors.
+// Please find detailed explanation of these parameters in the TFLite schema.
+def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
+def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
+
+def TFL_DimensionTypeAttr : StrEnumAttr<
+    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
+
 //===----------------------------------------------------------------------===//
 // TFL op interface for stateful operands.
 

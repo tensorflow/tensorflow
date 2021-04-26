@@ -12,16 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in regularizers.
-"""
+"""Built-in regularizers."""
 # pylint: disable=invalid-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import math
-
-import six
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
@@ -183,7 +177,7 @@ class Regularizer(object):
     loading models to HDF5 formats, Keras model cloning, some visualization
     utilities, and exporting models to and from JSON.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
 
     Returns:
@@ -335,7 +329,7 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   The L2 regularization penalty is computed as:
   `loss = l2 * reduce_sum(square(x))`
 
-  Arguments:
+  Args:
       l1: Float; L1 regularization factor.
       l2: Float; L2 regularization factor.
 
@@ -375,7 +369,7 @@ def get(identifier):
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     return deserialize(str(identifier))
   elif callable(identifier):
     return identifier

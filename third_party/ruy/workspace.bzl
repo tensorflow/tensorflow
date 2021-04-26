@@ -1,15 +1,15 @@
 """Loads the ruy library, used by TensorFlow Lite."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "ruy",
-        sha256 = "d8f9dc52c0a52c8470e2e0b60bc16cba91853d812846c075f7ed8404990b003d",
-        strip_prefix = "ruy-5bb02fbf90824c2eb6cd7418f766c593106a332b",
+        sha256 = "dbfee92fcf9d6a767e9689ca46aa6c1ec4eb8fe69376bacff45dd875226d0ba1",
+        strip_prefix = "ruy-38a9266b832767a3f535a74a9e0cf39f7892e594",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/5bb02fbf90824c2eb6cd7418f766c593106a332b.zip",
-            "https://github.com/google/ruy/archive/5bb02fbf90824c2eb6cd7418f766c593106a332b.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip",
+            "https://github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip",
         ],
         build_file = "//third_party/ruy:BUILD",
     )

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import time
+from typing import NamedTuple
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -54,6 +56,10 @@ class _CustomMapping(collections_abc.Mapping):
 
   def __len__(self):
     return len(self._wrapped)
+
+
+class _CustomList(list):
+  pass
 
 
 class _CustomSequenceThatRaisesException(collections.Sequence):
@@ -281,6 +287,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
         "Structure had 2 elements, but flat_sequence had 3 elements."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
+
+  def testPackSequenceAs_CompositeTensor(self):
+    val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
+                                                     row_splits=[0, 1])
+    with self.assertRaisesRegex(
+        ValueError,
+        "Structure had 2 elements, but flat_sequence had 1 elements."):
+      nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testIsNested(self):
@@ -603,6 +617,13 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # name and field names are considered to be identical.
     inp_shallow = NestTest.SameNameab(1, 2)
     inp_deep = NestTest.SameNameab2(1, [1, 2, 3])
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: two list-types with same number
+    # of fields are considered identical.
+    inp_shallow = _CustomList([1, 2])
+    inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
 
@@ -1229,6 +1250,72 @@ class NestTest(parameterized.TestCase, test.TestCase):
           nest1=array_ops.zeros((1)),
           nest2=array_ops.ones((1, 1, 1)),
           expand_composites=array_ops.ones((2)))
+
+  def testIsNamedtuple(self):
+    # The `tree` library runs this test after monkey-patching in its
+    # `compat` module, but that doesn't cover this internal-only symbol.
+    if nest.__name__.endswith("tree.compat"):
+      self.skipTest("is_namedtuple() is not part of tree.compat")
+
+    # A classic namedtuple.
+    Foo = collections.namedtuple("Foo", ["a", "b"])
+    self.assertTrue(nest.is_namedtuple(Foo(1, 2)))
+
+    # A subclass of it.
+    class SubFoo(Foo):
+
+      def extra_method(self, x):
+        return self.a + x
+
+    self.assertTrue(nest.is_namedtuple(SubFoo(1, 2)))
+
+    # A typing.NamedTuple.
+    class TypedFoo(NamedTuple):
+      a: int
+      b: int
+    self.assertTrue(nest.is_namedtuple(TypedFoo(1, 2)))
+
+    # Their types are not namedtuple values themselves.
+    self.assertFalse(nest.is_namedtuple(Foo))
+    self.assertFalse(nest.is_namedtuple(SubFoo))
+    self.assertFalse(nest.is_namedtuple(TypedFoo))
+
+    # These values don't have namedtuple types.
+    self.assertFalse(nest.is_namedtuple(123))
+    self.assertFalse(nest.is_namedtuple("abc"))
+    self.assertFalse(nest.is_namedtuple((123, "abc")))
+
+    class SomethingElseWithFields(tuple):
+
+      def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._fields = [1, 2, 3]  # Not str, as expected for a namedtuple.
+
+    self.assertFalse(nest.is_namedtuple(SomethingElseWithFields()))
+
+  def testSameNamedtuples(self):
+    # The `tree` library runs this test after monkey-patching in its
+    # `compat` module, but that doesn't cover this internal-only symbol.
+    if nest.__name__.endswith("tree.compat"):
+      self.skipTest("same_namedtuples() is not part of tree.compat")
+
+    # A classic namedtuple and an equivalent cppy.
+    Foo1 = collections.namedtuple("Foo", ["a", "b"])
+    Foo2 = collections.namedtuple("Foo", ["a", "b"])
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo1(3, 4)))
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo2(3, 4)))
+
+    # Non-equivalent namedtuples.
+    Bar = collections.namedtuple("Bar", ["a", "b"])
+    self.assertFalse(nest.same_namedtuples(Foo1(1, 2), Bar(1, 2)))
+    FooXY = collections.namedtuple("Foo", ["x", "y"])
+    self.assertFalse(nest.same_namedtuples(Foo1(1, 2), FooXY(1, 2)))
+
+    # An equivalent subclass from the typing module
+    class Foo(NamedTuple):
+      a: int
+      b: int
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo(3, 4)))
 
 
 class NestBenchmark(test.Benchmark):

@@ -51,6 +51,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   bool emit_quant_adaptor_ops_;
 };
 
+// TODO(fengliuai): migrate to use modify_io_nodes pass.
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
@@ -130,7 +131,14 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.input().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
-      if (!q.getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+
+      // Don't remove leading and tailing QDQ for PQT workflow, so the io
+      // modifying lib can work correctly.
+      if (!q.input().getDefiningOp()) return failure();
+      if (op->hasOneUse() &&
+          op->user_begin()->hasTrait<OpTrait::IsTerminator>())
+        return failure();
 
       op.replaceAllUsesWith(q.input());
       return success();
@@ -139,21 +147,20 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
-// Removes LSTMs that have dangling output.
-// LSTMs are not removed automatically becuase they are stateful ops.
-template <typename LstmOpTy>
-struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
+// Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
+// output.
+template <typename OpTy>
+struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
  public:
-  explicit PruneUnusedLstm(MLIRContext* context)
-      : OpRewritePattern<LstmOpTy>(context) {}
+  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context)
+      : OpRewritePattern<OpTy>(context) {}
 
-  LogicalResult matchAndRewrite(LstmOpTy lstm_op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
-    Operation* op = lstm_op.getOperation();
-    if (op->isKnownTerminator()) {
+    if (op.getOperation()->template hasTrait<OpTrait::IsTerminator>()) {
       return failure();
     }
-    for (auto result : op->getOpResults()) {
+    for (auto result : op.getOperation()->getOpResults()) {
       if (!result.use_empty()) {
         return failure();
       }
@@ -166,24 +173,28 @@ struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
+  patterns
+      .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
+          ctx);
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }
 
-  OwningRewritePatternList phase_2_patterns;
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  OwningRewritePatternList phase_2_patterns(&getContext());
+  TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns
       .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
           ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

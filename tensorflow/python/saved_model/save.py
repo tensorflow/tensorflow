@@ -22,8 +22,11 @@ import collections
 import functools
 import gc
 import os
+import sys
 
 from absl import logging
+import numpy
+
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -45,7 +48,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder_impl
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
@@ -56,6 +58,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.saved_model.experimental import pywrap_libexport
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
@@ -358,7 +361,7 @@ class _SaveableView(object):
              "\n".join(concrete_function.graph.saving_errors)).format(
                  name=concrete_function.name))
       for capture in concrete_function.captured_inputs:
-        if (tensor_util.is_tensor(capture) and
+        if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
           if hasattr(capture, "_cached_variable"):
@@ -373,7 +376,19 @@ class _SaveableView(object):
           if capture_constant_value is None:
             bad_functions.append(concrete_function)
             continue
-          copied_tensor = constant_op.constant(capture_constant_value)
+          if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
+              capture_constant_value == capture_constant_value.flat[0]):
+            # For the common case of a constant array filled with the same
+            # value, rebuidling the constant op specifically with the shape arg,
+            # since otherwise the whole array is written into the node def,
+            # causing performance and graph proto size issues (protos cannot be
+            # bigger than 2GB).
+            copied_tensor = constant_op.constant(
+                capture_constant_value.flat[0],
+                dtype=capture.dtype,
+                shape=capture.shape)
+          else:
+            copied_tensor = constant_op.constant(capture_constant_value)
           node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)
@@ -432,7 +447,7 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
           if isinstance(secondary_referrer, base.Trackable):
             trackable_referrers.append(secondary_referrer)
       raise AssertionError(
-          ("Tried to export a function which references untracked resource {}."
+          ("Tried to export a function which references untracked resource {}. "
            "TensorFlow objects (e.g. tf.Variable) captured by functions must "
            "be tracked by assigning them to an attribute of a tracked object "
            "or assigned to an attribute of the main object directly.\n\n"
@@ -681,11 +696,12 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     # Add the same op to the main_op collection and to the init_op
     # signature. The collection is for compatibility with older loader APIs;
     # only one will be executed.
-    meta_graph_def.collection_def[constants.MAIN_OP_KEY].node_list.value.append(
-        init_op.name)
-    meta_graph_def.signature_def[constants.INIT_OP_SIGNATURE_KEY].CopyFrom(
-        signature_def_utils.op_signature_def(init_op,
-                                             constants.INIT_OP_SIGNATURE_KEY))
+    meta_graph_def.collection_def[
+        pywrap_libexport.MAIN_OP_KEY].node_list.value.append(init_op.name)
+    meta_graph_def.signature_def[
+        pywrap_libexport.INIT_OP_SIGNATURE_KEY].CopyFrom(
+            signature_def_utils.op_signature_def(
+                init_op, pywrap_libexport.INIT_OP_SIGNATURE_KEY))
 
   # Saving an object-based checkpoint again gathers variables. We need to do the
   # gathering from the eager context so Optimizers save the right set of
@@ -719,6 +735,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
+  # store tensor_content in litle endian format
+  if sys.byteorder == "big":
+    utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
   return asset_info, exported_graph
 
 
@@ -779,21 +798,8 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
-    proto.variable.SetInParent()
-    if not obj.name.endswith(":0"):
-      raise ValueError("Cowardly refusing to save variable %s because of"
-                       " unexpected suffix which won't be restored.")
-    proto.variable.name = meta_graph._op_name(obj.name)  # pylint: disable=protected-access
-    proto.variable.trainable = obj.trainable
-    proto.variable.dtype = obj.dtype.as_datatype_enum
-    proto.variable.synchronization = obj.synchronization.value
-    proto.variable.aggregation = obj.aggregation.value
-    proto.variable.shape.CopyFrom(obj.shape.as_proto())
     options = save_context.get_save_options()
-    if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
-    ):
-      if hasattr(obj, "device"):
-        proto.variable.device = obj.device
+    obj._write_object_proto(proto, options)  # pylint: disable=protected-access
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(function_serialization.serialize_function(
         obj, function_name_map))
@@ -821,15 +827,6 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
 
-  # Give the object a chance to modify the SavedObject proto.
-  # This is currently used by MirroredVariables to optionally write their
-  # component variables to the proto.
-  #
-  # This is not yet an official Trackable method, the only current use case
-  # being MirroredVariables. See the method implementation there for more
-  # documentation.
-  if hasattr(obj, "_write_object_proto"):
-    obj._write_object_proto(proto, options)  # pylint: disable=protected-access
   return has_saved_object_metadata
 
 
@@ -858,7 +855,7 @@ def _export_debug_info(exported_graph, export_dir):
   file_io.atomic_write_string_to_file(
       os.path.join(
           utils_impl.get_or_create_debug_dir(export_dir),
-          constants.DEBUG_INFO_FILENAME_PB),
+          pywrap_libexport.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
 
 
@@ -1047,8 +1044,12 @@ def save(obj, export_dir, signatures=None, options=None):
                         raise_metadata_warning=True)
 
 
-def save_and_return_nodes(obj, export_dir, signatures=None, options=None,
-                          raise_metadata_warning=False):
+def save_and_return_nodes(obj,
+                          export_dir,
+                          signatures=None,
+                          options=None,
+                          raise_metadata_warning=False,
+                          experimental_skip_checkpoint=False):
   """Saves a SavedModel while returning all saved nodes and their paths.
 
   Please see `tf.saved_model.save` for details.
@@ -1061,6 +1062,8 @@ def save_and_return_nodes(obj, export_dir, signatures=None, options=None,
     options: `tf.saved_model.SaveOptions` object for configuring save options.
     raise_metadata_warning: Whether to raise the metadata warning. This arg will
       be removed in TF 2.5.
+    experimental_skip_checkpoint: If set to `True`, the checkpoint will not
+      be written.
 
   Returns:
     A tuple of (a list of saved nodes in the order they are serialized to the
@@ -1077,17 +1080,19 @@ def save_and_return_nodes(obj, export_dir, signatures=None, options=None,
   _, exported_graph, object_saver, asset_info, saved_nodes, node_paths = (
       _build_meta_graph(obj, signatures, options, meta_graph_def,
                         raise_metadata_warning))
-  saved_model.saved_model_schema_version = constants.SAVED_MODEL_SCHEMA_VERSION
+  saved_model.saved_model_schema_version = (
+      pywrap_libexport.SAVED_MODEL_SCHEMA_VERSION)
 
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
-  utils_impl.get_or_create_variables_dir(export_dir)
-  ckpt_options = checkpoint_options.CheckpointOptions(
-      experimental_io_device=options.experimental_io_device)
-  object_saver.save(
-      utils_impl.get_variables_path(export_dir), options=ckpt_options)
-  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
-                                              export_dir)
+  if not experimental_skip_checkpoint:
+    utils_impl.get_or_create_variables_dir(export_dir)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_io_device=options.experimental_io_device)
+    object_saver.save(
+        utils_impl.get_variables_path(export_dir), options=ckpt_options)
+    builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
+                                                export_dir)
   # Note that this needs to be the last file operation when saving the
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.
@@ -1102,9 +1107,13 @@ def save_and_return_nodes(obj, export_dir, signatures=None, options=None,
           "to the io_device such as '/job:localhost'."
       )
 
+  # We will slowly migrate code in this function to pywrap_libexport.Save
+  # as we build up the C++ API.
+  pywrap_libexport.Save(export_dir)
+
   path = os.path.join(
       compat.as_str(export_dir),
-      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(pywrap_libexport.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
   # Save debug info, if requested.

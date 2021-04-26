@@ -14,9 +14,6 @@
 # ==============================================================================
 """Preprocessing stage."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -29,15 +26,16 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util import nest
 
 
-class PreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
-                         sequential.Sequential):
+# Sequential methods should take precedence.
+class PreprocessingStage(sequential.Sequential,
+                         base_preprocessing_layer.PreprocessingLayer):
   """A sequential preprocessing stage.
 
   This preprocessing stage wraps a list of preprocessing layers into a
   Sequential-like object that enables you to `adapt()` the whole list via
   a single `adapt()` call on the preprocessing stage.
 
-  Arguments:
+  Args:
     layers: List of layers. Can include layers that aren't preprocessing layers.
     name: String. Optional name for the preprocessing stage object.
   """
@@ -45,7 +43,7 @@ class PreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   def adapt(self, data, reset_state=True):
     """Adapt the state of the layers of the preprocessing stage to the data.
 
-    Arguments:
+    Args:
       data: A batched Dataset object, or a NumPy array, or an EagerTensor.
         Data to be iterated over to adapt the state of the layers in this
         preprocessing stage.
@@ -96,8 +94,9 @@ class PreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
                                              reset_state=reset_state)
 
 
-class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
-                                   functional.Functional):
+# Functional methods shoud take precedence.
+class FunctionalPreprocessingStage(functional.Functional,
+                                   base_preprocessing_layer.PreprocessingLayer):
   """A functional preprocessing stage.
 
   This preprocessing stage wraps a graph of preprocessing layers into a
@@ -125,7 +124,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   >>> outputs = [inputs['x1'], [y, z]]
   >>> stage = FunctionalPreprocessingStage(inputs, outputs)
 
-  Arguments:
+  Args:
     inputs: An input tensor (must be created via `tf.keras.Input()`), or a list,
       a dict, or a nested strcture of input tensors.
     outputs: An output tensor, or a list, a dict or a nested structure of output
@@ -142,7 +141,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   def adapt(self, data, reset_state=True):
     """Adapt the state of the layers of the preprocessing stage to the data.
 
-    Arguments:
+    Args:
       data: A batched Dataset object, a NumPy array, an EagerTensor, or a list,
         dict or nested structure of Numpy Arrays or EagerTensors. The elements
         of Dataset object need to conform with inputs of the stage. The first
@@ -171,9 +170,8 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     """
     if not isinstance(data, dataset_ops.Dataset):
       data = self._flatten_to_reference_inputs(data)
-      if any([
-          not isinstance(datum, (np.ndarray, ops.EagerTensor)) for datum in data
-      ]):
+      if any(not isinstance(datum, (np.ndarray, ops.EagerTensor))
+             for datum in data):
         raise ValueError(
             '`adapt()` requires a batched Dataset, a list of EagerTensors '
             'or Numpy arrays as input, got {}'.format(type(data)))
@@ -242,7 +240,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
 def _unzip_dataset(ds):
   """Unzip dataset into a list of single element datasets.
 
-  Arguments:
+  Args:
     ds: A Dataset object.
 
   Returns:

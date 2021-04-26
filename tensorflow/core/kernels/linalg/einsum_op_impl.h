@@ -59,12 +59,10 @@ using LabelCounts = gtl::InlinedVector<int, 8>;
 using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
 using LabelToDimSizes = gtl::InlinedVector<int64, 8>;
 
+// Dummy axis label used to denote an ellipsis in an input or output subscript.
 constexpr int kEllipsisLabel = -1;
 
 struct EinsumHelper {
-  // Dummy axis label used to denote an ellipsis in an input or output
-  // subscript.
-
   // Each dimension is categorized into exactly one of five types based on
   // whether its corresponding label is present in the input and/or the output
   // subscripts.
@@ -538,7 +536,7 @@ struct EinsumHelper {
     return CopyFrom(input, output_shape, output);
   }
 
-  // Contracts the inputs along the last axis. (or the second last if the
+  // Contracts the inputs along the last axis (or the second last if the
   // corresponding value of swap_free_and_contract is true). The batch
   // dimensions are broadcast to the output shape.
   // TODO(anudhyan): BatchMatMul might devolve into a component-wise

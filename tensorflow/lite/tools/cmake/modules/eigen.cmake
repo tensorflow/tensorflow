@@ -22,8 +22,8 @@ include(OverridableFetchContent)
 OverridableFetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen
-  # TODO: Verify this is the version required by TFLite
-  GIT_TAG d10b27fe37736d2944630ecd7557cefa95cf87c9
+  # Sync with tensorflow/third_party/eigen3/workspace.bzl
+  GIT_TAG fcb5106c6e16599eeabadf7d82a465d52229698f
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
@@ -50,6 +50,13 @@ endif()
 # Patch Eigen to disable benchmark suite.
 if(NOT EIGEN_BUILD_BTL)
   file(WRITE "${eigen_SOURCE_DIR}/bench/spbench/CMakeLists.txt" "")
+endif()
+
+# Patch Eigen to disable doc generation, as it builds C++ standalone apps with
+# the host toolchain which breaks cross compiled builds.
+if(NOT EIGEN_GENERATE_DOCS)
+  file(WRITE "${eigen_SOURCE_DIR}/doc/CMakeLists.txt" "")
+  file(WRITE "${eigen_SOURCE_DIR}/unsupported/doc/CMakeLists.txt" "")
 endif()
 
 set(EIGEN_DISABLED_FORTRAN_COMPILER_CHECK ON CACHE BOOL "Disabled Fortran")

@@ -41,7 +41,11 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
 )
 
 # List of exported source files.
@@ -74,7 +78,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -97,6 +100,7 @@ filegroup(
         "example_proto_helper.h",
         "guarded_philox_random.cc",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.cc",
         "matmul_autotune.h",
         "matmul_bcast.h",
@@ -108,7 +112,6 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
-        "ragged_to_dense_util_common.cc",
         "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
@@ -162,7 +165,6 @@ filegroup(
         "matmul_bcast.h",
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
-        "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
         "padding.h",
@@ -239,6 +241,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -275,6 +278,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -327,7 +331,6 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
-        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -340,6 +343,7 @@ filegroup(
         "example_proto_helper.h",
         "gpu_kernel_helper.h",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
@@ -388,9 +392,6 @@ cc_library(
 
 cc_library(
     name = "ragged_to_dense_util_common",
-    srcs = [
-        "ragged_to_dense_util_common.cc",
-    ],
     hdrs = [
         "ragged_to_dense_util_common.h",
     ],
@@ -464,23 +465,28 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     alwayslink = 1,
 )
 
 cc_library(
-    name = "abstract_stack_trace",
-    hdrs = ["abstract_stack_trace.h"],
+    name = "managed_stack_trace",
+    hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stack_frame",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -783,7 +789,6 @@ tf_cc_test(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],  # b/150411480
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -4,6 +4,8 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -18,7 +20,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # -----------------------------------------------------------------------------
@@ -78,7 +80,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -155,16 +157,19 @@ tf_cuda_library(
         "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
+        "tf_tstring.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:tstring",
         ":c_api_no_xla",
         ":c_api_internal",
         ":tf_attrtype",
         ":tf_status_internal",
         ":tf_file_statistics",
         ":tf_tensor_internal",
+        ":tf_tstring",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -172,6 +177,13 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+# Check that c_api_no_xla does not depend on xla.
+check_deps(
+    name = "c_api_no_xla_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/jit:xla_kernel_creator"],
+    deps = [":c_api_no_xla"],
 )
 
 tf_cuda_library(
@@ -199,6 +211,7 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":env",
             ":logging",
             ":tf_status",
             ":tf_tensor",
@@ -303,6 +316,24 @@ cc_library(
     name = "tf_status_headers",
     hdrs = ["tf_status.h"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tf_tstring",
+    srcs = [
+        "tf_tstring.cc",
+    ],
+    hdrs = [
+        "c_api_macros.h",
+        "tf_datatype.h",
+        "tf_status.h",
+        "tf_tensor.h",
+        "tf_tstring.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:tstring",
+    ],
 )
 
 cc_library(
@@ -420,6 +451,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_plugin_init",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
@@ -505,11 +537,13 @@ tf_cuda_library(
             "//tensorflow/core:framework",
         ],
     }) + [
-        ":c_api",
+        ":c_api_macros",
+        ":tf_status",
         ":tf_status_helper",
-        ":c_api_internal",
         ":tf_file_statistics",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -522,6 +556,7 @@ cc_library(
         ":tf_datatype",
         ":tf_status",
         ":tf_tensor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
     ],
 )
 
@@ -542,13 +577,17 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
+            "//tensorflow/stream_executor:stream",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
 )
@@ -635,6 +674,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
@@ -643,6 +683,7 @@ tf_cuda_cc_test(
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_test_util",
         ":test_op_kernel",
         "//tensorflow/cc:cc_ops",
@@ -679,12 +720,19 @@ tf_cc_test(
     name = "c_api_experimental_test",
     size = "medium",
     srcs = ["c_api_experimental_test.cc"],
-    data = ["testdata/tf_record"],
+    data = [
+        "testdata/tf_record",
+        "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
+    ],
+    extra_copts = if_google(["-DTENSORFLOW_NO_SHARED_OBJECTS=1"]),
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["notsan"],  # b/149031034
+    tags = [
+        "nomsan",  # b/149031034
+        "notsan",  # b/149031034
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -699,6 +747,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -793,6 +842,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -832,7 +882,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
-        "//tensorflow/python:cpp_shape_inference_proto_cc",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
 )

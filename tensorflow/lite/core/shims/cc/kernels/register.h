@@ -17,4 +17,15 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/register.h"
 
+namespace tflite_shims {
+namespace ops {
+namespace builtin {
+using BuiltinOpResolver = ::tflite::ops::builtin::BuiltinOpResolver;
+using BuiltinOpResolverWithoutDefaultDelegates =
+    ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates;
+
+}  // namespace builtin
+}  // namespace ops
+}  // namespace tflite_shims
+
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_KERNELS_REGISTER_H_

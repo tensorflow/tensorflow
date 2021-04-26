@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Utils related to keras metrics.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utils related to keras metrics."""
 
 import functools
 import weakref
@@ -27,6 +23,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -36,10 +33,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
-from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -78,7 +74,7 @@ def update_state_wrapper(update_state_fn):
     # replica.
 
     for weight in metric_obj.weights:
-      if (tpu.is_tpu_strategy(strategy) and
+      if (backend.is_tpu_strategy(strategy) and
           not strategy.extended.variable_created_in_scope(weight)
           and not distribution_strategy_context.in_cross_replica_context()):
         raise ValueError(
@@ -119,7 +115,23 @@ def result_wrapper(result_fn):
     has_strategy = distribution_strategy_context.has_strategy()
     replica_context = distribution_strategy_context.get_replica_context()
     if not has_strategy or replica_context is None:
-      result_t = array_ops.identity(result_fn(*args))
+      raw_result = result_fn(*args)
+      # Results need to be wrapped in a `tf.identity` op to ensure
+      # correct execution order.
+      if isinstance(raw_result,
+                    (ops.Tensor, variables_module.Variable, float, int)):
+        result_t = array_ops.identity(raw_result)
+      elif isinstance(raw_result, dict):
+        result_t = {key: array_ops.identity(value)
+                    for key, value in raw_result.items()}
+      else:
+        try:
+          result_t = array_ops.identity(raw_result)
+        except (ValueError, TypeError):
+          raise RuntimeError(
+              'The output of `metric.result()` can only be a single '
+              'Tensor/Variable, or a dict of Tensors/Variables. '
+              'For metric %s, got result %s.' % (metric_obj.name, raw_result))
     else:
       # TODO(psv): Test distribution of metrics using different distribution
       # strategies.
@@ -365,9 +377,8 @@ def update_confusion_matrix_variables(variables_to_update,
     num_labels = 1
   else:
     num_labels = gen_math_ops.Prod(input=pred_shape[1:], axis=0)
-  thresh_label_tile = control_flow_ops.cond(
-      one_thresh, lambda: num_labels,
-      lambda: math_ops.cast(1, dtype=dtypes.int32))
+  thresh_label_tile = array_ops.where_v2(one_thresh, num_labels,
+                                         array_ops.ones([], dtype=dtypes.int32))
 
   # Reshape predictions and labels, adding a dim for thresholding.
   if multi_label:
@@ -513,22 +524,20 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]
-    assertion_list = ragged_util.assert_splits_match(nested_row_split_list)
+    assertion_list = _assert_splits_match(nested_row_split_list)
 
     # if both are ragged sample_weights also should be ragged with same dims.
     if isinstance(mask, ragged_tensor.RaggedTensor):
-      assertion_list_for_mask = ragged_util.assert_splits_match(
+      assertion_list_for_mask = _assert_splits_match(
           [nested_row_split_list[0], mask.nested_row_splits])
-      tmp = control_flow_ops.with_dependencies(assertion_list_for_mask,
-                                               mask.flat_values)
-      mask = array_ops.expand_dims(tmp, -1)
+      with ops.control_dependencies(assertion_list_for_mask):
+        mask = array_ops.expand_dims(mask.flat_values, -1)
 
     # values has at least 1 element.
     flat_values = []
     for value in values:
-      tmp = control_flow_ops.with_dependencies(assertion_list,
-                                               value.flat_values)
-      flat_values.append(array_ops.expand_dims(tmp, -1))
+      with ops.control_dependencies(assertion_list):
+        flat_values.append(array_ops.expand_dims(value.flat_values, -1))
 
     values = flat_values[0] if to_be_stripped else flat_values
 
@@ -539,3 +548,31 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     raise TypeError('Ragged mask is not allowed with non-ragged inputs.')
 
   return values, mask
+
+
+def _assert_splits_match(nested_splits_lists):
+  """Checks that the given splits lists are identical.
+
+  Performs static tests to ensure that the given splits lists are identical,
+  and returns a list of control dependency op tensors that check that they are
+  fully identical.
+
+  Args:
+    nested_splits_lists: A list of nested_splits_lists, where each split_list is
+      a list of `splits` tensors from a `RaggedTensor`, ordered from outermost
+      ragged dimension to innermost ragged dimension.
+
+  Returns:
+    A list of control dependency op tensors.
+  Raises:
+    ValueError: If the splits are not identical.
+  """
+  error_msg = 'Inputs must have identical ragged splits'
+  for splits_list in nested_splits_lists:
+    if len(splits_list) != len(nested_splits_lists[0]):
+      raise ValueError(error_msg)
+  return [
+      check_ops.assert_equal(s1, s2, message=error_msg)  # pylint: disable=g-complex-comprehension
+      for splits_list in nested_splits_lists[1:]
+      for (s1, s2) in zip(nested_splits_lists[0], splits_list)
+  ]

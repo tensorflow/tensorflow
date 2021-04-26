@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir-hlo/utils/convert_op_folder.h"
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -61,12 +61,16 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
   // mapValues always takes a function returning APInt, even when the output
   // is actually float.
   using func_type = llvm::APInt(const llvm::APInt&);
+
+  // TODO(hinsu): Correctly handle unsigned element types.
+  bool is_bool = old_type.isInteger(1);
   if (auto newFloatType = new_type.dyn_cast<mlir::FloatType>()) {
     // Int -> Float
     return elements.mapValues(
-        new_type, llvm::function_ref<func_type>([&newFloatType](
+        new_type, llvm::function_ref<func_type>([&newFloatType, &is_bool](
                                                     const llvm::APInt& intVal) {
-          llvm::APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
+          int64_t val = is_bool ? intVal.getZExtValue() : intVal.getSExtValue();
+          llvm::APFloat newDouble(static_cast<double>(val));
           bool loses_info = false;
           newDouble.convert(newFloatType.getFloatSemantics(),
                             llvm::APFloat::rmNearestTiesToEven, &loses_info);
@@ -76,9 +80,10 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
   // new_type is Integer
   // Int -> Int
   return elements.mapValues(
-      new_type,
-      llvm::function_ref<func_type>([&bit_width](const llvm::APInt& intVal) {
-        return llvm::APInt(bit_width, intVal.getSExtValue());
+      new_type, llvm::function_ref<func_type>([&bit_width, &is_bool](
+                                                  const llvm::APInt& intVal) {
+        int64_t val = is_bool ? intVal.getZExtValue() : intVal.getSExtValue();
+        return llvm::APInt(bit_width, val);
       }));
 }
 

@@ -15,16 +15,40 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BATCH_MATMUL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BATCH_MATMUL_H_
 
-#include <stdint.h>
-#include <string.h>
+#include <algorithm>
+#include <cstdint>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils_common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace reference_ops {
+namespace batch_matmul {
+
+// Determine which dimension is the broadcast dimension.
+inline int broadcast_dim(int lhs_dim, int rhs_dim) {
+  if (lhs_dim == rhs_dim) return lhs_dim;
+  if (lhs_dim == 1) return rhs_dim;
+  TFLITE_DCHECK_EQ(rhs_dim, 1);
+  return lhs_dim;
+}
+
+// Compute the "extent" for iterating on this dimension.
+// If we are broadcasting, then don't advance (i.e return 0).
+inline int extent(const RuntimeShape& shape, int x) {
+  if (shape.Dims(x) == 1) {
+    return 0;
+  }
+  int prod = 1;
+  for (int i = x + 1; i < shape.DimensionsCount(); ++i) {
+    prod *= shape.Dims(i);
+  }
+  return prod;
+}
+
+}  // namespace batch_matmul
 
 inline void BatchMatMul(const RuntimeShape& lhs_shape, const float* lhs_data,
                         const RuntimeShape& rhs_shape, const float* rhs_data,
@@ -34,40 +58,19 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const float* lhs_data,
   const RuntimeShape extended_rhs_shape =
       RuntimeShape::ExtendedShape(5, rhs_shape);
 
-  // Determine which dimension is the broadcast dimension.
-  auto broadcast_dim = [](int lhs_dim, int rhs_dim) {
-    if (lhs_dim == rhs_dim) return lhs_dim;
-    if (lhs_dim == 1) return rhs_dim;
-    TFLITE_DCHECK_EQ(rhs_dim, 1);
-    return lhs_dim;
-  };
+  const int batch_dim0 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
+  const int batch_dim1 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
+  const int batch_dim2 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
 
-  // Compute the "extent" for iterating on this dimension.
-  // If we are broadcasting, then don't advance (i.e return 0).
-  auto extent = [](const RuntimeShape& shape, int x) {
-    if (shape.Dims(x) == 1) {
-      return 0;
-    }
-    int prod = 1;
-    for (int i = x + 1; i < shape.DimensionsCount(); ++i) {
-      prod *= shape.Dims(i);
-    }
-    return prod;
-  };
-
-  const int batch_dim0 =
-      broadcast_dim(extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 =
-      broadcast_dim(extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 =
-      broadcast_dim(extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = extent(extended_rhs_shape, 2);
+  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
+  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
+  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
+  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
+  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
+  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
 
   // Set params for each matrix multiply.
   const int lhs_rows = extended_lhs_shape.Dims(3);
@@ -113,40 +116,19 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
   const RuntimeShape extended_rhs_shape =
       RuntimeShape::ExtendedShape(5, rhs_shape);
 
-  // Determine which dimension is the broadcast dimension.
-  auto broadcast_dim = [](int lhs_dim, int rhs_dim) {
-    if (lhs_dim == rhs_dim) return lhs_dim;
-    if (lhs_dim == 1) return rhs_dim;
-    TFLITE_DCHECK_EQ(rhs_dim, 1);
-    return lhs_dim;
-  };
+  const int batch_dim0 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
+  const int batch_dim1 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
+  const int batch_dim2 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
 
-  // Compute the "extent" for iterating on this dimension.
-  // If we are broadcasting, then don't advance (i.e return 0).
-  auto extent = [](const RuntimeShape& shape, int x) {
-    if (shape.Dims(x) == 1) {
-      return 0;
-    }
-    int prod = 1;
-    for (int i = x + 1; i < shape.DimensionsCount(); ++i) {
-      prod *= shape.Dims(i);
-    }
-    return prod;
-  };
-
-  const int batch_dim0 =
-      broadcast_dim(extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 =
-      broadcast_dim(extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 =
-      broadcast_dim(extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = extent(extended_rhs_shape, 2);
+  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
+  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
+  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
+  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
+  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
+  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
 
   // Set params for each matrix multiply.
   const int lhs_rows = extended_lhs_shape.Dims(3);
@@ -165,12 +147,8 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
     for (int i = 1; i < extended_lhs_shape.DimensionsCount() - 2; ++i) {
       num_weights_matrices *= extended_lhs_shape.Dims(i);
     }
-    memset(row_sums, 0, sizeof(int32_t) * lhs_rows * num_weights_matrices);
-    for (int j = 0; j < num_weights_matrices; ++j) {
-      tensor_utils::PortableReductionSumVector(
-          lhs_data + j * lhs_rows * accum_depth, row_sums + j * lhs_rows,
-          lhs_rows, accum_depth);
-    }
+    tensor_utils::ReductionSumVector(
+        lhs_data, row_sums, num_weights_matrices * lhs_rows, accum_depth);
     if (compute_row_sums) {
       *compute_row_sums = false;
     }
@@ -227,40 +205,19 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   const RuntimeShape extended_rhs_shape =
       RuntimeShape::ExtendedShape(5, rhs_shape);
 
-  // Determine which dimension is the broadcast dimension.
-  auto broadcast_dim = [](int lhs_dim, int rhs_dim) {
-    if (lhs_dim == rhs_dim) return lhs_dim;
-    if (lhs_dim == 1) return rhs_dim;
-    TFLITE_DCHECK_EQ(rhs_dim, 1);
-    return lhs_dim;
-  };
+  const int batch_dim0 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
+  const int batch_dim1 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
+  const int batch_dim2 = batch_matmul::broadcast_dim(
+      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
 
-  // Compute the "extent" for iterating on this dimension.
-  // If we are broadcasting, then don't advance (i.e return 0).
-  auto extent = [](const RuntimeShape& shape, int x) {
-    if (shape.Dims(x) == 1) {
-      return 0;
-    }
-    int prod = 1;
-    for (int i = x + 1; i < shape.DimensionsCount(); ++i) {
-      prod *= shape.Dims(i);
-    }
-    return prod;
-  };
-
-  const int batch_dim0 =
-      broadcast_dim(extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 =
-      broadcast_dim(extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 =
-      broadcast_dim(extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = extent(extended_rhs_shape, 2);
+  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
+  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
+  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
+  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
+  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
+  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
 
   // Set params for each matrix multiply.
   const int lhs_rows = extended_lhs_shape.Dims(3);

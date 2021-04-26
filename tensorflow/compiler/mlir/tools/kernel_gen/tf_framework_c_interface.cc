@@ -41,8 +41,9 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
                                        int32_t output_index,
                                        int32_t num_candidates,
                                        int32_t* candidate_input_indices) {
+  static constexpr int kAmbiguousOutputIndex = -1;
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  if (output_index != -1) {
+  if (output_index != kAmbiguousOutputIndex) {
     // Create a 1D shape, because the shapes don't have to match exactly for
     // input forwarding. Only the number of elements must be the same.
     tensorflow::TensorShape output_shape;
@@ -51,17 +52,19 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
     // Iterate over indices of all inputs that can potentially be used for
     // forwarding.
     for (int i = 0; i < num_candidates; ++i) {
-      // TODO(pifon): Expose fetching AllocatorAttributes with the output_index.
-      AllocatorAttributes output_attr;
-      auto tensor = ctx->forward_input(
-          candidate_input_indices[i], output_index,
-          ctx->expected_output_dtype(output_index), output_shape,
-          ctx->output_memory_type(output_index), output_attr);
+      auto tensor = ctx->forward_input(candidate_input_indices[i], output_index,
+                                       ctx->expected_output_dtype(output_index),
+                                       output_shape,
+                                       ctx->output_memory_type(output_index),
+                                       ctx->output_alloc_attr(output_index));
       if (tensor != nullptr) {
         return tensor->data();
       }
     }
+
+    CHECK(!ctx->output_expects_forwarding(output_index));
   }
+
   // If no forwarding happened, allocate a chunk of memory.
   return GetAllocator(op_kernel_ctx)
       ->AllocateRaw(Allocator::kAllocatorAlignment,

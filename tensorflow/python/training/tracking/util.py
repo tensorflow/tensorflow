@@ -66,6 +66,7 @@ from tensorflow.python.util.tf_export import tf_export
 _SESSION_PROVIDER = None
 
 
+@tf_export("__internal__.tracking.register_session_provider", v1=[])
 def register_session_provider(session_provider):
   global _SESSION_PROVIDER
   if _SESSION_PROVIDER is None:
@@ -219,8 +220,9 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.dtype_map = py_checkpoint_reader.NewCheckpointReader(
-        save_path).get_variable_to_dtype_map()
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
+    self.dtype_map = reader.get_variable_to_dtype_map()
+    self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
     # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
@@ -665,6 +667,7 @@ class _LoadStatus(object):
     return self
 
 
+@tf_export("__internal__.tracking.streaming_restore", v1=[])
 def streaming_restore(status, session=None):
   """When graph building, runs restore ops as soon as they come in.
 
@@ -1071,6 +1074,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
+@tf_export("__internal__.tracking.TrackableSaver", v1=[])
 class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
@@ -1393,7 +1397,6 @@ def frozen_saver(root_trackable):
 
 
 def saver_with_op_caching(obj, attached_dependencies=None):
-  """A TrackableSaver with a SaveableObject cache when graph building."""
   if context.executing_eagerly():
     saveables_cache = None
   else:
@@ -1587,7 +1590,7 @@ class CheckpointV1(tracking.AutoTrackable):
       The full path to the checkpoint (i.e. `file_prefix`).
     """
     output = self._saver.save(file_prefix=file_prefix, session=session)
-    if tensor_util.is_tensor(output):
+    if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
       else:
@@ -2009,7 +2012,7 @@ class Checkpoint(tracking.AutoTrackable):
     """
     options = options or checkpoint_options.CheckpointOptions()
     output = self._saver.save(file_prefix=file_prefix, options=options)
-    if tensor_util.is_tensor(output):
+    if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
       else:
@@ -2132,7 +2135,8 @@ class Checkpoint(tracking.AutoTrackable):
 
     # You can also pass options to read(). For example this
     # runs the IO ops on the localhost:
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    options = tf.train.CheckpointOptions(
+        experimental_io_device="/job:localhost")
     checkpoint.read(path, options=options)
     ```
 

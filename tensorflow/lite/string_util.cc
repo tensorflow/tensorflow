@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/string_util.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -51,7 +54,7 @@ void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
   data_.resize(data_.size() + total_len);
 
   char* dst = data_.data() + offset_.back();
-  for (int i = 0; i < strings.size(); ++i) {
+  for (size_t i = 0; i < strings.size(); ++i) {
     // Fill separator if not first string.
     if (i != 0) {
       memcpy(dst, separator.str, separator.len);

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -221,23 +222,9 @@ StatusOr<PrimitiveType> MaybeUpcast(
       *preferred_element_type == from_type) {
     return from_type;
   }
-  if (primitive_util::IsIntegralType(from_type) !=
-      primitive_util::IsIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` and the original type must both be integral "
-        "or both be floating point.");
-  }
-  if (!primitive_util::IsSignedIntegralType(from_type) !=
-      !primitive_util::IsSignedIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` must have the same signedness as the "
-        "original type.");
-  }
-  if (primitive_util::BitWidth(*preferred_element_type) <
-      primitive_util::BitWidth(from_type)) {
-    if (primitive_util::IsFloatingPointType(from_type)) {
-      return from_type;
-    }
+  if (!primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::BitWidth(*preferred_element_type) <
+          primitive_util::BitWidth(from_type)) {
     return InvalidArgument(
         "`preferred_element_type` must not be narrower than the original "
         "type.");
@@ -566,11 +553,6 @@ StatusOr<PrimitiveType> MaybeUpcast(
   std::vector<bool> is_dynamic(operand_shape.rank());
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
     const auto& p = padding_config.dimensions(i);
-    if (operand_shape.is_dynamic_dimension(i) && p.edge_padding_high() != 0 &&
-        p.edge_padding_low() != 0 && p.interior_padding() != 0) {
-      return InvalidArgument(
-          "Dynamic dimension on padding dimension is not supported.");
-    }
     dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
@@ -2038,14 +2020,27 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllGatherShape(
-    const Shape& operand_shape, int64 all_gather_dimension, int64 shard_count) {
+    absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
+    int64 shard_count) {
   TF_RET_CHECK(all_gather_dimension >= 0);
-  TF_RET_CHECK(all_gather_dimension < operand_shape.rank());
   TF_RET_CHECK(shard_count > 0);
-  auto shape = operand_shape;
-  shape.set_dimensions(all_gather_dimension,
-                       shard_count * shape.dimensions(all_gather_dimension));
-  return shape;
+
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(operand_shapes.size());
+  for (const Shape* operand_shape : operand_shapes) {
+    TF_RET_CHECK(all_gather_dimension < operand_shape->rank());
+    TF_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
+
+    Shape output_shape = *operand_shape;
+    output_shape.set_dimensions(
+        all_gather_dimension,
+        shard_count * output_shape.dimensions(all_gather_dimension));
+    output_shapes.push_back(output_shape);
+  }
+  if (output_shapes.size() == 1) {
+    return output_shapes[0];
+  }
+  return ShapeUtil::MakeTupleShape(output_shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
@@ -2695,11 +2690,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   auto result_shape = operand_shape;
 
-  // If any of the operand shape and update shape is dynamic, update the result
-  // dimension to dynamic.
+  // If any of the operand shape is dynamic, the result dimension is also
+  // dynamic.
+  // If update shape is dynamic, only propagate dynamic dimension to result if
+  // the update is a full update (update_shape[i] == operand_shape[i]).
   for (int64 i = 0; i < update_shape.rank(); ++i) {
-    if (update_shape.is_dynamic_dimension(i) ||
-        operand_shape.is_dynamic_dimension(i)) {
+    if (operand_shape.is_dynamic_dimension(i)) {
+      result_shape.set_dynamic_dimension(i, true);
+    }
+
+    if (update_shape.is_dynamic_dimension(i) &&
+        update_shape.dimensions(i) == operand_shape.dimensions(i)) {
+      // When update/replace a full dimension, propagate dynamic dimension to
+      // the result.
       result_shape.set_dynamic_dimension(i, true);
     }
   }
@@ -3093,7 +3096,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  if (!IsPermutation(dimensions, operand.rank())) {
+  if (dimensions.size() != operand.rank() || !IsPermutation(dimensions)) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
@@ -3103,7 +3106,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
   // we need output[i]=input[dimensions[i]] which is
   // Permute(Inverse(dimensions),input).
-  return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
+  return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(

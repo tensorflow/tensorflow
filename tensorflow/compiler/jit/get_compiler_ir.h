@@ -27,10 +27,16 @@ class Tensor;
 class TensorHandle;
 class EagerContext;
 
-enum class IrExportStage { HLO, OPTIMIZED_HLO, OPTIMIZED_HLO_DOT };
+enum class IrExportStage {
+  HLO,
+  HLO_SERIALIZED,
+  OPTIMIZED_HLO,
+  OPTIMIZED_HLO_SERIALIZED,
+  OPTIMIZED_HLO_DOT
+};
 
-// Returns HLO text for a given function `func_name` using library runtime
-// `runtime` on a device `dev` with given `inputs`.
+// Returns the IR format of the selected stage for a given function `func_name`
+// using library runtime `runtime` on a device `dev` with given `inputs`.
 xla::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,

@@ -106,6 +106,8 @@ message RewriterConfig {
   Toggle auto_mixed_precision_mkl = 25;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
+  // Optimizers registered by plugin (default is ON)
+  Toggle use_plugin_optimizers = 28;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).
@@ -120,6 +122,14 @@ message RewriterConfig {
   // Disable optimizations that assume compressed tensors. Note that this flag
   // is experimental and may be removed in the future.
   bool experimental_disable_compressed_tensor_optimization = 26;
+
+  // Disable folding quantization emulation ops such as FakeQuantWithMinMax* and
+  // QuantizeAndDequantize*. Some compilers (e.g. the TF-to-tflite converter)
+  // have to extract quantization configs (e.g. min/max range, number of bits,
+  // and per-channel) from the quantization emulation ops. Note that this flag
+  // is experimental and may be removed in the future. See b/174138564 for more
+  // details.
+  bool experimental_disable_folding_quantization_emulation = 27;
 
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)

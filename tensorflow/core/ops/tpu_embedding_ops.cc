@@ -164,6 +164,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -180,6 +181,7 @@ REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

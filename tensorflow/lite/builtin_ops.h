@@ -158,6 +158,16 @@ typedef enum {
   kTfLiteBuiltinCumsum = 128,
   kTfLiteBuiltinCallOnce = 129,
   kTfLiteBuiltinBroadcastTo = 130,
+  kTfLiteBuiltinRfft2d = 131,
+  kTfLiteBuiltinConv3d = 132,
+  kTfLiteBuiltinImag = 133,
+  kTfLiteBuiltinReal = 134,
+  kTfLiteBuiltinComplexAbs = 135,
+  kTfLiteBuiltinHashtable = 136,
+  kTfLiteBuiltinHashtableFind = 137,
+  kTfLiteBuiltinHashtableImport = 138,
+  kTfLiteBuiltinHashtableSize = 139,
+  kTfLiteBuiltinReduceAll = 140,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -141,6 +141,15 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
   return RankedTensorType::get(out_shape, element_ty);
 }
 
+// Returns the equivalent Value skipping through identity nodes.
+Value LookThroughIdentity(Value result) {
+  while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
+    auto op_result = result.cast<OpResult>();
+    result = op_result.getOwner()->getOperand(op_result.getResultNumber());
+  }
+  return result;
+}
+
 // Verifies that the given types are cast compatible. If not, emits appropriate
 // error for the given op. If mask_one_dim is set to true, then the types are
 // allowed to have one mismatching dimension. Masking one of the dimensions is
@@ -201,39 +210,6 @@ static LogicalResult VerifyTypesCompatibility(
     }
   }
   return success();
-}
-
-// This is a helper for the Select to SelectV2 canonicalization. The `data` rank
-// refers to the rank of `t`/`e` (these two inputs have equal rank; this is
-// checked in the verifier).
-//
-// In most cases, the predicate for Select can be used directly as the predicate
-// for SelectV2. However, there is one case that varies, which is when the
-// predicate is a tensor and the data is multidimensional. In this case, Select
-// op semantics dictate that the predicate tensor length must match the size of
-// the first data dimension. This varies from normal broadcasting semantics
-// (which are used in SelectV2), so we must reshape the tensor in this case to
-// be compatible.
-static Value ReshapeSelectPredIfNecessary(OpBuilder *builder, Location loc,
-                                          Value cond, int data_rank) {
-  auto cond_tensor = cond.getType().cast<RankedTensorType>();
-  // Reshape is only needed in the case that the cond rank is 1 (i.e. it is
-  // a vector) AND t/e rank is > 1.
-  if (cond_tensor.getRank() != 1 || data_rank <= 1) {
-    // No reshape necessary. Leave cond as it is.
-    return cond;
-  }
-
-  // This is the case where a reshape is needed. We want to construct the
-  // shape [x,1,...1], where x is the value in the pred tensor and the
-  // length of the shape is equal to data_rank.
-  SmallVector<int64_t, 8> shape(data_rank, 1);
-  shape[0] = cond_tensor.getShape().front();
-  auto new_shape_type =
-      RankedTensorType::get({data_rank}, builder->getIntegerType(64));
-  auto shape_attr = DenseIntElementsAttr::get(new_shape_type, shape);
-  auto new_shape = builder->create<ConstOp>(loc, shape_attr);
-  return builder->create<ReshapeOp>(loc, cond, new_shape);
 }
 
 //===----------------------------------------------------------------------===//
@@ -308,7 +284,7 @@ SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
 // on outer dimension only.
 ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
                            int inner_size = 1) {
-  if (attr.size() == 0) return attr;
+  if (attr.empty()) return attr;
 
   assert(attr.size() % inner_size == 0);
   assert(attr.size() / inner_size == permutation.size());
@@ -322,7 +298,7 @@ ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
     }
   }
 
-  return ArrayAttr::get(shuffled, attr.getContext());
+  return ArrayAttr::get(attr.getContext(), shuffled);
 }
 
 // Shuffle ranked tensor dimensions according to the permutation.
@@ -370,7 +346,7 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   if (perm.empty()) return failure();
 
   // Update data format attribute.
-  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+  (*op)->setAttr("data_format", StringAttr::get(op->getContext(), data_format));
 
   // Update types for all layout sensitive results.
   auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
@@ -388,7 +364,7 @@ template <typename Op>
 LogicalResult FoldOperandsPermutation(
     ArrayRef<int64_t> permutation, Op *op,
     ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
-  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+  MLIRContext *context = (*op)->template getParentOfType<ModuleOp>().getContext();
 
   // We only support NHWC <-> NCHW permutations.
   static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
@@ -421,12 +397,12 @@ LogicalResult FoldOperandsPermutation(
       GetDataFormatPermutation(op->data_format(), target_data_format);
   if (reverse_permutation.empty()) return failure();
 
-  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+  (*op)->setAttr("data_format", StringAttr::get(context, target_data_format));
 
   for (auto pair : shuffle_attrs) {
     StringRef attr_name = pair.first;
     ArrayAttr attr_value = pair.second;
-    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+    (*op)->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
   }
 
   auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
@@ -581,8 +557,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = op.removeAttr("output_shapes") ==
-                 MutableDictionaryAttr::RemoveResult::Removed;
+    bool found = !!op->removeAttr("output_shapes");
     return success(found);
   }
 };
@@ -614,4 +589,24 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
   // New ID created, increment next_id.
   if (emplace_res.second) ++next_id;
   return {resource, emplace_res.first->second};
+}
+
+// Helper function to create TF op while copying all underscore attributes from
+// another TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy CreateTfOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = b.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+  CopyDeviceAndUnderscoredAttributes(op, ret.getOperation());
+  return ret;
+}
+
+// Helper function to replace TF op with another op while copying all underscore
+// attributes from the TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy ReplaceTfOpWithNewOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = CreateTfOp<OpTy>(b, op, std::forward<Args>(args)...);
+  b.replaceOp(op, ret.getOperation()->getResults());
+  return ret;
 }

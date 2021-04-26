@@ -1,35 +1,4 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-outside-compiled-to-host-launch | FILECHECK_OPTS="" FileCheck %s
-
-// expected-error@+1 {{'module' op bad 'tf.devices' attribute at index 0, not a string}}
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = [1]} {
-  // Tests that missing `_xla_outside_compilation` attribute value results in an error.
-  func @invalid_device_attribute() -> tensor<?xi32> {
-    %0 = "tf_device.cluster"() ( {
-      %1 = "tf.A"() : () -> tensor<?xi32>
-      %2 = "tf.B"(%1) {_xla_outside_compilation = ""}: (tensor<?xi32>) -> tensor<?xi32>
-      tf_device.return %2 : tensor<?xi32>
-    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> tensor<?xi32>
-    return %0 : tensor<?xi32>
-  }
-}
-
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // Tests that missing `_xla_outside_compilation` attribute value results in an error.
-  func @empty_outside_compilation_attribute() -> tensor<?xi32> {
-    %0 = "tf_device.cluster"() ( {
-      %1 = "tf.A"() : () -> tensor<?xi32>
-      // expected-error@+1 {{'tf.B' op requires non empty '_xla_outside_compilation' string attribute}}
-      %2 = "tf.B"(%1) {_xla_outside_compilation = ""}: (tensor<?xi32>) -> tensor<?xi32>
-      tf_device.return %2 : tensor<?xi32>
-    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> tensor<?xi32>
-    return %0 : tensor<?xi32>
-  }
-}
-
-// -----
-
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
 
   // Tests that TPU cluster with no outside compilation does not generate launch op.
@@ -132,9 +101,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:          %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[LAUNCH_OUTPUT]])
     // CHECK-NEXT:     %[[LAUNCH_OUTPUT2:[0-9]*]] = "tf_device.launch"
     // CHECK:            %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[C_OUTPUT]])
-    // CHECK:            %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[D_OUTPUT]])
+    // CHECK:            tf_device.return %[[D_OUTPUT]]
+    // CHECK:          %[[LAUNCH_OUTPUT3:[0-9]*]] = "tf_device.launch"
+    // CHECK:            %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[LAUNCH_OUTPUT2]])
     // CHECK:            tf_device.return %[[E_OUTPUT]]
-    // CHECK:          "tf.F"(%[[LAUNCH_OUTPUT2]])
+    // CHECK:          "tf.F"(%[[LAUNCH_OUTPUT3]])
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ( {
         %3 = "tf.A"() : () -> (tensor<?xi32>)

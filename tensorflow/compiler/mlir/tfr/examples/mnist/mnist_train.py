@@ -131,7 +131,7 @@ def main(strategy):
       'TF_MLIR_TFR_LIB_DIR'] = 'tensorflow/compiler/mlir/tfr/examples/mnist'
 
   ds_train = tfds.load('mnist', split='train', shuffle_files=True)
-  ds_train = ds_train.shuffle(1024).repeat().batch(batch_size).prefetch(64)
+  ds_train = ds_train.shuffle(1024).batch(batch_size).prefetch(64)
   ds_train = strategy.experimental_distribute_dataset(ds_train)
 
   with strategy.scope():

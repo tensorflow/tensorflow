@@ -111,27 +111,28 @@ static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
 }
 // Return intersection-over-union overlap between boxes i and j
 template <typename T>
-static inline T IOU(typename TTypes<T, 2>::ConstTensor boxes, int i, int j) {
-  const T ymin_i = std::min<T>(boxes(i, 0), boxes(i, 2));
-  const T xmin_i = std::min<T>(boxes(i, 1), boxes(i, 3));
-  const T ymax_i = std::max<T>(boxes(i, 0), boxes(i, 2));
-  const T xmax_i = std::max<T>(boxes(i, 1), boxes(i, 3));
-  const T ymin_j = std::min<T>(boxes(j, 0), boxes(j, 2));
-  const T xmin_j = std::min<T>(boxes(j, 1), boxes(j, 3));
-  const T ymax_j = std::max<T>(boxes(j, 0), boxes(j, 2));
-  const T xmax_j = std::max<T>(boxes(j, 1), boxes(j, 3));
-  const T area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
-  const T area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
-  if (area_i <= static_cast<T>(0) || area_j <= static_cast<T>(0)) {
-    return static_cast<T>(0.0);
+static inline float IOU(typename TTypes<T, 2>::ConstTensor boxes, int i,
+                        int j) {
+  const float ymin_i = Eigen::numext::mini<float>(boxes(i, 0), boxes(i, 2));
+  const float xmin_i = Eigen::numext::mini<float>(boxes(i, 1), boxes(i, 3));
+  const float ymax_i = Eigen::numext::maxi<float>(boxes(i, 0), boxes(i, 2));
+  const float xmax_i = Eigen::numext::maxi<float>(boxes(i, 1), boxes(i, 3));
+  const float ymin_j = Eigen::numext::mini<float>(boxes(j, 0), boxes(j, 2));
+  const float xmin_j = Eigen::numext::mini<float>(boxes(j, 1), boxes(j, 3));
+  const float ymax_j = Eigen::numext::maxi<float>(boxes(j, 0), boxes(j, 2));
+  const float xmax_j = Eigen::numext::maxi<float>(boxes(j, 1), boxes(j, 3));
+  const float area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
+  const float area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
+  if (area_i <= 0 || area_j <= 0) {
+    return 0.0;
   }
-  const T intersection_ymin = std::max<T>(ymin_i, ymin_j);
-  const T intersection_xmin = std::max<T>(xmin_i, xmin_j);
-  const T intersection_ymax = std::min<T>(ymax_i, ymax_j);
-  const T intersection_xmax = std::min<T>(xmax_i, xmax_j);
-  const T intersection_area =
-      std::max<T>(intersection_ymax - intersection_ymin, static_cast<T>(0.0)) *
-      std::max<T>(intersection_xmax - intersection_xmin, static_cast<T>(0.0));
+  const float intersection_ymin = Eigen::numext::maxi<float>(ymin_i, ymin_j);
+  const float intersection_xmin = Eigen::numext::maxi<float>(xmin_i, xmin_j);
+  const float intersection_ymax = Eigen::numext::mini<float>(ymax_i, ymax_j);
+  const float intersection_xmax = Eigen::numext::mini<float>(xmax_i, xmax_j);
+  const float intersection_area =
+      Eigen::numext::maxi<float>(intersection_ymax - intersection_ymin, 0.0) *
+      Eigen::numext::maxi<float>(intersection_xmax - intersection_xmin, 0.0);
   return intersection_area / (area_i + area_j - intersection_area);
 }
 
@@ -142,7 +143,7 @@ static inline T Overlap(typename TTypes<T, 2>::ConstTensor overlaps, int i,
 }
 
 template <typename T>
-static inline std::function<T(int, int)> CreateIOUSimilarityFn(
+static inline std::function<float(int, int)> CreateIOUSimilarityFn(
     const Tensor& boxes) {
   typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
   return std::bind(&IOU<T>, boxes_data, std::placeholders::_1,
@@ -163,7 +164,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
                            int num_boxes, const Tensor& max_output_size,
                            const T similarity_threshold,
                            const T score_threshold, const T soft_nms_sigma,
-                           const std::function<T(int, int)>& similarity_fn,
+                           const std::function<float(int, int)>& similarity_fn,
                            bool return_scores_tensor = false,
                            bool pad_to_max_output_size = false,
                            int* ptr_num_valid_outputs = nullptr) {
@@ -192,19 +193,22 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
   }
 
   T scale = static_cast<T>(0.0);
-  if (soft_nms_sigma > static_cast<T>(0.0)) {
+  bool is_soft_nms = soft_nms_sigma > static_cast<T>(0.0);
+  if (is_soft_nms) {
     scale = static_cast<T>(-0.5) / soft_nms_sigma;
   }
 
-  auto suppress_weight = [similarity_threshold, scale](const T sim) {
-    const T weight =
-        static_cast<T>(std::exp(static_cast<float>(scale * sim * sim)));
-    return sim <= similarity_threshold ? weight : static_cast<T>(0.0);
+  auto suppress_weight = [similarity_threshold, scale,
+                          is_soft_nms](const T sim) {
+    const T weight = Eigen::numext::exp<T>(scale * sim * sim);
+    return is_soft_nms || sim <= similarity_threshold ? weight
+                                                      : static_cast<T>(0.0);
   };
 
   std::vector<int> selected;
   std::vector<T> selected_scores;
-  T similarity, original_score;
+  float similarity;
+  T original_score;
   Candidate next_candidate;
 
   while (selected.size() < output_size && !candidate_priority_queue.empty()) {
@@ -225,10 +229,10 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
          j >= next_candidate.suppress_begin_index; --j) {
       similarity = similarity_fn(next_candidate.box_index, selected[j]);
 
-      next_candidate.score *= suppress_weight(similarity);
+      next_candidate.score *= suppress_weight(static_cast<T>(similarity));
 
       // First decide whether to perform hard suppression
-      if (similarity > static_cast<T>(similarity_threshold)) {
+      if (!is_soft_nms && static_cast<T>(similarity) > similarity_threshold) {
         should_hard_suppress = true;
         break;
       }
@@ -320,12 +324,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     }
   }
 
-  // Copy class_boxes_data to a tensor
-  TensorShape boxesShape({num_boxes, 4});
-  Tensor boxes(DT_FLOAT, boxesShape);
-  std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-              boxes.unaligned_flat<float>().data());
-
   // Do NMS, get the candidate indices of form vector<int>
   // Data structure for selection candidate in NMS.
   struct Candidate {
@@ -333,12 +331,13 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     float score;
   };
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score > bs_j.score;
+    return bs_i.score < bs_j.score;
   };
-  std::vector<Candidate> candidate_vector;
-  for (int i = 0; i < class_scores_data.size(); ++i) {
+  std::priority_queue<Candidate, std::vector<Candidate>, decltype(cmp)>
+      candidate_priority_queue(cmp);
+  for (int i = 0; i < num_boxes; ++i) {
     if (class_scores_data[i] > score_threshold) {
-      candidate_vector.emplace_back(Candidate({i, class_scores_data[i]}));
+      candidate_priority_queue.emplace(Candidate({i, class_scores_data[i]}));
     }
   }
 
@@ -346,16 +345,15 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   std::vector<float> selected_boxes;
   Candidate next_candidate;
 
-  std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
-  const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_t =
-      const_boxes.tensor<float, 2>();
-  int candidate_idx = 0;
+  // Move class_boxes_data to a tensor
+  Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
+  typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
+                                                      boxesShape);
   float iou;
   while (selected.size() < size_per_class &&
-         candidate_idx < candidate_vector.size()) {
-    next_candidate = candidate_vector[candidate_idx++];
-
+         !candidate_priority_queue.empty()) {
+    next_candidate = candidate_priority_queue.top();
+    candidate_priority_queue.pop();
     // Overlapping boxes are likely to have similar scores,
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.

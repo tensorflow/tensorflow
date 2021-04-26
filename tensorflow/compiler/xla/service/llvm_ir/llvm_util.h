@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 
 #include <stdint.h>
+
 #include <string>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -53,19 +55,34 @@ inline llvm::StringRef AsStringRef(absl::string_view str) {
   return llvm::StringRef(str.data(), str.size());
 }
 
+inline absl::string_view AsStringView(llvm::StringRef str) {
+  return absl::string_view(str.data(), str.size());
+}
+
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
   return llvm::ArrayRef<T>(vec.data(), vec.size());
 }
 
 template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T>& slice) {
+llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T> slice) {
   return llvm::ArrayRef<T>(slice.data(), slice.size());
 }
 
 // Dump the given LLVM entity to a string. This works for Types and Values.
 template <typename T>
 string DumpToString(const T& entity) {
+  std::string buffer_string;
+  llvm::raw_string_ostream ostream(buffer_string);
+  entity.print(ostream);
+  ostream.flush();
+  return buffer_string;
+}
+
+// Same as above, except that const T& does not work well with MILR because the
+// print methods are not const.
+template <typename T>
+string DumpToString(T& entity) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
@@ -103,17 +120,20 @@ string SanitizeFunctionName(string function_name);
 // overloaded type.
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::string_view name = "");
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name = "");
 
 // Emit float min. Emit minnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name = "");
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
@@ -214,7 +234,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 // and then converts the result to i8 so that it is addressable.
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs, llvm::Value* rhs,
-                            llvm::IRBuilder<>* b);
+                            llvm::IRBuilder<>* b, absl::string_view name = "");
 
 // Emits a call that logs the given value with the given tag as a prefix.
 // The provided tag and value are passed to a runtime logging call that is
@@ -272,7 +292,11 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 // If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
 // of "-no-opt.ll" is used.
 void DumpIrIfEnabled(const HloModule& hlo_module,
-                     const llvm::Module& llvm_module, bool optimized);
+                     const llvm::Module& llvm_module, bool optimized,
+                     absl::string_view filename_suffix = "");
+
+void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
+                     const DebugOptions& debug_options);
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,

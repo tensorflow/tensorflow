@@ -144,7 +144,7 @@ class ResizeBilinearOpTestBase
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/3e-5);
+    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/4e-5);
   }
 
   void RunManyRandomTests(int channels) {
@@ -533,7 +533,7 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestCpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestCpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::CPU));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Instantiate tests for GPU.
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTestGpu, ResizeBilinearOpTest,
                          ::testing::Values(TestDevice::GPU));
@@ -543,7 +543,7 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestGpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestGpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::GPU));
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class ResizeBM : public ResizeBilinearOpTest {
  public:

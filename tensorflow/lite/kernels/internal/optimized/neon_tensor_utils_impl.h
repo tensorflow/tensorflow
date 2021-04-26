@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_IMPL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_IMPL_H_
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 
@@ -174,6 +171,11 @@ void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
 void NeonVectorBatchVectorCwiseProductAccumulate(
     const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
     int32_t multiplier, int shift, int16_t* result);
+
+// Layer norm for each batch.
+void NeonMeanStddevNormalization(const float* __restrict__ input_vector,
+                                 float* __restrict__ output_vector, int v_size,
+                                 int n_batch);
 
 #endif  // USE_NEON
 

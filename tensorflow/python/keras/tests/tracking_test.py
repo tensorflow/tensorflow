@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
 from absl.testing import parameterized
 import numpy
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -47,7 +43,7 @@ class HasList(training.Model):
 
   def __init__(self):
     super(HasList, self).__init__()
-    self.layer_list = data_structures.List([core.Dense(3)])
+    self.layer_list = data_structures.wrap_or_unwrap([core.Dense(3)])
     self.layer_list.append(core.Dense(4))
     self.layer_list.extend(
         [core.Dense(5),
@@ -57,13 +53,13 @@ class HasList(training.Model):
         core.Dense(8)
     ]
     self.layer_list += (
-        data_structures.List([core.Dense(9)]) + data_structures.List(
-            [core.Dense(10)]))
+        data_structures.wrap_or_unwrap([core.Dense(9)]) +
+        data_structures.wrap_or_unwrap([core.Dense(10)]))
     self.layer_list.extend(
-        data_structures.List(
+        data_structures.wrap_or_unwrap(
             list([core.Dense(11)]) + [core.Dense(12)]))
-    self.layers_with_updates = data_structures.List(
-        (normalization.BatchNormalization(),))
+    self.layers_with_updates = data_structures.wrap_or_unwrap(
+        [normalization.BatchNormalization()])
 
   def call(self, x):
     aggregation = 0.
@@ -84,10 +80,9 @@ class ListTests(keras_parameterized.TestCase):
       self.assertAllEqual([32, 12], output.shape)
       self.assertEqual(11, len(model.layers))
       self.assertEqual(10, len(model.layer_list.layers))
-      six.assertCountEqual(
-          self,
-          model.layers,
-          model.layer_list.layers + model.layers_with_updates)
+      self.assertEqual(
+          len(model.layers),
+          len(model.layer_list.layers + model.layers_with_updates))
       for index in range(10):
         self.assertEqual(3 + index, model.layer_list.layers[index].units)
       self.assertEqual(2, len(model._checkpoint_dependencies))
@@ -234,7 +229,7 @@ class ListWrapperTest(test.TestCase):
 
   def testLayerCollectionWithExternalMutation(self):
     l = []
-    l_wrapper = data_structures.ListWrapper(l)
+    l_wrapper = data_structures.wrap_or_unwrap(l)
     layer = core.Dense(1)
     l.append(layer)
     self.assertEqual([layer], l_wrapper.layers)
@@ -244,9 +239,9 @@ class HasMapping(training.Model):
 
   def __init__(self):
     super(HasMapping, self).__init__()
-    self.layer_dict = data_structures.Mapping(output=core.Dense(7))
-    self.layer_dict["norm"] = data_structures.List()
-    self.layer_dict["dense"] = data_structures.List()
+    self.layer_dict = data_structures.wrap_or_unwrap(dict(output=core.Dense(7)))
+    self.layer_dict["norm"] = data_structures.wrap_or_unwrap([])
+    self.layer_dict["dense"] = data_structures.wrap_or_unwrap([])
     self.layer_dict["dense"].extend(
         [core.Dense(5),
          core.Dense(6, kernel_regularizer=math_ops.reduce_sum)])
@@ -272,7 +267,7 @@ class MappingTests(keras_parameterized.TestCase):
       output = model(array_ops.ones([32, 2]))
       self.assertAllEqual([32, 7], output.shape.as_list())
       self.assertEqual(5, len(model.layers))
-      six.assertCountEqual(self, model.layers, model.layer_dict.layers)
+      self.assertEqual(len(model.layers), len(model.layer_dict.layers))
       self.assertEqual(1, len(model._checkpoint_dependencies))
       self.assertIs(model.layer_dict, model._checkpoint_dependencies[0].ref)
       self.evaluate([v.initializer for v in model.variables])
@@ -302,7 +297,7 @@ class MappingTests(keras_parameterized.TestCase):
   def testDictWrapperBadKeys(self):
     a = module.Module()
     a.d = {}
-    a.d[1] = data_structures.List()
+    a.d[1] = data_structures.wrap_or_unwrap([])
     model = training.Model()
     model.sub = a
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
@@ -423,10 +418,9 @@ class TupleTests(keras_parameterized.TestCase):
       self.assertAllEqual([32, 5], output.shape.as_list())
       self.assertLen(model.layers, 4)
       self.assertLen(model.layer_list.layers, 3)
-      six.assertCountEqual(
-          self,
-          model.layers,
-          tuple(model.layer_list.layers) + model.layers_with_updates)
+      self.assertEqual(
+          len(model.layers),
+          len(tuple(model.layer_list.layers) + model.layers_with_updates))
       self.assertEqual(3, model.layer_list.layers[0].units)
       self.assertEqual(4, model.layer_list.layers[1].units)
       self.assertEqual(5, model.layer_list.layers[2].units)
@@ -580,10 +574,9 @@ class InterfaceTests(keras_parameterized.TestCase):
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
     self.assertIs(b, a.attribute["b"])
-    six.assertCountEqual(
-        self,
-        ["b", "c"],
-        [dep.name for dep in a.attribute._checkpoint_dependencies])
+    self.assertEqual(
+        len(["b", "c"]),
+        len([dep.name for dep in a.attribute._checkpoint_dependencies]))
     self.assertEqual([b, c], a.layers)
     self.assertEqual([b, c], a.attribute.layers)
     self.assertEqual([c], a.attribute["c"].layers)

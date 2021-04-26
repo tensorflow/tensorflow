@@ -122,6 +122,7 @@ function generate_flex_aar {
 
   # Build the aar package.
   bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++14' \
+      --config=monolithic \
       --fat_apk_cpu=${TARGET_ARCHS} \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
       //tmp:tensorflow-lite-select-tf-ops
@@ -178,6 +179,7 @@ fi
 # Build the standard aar package of no models provided.
 if [ -z ${FLAG_MODELS} ]; then
   bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++14' \
+    --config=monolithic \
     --fat_apk_cpu=${TARGET_ARCHS} \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     //tensorflow/lite/java:tensorflow-lite

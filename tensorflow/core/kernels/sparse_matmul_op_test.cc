@@ -107,36 +107,30 @@ static Graph* ReplicatedSparseMatMul(int m, int n, int d, float sparsity_1,
 #define BM_SPARSE(M, K, N, S1, S2, TRA, TRB, TA, TB)                           \
   static void                                                                  \
       BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TRA##_##TRB##_##TA##_##TB( \
-          int iters) {                                                         \
-    testing::StopTiming();                                                     \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
+          ::testing::benchmark::State& state) {                                \
     auto label = strings::Printf("tr_a: %d tr_b: %d sp_a: %0.2f sp_b: %0.2f",  \
                                  TRA, TRB, S1 / 100.0, S2 / 100.0);            \
-    testing::SetLabel(label);                                                  \
-    testing::UseRealTime();                                                    \
+    state.SetLabel(label);                                                     \
     auto g = SparseMatMul<TA, TB>(M, N, K, S1 / 100.0, S2 / 100.0, TRA, TRB);  \
-    testing::StartTiming();                                                    \
-    test::Benchmark("cpu", g).Run(iters);                                      \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);         \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TRA##_##TRB##_##TA##_##TB);
+      BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TRA##_##TRB##_##TA##_##TB) \
+      ->UseRealTime();
 
 #define BM_SPARSE_REPLICATED(M, K, N, S1, S2, Copies)                          \
   static void BM_Sparse_replicated##_##M##_##K##_##N##_##S1##_##S2##_##Copies( \
-      int iters) {                                                             \
-    testing::StopTiming();                                                     \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * Copies *   \
-                            2);                                                \
+      ::testing::benchmark::State& state) {                                    \
     auto label = strings::Printf("copies: %d sp_a: %0.2f sp_b: %0.2f",         \
                                  (Copies), S1 / 100.0, S2 / 100.0);            \
-    testing::SetLabel(label);                                                  \
-    testing::UseRealTime();                                                    \
+    state.SetLabel(label);                                                     \
     auto g =                                                                   \
         ReplicatedSparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0, (Copies));     \
-    testing::StartTiming();                                                    \
-    test::Benchmark("cpu", g).Run(iters);                                      \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);         \
+    state.SetItemsProcessed(state.iterations() * M * K * N * Copies * 2);      \
   }                                                                            \
-  BENCHMARK(BM_Sparse_replicated##_##M##_##K##_##N##_##S1##_##S2##_##Copies);
+  BENCHMARK(BM_Sparse_replicated##_##M##_##K##_##N##_##S1##_##S2##_##Copies)   \
+      ->UseRealTime();
 
 #define BM_SPARSE_FLOAT(M, K, N, S1, S2, TRA, TRB) \
   BM_SPARSE(M, K, N, S1, S2, TRA, TRB, float, float)
@@ -219,22 +213,21 @@ static Graph* MultiSparseMatMul(int m, int n, int d, float sparsity_1,
   return g;
 }
 
-#define BM_SPARSE_MULTI(M, K, N, S1, S2, Copies)                             \
-  static void BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2##_##Copies(    \
-      int iters) {                                                           \
-    testing::StopTiming();                                                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2 * 2 *  \
-                            Copies);                                         \
-    auto label = strings::Printf("%d_%d_%d_%d_%0.2f_%0.2f", M, K, N, Copies, \
-                                 S1 / 100.0, S2 / 100.0);                    \
-    testing::SetLabel(label);                                                \
-    testing::UseRealTime();                                                  \
-    auto g = MultiSparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0, Copies);     \
-    testing::StartTiming();                                                  \
-    test::Benchmark("cpu", g).Run(iters);                                    \
-  }                                                                          \
-  BENCHMARK(BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2##_##Copies);
-
+// clang-format off
+// NOLINTBEGIN
+#define BM_SPARSE_MULTI(M, K, N, S1, S2, Copies)                              \
+  static void BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2##_##Copies(::testing::benchmark::State& state) {                                              \
+    auto label = strings::Printf("%d_%d_%d_%d_%0.2f_%0.2f", M, K, N, Copies,  \
+                                 S1 / 100.0, S2 / 100.0);                     \
+    state.SetLabel(label);                                                    \
+    auto g = MultiSparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0, Copies);      \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);        \
+    state.SetItemsProcessed(state.iterations() * M * K * N * 2 * 2 * Copies); \
+  }                                                                           \
+  BENCHMARK(BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2##_##Copies)       \
+      ->UseRealTime();
+// NOLINTEND
+// clang-format on
 BM_SPARSE_MULTI(1024, 2140, 4096, 0, 82, 1);
 BM_SPARSE_MULTI(1024, 4096, 2048, 83, 83, 1);
 BM_SPARSE_MULTI(400, 800, 2560, 85, 85, 1);

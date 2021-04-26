@@ -103,7 +103,7 @@ class FunctionScope(object):
         return None
 
       def _mark_return_if_tensor(t):
-        if tensor_util.is_tensor(t):
+        if tensor_util.is_tf_type(t):
           return self.autodeps_scope.mark_as_return(t)
         return t
 

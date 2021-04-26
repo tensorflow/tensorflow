@@ -206,4 +206,23 @@ bool CancellationManager::IsCancelling() {
   return is_cancelling_;
 }
 
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> callback,
+                                    std::function<void()>* deregister_fn) {
+  if (cancellation_manager) {
+    CancellationToken token = cancellation_manager->get_cancellation_token();
+    if (!cancellation_manager->RegisterCallback(token, std::move(callback))) {
+      return errors::Cancelled("Operation was cancelled");
+    }
+    *deregister_fn = [cancellation_manager, token]() {
+      cancellation_manager->DeregisterCallback(token);
+    };
+  } else {
+    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
+               "not be registered.";
+    *deregister_fn = []() {};
+  }
+  return Status::OK();
+}
+
 }  // end namespace tensorflow

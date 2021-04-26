@@ -58,6 +58,8 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "FrequencyEstimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
@@ -96,6 +98,8 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "frequency estimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -170,6 +174,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
 
       return Status::OK();
     }
+    case OptimizationAlgorithm::kAssign:
+      *count = 0;
+      return Status::OK();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
@@ -202,17 +209,66 @@ StateVariableSpecification MakeStandardStateVariableSpecification(
 }
 }  // namespace
 
+Status UseGradientAccumulation(const OptimizationParameters& params,
+                               bool* use_gradient_accumulation) {
+  GradientAccumulationSupport support;
+  TF_RETURN_IF_ERROR(GetGradientAccumulationSupport(params, &support));
+  bool raw_gradient_accumulation_status = false;
+  switch (params.gradient_accumulation_status()) {
+    case GradientAccumulationStatus::UNSPECIFIED: {
+      // Default is now to turn gradient accumulation on by default.
+      raw_gradient_accumulation_status = true;
+      break;
+    }
+    case GradientAccumulationStatus::DISABLED: {
+      raw_gradient_accumulation_status = false;
+      break;
+    }
+    case GradientAccumulationStatus::ENABLED: {
+      raw_gradient_accumulation_status = true;
+      break;
+    }
+    default:
+      return errors::Internal(
+          absl::StrCat("Unsupported gradient accumulation status ",
+                       GradientAccumulationStatus_Status_Name(
+                           params.gradient_accumulation_status())));
+  }
+  switch (support) {
+    case GradientAccumulationSupport::kSupported: {
+      *use_gradient_accumulation = raw_gradient_accumulation_status;
+      break;
+    }
+    case GradientAccumulationSupport::kNotSupported: {
+      if (raw_gradient_accumulation_status) {
+        return errors::InvalidArgument(strings::Printf(
+            "Optimization algorithm %s does not support gradient accumulation "
+            "but parameters specify it.",
+            GetOptimizationAlgorithmName(params.parameters_case()).c_str()));
+      }
+      *use_gradient_accumulation = false;
+      break;
+    }
+  }
+  return Status::OK();
+}
+
 Status GetOptimizationAlgorithmStateVariables(
-    const OptimizationParameters& params, bool use_gradient_accumulation,
+    const OptimizationParameters& params,
     std::vector<StateVariableSpecification>* state_variables) {
-  // The order of the returned parameters needs to match the offsets used by
-  // the algorithm implementations in test_util.cc and
-  // address_handler_program_creator.cc.
-  // The first parameter set is always the weights themselves.
+  // The parameter set for the weights themselves is required to be named
+  // "parameters". The rest should stay stable for compatibility. There is an
+  // internal function, GetOptimizationAlgorithmStateVariableInternalIndices,
+  // that needs to be updated along with this one.
+  bool use_gradient_accumulation;
+  TF_RETURN_IF_ERROR(
+      UseGradientAccumulation(params, &use_gradient_accumulation));
+
   auto add_state_variable = [&](const std::string& name, float value) {
     state_variables->push_back(
         MakeStandardStateVariableSpecification(name, value));
   };
+
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad: {
       add_state_variable("parameters", 0.0);
@@ -301,8 +357,10 @@ Status GetOptimizationAlgorithmStateVariables(
       if (num_slots + 1 !=
           params.user_defined_program().padding_values_size()) {
         return errors::InvalidArgument(
-            "Number of slots does not agree with the number of padding values "
-            "specified.");
+            absl::StrCat("Number of slots ", num_slots + 1,
+                         " does not agree with the number of padding values ",
+                         params.user_defined_program().padding_values_size(),
+                         " specified for ", params.ShortDebugString(), "."));
       }
       for (int i = 0; i < num_slots; ++i) {
         add_state_variable(absl::StrCat("Slot_", i),
@@ -310,12 +368,16 @@ Status GetOptimizationAlgorithmStateVariables(
       }
       break;
     }
+    case OptimizationAlgorithm::kAssign: {
+      add_state_variable("parameters", 0.0);
+      break;
+    }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
       return errors::InvalidArgument("No optimization algorithm specified");
     }
   }
-  // This needs to be last so that the save/restore ops do not need to know
-  // about gradient accumulation.
+
+  // This needs to be last for compatibility.
   if (use_gradient_accumulation) {
     StateVariableSpecification gradient_acc;
     gradient_acc.set_name("gradient_accumulators");
@@ -323,6 +385,7 @@ Status GetOptimizationAlgorithmStateVariables(
         GradientAccumulatorInitialValue());
     state_variables->push_back(std::move(gradient_acc));
   }
+
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {
     return errors::InvalidArgument(
         "Optimization algorithm",
@@ -331,7 +394,7 @@ Status GetOptimizationAlgorithmStateVariables(
         "already has too many other accumulators");
   }
   return Status::OK();
-}  // namespace tpu
+}
 
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   return {
@@ -350,6 +413,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kProximalYogi,
       OptimizationAlgorithm::kFrequencyEstimator,
       OptimizationAlgorithm::kUserDefinedProgram,
+      OptimizationAlgorithm::kAssign,
   };
 }
 

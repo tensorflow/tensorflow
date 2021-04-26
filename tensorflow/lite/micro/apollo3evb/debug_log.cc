@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/debug_log.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
-#include "am_bsp.h"         // NOLINT
-#include "am_util.h"        // NOLINT
+#include "am_bsp.h"   // NOLINT
+#include "am_util.h"  // NOLINT
 
 extern "C" void DebugLog(const char* s) {
 #ifndef TF_LITE_STRIP_ERROR_STRINGS

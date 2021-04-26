@@ -18,3 +18,5 @@ CALL tensorflow\tools\ci_build\release\common_win.bat
 call tensorflow\tools\ci_build\windows\gpu\bazel\run_libtensorflow.bat || exit /b
 
 copy lib_package %TF_ARTIFACTS_DIR%\lib_package
+
+CALL gsutil cp windows_gpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/windows/latest/gpu

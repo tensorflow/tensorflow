@@ -22,21 +22,6 @@ namespace optimize {
 namespace operator_property {
 
 namespace {
-
-// The op as well as it variants.
-// TODO(jianlijianli): extend it to support ops that has multiple variants.
-struct OpVariant {
-  BuiltinOperator op_code;
-  bool use_layer_norm = false;
-  bool use_projection = false;
-  bool use_peephole = false;
-  // An attribute to indicate if quantization is supported for this Op.
-  // This attribute is equivalent to the "quantizable" attribute in
-  // "OperatorProperty". It added here since OpVariants peeks inside the Op and
-  // determines its quantization related properties.
-  bool is_quantizable = true;
-};
-
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
                                    int op_index) {
   OpVariant op_variant;
@@ -67,16 +52,26 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
 }
 }  // namespace
 
-// Update operation defintions in TensorFlow Lite dialect accordingly when there
-// are any needs on updating the kernel support level.
-// LINT.IfChange
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index) {
   OpVariant op_variant = GetOperatorVariant(model, subgraph_index, op_index);
+  return GetOperatorProperty(op_variant);
+}
+
+// Update operation defintions in TensorFlow Lite dialect accordingly when there
+// are any needs on updating the kernel support level.
+// LINT.IfChange
+OperatorProperty GetOperatorProperty(OpVariant op_variant) {
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      property.restrict_same_input_output_scale = true;
+      break;
+    case BuiltinOperator_RSQRT:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
@@ -110,6 +105,19 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SPACE_TO_DEPTH:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_BROADCAST_TO:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    case BuiltinOperator_DEPTH_TO_SPACE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
@@ -189,6 +197,13 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_FILL: {
+      property.inputs = {{1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;
@@ -204,6 +219,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.quantize_input_as_activations = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_GATHER_ND:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
       break;
     case BuiltinOperator_HARD_SWISH: {
       property.inputs = {{0, {}}};
@@ -242,7 +263,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         property.quantizable = false;
         break;
       }
-      // TODO(jianlijianli): extend LSTM op spec to include input, bias etc.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
       if (op_variant.use_layer_norm && op_variant.use_projection &&
@@ -833,7 +853,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
-      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:
@@ -879,17 +898,23 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 1;
       break;
     case BuiltinOperator_RESIZE_BILINEAR:
-      property.inputs = {{0, {}}};
-      property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
-      property.version = 2;
-      property.quantizable_int16 = false;
-      break;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_REVERSE_V2:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    case BuiltinOperator_SELECT:
+      property.inputs = {{1, {}}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
       break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};
@@ -927,10 +952,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     case BuiltinOperator_SUM:
       property.inputs = {{0, {}}};
@@ -997,6 +1024,11 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_WHERE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
       break;
     default:
       // No quantized implementation exists for this operation.

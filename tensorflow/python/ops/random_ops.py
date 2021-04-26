@@ -168,9 +168,17 @@ def truncated_normal(shape,
                      name=None):
   """Outputs random values from a truncated normal distribution.
 
-  The generated values follow a normal distribution with specified mean and
-  standard deviation, except that values whose magnitude is more than 2 standard
-  deviations from the mean are dropped and re-picked.
+  The values are drawn from a normal distribution with specified mean and
+  standard deviation, discarding and re-drawing any samples that are more than
+  two standard deviations from the mean.
+
+  Examples:
+
+  >>> tf.random.truncated_normal(shape=[2])
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([..., ...], dtype=float32)>
+
+  >>> tf.random.truncated_normal(shape=[2], mean=3, stddev=1, dtype=tf.float32)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([..., ...], dtype=float32)>
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
@@ -178,11 +186,10 @@ def truncated_normal(shape,
       truncated normal distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
       of the normal distribution, before truncation.
-    dtype: The type of the output.
+    dtype: The type of the output. Restricted to floating-point types:
+      `tf.half`, `tf.float`, `tf.double`, etc.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See
-      `tf.random.set_seed`
-      for behavior.
+      See `tf.random.set_seed` for more information.
     name: A name for the operation (optional).
 
   Returns:
@@ -362,6 +369,19 @@ def random_crop(value, size, seed=None, name=None):
   If a dimension should not be cropped, pass the full size of that dimension.
   For example, RGB images can be cropped with
   `size = [crop_height, crop_width, 3]`.
+
+  Example usage:
+
+  >>> image = [[1, 2, 3], [4, 5, 6]]
+  >>> result = tf.image.random_crop(value=image, size=(1, 3))
+  >>> result.shape.as_list()
+  [1, 3]
+
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_crop`. Unlike using the `seed` param with
+  `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the same
+  results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
 
   Args:
     value: Input tensor to crop.

@@ -57,17 +57,21 @@ Tensor VecLam64(int64 n, int magnitude) {
   return lams;
 }
 
-#define BM_Poisson(DEVICE, BITS, MAGNITUDE)                            \
-  static void BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS(    \
-      int iters, int nsamp, int nlam) {                                \
-    testing::ItemsProcessed(static_cast<int64>(iters) * nsamp * nlam); \
-    Graph* g = new Graph(OpRegistry::Global());                        \
-    test::graph::RandomPoisson(                                        \
-        g, test::graph::Constant(g, VecShape(nsamp)),                  \
-        test::graph::Constant(g, VecLam##BITS(nlam, MAGNITUDE)));      \
-    test::Benchmark(#DEVICE, g).Run(iters);                            \
-  }                                                                    \
-  BENCHMARK(BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS)      \
+#define BM_Poisson(DEVICE, BITS, MAGNITUDE)                                  \
+  static void BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS(          \
+      ::testing::benchmark::State& state) {                                  \
+    const int nsamp = state.range(0);                                        \
+    const int nlam = state.range(1);                                         \
+                                                                             \
+    Graph* g = new Graph(OpRegistry::Global());                              \
+    test::graph::RandomPoisson(                                              \
+        g, test::graph::Constant(g, VecShape(nsamp)),                        \
+        test::graph::Constant(g, VecLam##BITS(nlam, MAGNITUDE)));            \
+    test::Benchmark(#DEVICE, g, /*old_benchmark_api*/ false).Run(state);     \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * nsamp * \
+                            nlam);                                           \
+  }                                                                          \
+  BENCHMARK(BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS)            \
       ->RangePair(1, 64, 2, 50);
 
 BM_Poisson(cpu, 32, 1);

@@ -21,12 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -36,6 +36,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+using InitializerSerializer =
+    lookup::InitializableLookupTable::InitializerSerializer;
 
 // Kernel to initialize a look table given a key and value tensors.
 // After this operation, the table becomes read-only.
@@ -105,6 +108,9 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("vocab_size", &vocab_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_index", &key_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("value_index", &value_index_));
+    if (ctx->HasAttr("offset")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("offset", &offset_));
+    }
     string delimiter;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
@@ -139,9 +145,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
-    OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
-                            vocab_filename, vocab_size_, delimiter_, key_index_,
-                            value_index_, ctx->env(), table));
+    OP_REQUIRES_OK(
+        ctx, lookup::InitializeTableFromTextFile(
+                 vocab_filename, vocab_size_, delimiter_, key_index_,
+                 value_index_, offset_, ctx->env(),
+                 MakeInitializerSerializer(vocab_filename_tensor), table));
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
                                                memory_used_before);
@@ -149,11 +157,37 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
  private:
+  std::unique_ptr<InitializerSerializer> MakeInitializerSerializer(
+      Tensor vocab_filename) {
+    return absl::make_unique<InitializerSerializer>(
+        [vocab_filename, vocab_size = vocab_size_, delimiter = delimiter_,
+         key_index = key_index_, value_index = value_index_,
+         offset = offset_](GraphDefBuilder* builder, Node* table, Node** out) {
+          Node* vocab_filename_node = ops::SourceOp(
+              "Const", builder->opts()
+                           .WithAttr("dtype", vocab_filename.dtype())
+                           .WithAttr("value", vocab_filename));
+          std::string delimiter_string(1, delimiter);
+          Node* import_table = ops::BinaryOp(
+              "InitializeTableFromTextFileV2", table, vocab_filename_node,
+              builder->opts()
+                  .WithAttr("vocab_size", vocab_size)
+                  .WithAttr("key_index", key_index)
+                  .WithAttr("value_index", value_index)
+                  .WithAttr("offset", offset)
+                  .WithAttr("delimiter", delimiter_string));
+          *out = ops::UnaryOp("Identity", table,
+                              builder->opts().WithControlInput(import_table));
+          return Status::OK();
+        });
+  }
+
   mutex mu_;
   int64 vocab_size_;
   char delimiter_;
   int64 key_index_;
   int64 value_index_;
+  int64 offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };
@@ -163,32 +197,4 @@ REGISTER_KERNEL_BUILDER(Name("InitializeTableFromTextFile").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(
     Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
     InitializeTableFromTextFileOp);
-
-class InitializeTableFromDatasetOp : public AsyncOpKernel {
- public:
-  explicit InitializeTableFromDatasetOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "initialize_table_from_dataset") {}
-
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    lookup::InitializableLookupTable* table;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
-    core::ScopedUnref unref_me(table);
-    data::DatasetBase* dataset;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
-    background_worker_.Schedule([ctx, dataset, table, done]() {
-      lookup::InitializeTableFromDataset(ctx, dataset, table, done);
-    });
-  }
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromDatasetOp);
-
-  data::BackgroundWorker background_worker_;
-};
-
-REGISTER_KERNEL_BUILDER(Name("InitializeTableFromDataset").Device(DEVICE_CPU),
-                        InitializeTableFromDatasetOp);
 }  // namespace tensorflow

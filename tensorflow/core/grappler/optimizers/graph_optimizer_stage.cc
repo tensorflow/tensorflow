@@ -20,7 +20,7 @@ namespace tensorflow {
 namespace grappler {
 
 const NodeScopeAndName ParseNodeScopeAndName(const string& node_name) {
-  auto pos = node_name.find_last_of("/");
+  auto pos = node_name.find_last_of('/');
   if (pos == string::npos) {
     return {"", node_name};
   } else {

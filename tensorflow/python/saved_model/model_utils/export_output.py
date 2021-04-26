@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Classes for different types of export output."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-
-import six
 
 
 from tensorflow.python.framework import constant_op
@@ -58,7 +53,7 @@ class ExportOutput(object):
     if isinstance(key, tuple):
       key = self._SEPARATOR_CHAR.join(key)
 
-    if not isinstance(key, six.string_types):
+    if not isinstance(key, str):
       raise ValueError(
           '{} output key must be a string; got {}.'.format(error_label, key))
     return key
@@ -343,7 +338,7 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if not (tensor_util.is_tensor(metric_op) or
+      if not (tensor_util.is_tf_type(metric_op) or
               isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
@@ -406,3 +401,4 @@ class EvalOutput(_SupervisedOutput):
 
   def _get_signature_def_fn(self):
     return signature_def_utils.supervised_eval_signature_def
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_output.py)

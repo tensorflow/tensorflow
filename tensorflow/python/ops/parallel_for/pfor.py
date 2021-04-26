@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -1072,7 +1073,7 @@ def _wrap_and_tile_variants(tensor, length):
 
 def _fallback_converter(pfor_input, warn=True):
   if warn:
-    logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1118,6 +1119,8 @@ class PForConfig(object):
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
+    if isinstance(iters, ops.Tensor):
+      iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
   def reduce(self, fn, *args):
@@ -1427,7 +1430,7 @@ class PFor(object):
 
   def _convert_reduction(self, y):
     # Handle reductions.
-    if self._pfor_config is None:
+    if self._pfor_config is None or isinstance(y, ops.Operation):
       return None
     reduction = self._pfor_config._lookup_reduction(y)
     if reduction is None:
@@ -1992,7 +1995,7 @@ def _convert_conv2d_backprop_filter(pfor_input):
   dilations = pfor_input.get_attr("dilations")
   if inputs_stacked:
     # TODO(agarwal): Implement this efficiently.
-    logging.warn("Conv2DBackpropFilter uses a while_loop. Fix that!")
+    logging.warning("Conv2DBackpropFilter uses a while_loop. Fix that!")
 
     def while_body(i, ta):
       inp_i = inputs[i, ...]
@@ -2536,8 +2539,8 @@ def _convert_matmul(pfor_input):
       # TODO(agarwal): This check can be done inside Transpose kernel.
       b_shape = array_ops.shape(b)
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
-      perm = control_flow_ops.cond(
-          math_ops.equal(min_dim, 1), lambda: [0, 1, 2], lambda: [1, 0, 2])
+      perm = array_ops.where(
+          math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
       new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
@@ -2899,6 +2902,13 @@ def _convert_cwise(pfor_input, op_type, op_func):
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
 
+@RegisterPFor("XlaSharding")
+def _convert_xla_sharding(pfor_input):
+  t = pfor_input.stacked_input(0)
+  sharding = pfor_input.get_attr("sharding")
+  return wrap(xla.sharding(t, sharding=sharding), True)
+
+
 @RegisterPFor("LeakyRelu")
 def _convert_leaky_relu(pfor_input):
   t = pfor_input.stacked_input(0)
@@ -3033,14 +3043,14 @@ def _convert_select(pfor_input):
   t = pfor_input.stacked_input(1)
   e = pfor_input.stacked_input(2)
   cond_rank = array_ops.rank(cond)
-  cond, t, e = control_flow_ops.cond(
+  cond, t, e = smart_cond.smart_cond(
       cond_rank > 1, lambda: _inputs_with_flattening(pfor_input, [0, 1, 2]),
       lambda: [cond, t, e])
   outputs = _create_op(
       pfor_input.op_type, [cond, t, e], [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   n = pfor_input.pfor.loop_len_vector
-  out = control_flow_ops.cond(cond_rank > 1,
+  out = smart_cond.smart_cond(cond_rank > 1,
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]
@@ -3179,15 +3189,17 @@ def _convert_stateless_multinomial(pfor_input):
 @RegisterPForWithArgs("XlaEinsum")
 @RegisterPForWithArgs("Einsum")
 def _convert_einsum(pfor_input, op_type):
-  first_input, first_input_stacked, _ = pfor_input.input(0)
-  second_input, second_input_stacked, _ = pfor_input.input(1)
+  # Einsum may have either 1 or 2 inputs.
+  inputs, input_stacked, _ = zip(*[
+      pfor_input.input(i)
+      for i in range(pfor_input.num_inputs)])
 
   # Parse the einsum equation.
   equation = pfor_input.get_attr("equation").decode("utf-8")
   input_expr, output_expr = equation.split("->")
-  input_a_expr, input_b_expr = input_expr.split(",")
+  input_exprs = input_expr.split(",")
 
-  # pick a placeholder symbol to use for the new axis
+  # Pick a placeholder symbol to use for the new axis.
   chosen_symbol = None
   for s in string.ascii_letters:
     if s in equation:
@@ -3199,19 +3211,22 @@ def _convert_einsum(pfor_input, op_type):
   if chosen_symbol is None:
     raise ValueError("Could not figure out what symbol to use for new axis.")
 
-  assert first_input_stacked or second_input_stacked
-  if first_input_stacked:
-    input_a_expr = "{}{}".format(chosen_symbol, input_a_expr)
-  if second_input_stacked:
-    input_b_expr = "{}{}".format(chosen_symbol, input_b_expr)
+  assert any(input_stacked)
+  for i in range(len(inputs)):
+    if input_stacked[i]:
+      input_exprs[i] = "{}{}".format(chosen_symbol, input_exprs[i])
   output_expr = "{}{}".format(chosen_symbol, output_expr)
 
-  new_equation = "{},{}->{}".format(input_a_expr, input_b_expr, output_expr)
+  new_equation = "{}->{}".format(",".join(input_exprs), output_expr)
+
   if op_type == "XlaEinsum":
-    result = xla.einsum(equation=new_equation, a=first_input, b=second_input)
+    if len(inputs) == 1:
+      result = xla.einsum(equation=new_equation, a=inputs[0])
+    else:
+      result = xla.einsum(equation=new_equation, a=inputs[0], b=inputs[1])
   else:
     assert op_type == "Einsum"
-    result = special_math_ops.einsum(new_equation, first_input, second_input)
+    result = special_math_ops.einsum(new_equation, *inputs)
 
   return wrap(result, True)
 

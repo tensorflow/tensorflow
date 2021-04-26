@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_QR_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
@@ -32,17 +33,8 @@ class QrExpander : public OpExpanderPass {
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
-  struct QrResult {
-    // The upper-triangular matrix R, packed together with the lower-triangular
-    // elementary Householder reflectors `vs` below the diagonal.
-    XlaOp a;
-
-    // Representation of the Householder matrices I - beta v v.T
-    XlaOp taus;  // Shape: [..., min(m, n)]
-  };
-
-  virtual StatusOr<QrResult> QrBlock(XlaOp a,
-                                     PrecisionConfig::Precision precision);
+  virtual StatusOr<QrDecomposition> QrBlock(
+      XlaOp a, PrecisionConfig::Precision precision);
 
   virtual StatusOr<XlaOp> CompactWYRepresentation(
       PrimitiveType type, absl::Span<const int64> batch_dims, XlaOp vs,
@@ -51,6 +43,10 @@ class QrExpander : public OpExpanderPass {
  private:
   StatusOr<XlaOp> BuildQrDecomposition(XlaOp a, int64 block_size,
                                        PrecisionConfig::Precision precision);
+
+  StatusOr<XlaOp> ProductOfElementaryHouseholderReflectors(
+      XlaOp a, XlaOp taus, int64 block_size,
+      PrecisionConfig::Precision precision);
 
   // Mapping from op signatures to existing computations.
   absl::flat_hash_map<string, HloComputation*> computation_cache_;

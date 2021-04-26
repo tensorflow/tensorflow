@@ -43,7 +43,7 @@ GpuGemmConfig GetGpuGemmConfig(const HloInstruction *gemm) {
   return config;
 }
 
-GemmThunk::GemmThunk(ThunkInfo thunk_info, GpuGemmConfig &&config,
+GemmThunk::GemmThunk(ThunkInfo thunk_info, GpuGemmConfig config,
                      const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
                      const BufferAllocation::Slice &output_buffer,

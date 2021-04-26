@@ -80,8 +80,6 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/144846950): Add channel dimension index for the kernel to be more
-  // flexible.
   std::vector<int32_t> per_channel_output_multiplier;
   std::vector<int32_t> per_channel_output_shift;
 
@@ -374,17 +372,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             weights->quantization.params);
+    const int channels_out = weights->dims->data[0];
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
-    const int number_channel = affine_quantization->scale->size;
-    data->per_channel_output_multiplier.resize(number_channel);
-    data->per_channel_output_shift.resize(number_channel);
+    TF_LITE_ENSURE(context, (affine_quantization->scale->size == 1 ||
+                             affine_quantization->scale->size == channels_out));
+
+    data->per_channel_output_multiplier.resize(channels_out);
+    data->per_channel_output_shift.resize(channels_out);
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, weights, bias, output, kTfLiteActNone,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data()));
+        data->per_channel_output_shift.data(), channels_out));
   }
 
   return kTfLiteOk;

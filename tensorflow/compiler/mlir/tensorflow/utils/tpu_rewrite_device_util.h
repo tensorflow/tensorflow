@@ -240,6 +240,12 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 // logical core.
 std::string GetDeviceAliasForLogicalCore(int core_index);
 
+// Returns error is cluster contains model parallelism or is missing
+// `num_cores_per_replica_attribute`.  To be used to ensure that model
+// parallelism is not mixed with outside compilation until they are compatible
+// together.
+mlir::LogicalResult CheckNoModelParallelism(mlir::tf_device::ClusterOp cluster);
+
 // Parses TPU compilation and execution devices from a TPU cluster and returns
 // the host device for the head and tail computations. If the TPU computation is
 // replicated, kTPUReplicatedHost is returned instead.
@@ -249,6 +255,9 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
 
 // Checks if a device string is a TPU device.
 bool IsTPUDevice(llvm::StringRef device);
+
+// Checks if a device string is a TPU replicated core device.
+bool IsTPUReplicatedCore(llvm::StringRef device);
 
 }  // namespace tensorflow
 

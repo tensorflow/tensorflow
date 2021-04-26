@@ -19,9 +19,6 @@ Reference:
   - [Deep Residual Learning for Image Recognition](
       https://arxiv.org/abs/1512.03385) (CVPR 2015)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
@@ -71,15 +68,7 @@ def ResNet(stack_fn,
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
 
-  Reference:
-  - [Deep Residual Learning for Image Recognition](
-      https://arxiv.org/abs/1512.03385) (CVPR 2015)
-
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
-
-  Arguments:
+  Args:
     stack_fn: a function that returns output tensor for the
       stacked residual blocks.
     preact: whether to use pre-activation or not
@@ -117,15 +106,12 @@ def ResNet(stack_fn,
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
     **kwargs: For backwards compatibility only.
+
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   global layers
   if 'layers' in kwargs:
@@ -226,7 +212,7 @@ def ResNet(stack_fn,
 def block1(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
   """A residual block.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: integer, filters of the bottleneck layer.
     kernel_size: default 3, kernel size of the bottleneck layer.
@@ -271,7 +257,7 @@ def block1(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
 def stack1(x, filters, blocks, stride1=2, name=None):
   """A set of stacked residual blocks.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: integer, filters of the bottleneck layer in a block.
     blocks: integer, blocks in the stacked blocks.
@@ -290,7 +276,7 @@ def stack1(x, filters, blocks, stride1=2, name=None):
 def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
   """A residual block.
 
-  Arguments:
+  Args:
       x: input tensor.
       filters: integer, filters of the bottleneck layer.
       kernel_size: default 3, kernel size of the bottleneck layer.
@@ -339,7 +325,7 @@ def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
 def stack2(x, filters, blocks, stride1=2, name=None):
   """A set of stacked residual blocks.
 
-  Arguments:
+  Args:
       x: input tensor.
       filters: integer, filters of the bottleneck layer in a block.
       blocks: integer, blocks in the stacked blocks.
@@ -365,7 +351,7 @@ def block3(x,
            name=None):
   """A residual block.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: integer, filters of the bottleneck layer.
     kernel_size: default 3, kernel size of the bottleneck layer.
@@ -405,12 +391,12 @@ def block3(x,
       depth_multiplier=c,
       use_bias=False,
       name=name + '_2_conv')(x)
-  x_shape = backend.int_shape(x)[1:-1]
-  x = layers.Reshape(x_shape + (groups, c, c))(x)
+  x_shape = backend.shape(x)[:-1]
+  x = backend.reshape(x, backend.concatenate([x_shape, (groups, c, c)]))
   x = layers.Lambda(
       lambda x: sum(x[:, :, :, :, i] for i in range(c)),
       name=name + '_2_reduce')(x)
-  x = layers.Reshape(x_shape + (filters,))(x)
+  x = backend.reshape(x, backend.concatenate([x_shape, (filters,)]))
   x = layers.BatchNormalization(
       axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
@@ -428,7 +414,7 @@ def block3(x,
 def stack3(x, filters, blocks, stride1=2, groups=32, name=None):
   """A set of stacked residual blocks.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: integer, filters of the bottleneck layer in a block.
     blocks: integer, blocks in the stacked blocks.
@@ -539,15 +525,22 @@ DOC = """
   - [Deep Residual Learning for Image Recognition](
       https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For ResNet, call `tf.keras.applications.resnet.preprocess_input` on your
   inputs before passing them to the model.
+  `resnet.preprocess_input` will convert the input images from RGB to BGR,
+  then will zero-center each color channel with respect to the ImageNet dataset,
+  without scaling.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),
@@ -576,6 +569,11 @@ DOC = """
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Returns:
     A Keras model instance.

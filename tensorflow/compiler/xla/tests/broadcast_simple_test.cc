@@ -34,7 +34,7 @@ namespace {
 
 class BroadcastSimpleTest : public ClientLibraryTestBase {
  public:
-  XlaOp BuildBinOp(HloOpcode op, const XlaOp& lhs, const XlaOp& rhs,
+  XlaOp BuildBinOp(HloOpcode op, const XlaOp lhs, const XlaOp rhs,
                    XlaBuilder* builder) {
     switch (op) {
       case HloOpcode::kMinimum: {

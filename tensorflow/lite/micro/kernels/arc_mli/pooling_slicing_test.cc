@@ -58,7 +58,7 @@ void TestAveragePoolingQuantized(
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
+  PopulateContext(tensors, tensors_size, &context);
 
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -129,7 +129,7 @@ void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
+  PopulateContext(tensors, tensors_size, &context);
 
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/optimized/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/legacy_reference_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -32,8 +33,6 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
-using reference_ops::ArgMax;
-using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;
 using reference_ops::Broadcast4DSlowGreaterEqual;
 using reference_ops::Broadcast4DSlowGreaterEqualWithScaling;
@@ -71,7 +70,6 @@ using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
-using reference_ops::StridedSlice;
 using reference_ops::TensorFlowSplit;
 
 static constexpr int kDepthwiseReverseShift = -1;
@@ -4947,6 +4945,48 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
   }
   Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
             output);
+}
+
+template <typename T>
+inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
+                         const std::vector<int>& start_indices,
+                         const std::vector<int>& stop_indices,
+                         const std::vector<int>& strides, T* output_data,
+                         const Dims<4>& output_dims) {
+  TFLITE_DCHECK_EQ(start_indices.size(), 4);
+  auto op_params = strided_slice::BuildStridedSliceParams(
+      begin_mask, end_mask, shrink_axis_mask, start_indices, stop_indices,
+      strides);
+  reference_ops::StridedSliceReverseIndices(&op_params);
+
+  StridedSlice(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
+}
+
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data,
+            const tflite::Dims<4>& input_dims, T2* output_data,
+            const tflite::Dims<4>& output_dims) {
+  // Assumes the input always has 4 dimensions, and therefore,
+  // output always has three dimensions.
+  auto output_shape = RuntimeShape(
+      {output_dims.sizes[2], output_dims.sizes[1], output_dims.sizes[0]});
+  // Another way to interpret this is that output_dims.sizes[4] is always 1.
+  TFLITE_DCHECK_EQ(output_shape.FlatSize(),
+                   DimsToShape(output_dims).FlatSize());
+  // Legacy path only supported this.
+  TFLITE_DCHECK_EQ(axis[0], 3);
+  ArgMinMax(DimsToShape(input_dims), input_data, axis, output_shape,
+            output_data, /*is_arg_max=*/true);
+}
+
+template <typename T1, typename T2, typename T3>
+void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+               T2* output_data, const Dims<4>& output_dims,
+               const bool is_arg_max) {
+  ArgMinMax(axis, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+            output_data, is_arg_max);
 }
 
 }  // namespace optimized_ops

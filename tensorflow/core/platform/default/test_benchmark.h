@@ -20,6 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(_MSC_VER)
+#include <intrin.h>  // for _ReadWriteBarrier
+#endif
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
@@ -40,6 +44,9 @@ class State;
 
 namespace tensorflow {
 namespace testing {
+namespace internal {
+void UseCharPointer(char const volatile*);
+}
 
 // The DoNotOptimize(...) function can be used to prevent a value or
 // expression from being optimized away by the compiler. This function is
@@ -71,11 +78,9 @@ namespace testing {
 // compiler from optimizing away 'c' as dead code.
 template <class T>
 void DoNotOptimize(const T& var) {
-#ifdef PLATFORM_WINDOWS
-  LOG(FATAL)
-      << "tensorflow::testing::DoNotOptimize is not implemented on windows. "
-      << "If needed, call an external no-op routine with the pointer to foil "
-      << "optimization.";
+#if defined(_MSC_VER)
+  internal::UseCharPointer(reinterpret_cast<char const volatile*>(&var));
+  _ReadWriteBarrier();
 #else
   asm volatile("" : "+m"(const_cast<T&>(var)));
 #endif
@@ -228,11 +233,12 @@ class State {
 
  protected:
   friend class tensorflow::testing::Benchmark;
-  State(size_t max_iterations, const std::vector<int>& args);
+  State(size_t max_iterations, int formal_arg_count, std::vector<int> args);
 
  private:
   size_t completed_iterations_;
-  std::vector<int> args_;
+  const int formal_arg_count_;
+  const std::vector<int> args_;
 };
 
 inline State::Iterator::Iterator(State* parent) : parent_(parent) {}

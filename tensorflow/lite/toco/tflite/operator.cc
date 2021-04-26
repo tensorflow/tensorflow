@@ -48,6 +48,7 @@ namespace tflite {
       {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
       {ArrayDataType::kInt16, ::tflite::TensorType_INT16},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
+      {ArrayDataType::kUint32, ::tflite::TensorType_UINT32},
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kUint64, ::tflite::TensorType_UINT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
@@ -1241,7 +1242,9 @@ class StridedSlice
         static_cast<const StridedSliceOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.single_input_op.num_dims = ss_op.start_indices.size();
+    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
+    op_sig.options.strided_slice.ellipsis_mask = ss_op.ellipsis_mask;
+    op_sig.options.strided_slice.new_axis_mask = ss_op.new_axis_mask;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

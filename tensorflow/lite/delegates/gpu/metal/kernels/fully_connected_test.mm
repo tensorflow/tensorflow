@@ -13,71 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
-
 #import <XCTest/XCTest.h>
 
-#include <string>
-#include <vector>
-
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected_test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::BHWC;
-using ::tflite::gpu::DataType;
-using ::tflite::gpu::FullyConnectedAttributes;
-using ::tflite::gpu::Linear;
-using ::tflite::gpu::OHWI;
-using ::tflite::gpu::OperationType;
-using ::tflite::gpu::Tensor;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-
-@interface FullyConnectedTest : XCTestCase
+@interface FullyConnectedMetalTest : XCTestCase
 @end
 
-@implementation FullyConnectedTest
-- (void)setUp {
-  [super setUp];
+@implementation FullyConnectedMetalTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
-- (void)testMatrixByVectorMultiplication {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 1, 1, 2);
-
-  FullyConnectedAttributes attr;
-
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 4;
-  bias.id = 1;
-  bias.data = {1, 2, 3, 4};
-  attr.bias = std::move(bias);
-
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(4, 1, 1, 2);
-  weights.id = 2;
-  weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
-  attr.weights = std::move(weights);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 2;
-  output.shape = BHWC(1, 1, 1, 4);
-
-  SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input}, {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 2}));
-  auto status = model.Invoke();
+- (void)testFullyConnected {
+  auto status = tflite::gpu::FullyConnectedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({6, 13, 20, 27}, model.GetOutput(0), 1e-6f);
+}
+
+- (void)testFullyConnectedLarge {
+  auto status = FullyConnectedLargeTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFullyConnectedExtraLarge {
+  auto status = FullyConnectedExtraLargeTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

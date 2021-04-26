@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -35,6 +35,11 @@ struct MlirToHloConversionOptions {
   //
   // TODO(timshen): Investigate the necessity of having layouts in MHLO.
   bool propagate_layouts = false;
+
+  // Propagate the source and result layouts from mhlo bitcast op into the
+  // backend config for the bitcast. This is required for XLA:GPU backend to
+  // use elemental IR emitters for fused bitcasts without propagating layouts.
+  bool propagate_bitcast_layouts_to_backend_config = false;
 };
 
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If
@@ -52,6 +57,14 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                                shape_representation_fn = nullptr,
                            MlirToHloConversionOptions options = {});
 
+// Transforms a Block into HLO, where the HLO is represented as calls into an
+// XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.
+// xla_params are inputs to block. returns are the returned XlaOps.
+Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                           llvm::ArrayRef<xla::XlaOp> xla_params,
+                           std::vector<xla::XlaOp>& returns,
+                           MlirToHloConversionOptions options = {});
+
 // Converts a region to a computation. It returns a standalone module that
 // contains the converted region as the entry computation.
 Status ConvertRegionToComputation(mlir::Region* region,
@@ -64,9 +77,8 @@ llvm::Optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
     llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 
-mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op);
-
-::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
+mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(
+    mlir::Operation* op, llvm::StringRef attr_name = "minor_to_major");
 
 }  // namespace mlir
 

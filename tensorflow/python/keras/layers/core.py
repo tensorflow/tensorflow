@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Core Keras layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Core Keras layers."""
 
 import copy
 import functools
@@ -34,6 +30,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -43,16 +40,21 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -175,7 +177,7 @@ class Dropout(Layer):
    [ 7.5   8.75]
    [10.    0.  ]], shape=(5, 2), dtype=float32)
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     noise_shape: 1D integer tensor representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -255,7 +257,7 @@ class SpatialDropout1D(Dropout):
   decrease. In this case, SpatialDropout1D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
 
   Call arguments:
@@ -297,7 +299,7 @@ class SpatialDropout2D(Dropout):
   decrease. In this case, SpatialDropout2D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
       In 'channels_first' mode, the channels dimension
@@ -356,7 +358,7 @@ class SpatialDropout3D(Dropout):
   decrease. In this case, SpatialDropout3D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
         In 'channels_first' mode, the channels dimension (the depth)
@@ -406,7 +408,7 @@ class SpatialDropout3D(Dropout):
 class Activation(Layer):
   """Applies an activation function to an output.
 
-  Arguments:
+  Args:
     activation: Activation function, such as `tf.nn.relu`, or string name of
       built-in activation function, such as "relu".
 
@@ -497,7 +499,7 @@ class Reshape(Layer):
     This is a near direct port of the internal Numpy function
     `_fix_unknown_dimension` in `numpy/core/src/multiarray/shape.c`
 
-    Arguments:
+    Args:
       input_shape: Shape of array being reshaped
       output_shape: Desired shape of the array with at most
         a single -1 which indicates a dimension that should be
@@ -577,7 +579,7 @@ class Permute(Layer):
   # note: `None` is the batch dimension
   ```
 
-  Arguments:
+  Args:
     dims: Tuple of integers. Permutation pattern does not include the
       samples dimension. Indexing starts at 1.
       For instance, `(2, 1)` permutes the first and second dimensions
@@ -627,7 +629,7 @@ class Flatten(Layer):
   Note: If inputs are shaped `(batch,)` without a feature axis, then
   flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
-  Arguments:
+  Args:
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -724,7 +726,7 @@ class RepeatVector(Layer):
   # now: model.output_shape == (None, 3, 32)
   ```
 
-  Arguments:
+  Args:
     n: Integer, repetition factor.
 
   Input shape:
@@ -756,12 +758,14 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that arbitrary TensorFlow functions
-  can be used when constructing `Sequential` and Functional API
-  models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, follow
+  The `Lambda` layer exists so that arbitrary expressions can be used
+  as a `Layer` when constructing `Sequential`
+  and Functional API models. `Lambda` layers are best suited for simple
+  operations or quick experimentation. For more advanced use cases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   for subclassing `tf.keras.layers.Layer`.
+
+  WARNING: `tf.keras.layers.Lambda` layers have (de)serialization limitations!
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
@@ -821,7 +825,7 @@ class Lambda(Layer):
     In general, Lambda layers can be convenient for simple stateless
     computation, but anything more complex should use a subclass Layer instead.
 
-  Arguments:
+  Args:
     function: The function to be evaluated. Takes input tensor as first
       argument.
     output_shape: Expected output shape from function. This argument can be
@@ -962,7 +966,7 @@ class Lambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):
@@ -1085,7 +1089,8 @@ class Dense(Layer):
   where `activation` is the element-wise activation function
   passed as the `activation` argument, `kernel` is a weights matrix
   created by the layer, and `bias` is a bias vector created by the layer
-  (only applicable if `use_bias` is `True`).
+  (only applicable if `use_bias` is `True`). These are all attributes of
+  `Dense`.
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
   computes the dot product between the `inputs` and the `kernel` along the
@@ -1098,6 +1103,9 @@ class Dense(Layer):
 
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
+  When a popular kwarg `input_shape` is passed, then keras will create
+  an input layer to insert before the current layer. This can be treated
+  equivalent to explicitly defining an `InputLayer`.
 
   Example:
 
@@ -1113,7 +1121,7 @@ class Dense(Layer):
   >>> model.output_shape
   (None, 32)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied
@@ -1203,12 +1211,51 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    return core_ops.dense(
-        inputs,
-        self.kernel,
-        self.bias,
-        self.activation,
-        dtype=self._compute_dtype_object)
+    if inputs.dtype.base_dtype != self._compute_dtype_object.base_dtype:
+      inputs = math_ops.cast(inputs, dtype=self._compute_dtype_object)
+
+    rank = inputs.shape.rank
+    if rank == 2 or rank is None:
+      # We use embedding_lookup_sparse as a more efficient matmul operation for
+      # large sparse input tensors. The op will result in a sparse gradient, as
+      # opposed to sparse_ops.sparse_tensor_dense_matmul which results in dense
+      # gradients. This can lead to sigfinicant speedups, see b/171762937.
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        # We need to fill empty rows, as the op assumes at least one id per row.
+        inputs, _ = sparse_ops.sparse_fill_empty_rows(inputs, 0)
+        # We need to do some munging of our input to use the embedding lookup as
+        # a matrix multiply. We split our input matrix into separate ids and
+        # weights tensors. The values of the ids tensor should be the column
+        # indices of our input matrix and the values of the weights tensor
+        # can continue to the actual matrix weights.
+        # The column arrangement of ids and weights
+        # will be summed over and does not matter. See the documentation for
+        # sparse_ops.sparse_tensor_dense_matmul a more detailed explanation
+        # of the inputs to both ops.
+        ids = sparse_tensor.SparseTensor(
+            indices=inputs.indices,
+            values=inputs.indices[:, 1],
+            dense_shape=inputs.dense_shape)
+        weights = inputs
+        outputs = embedding_ops.embedding_lookup_sparse_v2(
+            self.kernel, ids, weights, combiner='sum')
+      else:
+        outputs = gen_math_ops.MatMul(a=inputs, b=self.kernel)
+    # Broadcast kernel to inputs.
+    else:
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
+      # Reshape the output back to the original ndim of the input.
+      if not context.executing_eagerly():
+        shape = inputs.shape.as_list()
+        output_shape = shape[:-1] + [self.kernel.shape[-1]]
+        outputs.set_shape(output_shape)
+
+    if self.use_bias:
+      outputs = nn_ops.bias_add(outputs, self.bias)
+
+    if self.activation is not None:
+      outputs = self.activation(outputs)
+    return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1216,32 +1263,23 @@ class Dense(Layer):
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
-          % input_shape)
+          % (input_shape,))
     return input_shape[:-1].concatenate(self.units)
 
   def get_config(self):
     config = super(Dense, self).get_config()
     config.update({
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     })
     return config
 
@@ -1250,7 +1288,7 @@ class Dense(Layer):
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
-  Arguments:
+  Args:
     l1: L1 regularization factor (positive float).
     l2: L2 regularization factor (positive float).
 
@@ -1404,7 +1442,7 @@ class TFOpLambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def get_config(self):
     if not self.symbol:
@@ -1538,9 +1576,12 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
     else:
       return self.NOT_SUPPORTED
 
-for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
-                   array_ops.boolean_mask,
-                   array_ops.boolean_mask_v2]:
+for slicing_op in [
+    array_ops._slice_helper,  # pylint: disable=protected-access
+    array_ops.boolean_mask,
+    array_ops.boolean_mask_v2,
+    ragged_getitem.ragged_tensor_getitem
+]:
   TFSlicingOpDispatcher(slicing_op).register(slicing_op)
 
 
@@ -1621,7 +1662,7 @@ def _delegate_property(keras_tensor_cls, property_name):  # pylint: disable=inva
   `InstanceProperty` layer to access the property on the represented
   intermediate values in the model.
 
-  Arguments:
+  Args:
     keras_tensor_cls: The KerasTensor subclass that should expose the property.
     property_name: The name of the property to expose and delegate to the
       represented (Composite)Tensor.
@@ -1641,7 +1682,7 @@ def _delegate_method(keras_tensor_cls, method_name):  # pylint: disable=invalid-
   an `InstanceMethod` layer to run the desired method on the represented
   intermediate values in the model.
 
-  Arguments:
+  Args:
     keras_tensor_cls: The KerasTensor subclass that should expose the property.
     method_name: The name of the method to expose and delegate to the
       represented (Composite)Tensor.

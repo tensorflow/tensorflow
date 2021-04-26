@@ -42,6 +42,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -74,7 +76,7 @@ class NodeIter;         // Declared below
 enum class ConstructionContext {
   kNotTracked,     // Not tracked.
   kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
-  kFunctionDef,    // From `FunctionDef`, @tf.function.
+  kEagerRuntime,   // Registered from TF2 eager runtime.
 };
 
 class Node {
@@ -240,9 +242,24 @@ class Node {
 
   std::shared_ptr<NodeProperties> properties() const { return props_; }
 
+  // Sets the stack trace for the node. Assumes that getting and setting the
+  // stack trace for a given node will not race.
+  void SetStackTrace(const std::shared_ptr<AbstractStackTrace>& stack_trace) {
+    stack_trace_ = stack_trace;
+  }
+
+  // Get the stack trace for when the node was instantiated.
+  const std::shared_ptr<AbstractStackTrace>& GetStackTrace() const {
+    return stack_trace_;
+  }
+
  private:
   friend class Graph;
   Node();
+
+  // Stack trace for the user code for node instantiation. Can be shared across
+  // multiple nodes (e.g. when inlining).
+  std::shared_ptr<AbstractStackTrace> stack_trace_;
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -522,6 +539,8 @@ class Graph {
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
+  void Copy(const Graph& src);
+
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);
@@ -702,6 +721,10 @@ class Graph {
     return construction_context_;
   }
 
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  void NodeType(StringPiece name, FullTypeDef** result);
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -727,6 +750,29 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
+
+  // Types table.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_set<TypeRef, TypeHasher> types_;
+
+  // Experimental.
+  // Map from node node names to their outputs' FullType. Typically, the values
+  // in this map are identical to those in types_, but that is not enforced or
+  // guaranteed.
+  //
+  // The full type specification combines a Tensor's dtype, tensor_shape,
+  // variant_val, etc. into a unified representation.
+  // This definition may only contain concrete types (for example,
+  // Tensor<TypeVar<'T'>> is not a valid node type).
+  //
+  // Presently, FullType duplicates any information found in `dtype`. When set,
+  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
+  // with FullType.
+  //
+  // For example, if a TensorProto has `dtype=DT_INT32`, then
+  // `full_type=FT_TENSOR[FT_INT32]`.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
   int64 num_nodes_ = 0;

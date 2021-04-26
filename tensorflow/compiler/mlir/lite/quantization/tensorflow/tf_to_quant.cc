@@ -35,10 +35,6 @@ struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
   void runOnFunction() override;
 };
 
-// TODO(fengliuai): move this rule to PreparePatterns.td
-// TODO(b/140968741): propagate the sign from the command line. Currently all
-// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
-// actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
 // folding logic will use a "std.constant" op to replace the
@@ -113,7 +109,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/true);
-    if (!qtype) failure();
+    if (!qtype) return failure();
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
@@ -141,11 +137,11 @@ using PreparePerChannelFakeQuant =
 // legalization.
 
 void LegalizeTFToQuant::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

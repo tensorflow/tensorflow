@@ -1,0 +1,45 @@
+path: "tensorflow.__internal__.feature_column.DenseColumn"
+tf_class {
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.DenseColumn\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.FeatureColumn\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "name"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member {
+    name: "parents"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member {
+    name: "parse_example_spec"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member {
+    name: "variable_shape"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "create_state"
+    argspec: "args=[\'self\', \'state_manager\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\', \'columns_by_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_dense_tensor"
+    argspec: "args=[\'self\', \'transformation_cache\', \'state_manager\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "transform_feature"
+    argspec: "args=[\'self\', \'transformation_cache\', \'state_manager\'], varargs=None, keywords=None, defaults=None"
+  }
+}

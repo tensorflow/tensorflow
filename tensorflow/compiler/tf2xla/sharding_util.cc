@@ -23,9 +23,30 @@ namespace tensorflow {
 namespace {
 const char kDeviceSuffixReplicatedCore[] = "REPLICATED_CORE";
 const char kShardingAttribute[] = "_XlaSharding";
+const char kShardingOpAttribute[] = "sharding";
 }  // namespace
 
 namespace {
+xla::OpMetadata CreateOpMetadata(const std::string& op_type,
+                                 const std::string& op_name) {
+  xla::OpMetadata metadata;
+  metadata.set_op_type(op_type);
+  metadata.set_op_name(op_name);
+  return metadata;
+}
+
+void AssignOpMetadataToSharding(xla::OpSharding& sharding,
+                                const string& op_type, const string& op_name) {
+  auto metadata = CreateOpMetadata(op_type, op_name);
+  if (sharding.type() == xla::OpSharding::TUPLE) {
+    for (auto& sharding_element : *sharding.mutable_tuple_shardings()) {
+      *sharding_element.add_metadata() = metadata;
+    }
+  } else {
+    *sharding.add_metadata() = metadata;
+  }
+}
+
 Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
   return errors::InvalidArgument(
       "Invalid replicated core id: ", core,
@@ -35,7 +56,8 @@ Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
-    absl::optional<xla::OpSharding> explicit_sharding) {
+    absl::optional<xla::OpSharding> explicit_sharding,
+    absl::optional<xla::OpMetadata> metadata) {
   if (device_name.empty()) {
     return explicit_sharding;
   }
@@ -56,39 +78,50 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     if (core < 0 || core >= num_cores_per_replica) {
       return CoreOutOfRangeError(core, num_cores_per_replica);
     }
-    return absl::optional<xla::OpSharding>(
-        xla::sharding_builder::AssignDevice(core));
+    auto sharding = xla::sharding_builder::AssignDevice(core);
+    if (metadata.has_value()) {
+      *sharding.add_metadata() = metadata.value();
+    }
+    return absl::optional<xla::OpSharding>(sharding);
   }
 }
 
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const NodeDef& node_def, int num_cores_per_replica) {
+    const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
   const string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
-                      GetShardingFromNodeDef(node_def));
-  return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
+                      GetShardingFromNodeDef(node_def, add_metadata));
+  return ParseShardingFromDevice(
+      device_name, num_cores_per_replica, sharding,
+      add_metadata ? absl::optional<xla::OpMetadata>(
+                         CreateOpMetadata(node_def.op(), node_def.name()))
+                   : absl::nullopt);
 }
 
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const Node& node, int num_cores_per_replica) {
+    const Node& node, int num_cores_per_replica, bool add_metadata) {
   string device_name = node.assigned_device_name();
   if (device_name.empty()) {
     device_name = node.requested_device();
   }
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
-                      GetShardingFromNodeDef(node.def()));
-  return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
+                      GetShardingFromNodeDef(node.def(), add_metadata));
+  return ParseShardingFromDevice(
+      device_name, num_cores_per_replica, sharding,
+      add_metadata ? absl::optional<xla::OpMetadata>(
+                         CreateOpMetadata(node.type_string(), node.name()))
+                   : absl::nullopt);
 }
 
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
-    const Edge& edge, int num_cores_per_replica) {
+    const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
         "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
   }
-  TF_ASSIGN_OR_RETURN(
-      absl::optional<xla::OpSharding> sharding,
-      ParseShardingFromDevice(*edge.src(), num_cores_per_replica));
+  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+                      ParseShardingFromDevice(
+                          *edge.src(), num_cores_per_replica, add_metadata));
   if (sharding.has_value() &&
       sharding.value().type() == xla::OpSharding::TUPLE) {
     if (edge.src_output() < 0 ||
@@ -115,19 +148,42 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   }
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
-    const NodeDef& node_def) {
-  if (!HasNodeAttr(node_def, kShardingAttribute)) {
+namespace {
+
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
+    const NodeDef& node_def, bool add_metadata, const char* attribute) {
+  if (!HasNodeAttr(node_def, attribute)) {
     return absl::optional<xla::OpSharding>();
   }
   string value;
   xla::OpSharding sharding;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attribute, &value));
   if (!sharding.ParseFromString(value)) {
     return xla::InvalidArgument(
-        "Experimental _XlaSharding attribute was not a valid encoded "
-        "xla::OpSharding proto.");
+        "Experimental %s attribute was not a valid encoded xla::OpSharding "
+        "proto.",
+        attribute);
+  }
+  if (add_metadata) {
+    AssignOpMetadataToSharding(sharding, node_def.op(), node_def.name());
   }
   return absl::optional<xla::OpSharding>(sharding);
 }
+
+}  // namespace
+
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def, bool add_metadata) {
+  if (node_def.op() == "XlaSharding") {
+    TF_ASSIGN_OR_RETURN(auto sharding,
+                        GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                       kShardingOpAttribute));
+    if (sharding.has_value()) {
+      return sharding;
+    }
+  }
+  return GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                        kShardingAttribute);
+}
+
 }  // namespace tensorflow

@@ -21,8 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -44,7 +43,9 @@ class PerFunctionAggregateAnalysis {
   }
 
  protected:
-  llvm::SmallDenseMap<FuncOp, InfoT, 8> info_map_;
+  // Since `InfoT` might be large, DenseMap is used instead of SmallDenseMap to
+  // avoid stack overflow.
+  llvm::DenseMap<FuncOp, InfoT> info_map_;
 };
 
 }  // namespace detail

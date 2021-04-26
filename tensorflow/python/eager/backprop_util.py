@@ -51,7 +51,7 @@ def _DTypeFromTensor(tensor):
 
 def IsTrainable(tensor_or_dtype):
   """Determines whether a tensor or dtype supports infinitesimal changes."""
-  if tensor_util.is_tensor(tensor_or_dtype):
+  if tensor_util.is_tf_type(tensor_or_dtype):
     dtype = _DTypeFromTensor(tensor_or_dtype)
   else:
     dtype = tensor_or_dtype

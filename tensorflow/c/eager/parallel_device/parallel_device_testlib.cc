@@ -28,6 +28,8 @@ limitations under the License.
 // correspond fairly well to the implementation, but testing the C++ directly is
 // another option.
 
+namespace tensorflow {
+namespace parallel_device {
 
 Variable* Variable::Create(TFE_Context* context, TF_DataType type,
                            const int64_t* dims, const int num_dims,
@@ -280,3 +282,6 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
     ASSERT_EQ(underlying_devices[1], second_device);
   }
 }
+
+}  // namespace parallel_device
+}  // namespace tensorflow

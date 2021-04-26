@@ -146,6 +146,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
     std::vector<tensorflow::OpDef> ops;
     registry->GetRegisteredOps(&ops);
     std::vector<std::string> op_names;
+    op_names.reserve(ops.size());
     for (const tensorflow::OpDef& op : ops) {
       op_names.push_back(op.name());
     }

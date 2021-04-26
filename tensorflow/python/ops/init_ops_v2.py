@@ -886,7 +886,7 @@ def lecun_normal(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -931,7 +931,7 @@ def lecun_uniform(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -974,7 +974,7 @@ def he_normal(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -1014,7 +1014,7 @@ def he_uniform(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:

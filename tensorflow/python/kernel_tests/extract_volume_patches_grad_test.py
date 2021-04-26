@@ -27,7 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed as random_seed_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -57,24 +57,27 @@ class ExtractVolumePatchesGradTest(test.TestCase, parameterized.TestCase):
           'strides': [1, 2, 4, 3, 1],
       },
   ])
-  @test_util.run_deprecated_v1
   def testGradient(self, in_shape, ksizes, strides):
+    if test_util.is_gpu_available():
+      self.skipTest('b/171837334: skip gpu test.')
+
     # Set graph seed for determinism.
     random_seed = 42
     random_seed_lib.set_random_seed(random_seed)
 
     with self.cached_session():
       np.random.seed(random_seed)
-      in_val = constant_op.constant(
+      input_val = constant_op.constant(
           np.random.random(in_shape), dtype=dtypes.float32)
 
       for padding in ['VALID', 'SAME']:
-        out_val = array_ops.extract_volume_patches(
-            in_val, ksizes, strides, padding)
-        out_shape = out_val.get_shape().as_list()
 
-        err = gradient_checker.compute_gradient_error(in_val, in_shape,
-                                                      out_val, out_shape)
+        def extract(in_val, ksizes=ksizes, strides=strides, padding=padding):
+          return array_ops.extract_volume_patches(in_val, ksizes, strides,
+                                                  padding)
+
+        rtn = gradient_checker_v2.compute_gradient(extract, [input_val])
+        err = gradient_checker_v2.max_error(*rtn)
 
         print('extract_volume_patches gradient err: %.4e' % err)
         self.assertLess(err, 1e-4)

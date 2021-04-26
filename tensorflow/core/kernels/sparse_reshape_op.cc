@@ -29,17 +29,31 @@ limitations under the License.
 
 namespace tensorflow {
 
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+template <typename Device>
 class SparseReshapeOp : public OpKernel {
  public:
   explicit SparseReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    ReshapeSparseTensor(context, context->input(0), context->input(1),
-                        context->input(2), 0 /* output indices index */,
-                        1 /* output shape index */);
+    ReshapeSparseTensor<Device>(context, context->input(0), context->input(1),
+                                context->input(2), 0 /* output indices index */,
+                                1 /* output shape index */);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("SparseReshape").Device(DEVICE_CPU),
-                        SparseReshapeOp)
+                        SparseReshapeOp<CPUDevice>)
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("SparseReshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_shape")
+                            .HostMemory("new_shape")
+                            .HostMemory("output_shape"),
+                        SparseReshapeOp<GPUDevice>)
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

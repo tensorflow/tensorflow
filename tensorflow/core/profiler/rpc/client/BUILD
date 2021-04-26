@@ -14,7 +14,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
@@ -66,6 +67,7 @@ tf_profiler_pybind_cc_library_wrapper(
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
+    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",

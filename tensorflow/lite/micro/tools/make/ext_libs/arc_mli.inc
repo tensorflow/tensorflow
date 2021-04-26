@@ -18,8 +18,8 @@ ifeq ($(TARGET_ARCH), arc)
 
 # MLI Library is used by default for ARC platform whenever it is possible.
 # To use TFLM reference implementation MLI should be intentionally turned off 
-# by passing 'no_arc_mli' tag (make -f <tflm_main_makefile> TAGS=no_arc_mli ...)
-ifeq ($(filter no_arc_mli,$(ALL_TAGS)),)
+# by passing 'no_arc_mli' tag (make -f <tflm_main_makefile> ARC_TAGS=no_arc_mli ...)
+ifeq ($(filter no_arc_mli,$(ARC_TAGS)),)
 
 ALL_TAGS += arc_mli
 

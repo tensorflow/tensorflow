@@ -15,9 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "FuncOp"> {
+def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   let summary = "Legalize CHLO to HLO.";
   let constructor = "createChloLegalizeToHloPass()";
+  let options = [
+    Option<"broadcast_only_", "broadcast-only", "bool",
+           /*default=*/"false", "Only lower broadcasting chlo to non-broadcasting equivalents">,
+  ];
 }
 
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
@@ -101,11 +105,17 @@ def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods",
 }
 
 
-def TransformUnrankedHloPass : Pass<"transform-unranked-hlo", "FuncOp"> {
+def TransformUnrankedHloPass : Pass<"mhlo-transform-unranked-hlo", "FuncOp"> {
   let summary = "Realize element-wise operations on ranked tensors where possible.";
   let constructor = "createTransformUnrankedHloPass()";
 }
 
+def MoveUpDynamicBroadcastsForFusionPass :
+    Pass<"mhlo-move-up-dynamic-broadcasts-for-fusion", "FuncOp"> {
+  let summary = "Move up dynamic broadcasts and shape computations to allow "
+      "for fusion across broadcasts.";
+  let constructor = "createMoveUpDynamicBroadcastsForFusionPass()";
+}
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";

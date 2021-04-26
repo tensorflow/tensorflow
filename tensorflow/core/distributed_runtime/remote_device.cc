@@ -149,4 +149,9 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                      /*fail_fast=*/false, cb);
 }
 
+std::unique_ptr<Device> NewRemoteDevice(Env* env,
+                                        DeviceAttributes device_attribute) {
+  return std::make_unique<RemoteDevice>(env, device_attribute);
+}
+
 }  // namespace tensorflow

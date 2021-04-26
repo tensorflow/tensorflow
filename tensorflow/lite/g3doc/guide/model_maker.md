@@ -24,12 +24,15 @@ just a few lines of code. For example, here are the steps to train an image
 classification model.
 
 ```python
+from tflite_model_maker import image_classifier
+from tflite_model_maker.image_classifier import DataLoader
+
 # Load input data specific to an on-device ML app.
-data = ImageClassifierDataLoader.from_folder('flower_photos/')
+data = DataLoader.from_folder('flower_photos/')
 train_data, test_data = data.split(0.9)
 
 # Customize the TensorFlow model.
-model = image_classifier.create(data)
+model = image_classifier.create(train_data)
 
 # Evaluate the model.
 loss, accuracy = model.evaluate(test_data)

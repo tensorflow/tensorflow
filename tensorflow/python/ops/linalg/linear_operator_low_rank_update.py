@@ -260,7 +260,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
@@ -340,12 +339,21 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   def _shape(self):
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape,
+        self.diag_operator.batch_shape)
+    batch_shape = array_ops.broadcast_static_shape(
+        batch_shape,
         self.u.shape[:-2])
+    batch_shape = array_ops.broadcast_static_shape(
+        batch_shape,
+        self.v.shape[:-2])
     return batch_shape.concatenate(self.base_operator.shape[-2:])
 
   def _shape_tensor(self):
     batch_shape = array_ops.broadcast_dynamic_shape(
         self.base_operator.batch_shape_tensor(),
+        self.diag_operator.batch_shape_tensor())
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        batch_shape,
         array_ops.shape(self.u)[:-2])
     batch_shape = array_ops.broadcast_dynamic_shape(
         batch_shape,
@@ -385,6 +393,15 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     det_d = self.diag_operator.determinant()
     det_l = self.base_operator.determinant()
     return det_c * det_d * det_l
+
+  def _diag_part(self):
+    # [U D V^T]_{ii} = sum_{jk} U_{ij} D_{jk} V_{ik}
+    #                = sum_{j}  U_{ij} D_{jj} V_{ij}
+    product = self.u * math_ops.conj(self.v)
+    if self.diag_update is not None:
+      product *= array_ops.expand_dims(self.diag_update, axis=-2)
+    return (
+        math_ops.reduce_sum(product, axis=-1) + self.base_operator.diag_part())
 
   def _log_abs_determinant(self):
     # Recall

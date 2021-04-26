@@ -15,13 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SUPPORT_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SUPPORT_H_
 
-#include <grpcpp/security/credentials.h>
-
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "grpcpp/security/credentials.h"
 #include "grpcpp/support/slice.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"

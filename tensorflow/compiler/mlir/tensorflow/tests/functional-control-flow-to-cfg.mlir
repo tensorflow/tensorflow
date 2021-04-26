@@ -11,7 +11,7 @@ func @testIf1Result(tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
   } : (tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cond_br [[PRED]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[THEN:%.+]] = call @testIf1Then(%arg1, %arg2)
@@ -36,7 +36,7 @@ func @testIf3Result(tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, 
   } : (tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
 
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cond_br [[PRED]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[THEN:%.+]]:3 = call @testIf3Then(%arg1)
@@ -65,7 +65,7 @@ func @testIfCasts(%arg0: tensor<i1>, %arg1: tensor<!tf.variant<tensor<f32>>>) ->
   } : (tensor<i1>, tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>>
   return %0: tensor<!tf.variant<tensor<f32>>>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cond_br [[PRED]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[CAST0:%.+]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant>
@@ -93,7 +93,7 @@ func @testIf1x4(tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 ^bb0(%arg0: tensor<4xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>):
 
   // CHECK: [[TOBOOL:%.+]] = "tf.ToBool"(%arg0) : (tensor<4xi1>) -> tensor<i1>
-  // CHECK: [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+  // CHECK: [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
   %1 = "tf.If"(%arg0, %arg1, %arg2) {
     then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
   } : (tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -118,7 +118,7 @@ func @testWhile2Result(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*
 // CHECK: ^bb1([[CONDARG0:%.+]]: tensor<*xf32>, [[CONDARG1:%.+]]: tensor<*xf32>):
 // CHECK:   [[CONTINUE:%.+]] = call @testWhile2Cond(%0, %1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<i1>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"([[CONTINUE]]) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cond_br [[PRED]], ^bb2([[CONDARG0]], [[CONDARG1]] : tensor<*xf32>, tensor<*xf32>), ^bb3([[CONDARG0]], [[CONDARG1]] : tensor<*xf32>, tensor<*xf32>)
 // CHECK: ^bb2([[BODYARG0:%.+]]: tensor<*xf32>, [[BODYARG1:%.+]]: tensor<*xf32>):
 // CHECK:   [[BODYRETS:%.+]]:2 = call @testWhile2Body([[BODYARG0]], [[BODYARG1]]) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
@@ -142,7 +142,7 @@ func @testWhile0Result() {
 // CHECK: ^bb1:
 // CHECK:   [[CONTINUE:%.+]] = call @testWhile0Cond() : () -> tensor<i1>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"([[CONTINUE]]) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cond_br [[PRED]], ^bb2, ^bb3
 // CHECK: ^bb2:
 // CHECK:   call @testWhile0Body() : () -> ()
@@ -166,7 +166,7 @@ func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> (te
 // CHECK:  ^bb1([[CONDARG0:%.+]]: tensor<*xf32>, [[CONDARG1:%.+]]: tensor<*xf32>):
 // CHECK:    [[CONTINUE:%.+]] = call @testWhile2Cond([[CONDARG0]], [[CONDARG1]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<i1>
 // CHECK:    [[TOBOOL:%.+]] = "tf.ToBool"([[CONTINUE]]) : (tensor<i1>) -> tensor<i1>
-// CHECK:    [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:    [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:    cond_br [[PRED]], ^bb2([[CONDARG0]], [[CONDARG1]] : tensor<*xf32>, tensor<*xf32>), ^bb3([[CONDARG0]], [[CONDARG1]] : tensor<*xf32>, tensor<*xf32>)
 // CHECK:  ^bb2([[BODYARG0:%.+]]: tensor<*xf32>, [[BODYARG1:%.+]]: tensor<*xf32>):
 // CHECK:    [[BODYRETS:%.+]]:2 = call @testWhile2Body([[BODYARG0]], [[BODYARG1]]) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
@@ -206,7 +206,7 @@ func @testWhileCasts(%arg0: tensor<!tf.variant<tensor<1x3xf32>>>) -> (tensor<!tf
 // CHECK: ^bb1([[CONDARG0:%.+]]: tensor<!tf.variant>):        // 2 preds: ^bb0, ^bb2
 // CHECK:   [[CONTINUE:%.+]] = call @testWhileCond([[CONDARG0]]) : (tensor<!tf.variant>) -> tensor<i1>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"([[CONTINUE]]) : (tensor<i1>) -> tensor<i1>
-// CHECK:   [[PRED:%.+]] = extract_element [[TOBOOL]][] : tensor<i1>
+// CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   [[CASTCONDARG0:%.+]] = "tf.Cast"([[CONDARG0]]) {Truncate = false} : (tensor<!tf.variant>) -> tensor<!tf.variant<tensor<1x?xf32>>>
 // CHECK:   cond_br [[PRED]], ^bb2([[CASTCONDARG0]] : tensor<!tf.variant<tensor<1x?xf32>>>), ^bb3([[CASTCONDARG0]] : tensor<!tf.variant<tensor<1x?xf32>>>)
 // CHECK: ^bb2([[BODYARG0:%.+]]: tensor<!tf.variant<tensor<1x?xf32>>>):       // pred: ^bb1

@@ -38,7 +38,7 @@ void ParseHadoopPath(const std::string& fname, std::string* scheme,
   size_t scheme_end = fname.find("://") + 2;
   // We don't want `://` in scheme.
   *scheme = fname.substr(0, scheme_end - 2);
-  size_t nn_end = fname.find("/", scheme_end + 1);
+  size_t nn_end = fname.find('/', scheme_end + 1);
   if (nn_end == std::string::npos) {
     *namenode = fname.substr(scheme_end + 1);
     *path = "";

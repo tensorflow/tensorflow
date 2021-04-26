@@ -25,12 +25,16 @@ from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
+from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
+
+COMPRESSION_AUTO = "AUTO"
+COMPRESSION_NONE = None
 
 
 class ProcessingMode(object):
@@ -58,8 +62,12 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                dataset_id,
                processing_mode,
                address,
+               element_spec,
                protocol,
+               data_transfer_protocol,
                job_name=None,
+               consumer_index=None,
+               num_consumers=None,
                max_outstanding_requests=None,
                task_refresh_interval_hint_ms=None):
     """Constructs a _DataServiceDatasetV2.
@@ -72,11 +80,26 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         "distributed_epoch" to split a single iteration of the dataset across
         all the workers.
       address: The tf.data service address, e.g. "localhost:5000".
+      element_spec: The dataset element spec for the dataset to read from.
       protocol: The protocol to use for communicating with the tf.data service,
         e.g. "grpc".
+      data_transfer_protocol: (Optional.) The protocol to use for transferring
+        data with the tf.data service. By default, data is transferred using
+        gRPC.
       job_name: (Optional.) The name of the job. This argument makes it possible
         for multiple datasets to share the same job. The default behavior is
         that the dataset creates anonymous, exclusively owned jobs.
+      consumer_index: (Optional.) The index of the consumer in the range from
+        `0` to `num_consumers`. Must be specified alongside `num_consumers`.
+        When specified, consumers will read from the job in a strict round-robin
+        order, instead of the default first-come-first-served order.
+      num_consumers: (Optional.) The number of consumers which will consume from
+        the job. Must be specified alongside `consumer_index`. When specified,
+        consumers will read from the job in a strict round-robin order, instead
+        of the default first-come-first-served order. When `num_consumers` is
+        specified, the dataset must have infinite cardinality to prevent a
+        producer from running out of data early and causing consumers to go out
+        of sync.
       max_outstanding_requests: (Optional.) A limit on how many elements may be
         requested at the same time. You can use this option to control the
         amount of memory used, since `distribute` won't use more than
@@ -84,6 +107,13 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
         the dispatcher for task changes.
     """
+    if consumer_index is None != num_consumers is None:
+      raise ValueError(
+          "Must either set both consumer_index and num_consumers, or neither. ",
+          "consumer_index: ", consumer_index, ", num_consumers: ",
+          num_consumers)
+    if num_consumers is not None and job_name is None:
+      raise ValueError("job_name must be set when setting num_consumers")
 
     if job_name is None:
       job_name = ""
@@ -102,24 +132,36 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         protocol, dtype=dtypes.string, name="protocol")
     self._job_name = ops.convert_to_tensor(
         job_name, dtype=dtypes.string, name="job_name")
+    self._consumer_index = ops.convert_to_tensor(
+        -1 if consumer_index is None else consumer_index,
+        dtype=dtypes.int64,
+        name="consumer_index")
+    self._num_consumers = ops.convert_to_tensor(
+        -1 if num_consumers is None else num_consumers,
+        dtype=dtypes.int64,
+        name="num_consumers")
     self._max_outstanding_requests = ops.convert_to_tensor(
         max_outstanding_requests,
         dtype=dtypes.int64,
         name="max_outstanding_requests")
-    # Datasets executed by the tf.data service produce compressed elements
-    # represented by scalar DT_VARIANTs.
-    self._element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
+    self._element_spec = element_spec
 
-    variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
+    compat_kwargs = {}
+    if data_transfer_protocol is not None:
+      compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
+    variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
         dataset_id=self._dataset_id,
         processing_mode=self._processing_mode,
         address=self._address,
         protocol=self._protocol,
         job_name=self._job_name,
+        consumer_index=self._consumer_index,
+        num_consumers=self._num_consumers,
         max_outstanding_requests=self._max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
         ),
+        **compat_kwargs,
         **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)
 
@@ -132,15 +174,21 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   """A `Dataset` that executes its input through the tf.data service."""
 
   @functools.wraps(_DataServiceDatasetV2.__init__)
-  def __init__(self, dataset_id, processing_mode, address, protocol, job_name,
-               max_outstanding_requests, task_refresh_interval_hint_ms):
+  def __init__(self, dataset_id, processing_mode, address, element_spec,
+               protocol, data_transfer_protocol, job_name, consumer_index,
+               num_consumers, max_outstanding_requests,
+               task_refresh_interval_hint_ms):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
         processing_mode=processing_mode,
         address=address,
+        element_spec=element_spec,
         protocol=protocol,
+        data_transfer_protocol=data_transfer_protocol,
         job_name=job_name,
+        consumer_index=consumer_index,
+        num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
@@ -153,13 +201,14 @@ else:
 
 
 def _parse_service(service):
-  """Parses a tf.data service string into a (protocol, address) tuple.
+  """Converts a tf.data service string into a (protocol, address) tuple.
 
   Args:
-    service: A string in the format "protocol://address".
+    service: A string in the format "protocol://address" or just "address". If
+      the string is only an address, the default protocol will be used.
 
   Returns:
-    The parsed (protocol, address) tuple
+    The (protocol, address) tuple
   """
   if not isinstance(service, six.string_types):
     raise ValueError(
@@ -168,93 +217,26 @@ def _parse_service(service):
   if not service:
     raise ValueError("service must not be empty")
   parts = service.split("://")
-  if len(parts) == 1:
-    raise ValueError("service string %s does not begin with a protocol. "
-                     "The service should be in the format "
-                     "<protocol>://<address>, e.g. grpc://localhost:5000" %
-                     service)
-  if len(parts) > 2:
+  if len(parts) == 2:
+    protocol, address = parts
+  elif len(parts) == 1:
+    address = parts[0]
+    protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+  else:
     raise ValueError("malformed service string has multiple '://': %s" %
                      service)
-  return parts
-
-
-def _from_dataset_id(processing_mode,
-                     service,
-                     dataset_id,
-                     element_spec,
-                     job_name=None,
-                     max_outstanding_requests=None,
-                     task_refresh_interval_hint_ms=None):
-  """Creates a dataset which reads data from the tf.data service.
-
-  This transformation is similar to `from_dataset_id`, but supports additional
-  parameters which we do not yet want to add to the public Python API.
-
-  Args:
-    processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have
-      each tf.data worker process a copy of the dataset, or
-      "distributed_epoch" to split a single iteration of the dataset across
-      all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format "<protocol>://<address>", e.g.
-      "grpc://localhost:5000".
-    dataset_id: The id of the dataset to read from. This id is returned by
-      `register_dataset` when the dataset is registered with the tf.data
-      service.
-    element_spec: A nested structure of `tf.TypeSpec`s representing the type of
-      elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
-      see the element spec for a given dataset.
-    job_name: (Optional.) The name of the job. This argument makes it possible
-      for multiple datasets to share the same job. The default behavior is that
-      the dataset creates anonymous, exclusively owned jobs.
-    max_outstanding_requests: (Optional.) A limit on how many elements may be
-      requested at the same time. You can use this option to control the amount
-      of memory used, since `distribute` won't use more than `element_size` *
-      `max_outstanding_requests` of memory.
-    task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
-      dispatcher for task changes.
-
-  Returns:
-    A `tf.data.Dataset` which reads from the tf.data service.
-  """
-  ProcessingMode.validate(processing_mode)
-  if job_name is not None:
-    if not isinstance(job_name, six.string_types):
-      raise ValueError("job_name must be a string, but job_name was of type "
-                       "{0}. job_name={1}".format(type(job_name), job_name))
-    if not job_name:
-      raise ValueError("job_name must not be empty")
-  if element_spec is None:
-    raise ValueError("element_spec must not be None")
-  protocol, address = _parse_service(service)
-
-  dataset = _DataServiceDataset(
-      dataset_id=dataset_id,
-      processing_mode=processing_mode,
-      address=address,
-      protocol=protocol,
-      job_name=job_name,
-      max_outstanding_requests=max_outstanding_requests,
-      task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
-  dataset = dataset.map(
-      lambda x: compression_ops.uncompress(x, output_spec=element_spec),
-      num_parallel_calls=dataset_ops.AUTOTUNE)
-
-  # Disable autosharding for shared jobs.
-  if job_name:
-    options = dataset_ops.Options()
-    options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
-    dataset = dataset.with_options(options)
-  return dataset
+  return (protocol, address)
 
 
 def _distribute(processing_mode,
                 service,
                 job_name=None,
+                consumer_index=None,
+                num_consumers=None,
                 max_outstanding_requests=None,
-                task_refresh_interval_hint_ms=None):
+                task_refresh_interval_hint_ms=None,
+                data_transfer_protocol=None,
+                compression="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
   This transformation is similar to `distribute`, but supports additional
@@ -262,38 +244,64 @@ def _distribute(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have
-      each tf.data worker process a copy of the dataset, or
-      "distributed_epoch" to split a single iteration of the dataset across
-      all the workers.
+      processed by tf.data workers. Can be either "parallel_epochs" to have each
+      tf.data worker process a copy of the dataset, or "distributed_epoch" to
+      split a single iteration of the dataset across all the workers.
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format "<protocol>://<address>", e.g.
-      "grpc://localhost:5000".
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
+    consumer_index: (Optional.) The index of the consumer in the range from `0`
+      to `num_consumers`. Must be specified alongside `num_consumers`. When
+      specified, consumers will read from the job in a strict round-robin order,
+      instead of the default first-come-first-served order.
+    num_consumers: (Optional.) The number of consumers which will consume from
+      the job. Must be specified alongside `consumer_index`. When specified,
+      consumers will read from the job in a strict round-robin order, instead of
+      the default first-come-first-served order. When `num_consumers` is
+      specified, the dataset must have infinite cardinality to prevent a
+      producer from running out of data early and causing consumers to go out of
+      sync.
     max_outstanding_requests: (Optional.) A limit on how many elements may be
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
+    compression: How to compress the dataset's elements before transferring them
+      over the network. "AUTO" leaves the decision of how to compress up to the
+      tf.data service runtime. `None` indicates not to compress.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
   ProcessingMode.validate(processing_mode)
-
+  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  if compression not in valid_compressions:
+    raise ValueError(
+        "Invalid compression argument: {}. Must be one of {}".format(
+            compression, valid_compressions))
+  if compression == COMPRESSION_AUTO and data_transfer_protocol is not None:
+    compression = COMPRESSION_NONE
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
-    dataset_id = register_dataset(service, dataset)
+    dataset_id = _register_dataset(service, dataset, compression=compression)
     return _from_dataset_id(
         processing_mode,
         service,
         dataset_id,
         dataset.element_spec,
         job_name=job_name,
+        consumer_index=consumer_index,
+        num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
-        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+        data_transfer_protocol=data_transfer_protocol,
+        compression=compression)
 
   return _apply_fn
 
@@ -302,7 +310,11 @@ def _distribute(processing_mode,
 def distribute(processing_mode,
                service,
                job_name=None,
-               max_outstanding_requests=None):
+               consumer_index=None,
+               num_consumers=None,
+               max_outstanding_requests=None,
+               data_transfer_protocol=None,
+               compression="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
   When you iterate over a dataset containing the `distribute` transformation,
@@ -407,7 +419,7 @@ def distribute(processing_mode,
   ```
   range5_dataset = tf.data.Dataset.range(5)
   dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "grpc://localhost:5000", job_name="my_job_name"))
+      "parallel_epochs", "localhost:5000", job_name="my_job_name"))
   for iteration in range(3):
     print(list(dataset))
   ```
@@ -440,6 +452,25 @@ def distribute(processing_mode,
   from `job_name="job"`, it will immediately receive end of input, without
   getting any data.
 
+  **Round Robin data consumption**
+
+  By default, when multiple consumers read from the same job, they receive data
+  on a first-come first-served basis. In some use cases, it works better to use
+  a strict round-robin order. For example, the tf.data service can be used to
+  coordinate example sizes across a cluster during sychronous training, so that
+  during each step all replicas train on similar-sized elements. To achieve
+  this, define a dataset which generates rounds of `num_consumers` consecutive
+  similar-sized batches, then enable round-robin reads by setting
+  `consumer_index` and `num_consumers`.
+
+  Consumers read data by cycling through all workers, reading one element from
+  each. First, each consumer will read an element from the first worker, then
+  each consumer will read an element from the second worker, and so on.
+
+  NOTE: To keep consumers in sync, round robin data consumption requires that
+  the dataset have infinite cardinality. You can get this by adding `.repeat()`
+  at the end of the dataset definition.
+
   **Keras and Distribution Strategies**
 
   The dataset produced by the `distribute` transformation can be passed to
@@ -458,20 +489,36 @@ def distribute(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have
-      each tf.data worker process a copy of the dataset, or
-      "distributed_epoch" to split a single iteration of the dataset across
-      all the workers.
+      processed by tf.data workers. Can be either "parallel_epochs" to have each
+      tf.data worker process a copy of the dataset, or "distributed_epoch" to
+      split a single iteration of the dataset across all the workers.
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format "protocol://address", e.g.
-      "grpc://localhost:5000".
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
+    consumer_index: (Optional.) The index of the consumer in the range from `0`
+      to `num_consumers`. Must be specified alongside `num_consumers`. When
+      specified, consumers will read from the job in a strict round-robin order,
+      instead of the default first-come-first-served order.
+    num_consumers: (Optional.) The number of consumers which will consume from
+      the job. Must be specified alongside `consumer_index`. When specified,
+      consumers will read from the job in a strict round-robin order, instead of
+      the default first-come-first-served order. When `num_consumers` is
+      specified, the dataset must have infinite cardinality to prevent a
+      producer from running out of data early and causing consumers to go out of
+      sync.
     max_outstanding_requests: (Optional.) A limit on how many elements may be
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
+    compression: How to compress the dataset's elements before transferring them
+      over the network. "AUTO" leaves the decision of how to compress up to the
+      tf.data service runtime. `None` indicates not to compress.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -480,7 +527,59 @@ def distribute(processing_mode,
       processing_mode=processing_mode,
       service=service,
       job_name=job_name,
-      max_outstanding_requests=max_outstanding_requests)
+      consumer_index=consumer_index,
+      num_consumers=num_consumers,
+      max_outstanding_requests=max_outstanding_requests,
+      data_transfer_protocol=data_transfer_protocol,
+      compression=compression)
+
+
+def _register_dataset(service, dataset, compression):
+  """Registers a dataset with the tf.data service.
+
+  This transformation is similar to `register_dataset`, but supports additional
+  parameters which we do not yet want to add to the public Python API.
+
+  Args:
+    service: A string indicating how to connect to the tf.data service. The
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
+    dataset: A `tf.data.Dataset` to register with the tf.data service.
+    compression: How to compress the dataset's elements before transferring them
+      over the network. "AUTO" leaves the decision of how to compress up to the
+      tf.data service runtime. `None` indicates not to compress.
+
+  Returns:
+    A scalar int64 tensor of the registered dataset's id.
+  """
+  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  if compression not in valid_compressions:
+    raise ValueError(
+        "Invalid compression argument: {}. Must be one of {}".format(
+            compression, valid_compressions))
+  protocol, address = _parse_service(service)
+  external_state_policy = dataset.options().experimental_external_state_policy
+  if external_state_policy is None:
+    external_state_policy = ExternalStatePolicy.WARN
+
+  if compression == COMPRESSION_AUTO:
+    dataset = dataset.map(
+        lambda *x: compression_ops.compress(x),
+        num_parallel_calls=dataset_ops.AUTOTUNE)
+  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
+  # Apply options so that the dataset executed in the tf.data service will
+  # be optimized and support autotuning.
+  # TODO(b/183497230): Move options application after deserialization.
+  dataset = dataset._apply_options()  # pylint: disable=protected-access
+
+  dataset_id = gen_experimental_dataset_ops.register_dataset(
+      dataset._variant_tensor,  # pylint: disable=protected-access
+      address=address,
+      protocol=protocol,
+      external_state_policy=external_state_policy.value)
+
+  return dataset_id
 
 
 @tf_export("data.experimental.service.register_dataset")
@@ -516,35 +615,120 @@ def register_dataset(service, dataset):
 
   Args:
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format "protocol://address", e.g.
-      "grpc://localhost:5000".
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
     dataset: A `tf.data.Dataset` to register with the tf.data service.
 
   Returns:
     A scalar int64 tensor of the registered dataset's id.
   """
+  return _register_dataset(service, dataset, compression="AUTO")
+
+
+def _from_dataset_id(processing_mode,
+                     service,
+                     dataset_id,
+                     element_spec,
+                     job_name=None,
+                     consumer_index=None,
+                     num_consumers=None,
+                     max_outstanding_requests=None,
+                     task_refresh_interval_hint_ms=None,
+                     data_transfer_protocol=None,
+                     compression="AUTO"):
+  """Creates a dataset which reads data from the tf.data service.
+
+  This transformation is similar to `from_dataset_id`, but supports additional
+  parameters which we do not yet want to add to the public Python API.
+
+  Args:
+    processing_mode: A string specifying the policy for how data should be
+      processed by tf.data workers. Can be either "parallel_epochs" to have each
+      tf.data worker process a copy of the dataset, or "distributed_epoch" to
+      split a single iteration of the dataset across all the workers.
+    service: A string indicating how to connect to the tf.data service. The
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
+    dataset_id: The id of the dataset to read from. This id is returned by
+      `register_dataset` when the dataset is registered with the tf.data
+      service.
+    element_spec: A nested structure of `tf.TypeSpec`s representing the type of
+      elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
+      see the element spec for a given dataset.
+    job_name: (Optional.) The name of the job. This argument makes it possible
+      for multiple datasets to share the same job. The default behavior is that
+      the dataset creates anonymous, exclusively owned jobs.
+    consumer_index: (Optional.) The index of the consumer in the range from `0`
+      to `num_consumers`. Must be specified alongside `num_consumers`. When
+      specified, consumers will read from the job in a strict round-robin order,
+      instead of the default first-come-first-served order.
+    num_consumers: (Optional.) The number of consumers which will consume from
+      the job. Must be specified alongside `consumer_index`. When specified,
+      consumers will read from the job in a strict round-robin order, instead of
+      the default first-come-first-served order. When `num_consumers` is
+      specified, the dataset must have infinite cardinality to prevent a
+      producer from running out of data early and causing consumers to go out of
+      sync.
+    max_outstanding_requests: (Optional.) A limit on how many elements may be
+      requested at the same time. You can use this option to control the amount
+      of memory used, since `distribute` won't use more than `element_size` *
+      `max_outstanding_requests` of memory.
+    task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
+      dispatcher for task changes.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
+    compression: An indication of how the dataset's elements were compressed, so
+      that `from_dataset_id` can uncompress them if necessary.
+
+  Returns:
+    A `tf.data.Dataset` which reads from the tf.data service.
+  """
+  ProcessingMode.validate(processing_mode)
+  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  if compression not in valid_compressions:
+    raise ValueError(
+        "Invalid compression argument: {}. Must be one of {}".format(
+            compression, valid_compressions))
+  if job_name is not None:
+    if not isinstance(job_name, six.string_types):
+      raise ValueError("job_name must be a string, but job_name was of type "
+                       "{0}. job_name={1}".format(type(job_name), job_name))
+    if not job_name:
+      raise ValueError("job_name must not be empty")
+  if element_spec is None:
+    raise ValueError("element_spec must not be None")
   protocol, address = _parse_service(service)
-  external_state_policy = dataset.options().experimental_external_state_policy
-  if external_state_policy is None:
-    external_state_policy = ExternalStatePolicy.WARN
 
-  # Compress the dataset elements to reduce the amount of data that needs to
-  # be sent over the network.
-  dataset = dataset.map(
-      lambda *x: compression_ops.compress(x),
-      num_parallel_calls=dataset_ops.AUTOTUNE)
-  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
-  # Apply options so that the dataset executed in the tf.data service will
-  # be optimized and support autotuning.
-  dataset = dataset._apply_options()  # pylint: disable=protected-access
+  # If we compress, the data service side dataset will produce scalar variants.
+  data_service_element_spec = (
+      tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
+      if compression == COMPRESSION_AUTO else element_spec)
 
-  dataset_id = gen_experimental_dataset_ops.register_dataset(
-      dataset._variant_tensor,  # pylint: disable=protected-access
+  dataset = _DataServiceDataset(
+      dataset_id=dataset_id,
+      processing_mode=processing_mode,
       address=address,
+      element_spec=data_service_element_spec,
       protocol=protocol,
-      external_state_policy=external_state_policy.value)
+      data_transfer_protocol=data_transfer_protocol,
+      job_name=job_name,
+      consumer_index=consumer_index,
+      num_consumers=num_consumers,
+      max_outstanding_requests=max_outstanding_requests,
+      task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+  if compression == COMPRESSION_AUTO:
+    dataset = dataset.map(
+        lambda x: compression_ops.uncompress(x, output_spec=element_spec),
+        num_parallel_calls=dataset_ops.AUTOTUNE)
 
-  return dataset_id
+  # Disable autosharding for shared jobs.
+  if job_name:
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+    dataset = dataset.with_options(options)
+  return dataset
 
 
 @tf_export("data.experimental.service.from_dataset_id")
@@ -553,7 +737,10 @@ def from_dataset_id(processing_mode,
                     dataset_id,
                     element_spec=None,
                     job_name=None,
-                    max_outstanding_requests=None):
+                    consumer_index=None,
+                    num_consumers=None,
+                    max_outstanding_requests=None,
+                    data_transfer_protocol=None):
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
@@ -596,13 +783,13 @@ def from_dataset_id(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have
-      each tf.data worker process a copy of the dataset, or
-      "distributed_epoch" to split a single iteration of the dataset across
-      all the workers.
+      processed by tf.data workers. Can be either "parallel_epochs" to have each
+      tf.data worker process a copy of the dataset, or "distributed_epoch" to
+      split a single iteration of the dataset across all the workers.
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format "protocol://address", e.g.
-      "grpc://localhost:5000".
+      string should be in the format `[<protocol>://]<address>`, where
+      `<address>` identifies the dispatcher address and `<protocol>` can
+      optionally be used to override the default protocol to use.
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -612,10 +799,23 @@ def from_dataset_id(processing_mode,
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
+    consumer_index: (Optional.) The index of the consumer in the range from `0`
+      to `num_consumers`. Must be specified alongside `num_consumers`. When
+      specified, consumers will read from the job in a strict round-robin order,
+      instead of the default first-come-first-served order.
+    num_consumers: (Optional.) The number of consumers which will consume from
+      the job. Must be specified alongside `consumer_index`. When specified,
+      consumers will read from the job in a strict round-robin order, instead of
+      the default first-come-first-served order. When `num_consumers` is
+      specified, the dataset must have infinite cardinality to prevent a
+      producer from running out of data early and causing consumers to go out of
+      sync.
     max_outstanding_requests: (Optional.) A limit on how many elements may be
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -626,4 +826,7 @@ def from_dataset_id(processing_mode,
       dataset_id=dataset_id,
       element_spec=element_spec,
       job_name=job_name,
-      max_outstanding_requests=max_outstanding_requests)
+      consumer_index=consumer_index,
+      num_consumers=num_consumers,
+      max_outstanding_requests=max_outstanding_requests,
+      data_transfer_protocol=data_transfer_protocol)

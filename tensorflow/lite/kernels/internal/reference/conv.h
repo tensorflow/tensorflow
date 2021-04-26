@@ -15,15 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 
-#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-
-
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
-
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* input_data, const RuntimeShape& filter_shape,
@@ -108,8 +105,8 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  uint8_t* output_data, const RuntimeShape& im2col_shape,
                  uint8_t* im2col_data, void* cpu_backend_context) {
   (void)cpu_backend_context;  // only used in optimized code.
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
+  (void)im2col_data;          // only used in optimized code.
+  (void)im2col_shape;         // only used in optimized code.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;

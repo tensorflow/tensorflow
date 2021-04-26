@@ -56,7 +56,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   Status TransferLiteralFromOutfeed(
       stream_executor::StreamExecutor* executor,
-      const xla::Shape& literal_shape,
       xla::MutableBorrowingLiteral literal) override;
 
   Status TransferBuffersToInfeed(

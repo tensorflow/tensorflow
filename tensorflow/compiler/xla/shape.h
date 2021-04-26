@@ -68,6 +68,10 @@ class Shape {
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
+  // Returns whether all elements in the shape are integer.
+  // A nested tuple of integers is considered as integer.
+  bool IsInteger() const;
+
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
   bool is_static() const;
@@ -220,6 +224,10 @@ class Shape {
       ignore_dynamic_dimension_ = true;
       return *this;
     }
+    Equal& IgnoreDimensions() {
+      ignore_dimensions_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -229,6 +237,7 @@ class Shape {
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
+    bool ignore_dimensions_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().

@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -tf-tpu-merge-variables-with-execute %s | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics -tf-tpu-merge-variables-with-execute %s | FileCheck %s
 
 // Tests that the pass merges only variable reads/writes on the same device.
 
@@ -20,9 +20,6 @@ func @merge_same_device_variables(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
       // CHECK: tf._TPUCompileMlir
-      // CHECK-SAME: mlir_module
-      // CHECK-SAME: func @main(%arg0: tensor<32xf32> {tf.aliasing_output = 0 : i64},
-      // CHECK-SAME:            %arg1: tensor<64xf32>, %arg2: tensor<16xf32>)
       %0:2 = "tf._TPUCompileMlir"() {
         metadata = "",
         mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<64xf32>, %arg2: tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>) {\0A    %0:2 = \22tf.A\22(%arg0, %arg1, %arg2) : (tensor<32xf32>, tensor<64xf32>, tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>)\0A    return %0#0, %0#1 : tensor<32xf32>, tensor<16xf32>\0A  }\0A}"
@@ -65,8 +62,6 @@ func @merge_replicated_variables(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
     // CHECK: tf._TPUCompileMlir
-    // CHECK-SAME: mlir_module
-    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 0 : i64})
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
       mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
@@ -128,8 +123,6 @@ func @interferencing_accesses(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
     // CHECK: tf._TPUCompileMlir
-    // CHECK-SAME: mlir_module
-    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 1 : i64})
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
       mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
@@ -316,5 +309,23 @@ func @replicated_parallel_execute(
     "tf.AssignVariableOp"(%ri0, %pe#0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
     "tf.AssignVariableOp"(%ri1, %pe#1) : (tensor<*x!tf.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
   }
+  return
+}
+
+// -----
+
+// Tests that resource variables not hoisted are flagged.
+
+func @missing_read_write(
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg1: tensor<!tf.string>) {
+  %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %execute:2 = "tf_device.launch"() ( {
+    // expected-error @+1 {{resource that was neither read nor written to}}
+    %0:2 = "tf.TPUExecute"(%arg0, %read0, %arg1)
+      : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>, tensor<!tf.string>) -> (tensor<32xf32>, tensor<32xf32>)
+    tf_device.return %0#0, %0#1 : tensor<32xf32>, tensor<32xf32>
+  }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> (tensor<32xf32>, tensor<32xf32>)
+  "tf.AssignVariableOp"(%arg0, %execute#1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   return
 }

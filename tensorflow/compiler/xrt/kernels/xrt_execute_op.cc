@@ -322,7 +322,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     run_options.set_device_assignment(
         &executable->executable()->module_config().static_device_assignment());
   }
-  xla::GpuExecutableRunOptions gpu_options;
+  xla::gpu::GpuExecutableRunOptions gpu_options;
   std::vector<xla::GlobalDeviceId> gpu_global_ids;
   if (config.local_replica_mapping_size() > 0) {
     gpu_global_ids.reserve(config.local_replica_mapping_size());
@@ -334,7 +334,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
   if (nccl_factory != nullptr) {
     auto uid_callback =
-        [&](const xla::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
+        [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
       std::vector<xla::int64> replicas;
       for (auto& device : key.devices()) {
         replicas.push_back(device.value());

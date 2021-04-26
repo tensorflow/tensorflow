@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -26,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
@@ -85,22 +86,20 @@ mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
                                            mlir::OpBuilder* func_builder) {
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
-    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
-                              func_builder->getContext());
+    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()));
   }
 
-  mlir::Location op_name_loc = mlir::NameLoc::get(
-      func_builder->getIdentifier(op_name), func_builder->getContext());
+  mlir::Location op_name_loc =
+      mlir::NameLoc::get(func_builder->getIdentifier(op_name));
   const std::string& source_file = instruction->metadata().source_file();
   if (source_file.empty()) {
     return op_name_loc;
   }
 
-  return mlir::FusedLoc::get(
-      {op_name_loc, mlir::FileLineColLoc::get(
-                        source_file, instruction->metadata().source_line(), 0,
-                        func_builder->getContext())},
-      func_builder->getContext());
+  return func_builder->getFusedLoc(
+      {op_name_loc,
+       mlir::FileLineColLoc::get(func_builder->getContext(), source_file,
+                                 instruction->metadata().source_line(), 0)});
 }
 }  // namespace
 
@@ -127,7 +126,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
-  auto func_type = mlir::FunctionType::get(args, rets, context_);
+  auto func_type = mlir::FunctionType::get(context_, args, rets);
 
   string computation_name =
       computation.parent()->entry_computation() == &computation
@@ -310,8 +309,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {
-      attributes.push_back(
-          ConvertSourceTargetPairs(instruction->source_target_pairs()));
+      attributes.push_back(ConvertSourceTargetPairs(
+          instruction->source_target_pairs(), builder_));
       MakeAndReturn(CollectivePermuteOp);
     }
     case HloOpcode::kCustomCall: {
@@ -379,14 +378,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
-                                                 builder_->getContext())));
+          "infeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->infeed_config())));
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(instruction->shape()));
+      attributes.push_back(builder_->getNamedAttr("layout", layout));
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
-                                                  builder_->getContext())));
+          "outfeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->outfeed_config())));
       MakeAndReturn(OutfeedOp);
     }
     case HloOpcode::kPad: {
@@ -537,7 +541,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
-      attributes.push_back(ConvertReplicaGroups(all_reduce->replica_groups()));
+      attributes.push_back(
+          ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
       attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
@@ -789,11 +794,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                          &fusion.fused_computation()));
       return fusion.getOperation();
     }
-    case HloOpcode::kBitcast:
-      return func_builder
-          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
-                                          attributes)
-          .getOperation();
+    case HloOpcode::kBitcast: {
+      auto bitcast = func_builder->create<mlir::mhlo::BitcastOp>(
+          loc, result_type, operands, attributes);
+      // Store the source and result layout as attributes. Although the MHLO
+      // Bitcast operates on tensors, these layouts are relevant as they define
+      // the mapping between the elements of the source and result.
+      SetLayoutForMlir(bitcast, instruction->shape(), "result_layout");
+      SetLayoutForMlir(bitcast, instruction->operand(0)->shape(),
+                       "source_layout");
+      return bitcast.getOperation();
+    }
     case HloOpcode::kReducePrecision: {
       auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
           loc, result_type, operands[0], attributes);
@@ -919,40 +930,45 @@ mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
     const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-        source_target_pairs) {
+        source_target_pairs,
+    mlir::Builder* builder) {
   std::vector<int64_t> attr(source_target_pairs.size() * 2);
   for (auto p : llvm::enumerate(source_target_pairs)) {
     attr[2 * p.index()] = p.value().first;
     attr[2 * p.index() + 1] = p.value().second;
   }
   auto type = mlir::RankedTensorType::get(
-      {static_cast<int64_t>(attr.size() / 2), 2}, builder_->getIntegerType(64));
-  return builder_->getNamedAttr("source_target_pairs",
-                                DenseIntElementsAttr::get(type, attr));
+      {static_cast<int64_t>(attr.size() / 2), 2}, builder->getIntegerType(64));
+  return builder->getNamedAttr("source_target_pairs",
+                               DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups) {
-  int64_t num_groups = replica_groups.size();
-  int64_t group_size =
-      num_groups == 0 ? 0 : replica_groups[0].replica_ids_size();
-  std::vector<int64_t> attr(num_groups * group_size);
-  int flat_index = 0;
-  for (const auto& group : replica_groups) {
-    assert(group_size == group.replica_ids_size());
-    for (int i = 0; i < group_size; ++i)
-      attr[flat_index++] = group.replica_ids(i);
+    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder) {
+  const int64_t num_groups = replica_groups.size();
+  // Replica groups in HLO can be non-uniform in size, for example:
+  // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
+  // tensor, pad the smaller sized replica groups with -1.
+  const int64_t group_size = absl::c_accumulate(
+      replica_groups, int64_t(0), [](int64_t current, const ReplicaGroup& g) {
+        return std::max<int64_t>(current, g.replica_ids_size());
+      });
+  // Initialize all elements to -1 to support non-uniform replica groups.
+  std::vector<int64_t> attr(num_groups * group_size, -1);
+  for (int i = 0; i < num_groups; ++i) {
+    int index = i * group_size;
+    for (const int64& id : replica_groups[i].replica_ids()) attr[index++] = id;
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
-                                          builder_->getIntegerType(64));
-  return builder_->getNamedAttr("replica_groups",
-                                DenseIntElementsAttr::get(type, attr));
+                                          builder->getIntegerType(64));
+  return builder->getNamedAttr("replica_groups",
+                               DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     absl::optional<tensorflow::int64> channel_id) {
   xla::ChannelHandle channel_handle;
-  if (channel_id.has_value()) channel_handle.set_handle(channel_id.value());
+  if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);
 }
 
@@ -966,13 +982,39 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
-                                           const Shape& shape) {
+                                           const Shape& shape,
+                                           llvm::StringRef attr_name) {
   llvm::SmallVector<int64_t, 4> minor_to_major(
       shape.layout().minor_to_major().begin(),
       shape.layout().minor_to_major().end());
   op->setAttr(
-      "minor_to_major",
+      attr_name,
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
+}
+
+StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
+    const xla::Shape& shape) {
+  if (shape.IsToken()) return builder_->getUnitAttr();
+  if (shape.IsTuple()) {
+    std::vector<mlir::Attribute> tuple_layouts;
+    for (int64 i = 0; i < shape.tuple_shapes_size(); i++) {
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
+      tuple_layouts.push_back(layout);
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(tuple_layouts);
+    return builder_->getArrayAttr(array_ref);
+  }
+  if (shape.IsArray()) {
+    const xla::Layout l = shape.layout();
+    std::vector<mlir::Attribute> minor_to_major;
+    for (int64 i : l.minor_to_major()) {
+      minor_to_major.push_back(builder_->getI64IntegerAttr(i));
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
+    return builder_->getArrayAttr(array_ref);
+  }
+  return tensorflow::errors::Internal("Couldn't convert layout.");
 }
 
 }  // namespace xla

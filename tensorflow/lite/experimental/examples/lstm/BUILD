@@ -2,13 +2,13 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
     name = "input_data",
     srcs = ["input_data.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python:framework",
@@ -21,7 +21,7 @@ py_library(
 py_library(
     name = "rnn",
     srcs = ["rnn.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:op_hint",
@@ -36,7 +36,7 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = ["rnn_cell.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:op_hint",
@@ -51,10 +51,12 @@ py_test(
     size = "medium",
     srcs = ["unidirectional_sequence_lstm_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -74,10 +76,12 @@ py_test(
     size = "medium",
     srcs = ["unidirectional_sequence_rnn_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -97,10 +101,12 @@ py_test(
     size = "medium",
     srcs = ["bidirectional_sequence_lstm_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -120,10 +126,12 @@ py_test(
     size = "medium",
     srcs = ["bidirectional_sequence_rnn_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -140,7 +148,7 @@ py_test(
 
 py_library(
     name = "tflite_lstm_ops",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":rnn",

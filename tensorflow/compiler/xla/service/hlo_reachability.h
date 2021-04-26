@@ -56,6 +56,18 @@ class HloReachabilityMap {
   static std::unique_ptr<HloReachabilityMap> Build(
       const HloComputation* computation);
 
+  // Similar to the above Build operation except that it tries to identify
+  // paths between instructions that do not contain control instructions
+  // and multiple operands, i.e., b is_reachable a == true iff
+  // b = f(f(f(f(f(a), constant), constant), constant).
+  // Further, the only ops allowed in a path are basic math operations such
+  // as add, sub, mul, div.
+  static std::unique_ptr<HloReachabilityMap> BuildWithRestrictions(
+      const HloComputation* computation,
+      absl::FunctionRef<void(const HloInstruction*,
+                             std::vector<HloInstruction*>*)>
+          add_dependencies);
+
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where
   // 'x' is not 'instruction' will return true iff IsReachable(x, input) is true

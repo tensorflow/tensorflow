@@ -111,10 +111,30 @@ uint8* Decode(const void* srcdata, int datasize,
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
 
+    // The Graphics Control Block tells us which index in the color map
+    // correspond to "transparent color", i.e. no need to update the pixel
+    // on the canvas. The "transparent color index" is specific to each
+    // sub-frame.
+    GraphicsControlBlock gcb;
+    DGifSavedExtensionToGCB(gif_file, k, &gcb);
+
     int imgLeft = img_desc->Left;
     int imgTop = img_desc->Top;
     int imgRight = img_desc->Left + img_desc->Width;
     int imgBottom = img_desc->Top + img_desc->Height;
+
+    if (k > 0) {
+      uint8* last_dst = dstdata + (k - 1) * width * channel * height;
+      for (int i = 0; i < height; ++i) {
+        uint8* p_dst = this_dst + i * width * channel;
+        uint8* l_dst = last_dst + i * width * channel;
+        for (int j = 0; j < width; ++j) {
+          p_dst[j * channel + 0] = l_dst[j * channel + 0];
+          p_dst[j * channel + 1] = l_dst[j * channel + 1];
+          p_dst[j * channel + 2] = l_dst[j * channel + 2];
+        }
+      }
+    }
 
     if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
         img_desc->Height != height) {
@@ -127,19 +147,6 @@ uint8* Decode(const void* srcdata, int datasize,
             p_dst[j * channel + 0] = 0;
             p_dst[j * channel + 1] = 0;
             p_dst[j * channel + 2] = 0;
-          }
-        }
-      } else {
-        // Otherwise previous frame will be reused to fill the unoccupied
-        // canvas.
-        uint8* last_dst = dstdata + (k - 1) * width * channel * height;
-        for (int i = 0; i < height; ++i) {
-          uint8* p_dst = this_dst + i * width * channel;
-          uint8* l_dst = last_dst + i * width * channel;
-          for (int j = 0; j < width; ++j) {
-            p_dst[j * channel + 0] = l_dst[j * channel + 0];
-            p_dst[j * channel + 1] = l_dst[j * channel + 1];
-            p_dst[j * channel + 2] = l_dst[j * channel + 2];
           }
         }
       }
@@ -170,6 +177,12 @@ uint8* Decode(const void* srcdata, int datasize,
                                        " outside of color map range ",
                                        color_map->ColorCount);
           return nullptr;
+        }
+
+        if (color_index == gcb.TransparentColor) {
+          // Use the pixel from the previous frame. In other words, no need to
+          // update our canvas for this pixel.
+          continue;
         }
 
         const GifColorType& gif_color = color_map->Colors[color_index];

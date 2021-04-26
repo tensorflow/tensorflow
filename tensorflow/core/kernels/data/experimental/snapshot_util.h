@@ -146,9 +146,9 @@ class CustomWriter : public Writer {
  private:
   Status WriteRecord(const StringPiece& data);
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status WriteRecord(const absl::Cord& data);
-#endif  // PLATFORM_GOOGLE
+#endif  // TF_CORD_SUPPORT
 
   std::unique_ptr<WritableFile> dest_;
   const std::string filename_;
@@ -265,7 +265,7 @@ class CustomReader : public Reader {
 
   Status ReadRecord(tstring* record);
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status ReadRecord(absl::Cord* record);
 #endif
 

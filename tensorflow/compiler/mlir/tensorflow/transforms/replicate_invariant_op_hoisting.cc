@@ -81,8 +81,8 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   if (auto block_arg = input.dyn_cast<BlockArgument>()) {
     if (block_arg.getOwner() != replicate_block) return;
 
-    shape_op.setOperand(
-        replicate_op.getOperand(num_replicas * block_arg.getArgNumber()));
+    shape_op.setOperand(replicate_op.GetReplicaOperandForBlockArgument(
+        block_arg, /*replica=*/0));
 
     return;
   }
@@ -106,7 +106,8 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
     OpBuilder builder(shape_op);
     auto new_shape_op = builder.create<TF::VariableShapeOp>(
         shape_op.getLoc(), shape_op.getType(),
-        replicate_op.getOperand(num_replicas * block_arg.getArgNumber()));
+        replicate_op.GetReplicaOperandForBlockArgument(block_arg,
+                                                       /*replica=*/0));
     shape_op.replaceAllUsesWith(new_shape_op.getOperation());
     shape_op.erase();
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
@@ -508,7 +509,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result.EachCell<NativeT>([&](absl::Span<const int64> indices, NativeT value) {
-    std::vector<int64> rindexes = Permute(permutation, indices);
+    std::vector<int64> rindexes = PermuteInverse(indices, permutation);
     EXPECT_NEAR(value, literal_clone.Get<NativeT>(rindexes), 0.031250);
   });
 }
@@ -4649,6 +4650,31 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
       Array2D<int32>({{22, 28}, {58, 76}, {94, 124}, {130, 172}});
   auto expected = LiteralUtil::CreateR2FromArray2D<int32>(expected_array);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, SortC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  sort_lt_comparator {
+    parameter.0 = c64[] parameter(0)
+    real.0 = f32[] real(parameter.0)
+    parameter.1 = c64[] parameter(1)
+    real.1 = f32[] real(parameter.1)
+    ROOT compare = pred[] compare(real.0, real.1), direction=LT
+  }
+
+  ENTRY main {
+    c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

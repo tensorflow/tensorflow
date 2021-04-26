@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, List
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
@@ -171,7 +171,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     node, _ = tr.transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].body[0].value, Tuple)
+    self.assertTypes(fn_body[0].body[0].value, (('x_type', 'y_type'),))
     self.assertTypes(fn_body[0].body[0].value.elts[0], 'x_type')
     self.assertTypes(fn_body[0].body[0].value.elts[1], 'y_type')
 
@@ -656,7 +656,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       def res_value(self, ns, value):
         return {int}
 
-      def res_subscript(self, ns, types_ns, node, value, slice_):
+      def res_slice(self, ns, types_ns, node, value, slice_):
         test_self.assertSetEqual(value, {list})
         test_self.assertSetEqual(slice_, {int})
         return {str}
@@ -669,7 +669,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     self.assertTypes(fn_body[0].value, str)
     self.assertTypes(fn_body[0].value.value, list)
-    self.assertTypes(fn_body[0].value.slice.value, int)
+    self.assertTypes(fn_body[0].value.slice, int)
 
   def test_tuple_unpacking(self):
 
@@ -683,7 +683,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       def res_value(self, ns, value):
         return {int}
 
-      def res_subscript(self, ns, types_ns, node_or_slice, value, slice_):
+      def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
         test_self.assertIn(node_or_slice, (0, 1))
         test_self.assertSetEqual(value, {list})
         test_self.assertSetEqual(slice_, {int})
@@ -699,7 +699,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[1].value, Tuple)
+    self.assertTypes(fn_body[1].value, ((float, str),))
     self.assertTypes(fn_body[1].value.elts[0], float)
     self.assertTypes(fn_body[1].value.elts[1], str)
 
@@ -750,6 +750,196 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].value, float)
     self.assertTypes(fn_body[0].value.left, list)
     self.assertTypes(fn_body[0].value.right, list)
+
+  def test_unop(self):
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        return {list}
+
+      def res_unop(self, ns, types_ns, node, opnd):
+        return {float}
+
+    def test_fn(a):
+      return -a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value, float)
+    self.assertTypes(fn_body[0].value.operand, list)
+
+  def test_tuple_literal(self):
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        return {int}
+
+    def test_fn(a, b):
+      return a, b
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value, ((int, int),))
+    self.assertTypes(fn_body[0].value.elts[0], int)
+    self.assertTypes(fn_body[0].value.elts[1], int)
+
+  def test_list_literal(self):
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        return {int}
+
+      def res_list_literal(self, ns, elt_types):
+        all_types = set()
+        for s in elt_types:
+          all_types |= s
+        return {List[t] for t in all_types}
+
+    def test_fn(a, b):
+      return [a, b]
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value, List[int])
+    self.assertTypes(fn_body[0].value.elts[0], int)
+    self.assertTypes(fn_body[0].value.elts[1], int)
+
+  def test_tuple_unpacking_syntactic(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        if name == qual_names.QN('a'):
+          return {int}
+        else:
+          return {float}
+
+      def res_value(self, ns, value):
+        test_self.assertIn(value, (0, 1))
+        return int
+
+      def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+        test_self.assertIn(node_or_slice, (0, 1))
+        test_self.assertSetEqual(value, {(int, float)})
+        test_self.assertEqual(slice_, int)
+        return {t[node_or_slice] for t in value}
+
+    def test_fn(a, b):
+      c, d = a, b
+      return c, d
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[1].value, ((int, float),))
+    self.assertTypes(fn_body[1].value.elts[0], int)
+    self.assertTypes(fn_body[1].value.elts[1], float)
+
+  def test_tuple_unpacking_operational(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        return {(int, float)}
+
+      def res_value(self, ns, value):
+        test_self.assertIn(value, (0, 1))
+        return int
+
+      def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+        test_self.assertIn(node_or_slice, (0, 1))
+        test_self.assertSetEqual(value, {(int, float)})
+        test_self.assertEqual(slice_, int)
+        return {t[node_or_slice] for t in value}
+
+    def test_fn(a):
+      c, d = a
+      return c, d
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[1].value, ((int, float),))
+    self.assertTypes(fn_body[1].value.elts[0], int)
+    self.assertTypes(fn_body[1].value.elts[1], float)
+
+  def test_list_expansion_syntactic(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        if name == qual_names.QN('a'):
+          return {int}
+        else:
+          return {float}
+
+      def res_value(self, ns, value):
+        test_self.assertIn(value, (0, 1))
+        return int
+
+      def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+        test_self.assertIn(node_or_slice, (0, 1))
+        test_self.assertSetEqual(value, {(int, float)})
+        test_self.assertEqual(slice_, int)
+        return {t[node_or_slice] for t in value}
+
+    def test_fn(a, b):
+      [c, d] = a, b
+      return c, d
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    # TODO(mdan): Whether it's List or Tuple might be open for interpretation.
+    self.assertTypes(fn_body[1].value, ((int, float),))
+    self.assertTypes(fn_body[1].value.elts[0], int)
+    self.assertTypes(fn_body[1].value.elts[1], float)
+
+  def test_list_expansion_operational(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        if name == qual_names.QN('a'):
+          return {int}
+        else:
+          return {float}
+
+      def res_value(self, ns, value):
+        test_self.assertIn(value, (0, 1))
+        return int
+
+      def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+        test_self.assertIn(node_or_slice, (0, 1))
+        test_self.assertSetEqual(value, {(int, float)})
+        test_self.assertEqual(slice_, int)
+        return {t[node_or_slice] for t in value}
+
+    def test_fn(a, b):
+      [c, d] = a, b
+      return c, d
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    # TODO(mdan): Whether it's List or Tuple might be open for interpretation.
+    self.assertTypes(fn_body[1].value, ((int, float),))
+    self.assertTypes(fn_body[1].value.elts[0], int)
+    self.assertTypes(fn_body[1].value.elts[1], float)
 
 
 if __name__ == '__main__':

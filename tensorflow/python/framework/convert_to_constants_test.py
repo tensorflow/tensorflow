@@ -487,6 +487,7 @@ class VariablesToConstantsTest(test.TestCase):
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
+  @test_util.disable_tfrt("b/180451239")
   def testSwitchCase(self):
     """Test a switch_case statement."""
     input_data = {

@@ -26,7 +26,7 @@ def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
                 StructFieldAttr<"lhs_contracting_dimensions", I64ElementsAttr>,
                 StructFieldAttr<"rhs_contracting_dimensions", I64ElementsAttr>
   ]> {
-  let description = "Structure of dimension information for dot product";
+  let summary = "Structure of dimension information for dot product";
 }
 
 def ScatterDimensionNumbers : StructAttr<
@@ -35,7 +35,7 @@ def ScatterDimensionNumbers : StructAttr<
       StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
       StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
       StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for scatter";
+  let summary = "Structure of dimension information for scatter";
 }
 
 def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
@@ -49,7 +49,7 @@ def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   StructFieldAttr<"output_feature_dimension", I64Attr>,
   StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
 
-  let description = "Structure of dimension information for conv op";
+  let summary = "Structure of dimension information for conv op";
 }
 
 def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
@@ -57,7 +57,7 @@ def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
       StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
       StructFieldAttr<"start_index_map", I64ElementsAttr>,
       StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for gather";
+  let summary = "Structure of dimension information for gather";
 }
 
 
@@ -67,7 +67,7 @@ def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
 def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
                 StructFieldAttr<"handle", I64Attr>,
                 StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
+  let summary = "two 64-bit integers 'handle' and 'type'";
 }
 
 #endif // HLO_OPS_BASE_STRUCTS

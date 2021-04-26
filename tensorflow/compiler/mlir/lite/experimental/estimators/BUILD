@@ -4,13 +4,12 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
     name = "cost_estimators",
     textual_hdrs = [
-        "hardware.h",
         "arithmetic_count_util.h",
     ],
 )

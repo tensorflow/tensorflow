@@ -225,6 +225,7 @@ class MultiDeviceIterator : public ResourceBase {
             elem.end_of_sequence = true;
           } else {
             buffer_[shard_num].callbacks.push_back(std::move(callback));
+            buffer_[shard_num].cond_var.notify_all();
             callback = nullptr;
           }
         }
@@ -297,7 +298,8 @@ class MultiDeviceIterator : public ResourceBase {
         {
           mutex_lock l(mu_);
           while (!cancelled_ &&
-                 buffer_[shard_to_fetch].data.size() >= max_buffer_size_) {
+                 buffer_[shard_to_fetch].data.size() >= max_buffer_size_ &&
+                 buffer_[shard_to_fetch].callbacks.empty()) {
             buffer_[shard_to_fetch].cond_var.wait(l);
           }
 

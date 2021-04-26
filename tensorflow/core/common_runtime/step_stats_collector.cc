@@ -327,7 +327,7 @@ void StepStatsCollector::BuildCostModel(
       for (const auto& node_stats : dev_stats.hardware_stats->node_stats()) {
         string node_name = node_stats.node_name();
         // Remove the part of op name (e.g. :Conv2D) in the end of a node name.
-        size_t pos = node_name.find_first_of(":");
+        size_t pos = node_name.find_first_of(':');
         if (pos != std::string::npos) {
           node_name = node_name.substr(0, pos);
         }

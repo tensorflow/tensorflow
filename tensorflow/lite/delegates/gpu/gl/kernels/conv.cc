@@ -149,6 +149,9 @@ class Convolution : public NodeShader {
 int SelectMultiplier(int32_t input_width,
                      const NodeShader::GenerationContext& ctx) {
   std::vector<int> multipliers = {4, 2};
+  if (ctx.gpu_info->IsAMD()) {
+    return 1;
+  }
   if (!ctx.compiler_options.allow_precision_loss && ctx.gpu_info->IsMali()) {
     multipliers = {2};
   }
@@ -200,11 +203,12 @@ class Convolution1x1 : public NodeShader {
     for (int i = 0; i < multiplier; i++) {
       absl::StrAppend(&source, "highp vec4 result", i, " = vec4(0);\n");
     }
-    absl::StrAppend(&source, "vec4 f;\n");
+    absl::StrAppend(&source, "highp vec4 f;\n");
     absl::StrAppend(&source, "for (int l = 0; l < $src_depth$; ++l) {\n");
     for (int i = 0; i < multiplier; i++) {
-      absl::StrAppend(&source, "  vec4 input", i, " = $input_data_0[gid.x * ",
-                      multiplier, " + ", i, ",gid.y,l]$;\n");
+      absl::StrAppend(&source, "  highp vec4 input", i,
+                      " = $input_data_0[gid.x * ", multiplier, " + ", i,
+                      ",gid.y,l]$;\n");
     }
     for (int k = 0; k < 4; k++) {
       absl::StrAppend(&source, "  f = $weights[", k, ", l, gid.z]$;\n");
@@ -216,7 +220,7 @@ class Convolution1x1 : public NodeShader {
     absl::StrAppend(&source, "}\n");
     if (!attr.bias.data.empty()) {
       objects.push_back({"bias", MakeReadonlyObject(attr.bias.data)});
-      absl::StrAppend(&source, "vec4 b = $bias[gid.z]$;\n");
+      absl::StrAppend(&source, "highp vec4 b = $bias[gid.z]$;\n");
       for (int i = 0; i < multiplier; i++) {
         absl::StrAppend(&source, "result", i, " += b;\n");
       }

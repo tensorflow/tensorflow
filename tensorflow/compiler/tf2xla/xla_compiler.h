@@ -192,7 +192,10 @@ class XlaCompiler {
     // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
-    se::DeviceMemoryAllocator* device_allocator = nullptr;
+    // This must be a shared_ptr, as this is passed all the way down to the
+    // cluster compilation. This allows asynchronous compilation to hold a
+    // reference until the compilation is finished.
+    std::shared_ptr<se::DeviceMemoryAllocator> device_allocator;
 
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.
@@ -291,7 +294,8 @@ class XlaCompiler {
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody);
+                          const FunctionBody** fbody,
+                          const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.

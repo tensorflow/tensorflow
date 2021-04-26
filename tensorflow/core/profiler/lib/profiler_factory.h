@@ -24,11 +24,16 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// A ProfilerFactory returns an instance of ProfilerInterface if ProfileOptions
+// require it. Otherwise, it might return nullptr.
 using ProfilerFactory =
     std::unique_ptr<ProfilerInterface> (*)(const ProfileOptions&);
 
+// Registers a profiler factory. Should be invoked at most once per factory.
 void RegisterProfilerFactory(ProfilerFactory factory);
 
+// Invokes all registered profiler factories with the given options, and
+// returns the instantiated (non-null) profiler interfaces in result.
 void CreateProfilers(const ProfileOptions& options,
                      std::vector<std::unique_ptr<ProfilerInterface>>* result);
 

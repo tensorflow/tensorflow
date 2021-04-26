@@ -18,7 +18,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["loader.h"])
@@ -38,6 +38,14 @@ cc_library(
     hdrs = ["tag_constants.h"],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "mobile_only_deps",
+#     visibility = ["//visibility:private"],
+#     deps = if_mobile(["//tensorflow/core:portable_tensorflow_lib"]),
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "reader",
     srcs = ["reader.cc"],
@@ -45,6 +53,7 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate

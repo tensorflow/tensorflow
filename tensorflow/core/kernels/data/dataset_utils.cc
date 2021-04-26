@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
+#include <memory>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -39,10 +41,16 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
+
 constexpr char kDelimiter[] = "@@";
 constexpr char kComponent[] = "component";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kNumComponents[] = "num_components";
+constexpr char kOutputSize[] = "output_size";
+constexpr char kCode[] = "code";
+constexpr char kMessage[] = "msg";
+constexpr char kOutput[] = "output";
+
 }  // namespace
 
 Status WriteElementsToCheckpoint(
@@ -93,26 +101,6 @@ std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
     return {random::New64(), random::New64()};
   }
   return seeds;
-}
-
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> register_fn,
-                                    std::function<void()>* deregister_fn) {
-  if (cancellation_manager) {
-    CancellationToken token = cancellation_manager->get_cancellation_token();
-    if (!cancellation_manager->RegisterCallback(token,
-                                                std::move(register_fn))) {
-      return errors::Cancelled("Operation was cancelled");
-    }
-    *deregister_fn = [cancellation_manager, token]() {
-      cancellation_manager->DeregisterCallback(token);
-    };
-  } else {
-    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
-               "not be registered.";
-    *deregister_fn = []() {};
-  }
-  return Status::OK();
 }
 
 Status VerifyTypeMatch(const DataType& expected, const DataType& received,
@@ -697,6 +685,234 @@ void StripDevicePlacement(FunctionDefLibrary* library) {
       }
     }
   }
+}
+
+Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+                        Tensor* output) {
+  switch (value.dtype()) {
+#define HANDLE_TYPE(type)                                         \
+  case DataTypeToEnum<type>::value: {                             \
+    auto output_t = output->flat_outer_dims<type>();              \
+    auto value_t = value.flat_outer_dims<type>();                 \
+    for (size_t i = 0; i < num_elements; i++) {                   \
+      output_t.template chip<0>(i) = value_t.template chip<0>(i); \
+    }                                                             \
+    return Status::OK();                                          \
+  }
+    TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
+    default:
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(value.dtype()));
+  }
+  return Status::OK();
+}
+
+Status ReadBatch(int64 batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, IteratorContext* ctx,
+                 IteratorStateReader* reader, std::vector<Tensor>* batch) {
+  int64 output_size;
+  TF_RETURN_IF_ERROR(reader->ReadScalar(
+      FullName(iterator_prefix,
+               strings::StrCat(batch_prefix, "_", kOutputSize)),
+      &output_size));
+  batch->reserve(output_size);
+  for (int i = 0; i < output_size; i++) {
+    Tensor t;
+    TF_RETURN_IF_ERROR(reader->ReadTensor(
+        FullName(iterator_prefix,
+                 strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
+        &t));
+    // If the batch was not full, we may have stored only the relevant slice.
+    // Since tensors in `BatchResult.output` are expected to have the leading
+    // dimension of size batch_size, we build a larger tensor and copy the slice
+    // read from the checkpoint into it.
+    if (t.dim_size(0) < batch_size) {
+      TensorShape component_shape(t.shape());
+      component_shape.set_dim(0, batch_size);
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      Tensor new_t(ctx->allocator(attr), t.dtype(), component_shape);
+      TF_RETURN_IF_ERROR(CopyPartialBatch(t.dim_size(0), t, &new_t));
+      batch->emplace_back(std::move(new_t));
+    } else {
+      batch->emplace_back(std::move(t));
+    }
+  }
+  return Status::OK();
+}
+
+Status WriteBatch(int64 batch_size, int64 num_elements,
+                  const string& iterator_prefix, const string& batch_prefix,
+                  IteratorStateWriter* writer, std::vector<Tensor>* batch) {
+  TF_RETURN_IF_ERROR(writer->WriteScalar(
+      FullName(iterator_prefix,
+               strings::StrCat(batch_prefix, "_", kOutputSize)),
+      batch->size()));
+  for (int i = 0; i < batch->size(); i++) {
+    // If the batch is not full, we only store the first `num_elements` values.
+    // The rest of the batch tensor is *uninitialized* and accessing that will
+    // raise msan errors.
+    if (num_elements < batch_size) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          FullName(iterator_prefix,
+                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
+          (*batch)[i].Slice(0, num_elements)));
+    } else {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          FullName(iterator_prefix,
+                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
+          (*batch)[i]));
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                  IteratorStateReader* reader, Status* status) {
+  int64 code_int;
+  TF_RETURN_IF_ERROR(reader->ReadScalar(
+      FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
+      &code_int));
+  error::Code code = static_cast<error::Code>(code_int);
+
+  if (code != error::Code::OK) {
+    tstring error_message;
+    TF_RETURN_IF_ERROR(reader->ReadScalar(
+        FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
+        &error_message));
+    *status = Status(code, error_message);
+  } else {
+    *status = Status::OK();
+  }
+  return Status::OK();
+}
+
+Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                   const Status& status, IteratorStateWriter* writer) {
+  TF_RETURN_IF_ERROR(writer->WriteScalar(
+      FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
+      static_cast<int64>(status.code())));
+  if (!status.ok()) {
+    TF_RETURN_IF_ERROR(writer->WriteScalar(
+        FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
+        status.error_message()));
+  }
+  return Status::OK();
+}
+
+Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
+                    const Status& status, IteratorContext* ctx,
+                    std::vector<Tensor>* output, bool* end_of_sequence,
+                    std::vector<Tensor>* batch) {
+  if (num_elements == 0) {
+    if (status.ok() || errors::IsOutOfRange(status)) {
+      *end_of_sequence = true;
+      return Status::OK();
+    } else {
+      *end_of_sequence = false;
+      return status;
+    }
+  }
+  if (!status.ok() && !errors::IsOutOfRange(status)) {
+    *end_of_sequence = false;
+    return status;
+  }
+  if (num_elements < batch_size) {
+    if (drop_remainder) {
+      *end_of_sequence = true;
+      return Status::OK();
+    }
+    for (size_t i = 0; i < batch->size(); ++i) {
+      TensorShape component_shape((*batch)[i].shape());
+      component_shape.set_dim(0, num_elements);
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      output->emplace_back(ctx->allocator(attr), (*batch)[i].dtype(),
+                           component_shape);
+      if (!output->back().IsInitialized()) {
+        return errors::ResourceExhausted(
+            "Failed to allocate memory for the batch of component ", i);
+      }
+      TF_RETURN_IF_ERROR(
+          CopyPartialBatch(num_elements, (*batch)[i], &output->back()));
+    }
+  } else {
+    *output = std::move(*batch);
+  }
+  *end_of_sequence = false;
+  return Status::OK();
+}
+
+Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+                 std::vector<Tensor>* out_tensors,
+                 std::vector<std::vector<Tensor>>* batch_elements) {
+  const size_t num_tuple_components = (*batch_elements)[0].size();
+  out_tensors->reserve(num_tuple_components);
+  const int64 num_batch_elements = batch_elements->size();
+  for (size_t component_index = 0; component_index < num_tuple_components;
+       ++component_index) {
+    const Tensor& first_element = (*batch_elements)[0][component_index];
+    TensorShape batch_component_shape({num_batch_elements});
+    // NOTE(mrry): Copy the shape of the first element here, because
+    // `first_element.shape()` will become undefined after the 0th batch element
+    // is moved into the output batch.
+    TensorShape first_element_shape(first_element.shape());
+    batch_component_shape.AppendShape(first_element_shape);
+    out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+                              batch_component_shape);
+    if (!out_tensors->back().IsInitialized()) {
+      return errors::ResourceExhausted(
+          "Failed to allocate memory for the batch of component ",
+          component_index);
+    }
+    Tensor& batch_component = out_tensors->back();
+    // Build the output tuple component by copying one slice from each input
+    // element in the batch.
+    auto copy_element_fn = [component_index, &batch_elements,
+                            &batch_component](int index) {
+      TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
+          std::move((*batch_elements)[index][component_index]),
+          &batch_component, index));
+      return Status::OK();
+    };
+    Status status;
+    std::unique_ptr<BlockingCounter> counter;
+    std::unique_ptr<mutex> status_mu;
+    if (TF_PREDICT_FALSE(parallel_copy)) {
+      counter = std::make_unique<BlockingCounter>(num_batch_elements);
+      status_mu = std::make_unique<mutex>();
+    }
+    for (size_t i = 0; i < num_batch_elements; ++i) {
+      if ((*batch_elements)[i][component_index].shape() !=
+          first_element_shape) {
+        return errors::InvalidArgument(
+            "Cannot batch tensors with different shapes in component ",
+            component_index, ". First element had shape ",
+            first_element_shape.DebugString(), " and element ", i,
+            " had shape ",
+            (*batch_elements)[i][component_index].shape().DebugString(), ".");
+      }
+      if (TF_PREDICT_FALSE(parallel_copy)) {
+        (*ctx->runner())(
+            [i, &status, &status_mu, &counter, &copy_element_fn]() {
+              Status s = copy_element_fn(i);
+              {
+                mutex_lock l(*status_mu);
+                status.Update(s);
+              }
+              counter->DecrementCount();
+            });
+      } else {
+        status.Update(copy_element_fn(i));
+      }
+    }
+    if (TF_PREDICT_FALSE(parallel_copy)) {
+      counter->Wait();
+    }
+    TF_RETURN_IF_ERROR(status);
+  }
+  return Status::OK();
 }
 
 }  // namespace data

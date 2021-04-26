@@ -221,7 +221,8 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch, int32_t* scratch,
     float* __restrict__ result, CpuBackendContext* context) {
-  if (m_rows % 4 == 0) {
+  // TODO(b/183178387): Use a proper query to detect AVX/optimized paths.
+  if (m_rows % 4 == 0 && !context->PreferGemmlowpOnX86()) {
     const int32_t* bias = static_cast<const int32_t*>(nullptr);
     SseCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows,
                       /*output_zp=*/0, scratch, context);
@@ -274,7 +275,6 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
   if ((input_offset != nullptr) && (!compute_row_sums || *compute_row_sums)) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     SseReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -447,9 +447,9 @@ void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
 #pragma clang loop unroll(disable) vectorize(disable)
 #endif
     for (; col < reduction_size; col++) {
-      row_sum += *(row_ptr + col);
+      row_sum += row_ptr[col];
     }
-    *(output_vector + row) += row_sum;
+    output_vector[row] = row_sum;
   }
 }
 

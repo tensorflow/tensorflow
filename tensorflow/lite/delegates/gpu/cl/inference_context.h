@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/recordable_queue_builder.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -52,8 +53,8 @@ struct CLNode {
 
   CLNode() = default;
 
-  CLNode(CLNode&& node);
-  CLNode& operator=(CLNode&& node);
+  CLNode(CLNode&& node) = default;
+  CLNode& operator=(CLNode&& node) = default;
   CLNode(const CLNode&) = delete;
   CLNode& operator=(const CLNode&) = delete;
 };
@@ -114,8 +115,9 @@ class InferenceContext {
   absl::Status ConvertOperations(const GpuInfo& gpu_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
-  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const GpuInfo& gpu_info, const GraphFloat32& graph);
+  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                                   const GpuInfo& gpu_info,
+                                   const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 
@@ -138,6 +140,8 @@ class InferenceContext {
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+
+  void InitRecordableQueue(Environment* env);
 
   void ReleaseCPURepresentation();
 
@@ -236,6 +240,8 @@ class InferenceContext {
   // for serialization
   std::vector<int64_t> in_refs_;
   std::vector<int64_t> out_refs_;
+
+  std::unique_ptr<RecordableQueue> recordable_queue_;
 };
 
 // Runs OpenCL specific transforms for the graph.

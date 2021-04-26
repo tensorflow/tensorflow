@@ -21,8 +21,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/StandardTypes.h"
 
 namespace mlir {
 namespace hlo {
@@ -66,7 +67,7 @@ Value ComputeBinaryElementwiseBroadcastingResultExtents(
     Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
         loc, shape::getExtentTensorType(builder.getContext()), lhs_shape_v,
         rhs_shape_v, nullptr /* error */);
-    return builder.createOrFold<TensorCastOp>(
+    return builder.createOrFold<tensor::CastOp>(
         loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
         result_shape_v);
   }

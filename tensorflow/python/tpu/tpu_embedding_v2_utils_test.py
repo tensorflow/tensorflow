@@ -29,7 +29,8 @@ from tensorflow.python.tpu import tpu_embedding_v2_utils
 class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(tpu_embedding_v2_utils.Adagrad,
-                            tpu_embedding_v2_utils.Adam)
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
   def test_grad_clip_with_accumulation_off(self, optimizer):
     with self.assertRaisesRegex(ValueError, 'accumulation'):
       optimizer(use_gradient_accumulation=False, clipvalue=0.)
@@ -38,7 +39,8 @@ class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(tpu_embedding_v2_utils.SGD,
                             tpu_embedding_v2_utils.Adagrad,
-                            tpu_embedding_v2_utils.Adam)
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
   def test_grad_clip_with_tuple(self, optimizer):
     opt = optimizer(clipvalue=(-1., 1.))
     self.assertEqual(-1., opt.clip_gradient_min)
@@ -46,7 +48,8 @@ class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(tpu_embedding_v2_utils.SGD,
                             tpu_embedding_v2_utils.Adagrad,
-                            tpu_embedding_v2_utils.Adam)
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
   def test_grad_clip_with_single_value(self, optimizer):
     opt = optimizer(clipvalue=1.)
     self.assertEqual(-1., opt.clip_gradient_min)
@@ -54,7 +57,8 @@ class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(tpu_embedding_v2_utils.SGD,
                             tpu_embedding_v2_utils.Adagrad,
-                            tpu_embedding_v2_utils.Adam)
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
   def test_grad_clip_with_tuple_and_none(self, optimizer):
     opt = optimizer(clipvalue=(None, 1))
     self.assertIsNone(opt.clip_gradient_min)

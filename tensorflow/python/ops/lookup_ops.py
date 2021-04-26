@@ -24,13 +24,13 @@ import uuid
 
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -45,7 +45,7 @@ from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
 from tensorflow.python.training.tracking import tracking as trackable
-from tensorflow.python.util import compat
+from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -86,7 +86,7 @@ def tables_initializer(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-def _check_table_dtypes(table, key_dtype, value_dtype):
+def check_table_dtypes(table, key_dtype, value_dtype):
   """Check that the given key_dtype and value_dtype matches the table dtypes.
 
   Args:
@@ -435,65 +435,6 @@ class TableInitializerBase(trackable_base.Trackable):
     return shared_name
 
 
-@tf_export("lookup.experimental.DatasetInitializer")
-class DatasetInitializer(TableInitializerBase):
-  """Creates a table initializer from a `tf.data.Dataset`.
-
-  Sample usage:
-
-  >>> keys = tf.data.Dataset.range(100)
-  >>> values = tf.data.Dataset.range(100).map(
-  ...     lambda x: string_ops.as_string(x * 2))
-  >>> ds = tf.data.Dataset.zip((keys, values))
-  >>> init = tf.lookup.experimental.DatasetInitializer(ds)
-  >>> table = tf.lookup.StaticHashTable(init, "")
-  >>> table.lookup(tf.constant([0, 1, 2], dtype=tf.int64)).numpy()
-  array([b'0', b'2', b'4'], dtype=object)
-
-  Attributes:
-    dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
-      first scalar is treated as a key and the second as value.
-
-  Raises: ValueError if `dataset` doesn't conform to specifications.
-  """
-
-  def __init__(self, dataset):
-    """Creates a table initializser from a `tf.data.Dataset`.
-
-    Args:
-      dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
-      first scalar is treated as a key and the second as value.
-
-    Raises: ValueError if `dataset` doesn't conform to specifications.
-    Returns: A `DatasetInitializer` object
-    """
-    # Assert that the dataset element spec is a tuple of TensorSpecs where
-    # each tensor is a scalar.
-    self.dataset = dataset
-    elem_spec = self.dataset.element_spec
-    if len(elem_spec) != 2:
-      raise ValueError("element spec size should be 2")
-    if not isinstance(elem_spec[0], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[0] should be of type TensorSpec")
-    if not isinstance(elem_spec[1], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[1] should be of type TensorSpec")
-    if elem_spec[0].shape.rank not in (None, 0):
-      raise ValueError("key tensor should be a scalar")
-    if elem_spec[1].shape.rank not in (None, 0):
-      raise ValueError("value tensor should be a scalar")
-
-    key_type = elem_spec[0].dtype
-    value_type = elem_spec[1].dtype
-    super(DatasetInitializer, self).__init__(key_type, value_type)
-
-  def initialize(self, table):
-    _check_table_dtypes(table, self._key_dtype, self._value_dtype)
-    init_op = gen_lookup_ops.initialize_table_from_dataset(
-        table.resource_handle, self.dataset._variant_tensor)  # pylint: disable=protected-access
-    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    return init_op
-
-
 @tf_export("lookup.KeyValueTensorInitializer")
 class KeyValueTensorInitializer(TableInitializerBase):
   """Table initializers given `keys` and `values` tensors.
@@ -553,7 +494,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
+    check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
         self._name, values=(table.resource_handle, self._keys, self._values)):
       init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
@@ -633,8 +574,7 @@ class TextFileInitializer(TableInitializerBase):
   >>> init = tf.lookup.TextFileInitializer(
   ...   filename=f.name,
   ...   key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
-  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
-  ...   delimiter=" ")
+  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
   >>> table = tf.lookup.StaticHashTable(init, -1)
   >>> table.lookup(tf.constant('palmer 30')).numpy()
   2
@@ -648,7 +588,8 @@ class TextFileInitializer(TableInitializerBase):
                value_index,
                vocab_size=None,
                delimiter="\t",
-               name=None):
+               name=None,
+               value_index_offset=0):
     """Constructs a table initializer object to populate from a text file.
 
     It generates one key-value pair per line. The type of table key and
@@ -659,7 +600,7 @@ class TextFileInitializer(TableInitializerBase):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
@@ -676,6 +617,13 @@ class TextFileInitializer(TableInitializerBase):
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: A name for the operation (optional).
+      value_index_offset: A number to add to all indices extracted from the file
+        This is useful for cases where a user would like to reserve one or more
+        low index values for control characters. For instance, if you would
+        like to ensure that no vocabulary item is mapped to index 0 (so you can
+        reserve 0 for a masking value), you can set value_index_offset to 1;
+        this will mean that the first vocabulary element is mapped to 1
+        instead of 0.
 
     Raises:
       ValueError: when the filename is empty, or when the table key and value
@@ -705,9 +653,11 @@ class TextFileInitializer(TableInitializerBase):
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
       raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
                        (dtypes.int64, value_dtype))
-    if value_index == TextFileIndex.WHOLE_LINE and value_dtype != dtypes.string:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
-                       (dtypes.string, value_dtype))
+    if ((value_index == TextFileIndex.WHOLE_LINE) and
+        (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
+      raise ValueError(
+          "Signature mismatch. Values must be integer or string, got %s." %
+          (value_dtype))
 
     if (vocab_size is not None) and (vocab_size <= 0):
       raise ValueError("Invalid vocab_size %s." % vocab_size)
@@ -719,6 +669,7 @@ class TextFileInitializer(TableInitializerBase):
     self._name = name
     self._filename = self._track_trackable(
         trackable.Asset(filename), "_filename")
+    self._offset = value_index_offset
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 
@@ -735,13 +686,20 @@ class TextFileInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    _check_table_dtypes(table, self.key_dtype, self.value_dtype)
+    check_table_dtypes(table, self.key_dtype, self.value_dtype)
     with ops.name_scope(self._name, "text_file_init", (table.resource_handle,)):
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-          table.resource_handle, filename, self._key_index, self._value_index,
-          -1 if self._vocab_size is None else self._vocab_size, self._delimiter)
+      if self._offset != 0 or compat.forward_compatible(2021, 3, 18):
+        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+            table.resource_handle, filename, self._key_index, self._value_index,
+            -1 if self._vocab_size is None else self._vocab_size,
+            self._delimiter, self._offset)
+      else:
+        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+            table.resource_handle, filename, self._key_index, self._value_index,
+            -1 if self._vocab_size is None else self._vocab_size,
+            self._delimiter)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an
@@ -754,15 +712,26 @@ class TextFileInitializer(TableInitializerBase):
   def _shared_name(self):
     if self._vocab_size:
       # Keep the shared_name:
-      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%d_%s_%s" % (
-          self._filename_arg, self._vocab_size, self._key_index,
-          self._value_index)
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>_<offset>
+      if self._offset:
+        shared_name = "hash_table_%s_%d_%s_%s_%s" % (
+            self._filename_arg, self._vocab_size, self._key_index,
+            self._value_index, self._offset)
+      else:
+        shared_name = "hash_table_%s_%d_%s_%s" % (
+            self._filename_arg, self._vocab_size, self._key_index,
+            self._value_index)
     else:
       # Keep the shared_name
-      # <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
-                                             self._key_index, self._value_index)
+      # <table_type>_<filename>_<key_index>_<value_index>_<offset>
+      if self._offset:
+        shared_name = "hash_table_%s_%s_%s_%s" % (
+            self._filename_arg, self._key_index, self._value_index,
+            self._offset)
+      else:
+        shared_name = "hash_table_%s_%s_%s" % (
+            self._filename_arg, self._key_index, self._value_index)
+
     return shared_name
 
 
@@ -786,7 +755,7 @@ class TextFileStringTableInitializer(TextFileInitializer):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
@@ -904,8 +873,8 @@ class StrongHashSpec(HasherSpec):
     if len(key) != 2:
       raise ValueError("key must have size 2, got %s." % len(key))
 
-    if not isinstance(key[0], compat.integral_types) or not isinstance(
-        key[1], compat.integral_types):
+    if not isinstance(key[0], compat_util.integral_types) or not isinstance(
+        key[1], compat_util.integral_types):
       raise TypeError("Invalid key %s. Must be unsigned integer values." % key)
 
     return super(cls, StrongHashSpec).__new__(cls, "stronghash", key)
@@ -1187,6 +1156,20 @@ class StaticVocabularyTable(LookupInterface):
 
   The hash function used for generating out-of-vocabulary buckets ID is
   Fingerprint64.
+
+  Note that the out-of-vocabulary bucket IDs always range from the table `size`
+  up to `size + num_oov_buckets - 1` regardless of the table values, which could
+  cause unexpected collisions:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(
+  ...     keys=tf.constant(["emerson", "lake", "palmer"]),
+  ...     values=tf.constant([1, 2, 3], dtype=tf.int64))
+  >>> table = tf.lookup.StaticVocabularyTable(
+  ...     init,
+  ...     num_oov_buckets=1)
+  >>> input_tensor = tf.constant(["emerson", "lake", "palmer", "king"])
+  >>> table[input_tensor].numpy()
+  array([1, 2, 3, 3])
   """
 
   def __init__(self,
@@ -1712,21 +1695,34 @@ def index_to_string_table_from_tensor(vocabulary_list,
     return StaticHashTableV1(init, default_value)
 
 
+@tf_export("lookup.experimental.MutableHashTable")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
+
+  `MutableHashTable` requires additional memory during checkpointing and restore
+  operations to create temporary key and value tensors.
 
   Example usage:
 
-  ```python
-  table = tf.lookup.MutableHashTable(key_dtype=tf.string, value_dtype=tf.int64,
-                                     default_value=-1)
-  sess.run(table.insert(keys, values))
-  out = table.lookup(query_keys)
-  print(out.eval())
-  ```
+  >>> table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.string,
+  ...                                                 value_dtype=tf.int64,
+  ...                                                 default_value=-1)
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9], dtype=tf.int64)
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> table.insert(keys_tensor, vals_tensor)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1])
+  >>> table.remove(tf.constant(['c']))
+  >>> table.lookup(keys_tensor).numpy()
+  array([ 7, 8, -1])
+  >>> sorted(table.export()[0].numpy())
+  [b'a', b'b']
+  >>> sorted(table.export()[1].numpy())
+  [7, 8]
   """
 
   def __init__(self,
@@ -1970,16 +1966,21 @@ class MutableHashTable(LookupInterface):
 
 @tf_export("lookup.experimental.DenseHashTable")
 class DenseHashTable(LookupInterface):
-  """A generic mutable hash table implementation using tensors as backing store.
+  """A mutable hash table with faster lookups and higher memory usage.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
 
-  It uses "open addressing" with quadratic reprobing to resolve collisions.
-  Compared to `MutableHashTable` the insert, remove and lookup operations in a
-  `DenseHashTable` are typically faster, but memory usage can be higher.
-  However, `DenseHashTable` does not require additional memory for
-  temporary tensors created during checkpointing and restore operations.
+  Compared to `MutableHashTable`, `DenseHashTable` offers generally faster
+  `insert`, `remove` and `lookup` operations, in exchange for a higher overall
+  memory footprint.
+
+  It uses "open addressing" with quadratic reprobing to resolve collisions. This
+  requires specifying two keys in the key space, `empty_key` and `deleted_key`,
+  that can never inserted into the table.
+
+  Unlike `MutableHashTable`, `DenseHashTable` does not require additional memory
+  for temporary tensors created during checkpointing and restore operations.
 
   Example usage:
 

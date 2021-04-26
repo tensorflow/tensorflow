@@ -41,6 +41,7 @@ const char kAttrSrcDevice[] = "send_device";
 const char kAttrDstDevice[] = "recv_device";
 const char kAttrTensorName[] = "tensor_name";
 const char kChannelDevice[] = "Channel";
+const char kStreaming[] = "_streaming";
 
 namespace {
 
@@ -109,14 +110,10 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
       (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
 }
 
-bool IsStreamingNode(const NodeDef& node) {
-  return node.attr().contains("_streaming");
-}
-
 bool IsStreamingPort(const NodeDef& node, const int port) {
-  if (!IsStreamingNode(node)) return false;
+  if (!node.attr().contains(kStreaming)) return false;
 
-  auto& attr_list = node.attr().at("_streaming").list();
+  auto& attr_list = node.attr().at(kStreaming).list();
   bool is_streaming_port = false;
   if (port >= 0 && port < attr_list.b().size()) {
     is_streaming_port = attr_list.b(port);
@@ -171,7 +168,7 @@ Status HeapReadyManager::Init(
   // the same node_manager.
   node_map_ = node_map;
   nodes_.clear();
-  waiting_queue_.clear();
+  curr_node_ = nullptr;
 
   // Sets up the comparator for the heap.
   greater_ = Greater();
@@ -179,38 +176,44 @@ Status HeapReadyManager::Init(
   return Status::OK();
 }
 
+void HeapReadyManager::AddNode(const NodeDef* node) {
+  // push_heap in AddNode and pop_heap in RemoveCurrNode() guarantees that the
+  // first element is the node with minimum time_ready.
+  nodes_.push_back(node);
+  std::push_heap(nodes_.begin(), nodes_.end(), greater_);
+}
+
 const NodeDef* HeapReadyManager::GetCurrNode() {
+  if (curr_node_) return curr_node_;
   if (nodes_.empty()) {
-    // Nothing in the node_; probably, the very first call. Move waiting_queue_
-    // to node_.
-    DrainWaitingQueue();
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   }
-  return nodes_.front();
+  const std::string node_name = nodes_.front()->name();
+  // Next time we call GetCurrNode(), it just returns the cached copy
+  // curr_node_, until we call the RemoveCurrNode().
+  curr_node_ = nodes_.front();
+  // Remove current node from the heap immediately. Because if we wait until
+  // later, the heap could have gotten re-organized if AddNode is called. The
+  // current node is anyways cached, incase GetCurrNode() is called again.
+  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+  nodes_.pop_back();
+  return curr_node_;
 }
 
 void HeapReadyManager::RemoveCurrNode() {
-  if (nodes_.empty()) {
-    // Make sure that there is a node to be removed at the front of nodes_.
-    GetCurrNode();
+  if (curr_node_) {
+    // If cached copy exists, remove that.
+    // Reset curr_node_ so that GetCurrNode() finds another node.
+    curr_node_ = nullptr;
+  } else {
+    // If cached copy not present, then remove entry from the heap queue.
+    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+    nodes_.pop_back();
   }
-  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-  nodes_.pop_back();
-  DrainWaitingQueue();
 }
 
 bool HeapReadyManager::Empty() const {
-  return nodes_.empty() && waiting_queue_.empty();
-}
-
-void HeapReadyManager::DrainWaitingQueue() {
-  for (const auto* node : waiting_queue_) {
-    // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-    // the first element is the node with minimum time_ready.
-    nodes_.push_back(node);
-    std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-  }
-  waiting_queue_.clear();
+  return nodes_.empty() && curr_node_ == nullptr;
 }
 
 bool FirstReadyCmp(
@@ -495,7 +498,12 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 
-      if (curr_node_device == in_device) {
+      // Control dependencies should be treated as high priority. Current
+      // Channel device doesn't model a separate virual channel for control v/s
+      // data transfers. So in the interim, it may be okay to let control
+      // dependencies magically flow across devices bypassing the channel
+      // device.
+      if (curr_node_device == in_device || IsControlInput(input_node_name)) {
         // Same device: connect input_node and curr_node directly.
         curr_node_state.inputs.push_back(
             std::make_pair(input_node, input_node_port_num));
@@ -662,10 +670,12 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
 
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
+  bool control_input = false;
   if (input_node_port_num >= 0) {
     src_name = absl::StrCat(from->name(), "_", input_node_port_num);
   } else {
     src_name = absl::StrCat(from->name(), "_minus1");
+    control_input = true;
   }
 
   // _Send op.
@@ -695,14 +705,22 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
   recv->add_input(send->name());
   recv->set_device(DeviceName(to));
   auto& recv_attr = *(recv->mutable_attr());
-  if (from->attr().contains("_streaming")) {
-    *(recv_attr["_streaming"].mutable_list()) =
-        from->attr().at("_streaming").list();
-  }
   recv_attr[kAttrInputSrc].set_s(input_name);
   if (input_node->attr().count(kAttrTensorName)) {
     recv_attr[kAttrTensorName].set_s(
         input_node->attr().at(kAttrTensorName).s());
+  }
+
+  // Propagate the streaming attribute to the send/recv nodes.
+  if (from->attr().contains(kStreaming) && !control_input) {
+    if (input_node_port_num >= from->attr().at(kStreaming).list().b_size()) {
+      LOG(ERROR)
+          << from->name()
+          << " port index larger than length of _streaming attribute list.";
+    } else if (from->attr().at(kStreaming).list().b(input_node_port_num)) {
+      send_attr[kStreaming].mutable_list()->add_b(true);
+      recv_attr[kStreaming].mutable_list()->add_b(true);
+    }
   }
 
   // NodeState for _Send op.
@@ -955,6 +973,13 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
         device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
       }
     }
+  }
+
+  // Append the current temporary memory usage of the device to the memory usage
+  // trace.
+  if (track_mem_usage_snapshot_) {
+    device.temporary_memory_usage_trace.push_back(
+        {node->name(), device.memory_usage});
   }
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
@@ -1337,11 +1362,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   auto new_nodes = scheduler_state_->MarkNodeExecuted(
       node, node_costs,
       scheduler_state_->CreateOpContext(ready_nodes_->GetCurrNode()));
-  ready_nodes_->RemoveCurrNode();
   // Add the set of new nodes obtained from MarkNodeExecuted() to ready_nodes_.
   for (auto node : new_nodes) {
     ready_nodes_->AddNode(node);
   }
+  ready_nodes_->RemoveCurrNode();
   return !ready_nodes_->Empty();
 }
 

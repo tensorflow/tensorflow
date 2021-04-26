@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for advanced activation layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python import keras
@@ -31,7 +27,7 @@ from tensorflow.python.platform import test
 class AdvancedActivationsTest(keras_parameterized.TestCase):
 
   def test_leaky_relu(self):
-    for alpha in [0., .5, -1.]:
+    for alpha in [0., .5]:
       testing_utils.layer_test(keras.layers.LeakyReLU,
                                kwargs={'alpha': alpha},
                                input_shape=(2, 3, 4),
@@ -107,6 +103,47 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
+
+  def test_leaky_relu_with_invalid_alpha(self):
+    # Test case for GitHub issue 46993.
+    with self.assertRaisesRegex(
+        ValueError, 'The alpha value of a Leaky ReLU layer '
+        'cannot be None, needs a float. Got None'):
+      testing_utils.layer_test(
+          keras.layers.LeakyReLU,
+          kwargs={'alpha': None},
+          input_shape=(2, 3, 4),
+          supports_masking=True)
+
+  def test_leaky_elu_with_invalid_alpha(self):
+    # Test case for GitHub issue 46993.
+    with self.assertRaisesRegex(
+        ValueError, 'Alpha of an ELU layer cannot be None, '
+        'requires a float. Got None'):
+      testing_utils.layer_test(
+          keras.layers.ELU,
+          kwargs={'alpha': None},
+          input_shape=(2, 3, 4),
+          supports_masking=True)
+
+  def test_threshold_relu_with_invalid_alpha(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Theta of a Thresholded ReLU layer cannot '
+        'be None, requires a float. Got None'):
+      testing_utils.layer_test(
+          keras.layers.ThresholdedReLU,
+          kwargs={'theta': None},
+          input_shape=(2, 3, 4),
+          supports_masking=True)
+
+    with self.assertRaisesRegex(
+        ValueError, 'The theta value of a Thresholded ReLU '
+        'layer should be >=0, got -10'):
+      testing_utils.layer_test(
+          keras.layers.ThresholdedReLU,
+          kwargs={'theta': -10},
+          input_shape=(2, 3, 4),
+          supports_masking=True)
 
 
 if __name__ == '__main__':

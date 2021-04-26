@@ -123,6 +123,17 @@ func @const_int_bf16() -> tensor<bf16> {
 
 // -----
 
+// CHECK-LABEL: func @const_bool_f32
+func @const_bool_f32() -> tensor<2xf32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0.000000e+00, 1.000000e+00]> : tensor<2xf32>
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xf32>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @const_bf16_int
 func @const_bf16_int() -> tensor<i16> {
   // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<42> : tensor<i16>
@@ -145,13 +156,24 @@ func @const_int_narrowing() -> tensor<i32> {
 
 // -----
 
-// CHECK-LABEL: func @const_int_widening
-func @const_int_widening() -> tensor<i64> {
+// CHECK-LABEL: func @const_bool_widening
+func @const_bool_widening() -> tensor<i64> {
   // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<42> : tensor<i64>
   %cst = mhlo.constant dense<42> : tensor<i32>
   %0 = "mhlo.convert"(%cst) : (tensor<i32>) -> tensor<i64>
   // CHECK-NEXT: return [[CST]]
   return %0 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_int_widening
+func @const_int_widening() -> tensor<2xi32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0, 1]> : tensor<2xi32>
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xi32>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<2xi32>
 }
 
 // -----

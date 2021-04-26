@@ -120,6 +120,7 @@ REGISTER_OP("StatelessRandomGetKeyCounter")
     .Output("key: uint64")
     .Output("counter: uint64")
     .Attr("Tseed: {int32, int64} = DT_INT64")
+    .SetIsStateful()  // because outputs depend on device
     .SetShapeFn([](InferenceContext* c) {
       // Check seed shape
       ShapeHandle seed;
@@ -135,6 +136,7 @@ REGISTER_OP("StatelessRandomGetKeyCounter")
 
 REGISTER_OP("StatelessRandomGetAlg")
     .Output("alg: int32")
+    .SetIsStateful()  // because outputs depend on device
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->MakeShape({}));
       return Status::OK();

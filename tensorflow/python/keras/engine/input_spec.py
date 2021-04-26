@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 """Contains the InputSpec class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -43,7 +39,7 @@ class InputSpec(object):
   A None entry in a shape is compatible with any dimension,
   a None shape is compatible with any shape.
 
-  Arguments:
+  Args:
     dtype: Expected DataType of the input.
     shape: Shape tuple, expected shape of the input
       (may include None for unchecked axes). Includes the batch size.
@@ -162,7 +158,7 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
   This checks that the tensor(s) `inputs` verify the input assumptions
   of a layer (if any). If not, a clear and actional exception gets raised.
 
-  Arguments:
+  Args:
       input_spec: An InputSpec instance, list of InputSpec instances, a nested
           structure of InputSpec instances, or None.
       inputs: Input tensor, list of input tensors, or a nested structure of

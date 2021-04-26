@@ -46,7 +46,7 @@ static_shared:0
 dynamic_shared:0
 grid:1,1,1
 block:1,1,1
-occ_pct:0.5)MULTI"},
+occ_pct:50.0)MULTI"},
                 {StatType::kEquation, ""}});
 
   CreateXEvent(&device_trace_builder, &line_builder, "kernel_name_middle",
@@ -57,7 +57,7 @@ static_shared:0
 dynamic_shared:16384
 grid:2,1,1
 block:32,1,1
-occ_pct=0.13)MULTI"},
+occ_pct=13.0)MULTI"},
                 {StatType::kEquation, ""}});
 
   CreateXEvent(&device_trace_builder, &line_builder,
@@ -69,7 +69,7 @@ static_shared:0
 dynamic_shared:16384
 grid:3,1,1
 block:64,1,1
-occ_pct:0.25)MULTI"},
+occ_pct:25.0)MULTI"},
                 {StatType::kEquation, ""}});
 
   KernelReportMap reports;

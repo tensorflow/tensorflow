@@ -102,7 +102,7 @@ Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
             global,
             llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
-        .EmitReadArrayElement(index, b_);
+        .EmitReadArrayElement(index, b_, constant->name());
   };
 
   return Status::OK();

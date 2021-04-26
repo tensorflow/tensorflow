@@ -65,10 +65,6 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-// TODO(b/151345101): BroadcastSub is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 template <int N = 5>
 inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const RuntimeShape& input1_shape,
@@ -332,6 +328,50 @@ void BroadcastSubSlow(const ArithmeticParams& params,
             input1_data[SubscriptToIndex(desc1, indexes)] -
                 input2_data[SubscriptToIndex(desc2, indexes)],
             params.quantized_activation_min, params.quantized_activation_max);
+  };
+  NDOpsHelper<N>(output_desc, sub_func);
+}
+
+template <int N = 5>
+inline void BroadcastSub16POTSlow(const ArithmeticParams& params,
+                                  const RuntimeShape& input1_shape,
+                                  const int16_t* input1_data,
+                                  const RuntimeShape& input2_shape,
+                                  const int16_t* input2_data,
+                                  const RuntimeShape& output_shape,
+                                  int16_t* output_data) {
+  ruy::profiler::ScopeLabel label("BroadcastSub16POTSlow/int16_t");
+  NdArrayDesc<N> desc1;
+  NdArrayDesc<N> desc2;
+  NdArrayDesc<N> output_desc;
+  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
+                                      &desc2);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest stride,
+  // typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for the
+  // best cache behavior.
+  auto sub_func = [&](int indexes[N]) {
+    const int32_t input1_val = input1_data[SubscriptToIndex(desc1, indexes)];
+    const int32_t input2_val = input2_data[SubscriptToIndex(desc2, indexes)];
+    const int32_t scaled_input1_val =
+        gemmlowp::RoundingDivideByPOT(input1_val, -params.input1_shift);
+    const int32_t scaled_input2_val =
+        gemmlowp::RoundingDivideByPOT(input2_val, -params.input2_shift);
+    const int32_t raw_output = scaled_input1_val - scaled_input2_val;
+    const int32_t clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, raw_output));
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        static_cast<int16_t>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, sub_func);
 }

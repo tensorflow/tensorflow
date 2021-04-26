@@ -29,11 +29,14 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -81,49 +84,6 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
   entry->set_name(GetFullName(base_name, separator, id));
 }
 
-ShapeProto ConvertShapeProtoToPred(const ShapeProto& shape_proto) {
-  return ShapeUtil::ChangeElementType(Shape(shape_proto), PRED).ToProto();
-}
-
-void SetInstructionAsConstant(HloInstructionProto* instr, int64 id,
-                              const Shape& shape, bool pred) {
-  Literal literal = LiteralUtil::CreateR0(pred);
-  Literal literal_broadcast = literal.Broadcast(shape, {}).ValueOrDie();
-  *instr->mutable_shape() = shape.ToProto();
-  *instr->mutable_literal() = literal_broadcast.ToProto();
-  *instr->mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-}
-
-// Converts a HloComputation into ReducerOr with predicate types.
-HloComputationProto CreateReduceOr(int64 reducer_id,
-                                   HloComputationProto* original_reducer) {
-  HloComputationProto reducer;
-  SetProtoIdAndName(&reducer, StrCat("reduce_or"), kNameSeparator, reducer_id);
-  std::vector<int64> operands_id;
-  for (auto& inst : original_reducer->instructions()) {
-    // Copy params.
-    if (StringToHloOpcode(inst.opcode()).ValueOrDie() ==
-        HloOpcode::kParameter) {
-      HloInstructionProto* new_param = reducer.add_instructions();
-      *new_param = inst;
-      *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      operands_id.push_back(inst.id());
-    }
-    if (inst.id() == original_reducer->root_id()) {
-      HloInstructionProto* new_root = reducer.add_instructions();
-      *new_root = inst;
-      *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
-      new_root->clear_operand_ids();
-      for (int64 operand_id : operands_id) {
-        new_root->add_operand_ids(operand_id);
-      }
-      reducer.set_root_id(inst.id());
-    }
-  }
-  return reducer;
-}
-
 bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   HloOpcode opcode = StringToHloOpcode(instr_proto->opcode()).ValueOrDie();
   if (opcode == HloOpcode::kCustomCall &&
@@ -132,6 +92,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   }
   return false;
 }
+
 }  // namespace
 
 namespace internal {
@@ -225,6 +186,44 @@ StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
   return operand_shapes;
 }
 
+std::string XlaBuilder::OpToString(XlaOp op) const {
+  std::string s;
+  ToStringHelper(&s, /*ident=*/0, op.handle());
+  return s;
+}
+
+static std::string ShapeToString(const xla::ShapeProto& shape) {
+  if (shape.tuple_shapes_size() > 1) {
+    return absl::StrCat(
+        "(",
+        absl::StrJoin(shape.tuple_shapes(), ", ",
+                      [&](std::string* s, const xla::ShapeProto& subshape) {
+                        absl::StrAppend(s, ShapeToString(subshape));
+                      }),
+        ")");
+  }
+  return absl::StrCat("[", absl::StrJoin(shape.dimensions(), ", "), "]");
+}
+
+void XlaBuilder::ToStringHelper(std::string* out, int ident,
+                                int64 op_handle) const {
+  const HloInstructionProto& instr =
+      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+  absl::StrAppend(out, std::string(ident, ' '), instr.opcode(),
+                  ", shape=", ShapeToString(instr.shape()));
+  if (instr.has_metadata()) {
+    absl::StrAppend(out, ", metadata={", instr.metadata().source_file(), ":",
+                    instr.metadata().source_line(), "}");
+  }
+  if (instr.operand_ids_size()) {
+    absl::StrAppend(out, "\n");
+  }
+  absl::StrAppend(out, absl::StrJoin(instr.operand_ids(), "\n",
+                                     [&](std::string* s, int64 subop) {
+                                       ToStringHelper(s, ident + 2, subop);
+                                     }));
+}
+
 XlaBuilder::XlaBuilder(const string& computation_name)
     : name_(computation_name) {}
 
@@ -301,7 +300,7 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
   return GetProgramShape(root.handle());
 }
 
-void XlaBuilder::IsConstantVisitor(const int64 op_handle,
+void XlaBuilder::IsConstantVisitor(const int64 op_handle, int depth,
                                    absl::flat_hash_set<int64>* visited,
                                    bool* is_constant) const {
   if (visited->contains(op_handle) || !*is_constant) {
@@ -310,11 +309,21 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
 
   const HloInstructionProto& instr =
       *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+  HloInstructionProto to_print(instr);
+  to_print.clear_shape();
   const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
+  const string indent =
+      absl::StrJoin(std::vector<absl::string_view>(depth, "  "), "");
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << indent << "Visiting:";
+    for (const auto& l : absl::StrSplit(to_print.DebugString(), '\n')) {
+      VLOG(2) << indent << l;
+    }
+  }
   switch (opcode) {
     default:
       for (const int64 operand_id : instr.operand_ids()) {
-        IsConstantVisitor(operand_id, visited, is_constant);
+        IsConstantVisitor(operand_id, depth + 1, visited, is_constant);
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
@@ -351,9 +360,24 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     case HloOpcode::kParameter:
       *is_constant = false;
       break;
+    case HloOpcode::kGetTupleElement: {
+      const HloInstructionProto& operand_instr =
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+      if (HloOpcodeString(HloOpcode::kTuple) == operand_instr.opcode()) {
+        IsConstantVisitor(operand_instr.operand_ids(instr.tuple_index()),
+                          depth + 1, visited, is_constant);
+      } else {
+        for (const int64 operand_id : instr.operand_ids()) {
+          IsConstantVisitor(operand_id, depth + 1, visited, is_constant);
+        }
+      }
+    }
   }
-  if (!*is_constant) {
-    VLOG(1) << "Non-constant: " << instr.name();
+  if (VLOG_IS_ON(1) && !*is_constant) {
+    VLOG(1) << indent << "Non-constant: ";
+    for (const auto& l : absl::StrSplit(to_print.DebugString(), '\n')) {
+      VLOG(1) << indent << l;
+    }
   }
   visited->insert(op_handle);
 }
@@ -1277,7 +1301,8 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape->dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers, precision_config);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+                      preferred_element_type);
   });
 }
 
@@ -1867,7 +1892,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1900,7 +1926,7 @@ XlaOp XlaBuilder::CustomCall(
     }
     return CustomCallInternal(call_target_name, operands, shape, opaque,
                               operand_shapes_with_layout, has_side_effect,
-                              output_operand_aliasing);
+                              output_operand_aliasing, literal);
   });
 }
 
@@ -1910,7 +1936,8 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1920,6 +1947,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     for (const Shape& operand_shape : *operand_shapes_with_layout) {
       *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
     }
+  }
+  if (literal != nullptr) {
+    *instr.mutable_literal() = literal->ToProto();
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
   for (const auto& pair : output_operand_aliasing) {
@@ -1941,7 +1971,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1953,6 +1984,9 @@ XlaOp XlaBuilder::CustomCall(
     *instr.mutable_shape() = shape.ToProto();
     instr.set_custom_call_target(call_target_name);
     instr.set_backend_config(opaque);
+    if (literal != nullptr) {
+      *instr.mutable_literal() = literal->ToProto();
+    }
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
@@ -2691,14 +2725,16 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
                             int64 shard_count,
                             absl::Span<const ReplicaGroup> replica_groups,
                             const absl::optional<ChannelHandle>& channel_id,
-                            const absl::optional<Layout>& layout) {
+                            const absl::optional<Layout>& layout,
+                            const absl::optional<bool> use_global_device_ids) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllGatherShape(
-                            *operand_shape, all_gather_dimension, shard_count));
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        ShapeInference::InferAllGatherShape({operand_shape},
+                                            all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);
@@ -2711,6 +2747,9 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
     }
     if (channel_id.has_value()) {
       instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -2830,6 +2869,72 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
                            const std::vector<ReplicaGroup>& replica_groups,
                            const absl::optional<Layout>& layout) {
+  // Array all_to_all may need to violate layout constraint to be legal so use
+  // the tuple version.
+  if (layout.has_value()) {
+    return AllToAllTuple(operand, split_dimension, concat_dimension,
+                         split_count, replica_groups, layout);
+  }
+  return AllToAllArray(operand, split_dimension, concat_dimension, split_count,
+                       replica_groups);
+}
+
+XlaOp XlaBuilder::AllToAllArray(
+    XlaOp operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(
+        const Shape all_to_all_shape,
+        ShapeInference::InferAllToAllShape(*operand_shape, split_dimension,
+                                           concat_dimension, split_count));
+    HloInstructionProto instr;
+    *instr.mutable_shape() = operand_shape->ToProto();
+    if (replica_groups.empty()) {
+      auto* group = instr.add_replica_groups();
+      for (int64 i = 0; i < split_count; ++i) {
+        group->add_replica_ids(i);
+      }
+    } else {
+      for (const ReplicaGroup& group : replica_groups) {
+        *instr.add_replica_groups() = group;
+      }
+    }
+    instr.add_dimensions(split_dimension);
+    TF_ASSIGN_OR_RETURN(
+        XlaOp all_to_all,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
+    if (split_dimension == concat_dimension) {
+      return all_to_all;
+    }
+    DimensionVector sizes;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (i != split_dimension) {
+        sizes.push_back(operand_shape->dimensions(i));
+        continue;
+      }
+      sizes.push_back(split_count);
+      sizes.push_back(operand_shape->dimensions(i) / split_count);
+    }
+    all_to_all = Reshape(all_to_all, sizes);
+
+    std::vector<int64> permutation;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      int64 dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      if (i == concat_dimension) {
+        permutation.push_back(split_dimension);
+      }
+      permutation.push_back(dim_after_reshape);
+    }
+    all_to_all = Transpose(all_to_all, permutation);
+    return Reshape(all_to_all_shape, all_to_all);
+  });
+}
+
+XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                const std::vector<ReplicaGroup>& replica_groups,
+                                const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -3258,11 +3363,7 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
     // dimension.
     XlaOp static_size =
         ConstantR0<int32>(this, operand_shape->dimensions(dimension));
-
-    *instr.mutable_shape() = shape.ToProto();
-    instr.add_dimensions(dimension);
-    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
-                          {operand, static_size});
+    return SetDimensionSizeInternal(shape, operand, static_size, dimension);
   });
 }
 
@@ -3285,7 +3386,8 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-      HloOpcode::kConstant) {
+          HloOpcode::kConstant &&
+      shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(auto literal,
                         Literal::CreateFromProto(val_proto->literal(), true));
     if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
@@ -3308,257 +3410,8 @@ StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
 
   bool is_constant = true;
   absl::flat_hash_set<int64> visited;
-  IsConstantVisitor(operand.handle(), &visited, &is_constant);
+  IsConstantVisitor(operand.handle(), /*depth=*/0, &visited, &is_constant);
   return is_constant;
-}
-
-StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
-  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
-                      LookUpInstruction(root_op));
-
-  HloComputationProto entry;
-  SetProtoIdAndName(&entry, StrCat(name_, "_dynamic_inference"), kNameSeparator,
-                    GetNextId());
-  ProgramShapeProto* program_shape = entry.mutable_program_shape();
-  *program_shape->mutable_result() =
-      ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
-
-  std::vector<HloComputationProto> called_computatons;
-  // Process instruction and copy it into the new graph. The new node in the new
-  // graph with have id set to `id`.
-  auto process_instruction = [&](const HloInstructionProto* instr_proto,
-                                 bool need_rewrite, int64 id,
-                                 absl::Span<int64 const> operand_ids) {
-    // Rewrite the instruction with following rules:
-    // - Unary ops: Convert into bitcast (identity) with type Pred.
-    // - Binary ops: Convert into binary or.
-    // - Select: Convert into binary or with its two data operands.
-    // - Concat / Tuple/ GTE / Bitcast: Copy.
-    // - Param: Convert to constant True.
-    // - GetDimensionSize: Convert to constant True if dimension is dynamic,
-    // contant False if dimension is static.
-    // - Reduce: Convert to reduce or.
-    // - Constant: Convert to constant False.
-    // - Other ops: Not supported.
-    // Create the instruction for the new handle.
-    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
-                        StringToHloOpcode(instr_proto->opcode()));
-    auto* new_instr = entry.add_instructions();
-    *new_instr = *instr_proto;
-    new_instr->set_id(id);
-    new_instr->mutable_operand_ids()->Clear();
-    for (auto operand_id : operand_ids) {
-      new_instr->mutable_operand_ids()->Add(operand_id);
-    }
-
-    if (!need_rewrite) {
-      if (opcode == HloOpcode::kCompare) {
-        CHECK(!instr_proto->comparison_type().empty());
-        new_instr->set_comparison_type(
-            ComparisonTypeToString(Comparison::DefaultComparisonType(PRED)));
-      }
-      *new_instr->mutable_name() =
-          GetFullName(instr_proto->opcode(), kNameSeparator, id);
-      return Status::OK();
-    }
-    *new_instr->mutable_shape() = ConvertShapeProtoToPred(instr_proto->shape());
-    Shape new_shape(new_instr->shape());
-    switch (opcode) {
-      case HloOpcode::kAbs:
-      case HloOpcode::kRoundNearestAfz:
-      case HloOpcode::kBitcast:
-      case HloOpcode::kCeil:
-      case HloOpcode::kCollectivePermuteDone:
-      case HloOpcode::kCos:
-      case HloOpcode::kClz:
-      case HloOpcode::kExp:
-      case HloOpcode::kExpm1:
-      case HloOpcode::kFloor:
-      case HloOpcode::kImag:
-      case HloOpcode::kIsFinite:
-      case HloOpcode::kLog:
-      case HloOpcode::kLog1p:
-      case HloOpcode::kNot:
-      case HloOpcode::kNegate:
-      case HloOpcode::kPopulationCount:
-      case HloOpcode::kReal:
-      case HloOpcode::kRsqrt:
-      case HloOpcode::kLogistic:
-      case HloOpcode::kSign:
-      case HloOpcode::kSin:
-      case HloOpcode::kConvert:
-      case HloOpcode::kSqrt:
-      case HloOpcode::kCbrt:
-      case HloOpcode::kTanh:
-        CHECK_EQ(instr_proto->operand_ids_size(), 1);
-        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kBitcast);
-        break;
-      case HloOpcode::kAdd:
-      case HloOpcode::kAtan2:
-      case HloOpcode::kDivide:
-      case HloOpcode::kComplex:
-      case HloOpcode::kMaximum:
-      case HloOpcode::kMinimum:
-      case HloOpcode::kMultiply:
-      case HloOpcode::kPower:
-      case HloOpcode::kRemainder:
-      case HloOpcode::kSubtract:
-      case HloOpcode::kCompare:
-      case HloOpcode::kAnd:
-      case HloOpcode::kOr:
-      case HloOpcode::kXor:
-      case HloOpcode::kShiftLeft:
-      case HloOpcode::kShiftRightArithmetic:
-      case HloOpcode::kShiftRightLogical:
-        CHECK_EQ(instr_proto->operand_ids_size(), 2);
-        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
-        break;
-      case HloOpcode::kSelect:
-        break;
-      case HloOpcode::kGather:
-        break;
-      case HloOpcode::kReduce: {
-        int64 reducer_id = new_instr->called_computation_ids(0);
-        called_computatons.push_back(
-            CreateReduceOr(reducer_id, &embedded_[reducer_id]));
-        break;
-      }
-      case HloOpcode::kTuple:
-      case HloOpcode::kTranspose:
-      case HloOpcode::kGetTupleElement:
-      case HloOpcode::kSlice:
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kConcatenate:
-      case HloOpcode::kReshape:
-        break;
-      case HloOpcode::kGetDimensionSize: {
-        int64 dimension = instr_proto->dimensions(0);
-        int64 operand_handle = instr_proto->operand_ids(0);
-        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
-                            LookUpInstructionByHandle(operand_handle));
-
-        SetInstructionAsConstant(
-            new_instr, id, new_shape,
-            operand_proto->shape().is_dynamic_dimension(dimension));
-        break;
-      }
-      case HloOpcode::kConstant:
-      case HloOpcode::kIota:
-        SetInstructionAsConstant(new_instr, id, new_shape, false);
-        break;
-      case HloOpcode::kCustomCall:
-        if (instr_proto->custom_call_target() == "SetBound") {
-          SetInstructionAsConstant(new_instr, id, new_shape, true);
-          break;
-        } else {
-          return InvalidArgument(
-              "Dynamic inferencing on custom call %s is not supported",
-              instr_proto->DebugString());
-        }
-      case HloOpcode::kParameter:
-        SetInstructionAsConstant(new_instr, id, new_shape, true);
-        break;
-      default:
-        return InvalidArgument("Dynamic inferencing %s is not supported",
-                               instr_proto->DebugString());
-    }
-    *new_instr->mutable_name() =
-        GetFullName(instr_proto->opcode(), kNameSeparator, id);
-    return Status::OK();
-  };
-
-  struct WorkItem {
-    explicit WorkItem(int64 handle, bool need_rewrite)
-        : handle(handle), need_rewrite(need_rewrite), visited(false) {}
-    int64 handle;
-    // If need_rewrite is true, the instruction will be copied and rewrite into
-    // a pred instruction indicating if each value is dynamic. If need_rewrite
-    // is false, simply copy the instruction to the output graph.
-    // E.g.,
-    // For select(P, A, B), we need to rewrite A and B into predicates, but
-    // don't need to rewrite P.
-    bool need_rewrite;
-    // Used in dfs to remember the ids of processed operands of this item.
-    std::vector<int64> processed_operands;
-    // Whether this node been visited before or not.
-    bool visited;
-  };
-  // Only copy each pair of {handle, need_rewrite} once. Value is the id in the
-  // new graph.
-  absl::flat_hash_map<std::pair<int64, bool>, int64> seen;
-  // Monotonically increasing id to assign to new instructions.
-  int64 global_id = 0;
-  // The result id of the last rewritten item -- return value of last stack
-  // item.
-  int64 stacktop_id = -1;
-  std::vector<WorkItem> worklist;
-  worklist.push_back(WorkItem(root->id(), true));
-  while (!worklist.empty()) {
-    WorkItem& item = worklist.back();
-    auto item_key = std::make_pair(item.handle, item.need_rewrite);
-    auto iter = seen.find(item_key);
-    // Already processed this item. Return previous results.
-    if (iter != seen.end()) {
-      stacktop_id = iter->second;
-      worklist.pop_back();
-      continue;
-    }
-
-    int64 next_operand = item.processed_operands.size();
-    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
-                        LookUpInstructionByHandle(item.handle));
-    VLOG(3) << "Processing" << instr_proto->name();
-    if (!item.visited) {
-      item.visited = true;
-    } else {
-      // Record previous processed operand.
-      item.processed_operands.push_back(stacktop_id);
-      next_operand++;
-    }
-    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
-                        StringToHloOpcode(instr_proto->opcode()));
-    if (next_operand >= instr_proto->operand_ids_size() ||
-        opcode == HloOpcode::kGetDimensionSize ||
-        InstrIsSetBound(instr_proto)) {
-      // No more operands to process, process self.
-      int64 new_id = ++global_id;
-      VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
-      TF_RETURN_IF_ERROR(process_instruction(instr_proto, item.need_rewrite,
-                                             new_id, item.processed_operands));
-      stacktop_id = new_id;
-      seen[item_key] = stacktop_id;
-      worklist.pop_back();
-      continue;
-    }
-
-    WorkItem next_item(instr_proto->operand_ids(next_operand), true);
-    if (opcode == HloOpcode::kSelect && next_operand == 0) {
-      next_item.need_rewrite = false;
-    }
-    if (opcode == HloOpcode::kGather && next_operand == 1) {
-      next_item.need_rewrite = false;
-    }
-    // Push next operand into worklist.
-    worklist.push_back(next_item);
-  }
-  TF_RET_CHECK(stacktop_id != -1);
-  entry.set_root_id(stacktop_id);
-  absl::c_sort(*entry.mutable_instructions(),
-               [](const HloInstructionProto& p1,
-                  const HloInstructionProto& p2) { return p1.id() < p2.id(); });
-  XlaComputation computation(entry.id());
-  HloModuleProto* module = computation.mutable_proto();
-  module->set_name(entry.name());
-  module->set_id(entry.id());
-  module->set_entry_computation_name(entry.name());
-  module->set_entry_computation_id(entry.id());
-  *module->mutable_host_program_shape() = *program_shape;
-  for (auto& called_comp : called_computatons) {
-    *module->add_computations() = called_comp;
-  }
-  *module->add_computations() = std::move(entry);
-  XLA_VLOG_LINES(3, module->DebugString());
-  return std::move(computation);
 }
 
 StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
@@ -3582,11 +3435,13 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       LookUpInstruction(root_op));
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "Build constant subgraph for:\n" << OpToString(root_op);
+  }
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
                     GetNextId());
-  entry.set_root_id(root->id());
   ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
@@ -3594,20 +3449,36 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
+  absl::flat_hash_map<int64, int64> substitutions;
   absl::flat_hash_set<int64> related_calls;  // Related computations.
   std::queue<int64> worklist;
   worklist.push(root->id());
   related_ops.insert(root->id());
+
   while (!worklist.empty()) {
     int64 handle = worklist.front();
     worklist.pop();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
                         LookUpInstructionByHandle(handle));
 
+    auto default_behavior = [&related_ops, &worklist, &related_calls,
+                             instr_proto]() {
+      for (int64 id : instr_proto->operand_ids()) {
+        if (related_ops.insert(id).second) {
+          worklist.push(id);
+        }
+      }
+      for (int64 called_id : instr_proto->called_computation_ids()) {
+        related_calls.insert(called_id);
+      }
+    };
+
     if (instr_proto->opcode() ==
             HloOpcodeString(HloOpcode::kGetDimensionSize) ||
         InstrIsSetBound(instr_proto)) {
       int32 constant_value = -1;
+      HloInstructionProto const_instr;
+
       if (instr_proto->opcode() ==
           HloOpcodeString(HloOpcode::kGetDimensionSize)) {
         // At this point, BuildConstantSubGraph should never encounter a
@@ -3626,49 +3497,79 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
           constant_value =
               static_cast<int32>(operand_proto->shape().dimensions(dimension));
         }
+        Literal literal = LiteralUtil::CreateR0(constant_value);
+        *const_instr.mutable_literal() = literal.ToProto();
+        *const_instr.mutable_shape() = literal.shape().ToProto();
       } else {
-        TF_RET_CHECK(
-            absl::SimpleAtoi(instr_proto->backend_config(), &constant_value));
+        *const_instr.mutable_literal() = instr_proto->literal();
+        *const_instr.mutable_shape() = instr_proto->shape();
       }
-
-      Literal literal = LiteralUtil::CreateR0(constant_value);
-
-      HloInstructionProto const_instr;
-      *const_instr.mutable_shape() = literal.shape().ToProto();
-      *const_instr.mutable_literal() = literal.ToProto();
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
           const_instr;  // Add to the result constant graph.
-    } else {
-      for (int64 id : instr_proto->operand_ids()) {
+
+    } else if (instr_proto->opcode() ==
+               HloOpcodeString(HloOpcode::kGetTupleElement)) {
+      // Look through GTE(Tuple(..), i).
+      TF_ASSIGN_OR_RETURN(
+          const HloInstructionProto* maybe_tuple_instr,
+          LookUpInstructionByHandle(instr_proto->operand_ids(0)));
+
+      if (maybe_tuple_instr->opcode() == HloOpcodeString(HloOpcode::kTuple)) {
+        int64 id = maybe_tuple_instr->operand_ids(instr_proto->tuple_index());
+        // Enqueue any dependencies of `id`.
         if (related_ops.insert(id).second) {
           worklist.push(id);
         }
+        substitutions[handle] = id;
+
+      } else {
+        default_behavior();
       }
-      for (int64 called_id : instr_proto->called_computation_ids()) {
-        related_calls.insert(called_id);
-      }
+
+    } else {
+      default_behavior();
     }
   }
 
+  // Resolve any substitutions for the root id.
+  int64 root_id = root->id();
+  auto it = substitutions.find(root_id);
+  while (it != substitutions.end()) {
+    root_id = it->second;
+    it = substitutions.find(root_id);
+  }
+  entry.set_root_id(root_id);
+
   // Add related ops to the computation.
   for (int64 id : related_ops) {
+    if (substitutions.find(id) != substitutions.end()) {
+      // Skip adding this instruction; we will replace references to it with the
+      // substitution instruction's id.
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
                         LookUpInstructionByHandle(id));
 
-    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize) ||
+        InstrIsSetBound(instr_src)) {
       continue;
     }
-    if (InstrIsSetBound(instr_src)) {
-      continue;
-    }
-    auto* instr = entry.add_instructions();
-
+    HloInstructionProto* instr = entry.add_instructions();
     *instr = *instr_src;
+    // Replace operands in case we have substitutions mapped.
+    instr->clear_operand_ids();
+    for (int64 operand_id : instr_src->operand_ids()) {
+      auto it = substitutions.find(operand_id);
+      while (it != substitutions.end()) {
+        operand_id = it->second;
+        it = substitutions.find(operand_id);
+      }
+      instr->add_operand_ids(operand_id);
+    }
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
         StrCat(instr->name(), ".", entry.id(), ".", instr->id());
@@ -3688,7 +3589,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     }
   }
   *module->add_computations() = std::move(entry);
-
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "Constant computation:\n" << module->DebugString();
+  }
   return std::move(computation);
 }
 
@@ -3864,6 +3767,13 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
     }
 
     int64 computation_id = imported_computation.id();
+    for (int64 i = 0; i < imported_computation.instructions_size(); ++i) {
+      ImportedInstruction imported_instruction;
+      imported_instruction.computation_id = computation_id;
+      imported_instruction.instruction_index = i;
+      handle_to_imported_index_.insert(
+          {imported_computation.instructions(i).id(), imported_instruction});
+    }
     embedded_.insert({computation_id, std::move(imported_computation)});
   }
 }
@@ -4281,10 +4191,11 @@ XlaOp CustomCall(
     absl::Span<const XlaOp> operands, const Shape& shape, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithComputation(
@@ -4292,11 +4203,12 @@ XlaOp CustomCallWithComputation(
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
     const Shape& shape, const string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, computation, shape,
                              opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithLayout(
@@ -4305,10 +4217,11 @@ XlaOp CustomCallWithLayout(
     absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              operand_shapes_with_layout, has_side_effect,
-                             output_operand_aliasing);
+                             output_operand_aliasing, literal);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
@@ -4463,14 +4376,29 @@ XlaOp ReduceWindowWithGeneralPadding(
       padding);
 }
 
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindowWithGeneralPadding(
+      operands, init_values, computation, window_dimensions, window_strides,
+      base_dilations, window_dilations, padding);
+}
+
 XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,
                 int64 shard_count,
                 absl::Span<const ReplicaGroup> replica_groups,
                 const absl::optional<ChannelHandle>& channel_id,
-                const absl::optional<Layout>& layout) {
+                const absl::optional<Layout>& layout,
+                const absl::optional<bool> use_global_device_ids) {
   return operand.builder()->AllGather(operand, all_gather_dimension,
                                       shard_count, replica_groups, channel_id,
-                                      layout);
+                                      layout, use_global_device_ids);
 }
 
 XlaOp CrossReplicaSum(const XlaOp operand,
@@ -4492,6 +4420,15 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
+}
+
+XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
+                    int64 concat_dimension, int64 split_count,
+                    const std::vector<ReplicaGroup>& replica_groups,
+                    const absl::optional<Layout>& layout) {
+  return operand.builder()->AllToAllTuple(operand, split_dimension,
+                                          concat_dimension, split_count,
+                                          replica_groups, layout);
 }
 
 XlaOp CollectivePermute(

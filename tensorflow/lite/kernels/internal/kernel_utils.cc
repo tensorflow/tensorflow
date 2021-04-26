@@ -140,26 +140,6 @@ void RnnBatchStep(
                compute_row_sums);
 }
 
-void ComputeMatrixSums(int32_t* input_row_sums, int32_t* aux_input_row_sums,
-                       int32_t* recurrent_row_sums, int32_t* row_sums,
-                       const float* aux_input_ptr_batch, int num_units,
-                       int input_size, int aux_input_size,
-                       const int8_t* input_weights_ptr,
-                       const int8_t* aux_input_weights_ptr,
-                       const int8_t* recurrent_weights_ptr) {
-  memset(input_row_sums, 0, sizeof(int32_t) * num_units);
-  tensor_utils::ReductionSumVector(input_weights_ptr, input_row_sums, num_units,
-                                   input_size);
-  if (aux_input_ptr_batch) {
-    memset(aux_input_row_sums, 0, sizeof(int32_t) * num_units);
-    tensor_utils::ReductionSumVector(aux_input_weights_ptr, aux_input_row_sums,
-                                     num_units, aux_input_size);
-  }
-  memset(recurrent_row_sums, 0, sizeof(int32_t) * num_units);
-  tensor_utils::ReductionSumVector(recurrent_weights_ptr, recurrent_row_sums,
-                                   num_units, num_units);
-}
-
 void RnnBatchStep(
     const float* input_ptr_batch, const int8_t* input_weights_ptr,
     float input_weights_scale, const float* aux_input_ptr_batch,
@@ -187,10 +167,15 @@ void RnnBatchStep(
     }
     recurrent_row_sums = aux_input_row_sums + num_units;
     if (*compute_row_sums) {
-      ComputeMatrixSums(input_row_sums, aux_input_row_sums, recurrent_row_sums,
-                        row_sums, aux_input_ptr_batch, num_units, input_size,
-                        aux_input_size, input_weights_ptr,
-                        aux_input_weights_ptr, recurrent_weights_ptr);
+      tensor_utils::ReductionSumVector(input_weights_ptr, input_row_sums,
+                                       num_units, input_size);
+      if (aux_input_ptr_batch) {
+        tensor_utils::ReductionSumVector(aux_input_weights_ptr,
+                                         aux_input_row_sums, num_units,
+                                         aux_input_size);
+      }
+      tensor_utils::ReductionSumVector(
+          recurrent_weights_ptr, recurrent_row_sums, num_units, num_units);
       *compute_row_sums = false;
     }
   }

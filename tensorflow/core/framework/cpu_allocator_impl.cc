@@ -166,6 +166,8 @@ class CPUAllocatorFactory : public AllocatorFactory {
       cpu_allocator_->DeallocateRaw(ptr);
     }
 
+    bool SupportsCoalescing() const override { return false; }
+
    private:
     CPUAllocator* cpu_allocator_;
   };

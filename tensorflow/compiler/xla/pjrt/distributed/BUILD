@@ -116,6 +116,9 @@ tf_cc_test(
     name = "client_server_test",
     size = "small",
     srcs = ["client_server_test.cc"],
+    tags = [
+        "notsan",  # Occassionally times out.
+    ],
     deps = [
         ":client",
         ":distributed",

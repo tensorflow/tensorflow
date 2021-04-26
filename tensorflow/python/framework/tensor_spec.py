@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -114,6 +114,7 @@ class DenseSpec(type_spec.TypeSpec):
 
 
 @tf_export("TensorSpec")
+@type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   """Describes a tf.Tensor.
 
@@ -219,6 +220,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
+@type_spec.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec):
   """A `TensorSpec` that specifies minimum and maximum values.
 

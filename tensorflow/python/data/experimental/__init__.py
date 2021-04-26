@@ -23,9 +23,10 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
-@@Counter
 @@CheckpointInputPipelineHook
+@@Counter
 @@CsvDataset
+@@DatasetInitializer
 @@DatasetStructure
 @@DistributeOptions
 @@ExternalStatePolicy
@@ -55,6 +56,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@distribute
+@@enable_debug_mode
 @@enumerate_dataset
 @@from_variant
 @@get_next_as_optional
@@ -63,6 +65,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
+@@index_table_from_dataset
 @@latency_stats
 @@load
 @@make_batched_features_dataset
@@ -79,6 +82,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@scan
 @@shuffle_and_repeat
 @@snapshot
+@@table_from_dataset
 @@take_while
 @@to_variant
 @@unbatch
@@ -86,6 +90,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AUTOTUNE
 @@INFINITE_CARDINALITY
+@@SHARD_HINT
 @@UNKNOWN_CARDINALITY
 """
 
@@ -105,6 +110,7 @@ from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
@@ -122,6 +128,9 @@ from tensorflow.python.data.experimental.ops.io import load
 from tensorflow.python.data.experimental.ops.io import save
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
+from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
+from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
@@ -146,6 +155,7 @@ from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant

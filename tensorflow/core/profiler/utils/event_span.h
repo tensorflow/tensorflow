@@ -38,33 +38,41 @@ enum EventType {
   UNKNOWN_TIME = 0,
   // Host is computing.
   HOST_COMPUTE = 10,
+  // Host is preprocessing the data before the execution on device.
+  HOST_PREPROCESS = 20,
+  // Host is postprocessing the data after the execution on device.
+  HOST_POSTPROCESS = 30,
+  // Host is batching data (for inference).
+  HOST_BATCH_FORMATION = 40,
+  // Host runtime, like memory allocation and etc.
+  HOST_RUNTIME = 50,
   // Host is compiling.
-  HOST_COMPILE = 20,
+  HOST_COMPILE = 60,
   // Host-to-host communication.
-  HOST_TO_HOST = 30,
+  HOST_TO_HOST = 70,
   // Host-to-device communication.
-  HOST_TO_DEVICE = 40,
+  HOST_TO_DEVICE = 80,
   // Host is preparing to launch a computation on device.
-  HOST_PREPARE = 50,
+  HOST_PREPARE = 90,
   // Assigns a smaller priority to DEVICE_COLLECTIVES than HOST_WAIT_INPUT,
   // because if an all-reduce event is overlapped with an host-wait-input event,
   // we want to count it as waiting for input.
   // Collective Ops such as All-Reduce.
-  DEVICE_COLLECTIVES = 60,
+  DEVICE_COLLECTIVES = 100,
   // Host is waiting for input.
-  HOST_WAIT_INPUT = 70,
+  HOST_WAIT_INPUT = 110,
   // Device-to-device communication.
-  DEVICE_TO_DEVICE = 80,
+  DEVICE_TO_DEVICE = 120,
   // Device-to-host communication.
-  DEVICE_TO_HOST = 90,
+  DEVICE_TO_HOST = 130,
   // Device is computing with 32-bit precision.
-  DEVICE_COMPUTE_32 = 100,
+  DEVICE_COMPUTE_32 = 140,
   // Device is computing with 16-bit precision.
-  DEVICE_COMPUTE_16 = 110,
+  DEVICE_COMPUTE_16 = 150,
   // Device is waiting for another device.
-  DEVICE_WAIT_DEVICE = 120,
+  DEVICE_WAIT_DEVICE = 160,
   // Device is waiting for host.
-  DEVICE_WAIT_HOST = 130,
+  DEVICE_WAIT_HOST = 170,
   LAST_EVENT_TYPE = DEVICE_WAIT_HOST
 };
 
@@ -122,6 +130,7 @@ enum class StepMarkerType {
 struct StepMarker {
   StepMarkerType type;
   std::string event_name;  // name of this event.
+  std::string step_name;
   Timespan span;           // timespan of this event.
   StepMarker(StepMarkerType step_marker_type, absl::string_view name,
              Timespan s)
@@ -180,6 +189,10 @@ class StepDetails {
   // Accumulates the device memory transfers from another step to this step.
   void AggregateDeviceMemoryTransfers(
       const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+  // Returns the step name.
+  std::string StepName() const { return step_name_; }
+  // Sets the name of this step.
+  void SetStepName(std::string step_name) { step_name_ = step_name; }
   // Equality test.
   bool operator==(const StepDetails& other) const;
   // Inequality test.
@@ -202,6 +215,7 @@ class StepDetails {
   // TODO(jiesun): Consider to use IntervalSet instead of just sum up the event
   // durations.
   std::vector<DeviceMemoryTransfer> device_memory_transfers_;
+  std::string step_name_;
 };
 
 // Map from step_id to the events happened in that step.

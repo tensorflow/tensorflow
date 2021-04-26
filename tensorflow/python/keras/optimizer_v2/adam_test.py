@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Adam."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -113,7 +109,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -203,7 +199,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def doTestBasic(self, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -261,7 +257,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithAmsgrad(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, v0hat, m1, v1, v1hat = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -353,7 +349,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasicWithLearningRateDecay(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -398,7 +394,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasicWithLearningRateInverseTimeDecay(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -445,7 +441,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testTensorLearningRate(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -484,7 +480,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSharing(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -565,7 +561,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -655,7 +651,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def doTestBasic(self, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -715,7 +711,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithAmsgrad(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, v0hat, m1, v1, v1hat = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -809,7 +805,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasicWithLearningRateDecay(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -854,7 +850,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasicWithLearningRateInverseTimeDecay(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -901,7 +897,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testTensorLearningRate(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -940,7 +936,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSharing(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

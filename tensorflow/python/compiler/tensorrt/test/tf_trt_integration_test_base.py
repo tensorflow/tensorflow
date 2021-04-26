@@ -35,7 +35,9 @@ from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
@@ -119,7 +121,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def trt_incompatible_op(self):
-    return math_ops.erf
+    return math_ops.erfc
 
   @property
   def precision_modes(self):
@@ -161,6 +163,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self._trt_test_params = None
     self._disable_non_trt_optimizers = False
     self._use_implicit_batch = True
+    self._profile_strategy = "Unknown"
 
   def setUp(self):
     """Setup method."""
@@ -262,8 +265,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def DisableNonTrtOptimizers(self):
     self._disable_non_trt_optimizers = True
 
-  def DisableImplicitBatchMode(self):
+  def SetDynamicShapeModeAndProfileStrategy(self, profile_strategy="Range"):
     self._use_implicit_batch = False
+    self._profile_strategy = profile_strategy
 
   def GetParams(self):
     """Returns a TfTrtIntegrationTestParams for the test."""
@@ -331,17 +335,21 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Get config proto based on specific settings."""
     conversion_params = self.GetConversionParams(run_params)
     max_batch_size = self.GetMaxBatchSize(run_params)
+
     if graph_state == GraphState.INFERENCE and run_params.convert_online:
       rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
           conversion_params,
           is_dynamic_op=run_params.dynamic_engine,
-          max_batch_size=max_batch_size)
-      graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
+          max_batch_size=max_batch_size,
+          disable_non_trt_optimizers=self._disable_non_trt_optimizers)
     else:
-      graph_options = config_pb2.GraphOptions()
+      rewriter_cfg = rewriter_config_pb2.RewriterConfig()
+      if self._disable_non_trt_optimizers:
+        trt_utils.disable_non_trt_optimizers_in_rewriter_config(rewriter_cfg)
 
     config = config_pb2.ConfigProto(
-        gpu_options=self._GetGPUOptions(), graph_options=graph_options)
+        gpu_options=self._GetGPUOptions(),
+        graph_options=config_pb2.GraphOptions(rewrite_options=rewriter_cfg))
     return config
 
   def _GetFeedNames(self):
@@ -447,11 +455,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params)
+          conversion_params=conversion_params,
+          use_dynamic_shape=not self._use_implicit_batch,
+          dynamic_shape_profile_strategy=self._profile_strategy)
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
-      if not self._use_implicit_batch:
-        converter_v2._test_only_use_implicit_batch = False  # pylint: disable=protected-access
       return converter_v2
 
     converter_v1 = trt_convert.TrtGraphConverter(
@@ -821,7 +829,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_engine = not node.attr["static_engine"].b
         self.assertNotEmpty(segment_funcdef_name, node.name)
         self.assertIn(function_name, functions)
-        if not IsQuantizationWithCalibration and not is_dynamic_engine:
+        if (not IsQuantizationWithCalibration(run_params) and
+            not is_dynamic_engine):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)
@@ -859,9 +868,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       return
     expected_engines = self.ExpectedEnginesToBuild(run_params)
     all_op_names = [node.name for node in gdef_to_verify.node]
-    trt_op_names = [
-        node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
-    ]
+    trt_op_names = []
     for func in gdef_to_verify.library.function:
       if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
                        func.signature.name):
@@ -869,6 +876,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           all_op_names.append(node.name)
           if node.op == "TRTEngineOp":
             trt_op_names.append(node.name)
+            if not self._use_implicit_batch:
+              self.assertEqual(
+                  self._ToString(node.attr["profile_strategy"].s).lower(),
+                  self._profile_strategy.lower())
 
     all_op_names = self._Canonicalize(all_op_names)
     trt_op_names = self._RemoveGraphSequenceNumber(

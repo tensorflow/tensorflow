@@ -203,6 +203,11 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
+  // Same as MakeComputationPostOrder() but only returns the computations
+  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<HloComputation*>& allow_list) const;
+
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
   std::vector<HloComputation*> MakeComputationSorted() const;
@@ -223,6 +228,9 @@ class HloModule {
 
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
+
+  bool is_dynamic() const { return is_dynamic_; }
+  void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
   // Return a string representation of the module.
   //
@@ -427,6 +435,9 @@ class HloModule {
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;
+
+  // True if the module contains dynamic computation.
+  bool is_dynamic_ = false;
 };
 
 }  // namespace xla

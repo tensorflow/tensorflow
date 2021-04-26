@@ -269,9 +269,7 @@ TEST_F(ExportTest, ExportMinRuntime) {
   auto buf = model->metadata()->Get(0)->buffer();
   auto* buffer = (*model->buffers())[buf];
   auto* array = buffer->data();
-  std::string version(reinterpret_cast<const char*>(array->data()),
-                      array->size());
-  EXPECT_EQ(version, "1.6.0");
+  EXPECT_EQ(reinterpret_cast<const char*>(array->data()), std::string("1.6.0"));
 }
 
 TEST_F(ExportTest, ExportEmptyMinRuntime) {
@@ -288,9 +286,7 @@ TEST_F(ExportTest, ExportEmptyMinRuntime) {
   auto buf = model->metadata()->Get(0)->buffer();
   auto* buffer = (*model->buffers())[buf];
   auto* array = buffer->data();
-  std::string version(reinterpret_cast<const char*>(array->data()),
-                      array->size());
-  EXPECT_EQ(version, "");
+  EXPECT_EQ(reinterpret_cast<const char*>(array->data()), std::string(""));
 }
 
 TEST_F(ExportTest, UnsupportedControlFlowErrors) {
@@ -786,18 +782,15 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
 TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   Model model;
   auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
-  op->tensorflow_op = "HashTableV2";
+  op->tensorflow_op = "UnsupportedOp";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
   const toco::OperatorSignature op_signature = {op.get(), &model};
   const auto key = details::OperatorKey(op_signature, ops_by_type, true);
 
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
-  EXPECT_EQ(key.custom_code(), "HashTableV2");
+  EXPECT_EQ(key.custom_code(), "UnsupportedOp");
   EXPECT_EQ(key.version(), 1);
-  // While HashTableV2 is excluded from the allowlisted flex op list, eventually
-  // it won't be, and the following expectations will need to change as the op
-  // is explicitly denylisted due to lack of asset support.
   EXPECT_FALSE(key.is_flex_op());
   EXPECT_FALSE(key.is_unsupported_flex_op());
 }

@@ -9,10 +9,8 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -45,7 +43,7 @@ py_library(
         "saved_model_experimental.py",
         "saving_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":load_context",
         "//tensorflow/python:lib",
@@ -61,11 +59,11 @@ py_library(
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/mixed_precision:autocast_variable",
         "//tensorflow/python/keras/protobuf:saved_metadata_proto_py",
+        "//tensorflow/python/keras/saving/utils_v1",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/saved_model/model_utils",
         "//tensorflow/python/training/tracking",
     ],
 )
@@ -75,7 +73,7 @@ py_library(
     srcs = [
         "saved_model/load_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )
 
@@ -111,9 +109,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "hdf5_format_test",
+    name = "save_weights_test",
     size = "medium",
-    srcs = ["hdf5_format_test.py"],
+    srcs = ["save_weights_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -134,6 +132,7 @@ tf_py_test(
     size = "medium",
     srcs = ["save_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_v2",
@@ -171,7 +170,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no_windows",
-        "notap",  # TODO(b/161198218): flaky timeout
+        "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [
         "//tensorflow/python:client_testlib",

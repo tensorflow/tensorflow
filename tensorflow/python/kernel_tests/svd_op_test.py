@@ -61,6 +61,19 @@ class SvdOpTest(test.TestCase):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testBadInputs(self):
+    # The input to svd should be a tensor of at least rank 2.
+    for bad_val in [np.nan, np.inf]:
+      matrix = np.array([[1, bad_val], [0, 1]])
+      s, u, v = linalg_ops.svd(matrix, compute_uv=True)
+      s, u, v = self.evaluate([s, u, v])
+      for i in range(2):
+        self.assertTrue(np.isnan(s[i]))
+        for j in range(2):
+          self.assertTrue(np.isnan(u[i, j]))
+          self.assertTrue(np.isnan(v[i, j]))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testExecuteMultipleWithoutError(self):
     all_ops = []
     shape = [6, 5]
@@ -163,7 +176,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
     else:
@@ -172,7 +185,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val = self.evaluate(s_tf)
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
     if compute_uv_:
@@ -284,7 +297,7 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
     epsilon = np.finfo(dtype_).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       tf_a = constant_op.constant(a)
       if compute_uv_:
         tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)

@@ -26,14 +26,16 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import   array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -47,6 +49,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
@@ -218,7 +223,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(out.get_shape(), inp.get_shape())
       self.assertEqual(out.dtype, inp.dtype)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
 
@@ -255,7 +260,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(out.get_shape().as_list(), inp.get_shape().as_list())
       self.assertEqual(out.dtype, inp.dtype)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
       full_dropout_values = sess.run(
@@ -283,7 +288,7 @@ class RNNTest(test.TestCase):
           cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
     self.assertEqual(len(dynamic_outputs), len(inputs))
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       input_value = np.random.randn(batch_size, input_size)
       dynamic_values = sess.run(
           dynamic_outputs,
@@ -319,7 +324,7 @@ class RNNTest(test.TestCase):
                                      1.0 * (2 + 1) * np.ones((input_size)))))
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -383,7 +388,7 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       cell = rnn_cell.LSTMCell(
@@ -406,7 +411,7 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       cell = rnn_cell.LSTMCell(
@@ -437,7 +442,7 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
@@ -578,7 +583,7 @@ class LSTMTest(test.TestCase):
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
@@ -676,7 +681,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
@@ -710,7 +715,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(dtypes.float64, shape=(None, input_size))
@@ -747,7 +752,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None, input_size))
       ]
@@ -804,7 +809,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       sequence_length = array_ops.placeholder(dtypes.int64)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
@@ -1146,7 +1151,7 @@ class LSTMTest(test.TestCase):
           state_is_tuple=False)
 
     ########### Step 1: Run static graph and generate readouts
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       if in_graph_mode:
         concat_inputs = array_ops.placeholder(
             dtypes.float32, shape=(time_steps, batch_size, input_size))
@@ -1206,7 +1211,7 @@ class LSTMTest(test.TestCase):
             static_individual_variable_gradients, feed_dict=feeds)
 
     ########## Step 2: Run dynamic graph and generate readouts
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       if in_graph_mode:
         concat_inputs = array_ops.placeholder(
             dtypes.float32, shape=(time_steps, batch_size, input_size))
@@ -1367,7 +1372,7 @@ class BidirectionalRNNTest(test.TestCase):
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testBidirectionalRNN(self, use_shape):
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalRNN(use_shape, True))
       variables_lib.global_variables_initializer().run()
@@ -1414,7 +1419,7 @@ class BidirectionalRNNTest(test.TestCase):
       self.assertAllClose(s_fw, s_bw)
 
   def _testBidirectionalRNNWithoutSequenceLength(self, use_shape):
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, _ = (
           self._createBidirectionalRNN(use_shape, False))
       variables_lib.global_variables_initializer().run()
@@ -1499,7 +1504,7 @@ class BidirectionalRNNTest(test.TestCase):
 
   def _testBidirectionalDynamicRNN(self, use_shape, use_state_tuple,
                                    use_time_major, use_sequence_length):
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalDynamicRNN(
               use_shape, use_state_tuple, use_time_major, use_sequence_length))
@@ -1577,7 +1582,7 @@ class BidirectionalRNNTest(test.TestCase):
     # REMARKS: factory(scope) is a function accepting a scope
     #          as an argument, such scope can be None, a string
     #          or a VariableScope instance.
-    with self.session(use_gpu=True, graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -1900,7 +1905,7 @@ class StateSaverRNNTest(test.TestCase):
     batch_size = 2
     state_saver = TestStateSaver(batch_size, 2 * num_units)
 
-    with self.session(use_gpu=True, graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           self._factory(scope=scope, state_saver=state_saver)
@@ -1979,7 +1984,7 @@ class GRUTest(test.TestCase):
 
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
-    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       concat_inputs = array_ops.placeholder(
           dtypes.float32, shape=(time_steps, batch_size, input_size))
 
@@ -2001,7 +2006,7 @@ class GRUTest(test.TestCase):
       sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -2293,7 +2298,7 @@ class RawRNNTest(test.TestCase):
           np.ones((max_time, batch_size, 1), np.int64), output_vals[1])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -2411,7 +2416,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
           sequence_length=sequence_length,
           dtype=dtypes.float32)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
       run_metadata = config_pb2.RunMetadata()
       variables_lib.global_variables_initializer().run()
@@ -2898,7 +2903,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       return
 
     gpu_dev = test.gpu_device_name()
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])
@@ -3059,6 +3064,29 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         config_copy["cell"]["config"])
     reconstructed_wrapper = wrapper_cls.from_config(config_copy)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
+
+  def testSavedModel(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/175887901")
+
+    with self.cached_session():
+      root = tracking.AutoTrackable()
+      root.cell = rnn_cell_impl.LSTMCell(8)
+      @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
+      def call(x):
+        state = root.cell.zero_state(3, dtype=x.dtype)
+        y, _ = root.cell(x, state)
+        return y
+      root.call = call
+      expected = root.call(array_ops.zeros((3, 8)))
+      self.evaluate(variables_lib.global_variables_initializer())
+
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(root, save_dir)
+      loaded = load.load(save_dir)
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.assertAllClose(
+          expected, loaded.call(array_ops.zeros((3, 8))))
 
 
 @test_util.run_all_in_graph_and_eager_modes

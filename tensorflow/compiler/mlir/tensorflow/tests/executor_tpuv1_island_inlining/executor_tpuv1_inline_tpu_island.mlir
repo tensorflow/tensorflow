@@ -35,11 +35,11 @@ module {
   }
 // CHECK-NOT: _tpu_v1_compat_outlined
   module @_tpu_v1_compat_outlined {
-    func @_tpu_v1_compat_outlined_func0(%arg0: tensor<i1>) -> tensor<i1> attributes {sym_visibility = "nested"} {
+    func nested @_tpu_v1_compat_outlined_func0(%arg0: tensor<i1>) -> tensor<i1> {
       %0 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
       return %0 : tensor<i1>
     }
-    func @_tpu_v1_compat_outlined_func1(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (tensor<i1>, tensor<i32>) attributes {sym_visibility = "nested"}  {
+    func nested @_tpu_v1_compat_outlined_func1(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (tensor<i1>, tensor<i32>) {
       %0 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
       %1 = "tf.opA"(%0) : (tensor<i1>) -> tensor<i1>
       %2 = "tf.SomeOp"(%arg0, %arg1) : (tensor<i1>, tensor<f32>) -> tensor<i32>

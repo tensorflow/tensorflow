@@ -137,7 +137,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual("output", output_details[0]["name"])
     self.assertEqual(np.uint8, output_details[0]["dtype"])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
-    self.assertTrue(output_details[0]["quantization"][0] > 0)  # scale
+    self.assertGreater(output_details[0]["quantization"][0], 0)  # scale
 
   def testGraphDefQuantizationInvalid(self):
     with ops.Graph().as_default():
@@ -159,9 +159,9 @@ class ConvertTest(test_util.TensorFlowTestCase):
           enable_mlir_converter=False,
           inference_type=dtypes.uint8)
     self.assertEqual(
-        "std_dev and mean must be defined when inference_type or "
-        "inference_input_type is QUANTIZED_UINT8 or INT8.",
-        str(error.exception))
+        "The `quantized_input_stats` flag must be defined when either "
+        "`inference_type` flag or `inference_input_type` flag is set to "
+        "tf.int8 or tf.uint8.", str(error.exception))
 
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):

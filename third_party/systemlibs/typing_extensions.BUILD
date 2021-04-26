@@ -6,7 +6,7 @@ licenses(["notice"])  # PSF
 
 py_library(
     name = "typing_extensions",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 

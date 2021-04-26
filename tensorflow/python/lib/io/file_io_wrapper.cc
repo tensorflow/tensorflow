@@ -239,7 +239,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              py::gil_scoped_release release;
              auto* env = tensorflow::Env::Default();
              std::unique_ptr<WritableFile> self;
-             const auto status = mode.find("a") == std::string::npos
+             const auto status = mode.find('a') == std::string::npos
                                      ? env->NewWritableFile(filename, &self)
                                      : env->NewAppendableFile(filename, &self);
              py::gil_scoped_acquire acquire;
