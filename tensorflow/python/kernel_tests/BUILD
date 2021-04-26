@@ -2696,7 +2696,11 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2897,7 +2901,11 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//third_party/py/numpy",
     ],
 )
 
