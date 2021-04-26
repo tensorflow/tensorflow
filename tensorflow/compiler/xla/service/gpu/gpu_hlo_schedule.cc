@@ -197,10 +197,8 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
   // Initialize thunk_launch_order_, the total order of thunk launches.
   HloComputation* entry_computation = module->entry_computation();
   if (stream_assignment.StreamCount() == 1) {
-    // Use `DFSMemoryScheduler` to be consistent with previous / CPU backend
-    // behavior.
-    // TODO(timshen): Using the default schedule seems to cause tests to fail.
-    // The exact reason unknown. Investigate it.
+    // All kernels are launched on a single stream, so there's no loss of
+    // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         HloSchedule sequences,
         ScheduleModule(
