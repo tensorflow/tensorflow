@@ -762,6 +762,9 @@ cc_test(
     size = "small",
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
+    tags = [
+        "nomsan",  # TODO(b/186359792)
+    ],
     deps = [
         ":framework",
         ":optional_debug_tools",
