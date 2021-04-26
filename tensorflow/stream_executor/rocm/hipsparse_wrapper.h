@@ -102,6 +102,8 @@ namespace wrap {
   __macro(hipsparseSetStream)                   \
   __macro(hipsparseSetMatIndexBase)             \
   __macro(hipsparseSetMatType)                  \
+  __macro(hipsparseSpMM_bufferSize)             \
+  __macro(hipsparseSpMM)                        \
   __macro(hipsparseXcoo2csr)                    \
   __macro(hipsparseXcsr2coo)                    \
   __macro(hipsparseXcsrgeam2Nnz)                \
