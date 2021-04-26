@@ -318,6 +318,8 @@ class StructSpec(type_spec.TypeSpec):
   def from_value(cls, value):
     value_fields = value.__dict__
     spec_fields = nest.map_structure(_replace_tensor_with_spec, value_fields)
+    spec_fields.pop('_tf_struct_cached_type_spec', None)
+    spec_fields.pop('_tf_struct_cached_fields', None)
     return _create_object_from_type_and_dict(cls, spec_fields)
 
   def __setattr__(self, name, value):
