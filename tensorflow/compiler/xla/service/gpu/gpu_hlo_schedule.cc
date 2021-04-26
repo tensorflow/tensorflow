@@ -208,7 +208,7 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
             [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             },
-            ComputationSchedulerToModuleScheduler(DFSMemoryScheduler)));
+            ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler)));
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =
