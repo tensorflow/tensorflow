@@ -124,6 +124,12 @@ setattr(_current_module, "flags", flags)
 
 _major_api_version = 1
 
+# Add module aliases from Keras to TF.
+# Some tf endpoints actually lives under Keras.
+if (hasattr(_current_module, "keras") and
+    _os.environ.get("_PREFER_OSS_KERAS", False)):
+  _current_module.layers.InputSpec = keras.layers.InputSpec
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin
