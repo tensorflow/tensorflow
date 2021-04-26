@@ -239,6 +239,9 @@ __device__ T ReduceBlockAlongCols(ReduceOp reduce_op, const T& value,
 // threads within a block cooperate to reduce over the block's segment.
 // Note that Tinit is needed because Tvec and Treducevec may be vector types,
 // but Tinit is always a scalar type.
+// Note that the first dimension of input_vec is nouter if indices is not
+// provided; otherwise it is indexed indirectly via indices and can have any
+// size (as long as it spans at least the maximum value in indices).
 template <typename Treducevec, typename Tvec, typename Tindex,
           typename Tsegmentids, typename ReduceOp, typename Tinit>
 __global__ void SegmentReduceVectorKernel(
@@ -263,7 +266,7 @@ __global__ void SegmentReduceVectorKernel(
       Treducevec result = Treducevec(initial_value);
       // Loop over the segment, reducing blockDim.y elements at a time.
       for (Tindex y_offset = begin; y_offset < end; y_offset += blockDim.y) {
-        const bool y_ok = y_offset + y < end;
+        const bool y_ok = (y_offset + y) < end;
         // Perform indirect lookup if required.
         const Tindex y_idx =
             indices && y_ok ? indices[y_offset + y] : y_offset + y;
@@ -373,6 +376,8 @@ __global__ void SegmentReduceEpilogueKernel(
 
 // Normalizes output_raw based on segment size and casts from Treducevec to
 // Tvec. If Tvec == Treducevec, this is safe to call with output_raw == output.
+// Note that Treducevec is the type that was used for the reduction, which may
+// be a higher-precision type than the output type Tvec (e.g., float vs. half).
 template <typename Tvec, typename Treducevec, typename Tindex,
           typename Tsegmentids, typename Tinit>
 Status LaunchSegmentReduceEpilogueKernel(
@@ -505,11 +510,9 @@ struct SegmentReduceGPUVectorized {
                       bool is_sqrtn, const T* input,
                       const Tsegmentids* segment_ids, const Tindex* indices,
                       T* output) {
-      DCHECK_EQ(ninner % vec_size, 0);  // Crash OK
-      DCHECK_EQ(reinterpret_cast<std::uintptr_t>(input) % vec_size,
-                0);  // Crash OK
-      DCHECK_EQ(reinterpret_cast<std::uintptr_t>(output) % vec_size,
-                0);  // Crash OK
+      DCHECK_EQ(ninner % vec_size, 0);
+      DCHECK_EQ(reinterpret_cast<std::uintptr_t>(input) % vec_size, 0);
+      DCHECK_EQ(reinterpret_cast<std::uintptr_t>(output) % vec_size, 0);
       Tindex ninner_vec = ninner / vec_size;
       using Tvec = AlignedVector<T, vec_size>;
       using Treducevec = AlignedVector<Treduce, vec_size>;
@@ -544,14 +547,6 @@ Status SegmentReduceGPU(OpKernelContext* ctx, Tindex nouter, Tindex ninner,
                         const Tindex* indices,           // [nouter] (optional)
                         T* output) {                     // [nsegments, ninner]
   if (ninner == 0 || nsegments == 0) return Status::OK();
-  if (nouter == 0) {
-    // Just fill output with empty_segment_value and return.
-    const GPUDevice& device = ctx->eigen_gpu_device();
-    GpuLaunchConfig config = GetGpuLaunchConfig(nsegments * ninner, device);
-    return GpuLaunchKernel(SetToValue<T>, config.block_count,
-                           config.thread_per_block, 0, device.stream(),
-                           nsegments * ninner, output, empty_segment_value);
-  }
   return DispatchToVectorized<
       T, SegmentReduceGPUVectorized<Treduce>::template Impl>(
       MinAlignmentOf(input, output, ninner), ctx, nouter, ninner, nsegments,
