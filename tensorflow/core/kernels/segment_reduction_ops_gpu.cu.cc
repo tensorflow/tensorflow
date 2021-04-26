@@ -408,6 +408,68 @@ struct CastFunctor {
 
 template <typename Treducevec, typename Tvec, typename Tindex,
           typename Tsegmentids, typename ReduceOp, typename Tinit>
+Status SegmentReduceGPUImplNoInnerDim(
+    OpKernelContext* ctx, Tindex nouter,
+    Tsegmentids nsegments, ReduceOp reduce_op, Tinit initial_value,
+    Tinit empty_segment_value, bool is_mean, bool is_sqrtn,
+    const Tvec* input_vec,          // [nouter or any]
+    const Tindex* segment_offsets,  // [nsegments + 1]
+    const Tindex* indices,          // [nouter] (optional)
+    Tvec* output_vec) {             // [nsegments]
+  // Here we use gpuprim::DeviceSegmentedReduce (which is optimized for this
+  // shape) and add the additional required functionality using fancy input
+  // iterators and an epilogue kernel.
+
+  // Note: This reinterpret cast is only needed to avoid compilation error
+  // when Tvec != Treducevec; the result is only used if Tvec == Treducevec.
+  Treducevec* output_raw_ptr = reinterpret_cast<Treducevec*>(output_vec);
+  Tensor output_raw;
+  bool need_temp_output = !std::is_same<Tvec, Treducevec>::value;
+  if (need_temp_output) {
+    // Note: We must allocate and reinterpret as bytes because Treducevec may
+    // be a vector type and they are not supported as Tensor dtypes.
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(
+        DT_INT8,
+        TensorShape({static_cast<int64>(nsegments * sizeof(Treducevec))}),
+        &output_raw));
+    output_raw_ptr =
+        reinterpret_cast<Treducevec*>(output_raw.flat<int8>().data());
+  }
+  if (indices) {
+    // Use fancy iterators to do lookup via indices and to cast to Treducevec.
+    PermutationInputIterator<Treducevec, decltype(input_vec),
+                             decltype(indices)>
+        perm_iter(input_vec, indices);
+    gpuprim::TransformInputIterator<Treducevec, CastFunctor<Treducevec>,
+                                    decltype(perm_iter)>
+        input_lookup_cast(perm_iter, {});
+    TF_RETURN_IF_ERROR(
+        GpuSegmentedReduce(ctx, nsegments, reduce_op, Treducevec(initial_value),
+                           input_lookup_cast, segment_offsets, output_raw_ptr));
+  } else {
+    // Use a fancy iterator to cast to Treducevec.
+    gpuprim::TransformInputIterator<Treducevec, CastFunctor<Treducevec>,
+                                    decltype(input_vec)>
+        input_cast(input_vec, {});
+    TF_RETURN_IF_ERROR(GpuSegmentedReduce(ctx, nsegments, reduce_op,
+                                          Treducevec(initial_value), input_cast,
+                                          segment_offsets, output_raw_ptr));
+  }
+  bool need_epilogue = !std::is_same<Tvec, Treducevec>::value ||
+                       initial_value != empty_segment_value || is_mean ||
+                       is_sqrtn;
+  if (need_epilogue) {
+    const GPUDevice& device = ctx->eigen_gpu_device();
+    // Normalize based on the segment size and cast results back to T.
+    TF_RETURN_IF_ERROR(LaunchSegmentReduceEpilogueKernel(
+        device, nsegments, empty_segment_value, is_mean, is_sqrtn,
+        output_raw_ptr, segment_offsets, output_vec));
+  }
+  return Status::OK();
+}
+
+template <typename Treducevec, typename Tvec, typename Tindex,
+          typename Tsegmentids, typename ReduceOp, typename Tinit>
 Status SegmentReduceGPUImpl(
     OpKernelContext* ctx, Tindex nouter, Tindex ninner_vec,
     Tsegmentids nsegments, ReduceOp reduce_op, Tinit initial_value,
@@ -437,65 +499,23 @@ Status SegmentReduceGPUImpl(
   TF_RETURN_IF_ERROR(LaunchSegmentOffsetsKernel(
       device, nouter, nsegments, segment_ids, segment_offsets_ptr));
 
-  if (ninner_vec == 1) {
-    // Here we use gpuprim::DeviceSegmentedReduce (which is optimized for this
-    // shape) and add the additional required functionality using fancy input
-    // iterators and an epilogue kernel.
-
-    // Note: This reinterpret cast is only needed to avoid compilation error
-    // when Tvec != Treducevec; the result is only used if Tvec == Treducevec.
-    Treducevec* output_raw_ptr = reinterpret_cast<Treducevec*>(output_vec);
-    Tensor output_raw;
-    bool need_temp_output = !std::is_same<Tvec, Treducevec>::value;
-    if (need_temp_output) {
-      // Note: We must allocate and reinterpret as bytes because Treducevec may
-      // be a vector type and they are not supported as Tensor dtypes.
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8,
-          TensorShape({static_cast<int64>(nsegments * sizeof(Treducevec))}),
-          &output_raw));
-      output_raw_ptr =
-          reinterpret_cast<Treducevec*>(output_raw.flat<int8>().data());
-    }
-    if (indices) {
-      // Use fancy iterators to do lookup via indices and to cast to Treducevec.
-      PermutationInputIterator<Treducevec, decltype(input_vec),
-                               decltype(indices)>
-          perm_iter(input_vec, indices);
-      gpuprim::TransformInputIterator<Treducevec, CastFunctor<Treducevec>,
-                                      decltype(perm_iter)>
-          input_lookup_cast(perm_iter, {});
-      TF_RETURN_IF_ERROR(GpuSegmentedReduce(
-          ctx, nsegments, reduce_op, Treducevec(initial_value),
-          input_lookup_cast, segment_offsets_ptr, output_raw_ptr));
-    } else {
-      // Use a fancy iterator to cast to Treducevec.
-      gpuprim::TransformInputIterator<Treducevec, CastFunctor<Treducevec>,
-                                      decltype(input_vec)>
-          input_cast(input_vec, {});
-      TF_RETURN_IF_ERROR(GpuSegmentedReduce(
-          ctx, nsegments, reduce_op, Treducevec(initial_value), input_cast,
-          segment_offsets_ptr, output_raw_ptr));
-    }
-    bool need_epilogue = !std::is_same<Tvec, Treducevec>::value ||
-                         initial_value != empty_segment_value || is_mean ||
-                         is_sqrtn;
-    if (need_epilogue) {
-      // Normalize based on the segment size and cast results back to T.
-      TF_RETURN_IF_ERROR(LaunchSegmentReduceEpilogueKernel(
-          device, nsegments, empty_segment_value, is_mean, is_sqrtn,
-          output_raw_ptr, segment_offsets_ptr, output_vec));
-    }
-  } else {
-    // Here we use a custom kernel that is optimized for ninner_vec >= ~64 and
-    // gives decent performance for smaller cases. It also handles indices,
-    // casting to/from Treducevec, and normalizing the output.
-    TF_RETURN_IF_ERROR(LaunchSegmentReduceVectorKernel<Treducevec>(
-        device, nouter, ninner_vec, nsegments, reduce_op, initial_value,
-        empty_segment_value, is_mean, is_sqrtn, input_vec, segment_offsets_ptr,
-        indices, output_vec));
+  const Tindex avg_reduce_size =
+      Eigen::divup(nouter, static_cast<Tindex>(nsegments));
+  // This avg_reduce_size threshold is a performance heuristic.
+  if (ninner_vec == 1 && avg_reduce_size >= 512) {
+    // Here we use a gpuprim-based implementation that doesn't support an
+    // inner dimension but can be significantly faster for large reductions.
+    return SegmentReduceGPUImplNoInnerDim<Treducevec>(
+        ctx, nouter, nsegments, reduce_op, initial_value, empty_segment_value,
+        is_mean, is_sqrtn, input_vec, segment_offsets_ptr, indices, output_vec);
   }
-  return Status::OK();
+  // Here we use a custom kernel that is optimized for ninner_vec >= ~64 and
+  // gives decent performance for smaller cases. It also handles indices,
+  // casting to/from Treducevec, and normalizing the output.
+  return LaunchSegmentReduceVectorKernel<Treducevec>(
+      device, nouter, ninner_vec, nsegments, reduce_op, initial_value,
+      empty_segment_value, is_mean, is_sqrtn, input_vec, segment_offsets_ptr,
+      indices, output_vec);
 }
 
 template <typename Treduce>
