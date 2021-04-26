@@ -274,8 +274,9 @@ class StructSpec(type_spec.TypeSpec):
   """Base class for tf.Struct TypeSpec."""
 
   def _serialize(self):  # TypeSpec API.
-    # TODO(b/184565242) Preserve the order of the fields in the TypeSpec?
-    return _change_nested_mappings_to(self.__dict__, dict)
+    return tuple(
+        (f.name, _change_nested_mappings_to(self.__dict__[f.name], dict))
+        for f in self._tf_struct_fields())
 
   @classmethod
   def _deserialize(cls, state):  # TypeSpec API.
@@ -487,3 +488,8 @@ def _add_type_spec(cls):
   _build_spec_constructor(spec)
 
   cls.__abstractmethods__ -= {'_type_spec'}
+
+  # If the user included an explicit `__name__` attribute, then use that to
+  # register the TypeSpec (so it can be used in SavedModel signatures).
+  if '__name__' in cls.__dict__:
+    type_spec.register(cls.__dict__['__name__'] + '.Spec')(spec)
