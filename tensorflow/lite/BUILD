@@ -579,7 +579,6 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
         "tflite_smoke_test",
     ],
     deps = [
@@ -872,9 +871,6 @@ cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
-    ],
     deps = [
         ":minimal_logging",
         "@com_google_googletest//:gtest",
