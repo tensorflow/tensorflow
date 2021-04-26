@@ -894,6 +894,7 @@ distribute_py_test(
     shard_count = 1,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # TODO(b/186361027)
         "no_oss",  # TODO(b/186248973)
         "no_tfrt",
         "notpu",
