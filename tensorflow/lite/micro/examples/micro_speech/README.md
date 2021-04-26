@@ -450,7 +450,14 @@ python -c 'import fileinput, glob;
 for filename in glob.glob("mbed-os/tools/profiles/*.json"):
   for line in fileinput.input(filename, inplace=True):
     print(line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\""))'
+```
 
+Note: Mbed has a dependency to an old version of arm_math.h and cmsis_gcc.h (adapted from the general [CMSIS-NN MBED example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/kernels/cmsis_nn#example-2---mbed)). Therefore you need to copy the newer version as follows:
+```bash
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/DSP/Include/\
+arm_math.h mbed-os/cmsis/TARGET_CORTEX_M/arm_math.h
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
 ```
 
 Finally, run the following command to compile:
