@@ -1373,6 +1373,17 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
       return false;
     }
 
+    // No base/window dilations allowed on space and batch dimensions.
+    if (window.dimensions(old_space_dim).base_dilation() != 1 ||
+        window.dimensions(old_space_dim).window_dilation() != 1) {
+      return false;
+    }
+    // No base/window dilations allowed on space and batch dimensions.
+    if (window.dimensions(old_batch_dim).base_dilation() != 1 ||
+        window.dimensions(old_batch_dim).window_dilation() != 1) {
+      return false;
+    }
+
     // Only allow small high pads.
     if (window.dimensions(old_space_dim).padding_high() >
         window.dimensions(old_space_dim).size()) {
@@ -2742,8 +2753,12 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     activations_chunks.push_back(activations_slice);
   }
 
+  int64 high_padding_to_materialize = inherent_high_padding;
+  if (total_overlap_count < inherent_high_padding + inherent_low_padding) {
+    high_padding_to_materialize = 0;
+  }
   // Insert slices for high padding.
-  for (int64 i = 0; i < inherent_high_padding; ++i) {
+  for (int64 i = 0; i < high_padding_to_materialize; ++i) {
     HloInstruction* activations_to_use = nullptr;
     activations_to_use = activations_chunks.back();
 
@@ -2794,7 +2809,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   int64 stride = 1;
   // This condition means there's only a single overlap possible (as the shapes
   // were grown due to padding). In this case, we increase the stride.
-  if (activations_chunks.size() > total_overlap_count) {
+  if (inherent_low_padding > total_overlap_count) {
     stride = activations_chunks.size();
   }
   window_dim->set_stride(stride);
