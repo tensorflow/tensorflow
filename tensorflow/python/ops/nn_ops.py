@@ -3553,7 +3553,7 @@ def crelu(features, name=None, axis=-1):
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat([features, -features], axis, name=name)
+    c = array_ops.concat([features, -features], axis, name=name)  # pylint: disable=invalid-unary-operand-type
     return gen_nn_ops.relu(c)
 
 

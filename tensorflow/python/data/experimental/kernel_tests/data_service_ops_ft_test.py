@@ -106,7 +106,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     iterator = iter(ds)
     results = []
-    for breakpoint in breakpoints:
+    for breakpoint in breakpoints:  # pylint: disable=redefined-builtin
       for _ in range(len(results), breakpoint):
         results.append(next(iterator).numpy())
       cluster.restart_dispatcher()

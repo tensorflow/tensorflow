@@ -531,7 +531,7 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
             array_ops.expand_dims(softmax, 2)),
         axis=1)) * softmax)
 
-  return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))
+  return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")

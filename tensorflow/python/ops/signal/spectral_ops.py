@@ -145,7 +145,7 @@ def inverse_stft_window_fn(frame_step,
       # Use equation 7 from Griffin + Lim.
       forward_window = forward_window_fn(frame_length, dtype=dtype)
       denom = math_ops.square(forward_window)
-      overlaps = -(-frame_length // frame_step_)  # Ceiling division.
+      overlaps = -(-frame_length // frame_step_)  # Ceiling division.  # pylint: disable=invalid-unary-operand-type
       denom = array_ops.pad(denom, [(0, overlaps * frame_step_ - frame_length)])
       denom = array_ops.reshape(denom, [overlaps, frame_step_])
       denom = math_ops.reduce_sum(denom, 0, keepdims=True)

@@ -31,7 +31,7 @@ def model():
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return dataset_ops._ModelDataset(dataset)  # pylint: disable=protected-access
+    return dataset_ops._ModelDataset(dataset)  # pylint: disable=protected-access  # pylint: disable=no-value-for-parameter
 
   return _apply_fn
 

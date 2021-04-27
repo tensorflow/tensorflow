@@ -184,7 +184,7 @@ class InstallCommand(InstallCommandBase):
   """Override the dir where the headers go."""
 
   def finalize_options(self):
-    ret = InstallCommandBase.finalize_options(self)
+    ret = InstallCommandBase.finalize_options(self)  # pylint: disable=assignment-from-no-return
     self.install_headers = os.path.join(self.install_platlib, 'tensorflow',
                                         'include')
     self.install_lib = self.install_platlib

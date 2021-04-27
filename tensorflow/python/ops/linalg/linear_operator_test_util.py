@@ -742,7 +742,7 @@ def add_tests(test_cls):
             setattr(
                 test_cls,
                 test_name,
-                test_util.run_deprecated_v1(test_template_fn(
+                test_util.run_deprecated_v1(test_template_fn(  # pylint: disable=too-many-function-args
                     use_placeholder,
                     shape_info,
                     dtype,

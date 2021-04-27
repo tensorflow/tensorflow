@@ -315,7 +315,7 @@ class DirichletMultinomial(distribution.Distribution):
   def _covariance(self):
     x = self._variance_scale_term() * self._mean()
     return array_ops.matrix_set_diag(
-        -math_ops.matmul(x[..., array_ops.newaxis],
+        -math_ops.matmul(x[..., array_ops.newaxis],  # pylint: disable=invalid-unary-operand-type
                          x[..., array_ops.newaxis, :]),  # outer prod
         self._variance())
 

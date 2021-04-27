@@ -155,7 +155,7 @@ def _variable_handle_from_shape_and_dtype(shape,
   dtype = dtypes.as_dtype(dtype)
   if not graph_mode:
     if shared_name is not None:
-      raise errors.InternalError(
+      raise errors.InternalError(  # pylint: disable=no-value-for-parameter
           "Using an explicit shared_name is not supported executing eagerly.")
     shared_name = context.shared_name()
 

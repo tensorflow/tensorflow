@@ -27,7 +27,7 @@ try:
   import wrapt
 except ImportError:
   # Fall back to the build-time dependency if the system package is not available.
-  from .....third_party import wrapt
+  from .....third_party import wrapt  # pylint: disable=relative-beyond-top-level
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun

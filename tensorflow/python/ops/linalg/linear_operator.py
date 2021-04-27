@@ -239,7 +239,7 @@ class LinearOperator(module.Module):
     self._name = name or type(self).__name__
 
   @contextlib.contextmanager
-  def _name_scope(self, name=None):
+  def _name_scope(self, name=None):  # pylint: disable=method-hidden
     """Helper function to standardize op scope."""
     full_name = self.name
     if name is not None:
@@ -331,7 +331,7 @@ class LinearOperator(module.Module):
     Returns:
       `int32` `Tensor`
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Prefer to use statically defined shape if available.
       if self.shape.is_fully_defined():
         return linear_operator_util.shape_tensor(self.shape.as_list())
@@ -366,7 +366,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._batch_shape_tensor()
 
   def _batch_shape_tensor(self, shape=None):
@@ -393,7 +393,7 @@ class LinearOperator(module.Module):
       Python integer, or None if the tensor rank is undefined.
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self.shape.ndims
 
   def tensor_rank_tensor(self, name="tensor_rank_tensor"):
@@ -409,7 +409,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`, determined at runtime.
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._tensor_rank_tensor()
 
   def _tensor_rank_tensor(self, shape=None):
@@ -452,7 +452,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._domain_dimension_tensor()
 
   def _domain_dimension_tensor(self, shape=None):
@@ -496,7 +496,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._range_dimension_tensor()
 
   def _range_dimension_tensor(self, shape=None):
@@ -555,7 +555,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is singular.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_non_singular()
 
   def _assert_positive_definite(self):
@@ -588,7 +588,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is not positive definite.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_positive_definite()
 
   def _assert_self_adjoint(self):
@@ -614,7 +614,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is not self-adjoint.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_self_adjoint()
 
   def _check_input_dtype(self, arg):
@@ -668,10 +668,10 @@ class LinearOperator(module.Module):
             "Operators are incompatible. Expected `x` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
 
@@ -718,7 +718,7 @@ class LinearOperator(module.Module):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
@@ -750,7 +750,7 @@ class LinearOperator(module.Module):
       raise NotImplementedError(
           "Determinant not implemented for an operator that is expected to "
           "not be square.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._determinant()
 
   def _log_abs_determinant(self):
@@ -779,7 +779,7 @@ class LinearOperator(module.Module):
       raise NotImplementedError(
           "Determinant not implemented for an operator that is expected to "
           "not be square.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._log_abs_determinant()
 
   def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
@@ -861,10 +861,10 @@ class LinearOperator(module.Module):
             "Operators are incompatible. Expected `rhs` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.solve(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
       self._check_input_dtype(rhs)
 
@@ -921,7 +921,7 @@ class LinearOperator(module.Module):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
@@ -944,7 +944,7 @@ class LinearOperator(module.Module):
     """
     if self.is_self_adjoint is True:  # pylint: disable=g-bool-id-comparison
       return self
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return linear_operator_algebra.adjoint(self)
 
   # self.H is equivalent to self.adjoint().
@@ -972,7 +972,7 @@ class LinearOperator(module.Module):
       raise ValueError("Cannot take the Inverse: This operator represents "
                        "a singular matrix.")
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return linear_operator_algebra.inverse(self)
 
   def cholesky(self, name="cholesky"):
@@ -997,7 +997,7 @@ class LinearOperator(module.Module):
     if not self._can_use_cholesky():
       raise ValueError("Cannot take the Cholesky decomposition: "
                        "Not a positive definite self adjoint matrix.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return linear_operator_algebra.cholesky(self)
 
   def _to_dense(self):
@@ -1018,7 +1018,7 @@ class LinearOperator(module.Module):
 
   def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._to_dense()
 
   def _diag_part(self):
@@ -1050,7 +1050,7 @@ class LinearOperator(module.Module):
     Returns:
       diag_part:  A `Tensor` of same `dtype` as self.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._diag_part()
 
   def _trace(self):
@@ -1067,7 +1067,7 @@ class LinearOperator(module.Module):
     Returns:
       Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._trace()
 
   def _add_to_tensor(self, x):
@@ -1084,7 +1084,7 @@ class LinearOperator(module.Module):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
@@ -1108,7 +1108,7 @@ class LinearOperator(module.Module):
     """
     if not self.is_self_adjoint:
       raise NotImplementedError("Only self-adjoint matrices are supported.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._eigvals()
 
   def _cond(self):
@@ -1133,7 +1133,7 @@ class LinearOperator(module.Module):
     Returns:
       Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._cond()
 
   def _can_use_cholesky(self):

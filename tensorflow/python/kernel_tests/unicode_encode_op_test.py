@@ -55,13 +55,13 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   def testRequireParams(self):
     with self.cached_session():
       with self.assertRaises(TypeError):
-        ragged_string_ops.unicode_encode()
+        ragged_string_ops.unicode_encode()  # pylint: disable=no-value-for-parameter
     with self.cached_session():
       with self.assertRaises(TypeError):
-        ragged_string_ops.unicode_encode(72)
+        ragged_string_ops.unicode_encode(72)  # pylint: disable=no-value-for-parameter
     with self.cached_session():
       with self.assertRaises(TypeError):
-        ragged_string_ops.unicode_encode(encoding="UTF-8")
+        ragged_string_ops.unicode_encode(encoding="UTF-8")  # pylint: disable=no-value-for-parameter,unexpected-keyword-arg
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   def testStrictErrors(self, encoding):

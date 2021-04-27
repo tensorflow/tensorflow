@@ -27,7 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
-# pylint: disable=wildcard-import,undefined-variable
+# pylint: disable=wildcard-import,undefined-variable,redefined-builtin
 from tensorflow.python.ops.control_flow_ops import *
 # pylint: enable=wildcard-import
 
