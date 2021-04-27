@@ -2581,10 +2581,14 @@ StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
   const Literal& upper_bound =
       Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
 
+  TF_ASSIGN_OR_RETURN(Literal lower_bound_literal_reshaped,
+                      lower_bound.Reshape({}));
+  TF_ASSIGN_OR_RETURN(Literal upper_bound_literal_reshaped,
+                      upper_bound.Reshape({}));
   std::unique_ptr<HloInstruction> lower_bound_instr =
-      HloInstruction::CreateConstant(lower_bound.Clone());
+      HloInstruction::CreateConstant(std::move(lower_bound_literal_reshaped));
   std::unique_ptr<HloInstruction> upper_bound_instr =
-      HloInstruction::CreateConstant(upper_bound.Clone());
+      HloInstruction::CreateConstant(std::move(upper_bound_literal_reshaped));
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       HloInstruction::CreateCompare(
