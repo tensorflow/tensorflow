@@ -387,7 +387,7 @@ build:rbe --spawn_strategy=remote,worker,standalone,local
 test:rbe --test_env=USER=anon
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
-build:rbe --remote_download_minimal
+build:rbe --remote_download_toplevel
 
 build:rbe_linux --config=rbe
 build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
