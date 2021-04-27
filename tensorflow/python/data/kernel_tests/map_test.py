@@ -610,7 +610,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     images = apply_map(labels, lambda l: -l)
     dataset = dataset_ops.Dataset.zip((labels, images))
 
-    @attr.s(eq=True)
+    @attr.s(cmp=True)
     class Example(object):
       label = attr.ib()
       image = attr.ib()
