@@ -501,12 +501,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           categorical crossentropy where shape = `[batch_size, d0, .. dN-1]`.
           y_pred = predicted values with shape = `[batch_size, d0, .. dN]`. It
           returns a weighted loss float tensor. If a custom `Loss` instance is
-          used and reduction is set to NONE, return value has the shape
-          [batch_size, d0, .. dN-1] ie. per-sample or per-timestep loss values;
+          used and reduction is set to `None`, return value has the shape
+          `[batch_size, d0, .. dN-1]` i.e. per-sample or per-timestep loss values;
           otherwise, it is a scalar. If the model has multiple outputs, you can
           use a different loss on each output by passing a dictionary or a list
           of losses. The loss value that will be minimized by the model will
-          then be the sum of all individual losses.
+          then be the sum of all individual losses, unless `loss_weights` is 
+          specified.
         metrics: List of metrics to be evaluated by the model during training
           and testing. Each of this can be a string (name of a built-in
           function), function or a `tf.keras.metrics.Metric` instance. See
@@ -515,9 +516,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           y_pred)`. To specify different metrics for different outputs of a
           multi-output model, you could also pass a dictionary, such as
             `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
-              You can also pass a list (len = len(outputs)) of lists of metrics
-              such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
-              `metrics=['accuracy', ['accuracy', 'mse']]`. When you pass the
+              You can also pass a list to specify a metric or a list of metrics
+              for each output, such as `metrics=[['accuracy'], ['accuracy', 'mse']]`
+              or `metrics=['accuracy', ['accuracy', 'mse']]`. When you pass the
               strings 'accuracy' or 'acc', we convert this to one of
               `tf.keras.metrics.BinaryAccuracy`,
               `tf.keras.metrics.CategoricalAccuracy`,
@@ -533,7 +534,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               outputs. If a dict, it is expected to map output names (strings)
               to scalar coefficients.
         weighted_metrics: List of metrics to be evaluated and weighted by
-          sample_weight or class_weight during training and testing.
+          `sample_weight` or `class_weight` during training and testing.
         run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s
           logic will not be wrapped in a `tf.function`. Recommended to leave
           this as `None` unless your `Model` cannot be run inside a
