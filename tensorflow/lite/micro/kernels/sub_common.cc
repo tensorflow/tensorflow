@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/sub.h"
+
 namespace tflite {
 
 const int kSubInputTensor1 = 0;
