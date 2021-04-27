@@ -309,9 +309,10 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
           executable->executable()->module().input_output_alias_config(),
           input_tuples, input_is_dynamic, release_inputs));
 
+  se::DeviceMemoryAllocator* allocator = device_ref->GetMemoryAllocator();
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(device_ref->GetMemoryAllocator());
+  run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
   if (config.run_id() != 0) {
@@ -360,8 +361,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple_ptr,
       CreateOutputTuple(stream, std::move(run_result), device_ref->backend(),
-                        device_ref->device_ordinal(),
-                        device_ref->GetMemoryAllocator()));
+                        device_ref->device_ordinal(), allocator));
   // The ScopedShapedBuffer returned by the executable Run() API, in case of
   // input/output buffer aliasing, might have holes in it, which need to be
   // filled using the proper input tuples buffers which are the source of
@@ -379,8 +379,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     xla::LocalExecutable* executable,
     absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
     bool release_inputs, se::Stream* stream, int rng_seed,
-    const xrt::CommonExecutionConfig& config,
-    se::DeviceMemoryAllocator* allocator) {
+    const xrt::CommonExecutionConfig& config) {
   auto runfn = [&]() {
     return RunExecutable(context, device_ref, executable, input_tuples,
                          release_inputs, stream, rng_seed, config);
@@ -391,7 +390,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   // memory, until either the runfn can run, or we run out of freeable memory.
   return memory_manager->Run<RefPtr<XRTTupleAllocation>>(
       runfn, device_ref->backend(), device_ref->device_ordinal(),
-      /*requested_free_size=*/0, allocator);
+      /*requested_free_size=*/0, device_ref->GetMemoryAllocator());
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
@@ -399,16 +398,17 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
-    se::Stream* stream, int rng_seed, const xrt::CommonExecutionConfig& config,
-    se::DeviceMemoryAllocator* allocator) {
+    se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   XRTMemoryManager::WorkingSet working_set(memory_manager);
   TF_ASSIGN_OR_RETURN(
       std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
       GetInputTuples(executable, &working_set, device_ref->backend(),
-                     input_coords, release_inputs, allocator));
+                     input_coords, release_inputs,
+                     device_ref->GetMemoryAllocator()));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
                             executable, input_tuples, release_inputs, stream,
-                            rng_seed, config, allocator);
+                            rng_seed, config);
 }
 
 // XRTExecuteOp
@@ -491,8 +491,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       RefPtr<XRTTupleAllocation> output_tuple,
       ExecuteComputation(context, memory_manager, &device_ref, executable,
                          input_coords, release_inputs, stream, rng_seed,
-                         config_proto.common_config(),
-                         device_ref.GetMemoryAllocator()));
+                         config_proto.common_config()));
 
   return CreateExecuteOutput(context, memory_manager.get(),
                              std::move(output_tuple),
@@ -571,8 +570,7 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
 
     return ExecuteComputation(
         context, memory_manager.get(), &device_ref, executable, input_tuples,
-        /*release_inputs=*/false, stream, rng_seed, config.common_config(),
-        device_ref.GetMemoryAllocator());
+        /*release_inputs=*/false, stream, rng_seed, config.common_config());
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),

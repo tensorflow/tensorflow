@@ -72,12 +72,11 @@ class XRTGenericDeviceAccessor {
     xla::LocalClient* client_ = nullptr;
     int ordinal_ = 0;
     std::string platform_name_;
-    se::Platform::Id platform_id_ = nullptr;
     static mutex mutex_;
-    static std::map<void*, std::unique_ptr<se::TfAllocatorAdapter>>
+    static std::map<stream_executor::Stream*,
+                    std::unique_ptr<se::TfAllocatorAdapter>>
         compile_cuda_allocators_;
-    static std::map<std::string, std::unique_ptr<se::TfAllocatorAdapter>>
-        other_cuda_allocators_;
+    static std::unique_ptr<se::TfAllocatorAdapter> general_cuda_allocator_;
   };
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,

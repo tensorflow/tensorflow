@@ -91,31 +91,30 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
 }
 
 mutex XRTGenericDeviceAccessor::ScopedRef::mutex_;
-std::map<void*, std::unique_ptr<se::TfAllocatorAdapter>>
+std::map<stream_executor::Stream*, std::unique_ptr<se::TfAllocatorAdapter>>
     XRTGenericDeviceAccessor::ScopedRef::compile_cuda_allocators_;
-std::map<std::string, std::unique_ptr<se::TfAllocatorAdapter>>
-    XRTGenericDeviceAccessor::ScopedRef::other_cuda_allocators_;
+std::unique_ptr<se::TfAllocatorAdapter>
+    XRTGenericDeviceAccessor::ScopedRef::general_cuda_allocator_;
 
 se::DeviceMemoryAllocator*
 XRTGenericDeviceAccessor::ScopedRef::GetMemoryAllocator() {
   if (platform_name_ != "CUDA") {
     return client_->mutable_backend()->memory_allocator();
   }
-  if (!other_cuda_allocators_.count(platform_name_)) {
+  if (!general_cuda_allocator_) {
     mutex_lock lock(mutex_);
-    if (!other_cuda_allocators_.count(platform_name_)) {
+    if (!general_cuda_allocator_) {
       se::Platform* platform =
           se::MultiPlatformManager::PlatformWithName(platform_name_)
               .ValueOrDie();
       GPUOptions gpu_options;
       Allocator* raw_allocator =
           GPUProcessState::singleton()->GetGPUAllocator(TfDeviceId(ordinal_));
-      other_cuda_allocators_[platform_name_] =
-          std::make_unique<se::TfAllocatorAdapter>(raw_allocator, platform,
-                                                   false);
+      general_cuda_allocator_ = std::make_unique<se::TfAllocatorAdapter>(
+          raw_allocator, platform, /*allow_async_dealloc=*/false);
     }
   }
-  return other_cuda_allocators_[platform_name_].get();
+  return general_cuda_allocator_.get();
 }
 
 se::DeviceMemoryAllocator*
@@ -131,8 +130,9 @@ XRTGenericDeviceAccessor::ScopedRef::GetMemoryAllocator(OpKernelContext* ctx) {
       Allocator* raw_allocator =
           GPUProcessState::singleton()->GetGPUAllocator(TfDeviceId(ordinal_));
       compile_cuda_allocators_[stream] =
-          std::make_unique<se::TfAllocatorAdapter>(raw_allocator, stream,
-                                                   false);
+          std::make_unique<se::TfAllocatorAdapter>(
+              raw_allocator, stream,
+              /*allow_async_dealloc=*/false);
     }
   }
   return compile_cuda_allocators_[stream].get();

@@ -222,6 +222,9 @@ void XRTTupleAllocation::ReleaseBuffers() {
     const xla::Shape& on_device_shape, xla::Backend* backend,
     int device_ordinal, XRTTupleAllocation** allocation,
     se::DeviceMemoryAllocator* allocator) {
+  if (allocator == nullptr) {
+    allocator = backend->memory_allocator();
+  }
   *allocation = new XRTTupleAllocation(device_ordinal, allocator, on_host_shape,
                                        on_device_shape);
   (*allocation)
@@ -303,6 +306,9 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapIn(
     return false;
   }
 
+  if (allocator == nullptr) {
+    allocator = backend->memory_allocator();
+  }
   auto transfer_manager = backend->transfer_manager();
   std::unique_ptr<xla::ScopedShapedBuffer> scoped_buffer;
   TF_RETURN_IF_ERROR(

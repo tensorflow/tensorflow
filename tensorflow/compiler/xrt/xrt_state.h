@@ -96,21 +96,20 @@ class XRTTupleAllocation : public core::RefCounted {
                                     se::DeviceMemoryAllocator* allocator);
 
   // Wraps an existing ShapeBuffer in a new XRTTupleAllocation handle.
-  static Status CreateFromBuffer(const xla::ShapedBuffer& shaped_buffer,
-                                 xla::Backend* backend, int device_ordinal,
-                                 XRTTupleAllocation** allocation,
-                                 se::DeviceMemoryAllocator* allocator);
+  static Status CreateFromBuffer(
+      const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
+      int device_ordinal, XRTTupleAllocation** allocation,
+      se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Same as the CreateFromBuffer() API above, but with the shapes being passed
   // as input. This API is used when creating tuple allocations with the output
   // of XLA computations which emit dynamic shaped output via the output shape
   // table.
-  static Status CreateFromBuffer(const xla::ShapedBuffer& shaped_buffer,
-                                 const xla::Shape& on_host_shape,
-                                 const xla::Shape& on_device_shape,
-                                 xla::Backend* backend, int device_ordinal,
-                                 XRTTupleAllocation** allocation,
-                                 se::DeviceMemoryAllocator* allocator);
+  static Status CreateFromBuffer(
+      const xla::ShapedBuffer& shaped_buffer, const xla::Shape& on_host_shape,
+      const xla::Shape& on_device_shape, xla::Backend* backend,
+      int device_ordinal, XRTTupleAllocation** allocation,
+      se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Aliases a sub-shape of parent and returns a XRTTupleAllocation handle
   // to the sub-shape. If alias_base_allocation is true, the buffers in the

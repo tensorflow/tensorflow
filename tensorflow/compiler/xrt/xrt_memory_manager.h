@@ -119,7 +119,7 @@ class XRTMemoryManager : public ResourceBase {
   xla::StatusOr<T> Run(const std::function<xla::StatusOr<T>()>& runfn,
                        xla::Backend* backend, int device_ordinal,
                        size_t requested_free_size,
-                       se::DeviceMemoryAllocator* allocator);
+                       se::DeviceMemoryAllocator* allocator = nullptr);
 
   string DebugString() const override;
 
@@ -132,12 +132,17 @@ class XRTMemoryManager : public ResourceBase {
   // initialized and the passed to the TryFreeMemoryStep() API.
   struct MemoryReclaimContext {
     MemoryReclaimContext(xla::Backend* backend, int device_ordinal,
-                         size_t requested_free_size)
+                         size_t requested_free_size,
+                         se::DeviceMemoryAllocator* specific_allocator)
         : backend(backend),
           device_ordinal(device_ordinal),
-          requested_free_size(requested_free_size) {}
+          requested_free_size(requested_free_size) {
+      allocator = specific_allocator == nullptr ? backend->memory_allocator()
+                                                : specific_allocator;
+    }
 
     xla::Backend* const backend = nullptr;
+    se::DeviceMemoryAllocator* allocator = nullptr;
     const int device_ordinal = 0;
     const size_t requested_free_size = 0;
     size_t free_size = 0;
@@ -151,8 +156,7 @@ class XRTMemoryManager : public ResourceBase {
   // to fit. Performs progressively more expensive memory reduction operations,
   // until returning error::RESOURCE_EXHAUSTED when no further reductions are
   // possible.
-  Status TryFreeMemoryStep(MemoryReclaimContext* mrctx, const Status& status,
-                           se::DeviceMemoryAllocator* allocator);
+  Status TryFreeMemoryStep(MemoryReclaimContext* mrctx, const Status& status);
 
   mutex lock_;
   std::vector<std::unique_ptr<DeviceContext>> device_contexts_;
@@ -163,7 +167,8 @@ xla::StatusOr<T> XRTMemoryManager::Run(
     const std::function<xla::StatusOr<T>()>& runfn, xla::Backend* backend,
     int device_ordinal, size_t requested_free_size,
     se::DeviceMemoryAllocator* allocator) {
-  MemoryReclaimContext mrctx(backend, device_ordinal, requested_free_size);
+  MemoryReclaimContext mrctx(backend, device_ordinal, requested_free_size,
+                             allocator);
   while (true) {
     // We assume that runfn is a relatively fast-fail function compared to the
     // operations required to free up the required memory. Here we call into the
@@ -173,8 +178,7 @@ xla::StatusOr<T> XRTMemoryManager::Run(
     if (result_or.status().code() != error::RESOURCE_EXHAUSTED) {
       return result_or;
     }
-    TF_RETURN_IF_ERROR(
-        TryFreeMemoryStep(&mrctx, result_or.status(), allocator));
+    TF_RETURN_IF_ERROR(TryFreeMemoryStep(&mrctx, result_or.status()));
   }
 }
 

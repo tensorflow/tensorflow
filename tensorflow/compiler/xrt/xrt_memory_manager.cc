@@ -321,9 +321,8 @@ XRTMemoryManager::DeviceContext* XRTMemoryManager::GetDeviceContext(
   return device_context;
 }
 
-Status XRTMemoryManager::TryFreeMemoryStep(
-    MemoryReclaimContext* mrctx, const Status& status,
-    se::DeviceMemoryAllocator* allocator) {
+Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
+                                           const Status& status) {
   DeviceContext* device_context = GetDeviceContext(mrctx->device_ordinal,
                                                    /*create_if_missing=*/false);
   if (device_context == nullptr) {
@@ -355,7 +354,8 @@ Status XRTMemoryManager::TryFreeMemoryStep(
   }
   if (!mrctx->done_compacting) {
     mrctx->done_compacting = true;
-    if (device_context->CompactAllocations(this, mrctx->backend, allocator)
+    if (device_context
+            ->CompactAllocations(this, mrctx->backend, mrctx->allocator)
             .ok()) {
       return Status::OK();
     }
