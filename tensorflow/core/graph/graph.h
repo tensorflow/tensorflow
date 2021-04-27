@@ -101,6 +101,9 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  NodeDef* mutable_def();
+
   // input and output types
   int32 num_inputs() const;
   DataType input_type(int32 i) const;
@@ -253,6 +256,10 @@ class Node {
     return stack_trace_;
   }
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
  private:
   friend class Graph;
   Node();
@@ -269,10 +276,6 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
-
-  // Called after an attr has changed. Decides whether we need to update some
-  // property of the node (stored in props_).
-  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const std::string& name);
 
@@ -659,6 +662,9 @@ class Graph {
 
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
+
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
 
   void CheckDeviceNameIndex(int index) {
     DCHECK_GE(index, 0);
