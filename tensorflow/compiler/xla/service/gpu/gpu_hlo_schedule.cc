@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -184,6 +185,84 @@ void BFSLaunchOrder(const HloComputation* computation,
   }
 }
 
+bool CustomCallWithSchedule(const HloInstruction* instr,
+                            CustomCallSchedule schedule) {
+  return instr->opcode() == HloOpcode::kCustomCall &&
+         static_cast<const HloCustomCallInstruction*>(instr)
+                 ->custom_call_schedule() == schedule;
+}
+
+// Schedules EARLY_AS_POSSIBLE and LATE_AS_POSSIBLE custom-calls. This supports
+// a custom-call use case, where a logical operation is lowered into two HLOs
+// (e.g., PerformX and PerformXDone). We utilize this mechanism to either hide
+// host latencies between the pair of the custom-calls or more accurately
+// identify the def-use relationship of the two calls (typically PerformX is
+// scheduled right after all of its producers have been scheduled and
+// PerformXDone is scheduled right before its first consumer.)
+HloInstructionSequence postprocessor_to_custom_schedule(
+    const HloInstructionSequence& input) {
+  // Schedule `EARLY_AS_POSSIBLE`.
+  std::deque<HloInstruction*> early_as_possible_sched;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    const std::vector<HloInstruction*>& instrs = input.instructions();
+    for (HloInstruction* instr : instrs) {
+      if (scheduled.contains(instr)) {
+        continue;
+      }
+
+      early_as_possible_sched.push_back(instr);
+      scheduled.insert(instr);
+
+      for (HloInstruction* user : instr->users()) {
+        // Schedule any user who has the attribute `early_as_possible` and all
+        // of its producers have been scheduled.
+        if (CustomCallWithSchedule(user,
+                                   CustomCallSchedule::EARLY_AS_POSSIBLE) &&
+            absl::c_all_of(user->operands(), [&](const HloInstruction* opnd) {
+              return scheduled.contains(opnd);
+            })) {
+          early_as_possible_sched.push_back(user);
+          scheduled.insert(user);
+        }
+      }
+    }
+  }
+
+  // Schedule `LATE_AS_POSSIBLE`.
+  std::deque<HloInstruction*> late_as_possible_sched;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    for (auto it = early_as_possible_sched.rbegin();
+         it != early_as_possible_sched.rend(); it++) {
+      if (scheduled.contains(*it)) {
+        continue;
+      }
+
+      late_as_possible_sched.push_front(*it);
+      scheduled.insert(*it);
+
+      for (HloInstruction* opnd : (*it)->unique_operands()) {
+        // Schedule any opnd who has the attribute `late_as_possible` if all of
+        // its users have been scheduled.
+        if (CustomCallWithSchedule(opnd,
+                                   CustomCallSchedule::LATE_AS_POSSIBLE) &&
+            absl::c_all_of(opnd->users(), [&](const HloInstruction* u) {
+              return scheduled.contains(u);
+            })) {
+          late_as_possible_sched.push_front(opnd);
+          scheduled.insert(opnd);
+        }
+      }
+    }
+  }
+
+  HloInstructionSequence result;
+  absl::c_for_each(late_as_possible_sched,
+                   [&](HloInstruction* i) { result.push_back(i); });
+  return result;
+}
+
 }  // end namespace
 
 GpuHloSchedule::GpuHloSchedule() {}
@@ -206,7 +285,8 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
             [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             },
-            ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler)));
+            ComputationSchedulerToModuleScheduler(
+                DefaultMemoryScheduler, postprocessor_to_custom_schedule)));
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =

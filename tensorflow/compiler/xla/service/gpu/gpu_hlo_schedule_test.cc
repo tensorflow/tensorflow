@@ -347,5 +347,58 @@ TEST_F(GpuHloScheduleTest, DISABLED_LatticeMatMul) {
   }
 }
 
+TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, y, z));
+  // Nonblocking call depends on add1 but not add2.
+  HloInstruction* nonblocking_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          f32_2x2_, {add1},
+          /*custom_call_target=*/"nonblocking-call-start",
+          /*opaque=*/""));
+  static_cast<HloCustomCallInstruction*>(nonblocking_call)
+      ->set_custom_call_schedule(EARLY_AS_POSSIBLE);
+  // Blocking call, which only add4 depends on.
+  HloInstruction* blocking_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          f32_2x2_, {nonblocking_call},
+          /*custom_call_target=*/"blocking-call-done",
+          /*opaque=*/""));
+  static_cast<HloCustomCallInstruction*>(blocking_call)
+      ->set_custom_call_schedule(LATE_AS_POSSIBLE);
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, blocking_call));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build(add4));
+
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
+
+  auto schedule = BuildGpuHloSchedule(module.get(), *streams);
+  auto order = schedule->ConsumeHloOrdering();
+  VLOG(2) << order->ToString();
+
+  EXPECT_TRUE(order->ExecutesBefore(add1, nonblocking_call));
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add2));
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add3));
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add4));
+
+  EXPECT_TRUE(order->ExecutesBefore(add1, blocking_call));
+  EXPECT_TRUE(order->ExecutesBefore(add2, blocking_call));
+  EXPECT_TRUE(order->ExecutesBefore(add3, blocking_call));
+  EXPECT_TRUE(order->ExecutesBefore(blocking_call, add4));
+}
+
 }  // namespace gpu
 }  // namespace xla
