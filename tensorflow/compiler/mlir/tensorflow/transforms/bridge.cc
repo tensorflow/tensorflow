@@ -86,6 +86,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addPass(CreateTPUClusterFormationPass());
+  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
@@ -98,6 +99,11 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
+
   // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
   // the remaining passes including Inliner support it, remove this
   // LaunchToDeviceAttributePass. This LaunchToDeviceAttribute pass needs to
