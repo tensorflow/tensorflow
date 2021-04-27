@@ -216,3 +216,7 @@ There are two ways to run TensorFlow unit tests.
     See
     [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
     for details.
+
+## Contributor over time
+
+[![Contributor over time](https://contributor-graph-api.apiseven.com/contributors-svg?repo=tensorflow/tensorflow)](https://www.apiseven.com/en/contributor-graph?repo=tensorflow/tensorflow)
