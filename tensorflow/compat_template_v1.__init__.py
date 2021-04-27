@@ -70,9 +70,3 @@ if not _six.PY2:
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
-
-# Add module aliases from Keras to TF.
-# Some tf endpoints actually lives under Keras.
-if (hasattr(_current_module, "keras") and
-    _os.environ.get("_PREFER_OSS_KERAS", False)):
-  _current_module.layers.InputSpec = keras.layers.InputSpec
