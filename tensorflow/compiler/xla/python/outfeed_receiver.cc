@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -445,11 +446,15 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 
   std::vector<uint32_t> header{kOutfeedHeaderStart, consumer_id};
   XlaOp header_op = ConstantR1<uint32_t>(builder, header);
+  // We assign the outfeed to the first device. This must match the sharding
+  // for the paired infeed.
+  builder->SetSharding(sharding_builder::AssignDevice(0));
   token = OutfeedWithToken(
       header_op, token, ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords}), "");
   if (consumer_id != kOutfeedCidShutdown) {
     token = OutfeedWithToken(data, token, shape_with_layout, "");
   }
+  builder->ClearSharding();
   return token;
 }
 
