@@ -334,6 +334,7 @@ REGISTER_OP("ParallelBatchDataset")
     .Input("num_parallel_calls: int64")
     .Input("drop_remainder: bool")
     .Output("handle: variant")
+    .Attr("parallel_copy: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     // "true", "false", or "default".
@@ -1031,6 +1032,27 @@ REGISTER_OP("MultiDeviceIteratorFromStringHandle")
     .Output("multi_device_iterator: resource")
     .Attr("output_types: list(type) >= 0 = []")
     .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptionsDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("serialized_options: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("GetOptions")
+    .Input("input_dataset: variant")
+    .Output("serialized_options: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("FinalizeDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("has_captured_ref: bool = false")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow

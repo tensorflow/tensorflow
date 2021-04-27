@@ -181,6 +181,10 @@ class LayoutUtil {
   static bool AreDimensionsConsecutive(const Layout& layout,
                                        absl::Span<const int64> dims);
 
+  // Constructs a new layout by making the given dimension `dim` in the given
+  // layout `layout` as the most major dimension.
+  static Layout MoveDimToMajor(const Layout& layout, int64 dim);
+
   // Compute a hash for `layout`.
   static size_t Hash(const Layout& layout);
 

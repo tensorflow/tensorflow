@@ -235,8 +235,26 @@ PyObject* TocoGetPotentiallySupportedOps() {
   return list;
 }
 
+tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
+  switch (inference_type) {
+    case toco::IODataType::QUANTIZED_INT16:
+      return tflite::TensorType_INT16;
+    case toco::IODataType::QUANTIZED_UINT8:
+      return tflite::TensorType_UINT8;
+    case toco::IODataType::UINT8:
+      return tflite::TensorType_UINT8;
+    case toco::IODataType::QUANTIZED_INT8:
+      return tflite::TensorType_INT8;
+    case toco::IODataType::INT8:
+      return tflite::TensorType_INT8;
+    default:
+      return tflite::TensorType_FLOAT32;
+  }
+}
+
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
+                            int input_data_type, int output_data_type,
                             bool enable_numeric_verify) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
@@ -257,27 +275,18 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto tflite_model = absl::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
-  tflite::TensorType inference_tensor_type;
-  switch (inference_type) {
-    case toco::IODataType::QUANTIZED_INT16:
-      inference_tensor_type = tflite::TensorType_INT16;
-      break;
-    case toco::IODataType::QUANTIZED_UINT8:
-      inference_tensor_type = tflite::TensorType_UINT8;
-      break;
-    case toco::IODataType::QUANTIZED_INT8:
-      inference_tensor_type = tflite::TensorType_INT8;
-      break;
-    default:
-      return nullptr;
-  }
-  tflite::TensorType inference_io_type =
-      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
+  tflite::TensorType inference_tensor_type =
+      FromTocoDataTypeToTflitToTensorType(inference_type);
+  tflite::TensorType input_type =
+      FromTocoDataTypeToTflitToTensorType(input_data_type);
+  tflite::TensorType output_type =
+      FromTocoDataTypeToTflitToTensorType(output_data_type);
+
   flatbuffers::FlatBufferBuilder builder;
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, inference_io_type, inference_io_type,
-      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
-      error_reporter.get(), enable_numeric_verify);
+      *tflite_model, input_type, output_type, inference_tensor_type, {},
+      disable_per_channel, fully_quantize, &builder, error_reporter.get(),
+      enable_numeric_verify);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

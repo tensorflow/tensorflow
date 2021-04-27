@@ -5,7 +5,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+    ],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -121,6 +124,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/memory",
@@ -172,6 +176,16 @@ cc_library(
 )
 
 cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core/lib/monitoring:counter",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "pjrt_stream_executor_client",
     srcs = ["pjrt_stream_executor_client.cc"],
     hdrs = ["pjrt_stream_executor_client.h"],
@@ -179,6 +193,7 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":metrics",
         ":pjrt_client",
         ":tracked_device_buffer",
         ":utils",
@@ -195,12 +210,14 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
+        "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:allocator",
@@ -248,7 +265,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
@@ -299,8 +315,10 @@ cc_library(
     name = "gpu_device",
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     deps = [
         ":pjrt_stream_executor_client",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
@@ -312,6 +330,8 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_nccl([":nccl_plugin"]),
 )
@@ -346,5 +366,58 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:random",
+    ],
+)
+
+cc_library(
+    name = "tracked_tfrt_cpu_device_buffer",
+    srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
+    hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "tfrt_cpu_pjrt_client",
+    srcs = ["tfrt_cpu_pjrt_client.cc"],
+    hdrs = ["tfrt_cpu_pjrt_client.h"],
+    deps = [
+        ":pjrt_client",
+        ":semaphore",
+        ":tracked_tfrt_cpu_device_buffer",
+        ":utils",
+        ":worker_thread",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_module_util",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+        "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )

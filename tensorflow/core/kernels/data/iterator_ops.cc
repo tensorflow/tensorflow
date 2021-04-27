@@ -651,8 +651,6 @@ class ToSingleElementOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    FunctionHandleCache function_handle_cache(params.flr);
-    params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -1188,7 +1186,18 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
-  OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, serializer.GetReader()));
+  Status s = iterator_resource->Restore(ctx, serializer.GetReader());
+  if (!s.ok()) {
+    OP_REQUIRES_OK(
+        ctx,
+        Status(s.code(),
+               absl::StrCat(
+                   "Failed to restore dataset iterator from checkpoint: ",
+                   s.error_message(),
+                   ". Make sure the dataset definition has not changed between "
+                   "the process that saved the checkpoint and the process that "
+                   "is restoring it.")));
+  }
 }
 
 namespace {

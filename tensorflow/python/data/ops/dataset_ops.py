@@ -221,7 +221,21 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # Initialize the options for this dataset and its inputs.
     self._options_attr = Options()
     for input_dataset in self._inputs():
-      input_options = input_dataset.options()
+      input_options = None
+      if isinstance(input_dataset, DatasetV1):
+        # If the V1 dataset does not have the `_dataset` attribute, we assume it
+        # is a dataset source and hence does not have options. Otherwise, we
+        # grab the options of `_dataset` object
+        if hasattr(input_dataset, "_dataset"):
+          if not isinstance(input_dataset._dataset, DatasetV2):
+            raise AssertionError(
+                "The input_dataset._dataset of dataset %s should be DatasetV2."
+                % type(self))
+          input_options = input_dataset._dataset._options_attr
+      elif isinstance(input_dataset, DatasetV2):
+        input_options = input_dataset._options_attr
+      else:
+        raise TypeError("Unexpected dataset type: ", type(input_dataset))
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
     self._options_attr._set_mutable(False)  # pylint: disable=protected-access
@@ -322,32 +336,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   def _graph(self, _):
     raise ValueError("The _graph property is read-only")
 
-  def _has_captured_ref(self):
-    """Whether this dataset uses a function that captures ref variables.
-
-    Returns:
-      A boolean, which if true indicates that the dataset or one of its inputs
-      uses a function that captures ref variables.
-    """
-    if context.executing_eagerly():
-      # RefVariables are not supported in eager mode
-      return False
-
-    def is_tensor_or_parent_ref(tensor):
-      if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
-        return True
-      # If the captured tensor is an eager tensor, we cannot trace its inputs.
-      if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
-        return False
-      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
-
-    for fn in self._functions():
-      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
-        return True
-
-    return any(
-        [input_dataset._has_captured_ref() for input_dataset in self._inputs()])  # pylint: disable=protected-access
-
   # TODO(jsimsa): Change this to be the transitive closure of functions used
   # by this dataset and its inputs.
   def _functions(self):
@@ -358,19 +346,59 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return []
 
+  def _options(self):
+    """Returns the options tensor for this dataset."""
+    # pylint: disable=protected-access
+    return gen_dataset_ops.get_options(self._variant_tensor)
+
+  @classmethod
+  def _options_tensor_to_options(cls, serialized_options):
+    """Converts options tensor to tf.data.Options object."""
+    options = Options()
+    if tensor_util.constant_value(serialized_options) is not None:
+      pb = dataset_options_pb2.Options.FromString(tensor_util.constant_value(
+          serialized_options))
+      options._from_proto(pb)  # pylint: disable=protected-access
+    return options
+
   def options(self):
     """Returns the options for this dataset and its inputs.
 
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
+    if tf_compat.forward_compatible(2021, 4, 25):
+      if context.executing_eagerly():
+        options = self._options_tensor_to_options(self._options())
+        options._set_mutable(False)  # pylint: disable=protected-access
+        return options
+      warnings.warn("To make it possible to preserve tf.data options across "
+                    "serialization boundaries, their implementation has moved "
+                    "to be part of the TensorFlow graph. As a consequence, the "
+                    "options value is in general no longer known at graph "
+                    "construction time. Invoking this method in graph mode "
+                    "retains the legacy behavior of the original "
+                    "implementation, but note that the returned value might "
+                    "not reflect the actual value of the options.")
     return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
+    if DEBUG_MODE:
+      # Disable autotuning and static optimizations that could introduce
+      # parallelism or asynchrony.
+      options = Options()
+      options.experimental_optimization.autotune = False
+      options.experimental_optimization.map_and_batch_fusion = False
+      options.experimental_optimization.map_parallelization = False
+      dataset = _OptionsDataset(self, options)
+    else:
+      dataset = self
 
-    dataset = self
-    options = self.options()
+    if tf_compat.forward_compatible(2021, 4, 25):
+      return _FinalizeDataset(dataset)  # pylint: disable=protected-access
+
+    options = dataset.options()
 
     # (1) Apply threading options
     if options.experimental_threading is not None:
@@ -391,18 +419,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs(autotune)
-    # pylint: enable=protected-access
-    if self._has_captured_ref():
-      if graph_rewrites.enabled or graph_rewrites.default:
-        warnings.warn(
-            "tf.data graph rewrites are not compatible with tf.Variable. "
-            "The following rewrites will be disabled: %s. To enable "
-            "rewrites, use resource variables instead by calling "
-            "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(graph_rewrites.enabled + graph_rewrites.default))
-    elif (graph_rewrites.enabled or graph_rewrites.default or
-          (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
-           is not False)):
+    if (graph_rewrites.enabled or graph_rewrites.default or
+        (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
+         is not False)):
       dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
                                  graph_rewrites.disabled,
                                  graph_rewrites.default, graph_rewrite_configs)
@@ -799,6 +818,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     cache any external state in `generator` before calling
     `Dataset.from_generator()`.
 
+    Note: While the `output_signature` parameter makes it possible to yield
+    `Dataset` elements, the scope of `Dataset.from_generator()` should be
+    limited to logic that cannot be expressed through tf.data operations. Using
+    tf.data operations within the generator function is an anti-pattern and may
+    result in incremental memory growth.
+
     Args:
       generator: A callable object that returns an object that supports the
         `iter()` protocol. If `args` is not specified, `generator` must take no
@@ -1181,6 +1206,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       Dataset: A `Dataset`.
     """
+    if DEBUG_MODE:
+      return self
     return PrefetchDataset(self, buffer_size)
 
   @staticmethod
@@ -1578,8 +1605,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       Dataset: A `Dataset`.
     """
-    if num_parallel_calls is None:
-      if deterministic is not None:
+    if num_parallel_calls is None or DEBUG_MODE:
+      if deterministic is not None and not DEBUG_MODE:
         warnings.warn("The `deterministic` argument has no effect unless the "
                       "`num_parallel_calls` argument is specified.")
       return BatchDataset(self, batch_size, drop_remainder)
@@ -1861,8 +1888,8 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
-    if num_parallel_calls is None:
-      if deterministic is not None:
+    if num_parallel_calls is None or DEBUG_MODE:
+      if deterministic is not None and not DEBUG_MODE:
         warnings.warn("The `deterministic` argument has no effect unless the "
                       "`num_parallel_calls` argument is specified.")
       return MapDataset(self, map_func, preserve_cardinality=True)
@@ -2001,8 +2028,8 @@ name=None))
     if cycle_length is None:
       cycle_length = AUTOTUNE
 
-    if num_parallel_calls is None:
-      if deterministic is not None:
+    if num_parallel_calls is None or DEBUG_MODE:
+      if deterministic is not None and not DEBUG_MODE:
         warnings.warn("The `deterministic` argument has no effect unless the "
                       "`num_parallel_calls` argument is specified.")
       return InterleaveDataset(self, map_func, cycle_length, block_length)
@@ -2262,6 +2289,125 @@ name=None))
             output_shapes=structure.get_flat_tensor_shapes(state_structure),
             output_types=structure.get_flat_tensor_types(state_structure)))
 
+  def get_single_element(self):
+    """Returns the single element of the `dataset` as a nested structure of tensors.
+
+    The function enables you to use a `tf.data.Dataset` in a stateless
+    "tensor-in tensor-out" expression, without creating an iterator.
+    This facilitates the ease of data transformation on tensors using the
+    optimized `tf.data.Dataset` abstraction on top of them.
+
+    For example, lets consider a `preprocessing_fn` which would take as an
+    input the raw features and returns the processed feature along with
+    it's label.
+
+    ```python
+    def preprocessing_fn(raw_feature):
+      # ... the raw_feature is preprocessed as per the use-case
+      return feature
+
+    raw_features = ...  # input batch of BATCH_SIZE elements.
+    dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
+              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+              .batch(BATCH_SIZE))
+
+    processed_features = dataset.get_single_element()
+    ```
+
+    In the above example, the `raw_features` tensor of length=BATCH_SIZE
+    was converted to a `tf.data.Dataset`. Next, each of the `raw_feature` was
+    mapped using the `preprocessing_fn` and the processed features were
+    grouped into a single batch. The final `dataset` contains only one element
+    which is a batch of all the processed features.
+
+    NOTE: The `dataset` should contain only one element.
+
+    Now, instead of creating an iterator for the `dataset` and retrieving the
+    batch of features, the `tf.data.get_single_element()` function is used
+    to skip the iterator creation process and directly output the batch of
+    features.
+
+    This can be particularly useful when your tensor transformations are
+    expressed as `tf.data.Dataset` operations, and you want to use those
+    transformations while serving your model.
+
+    # Keras
+
+    ```python
+
+    model = ... # A pre-built or custom model
+
+    class PreprocessingModel(tf.keras.Model):
+      def __init__(self, model):
+        super().__init__(self)
+        self.model = model
+
+      @tf.function(input_signature=[...])
+      def serving_fn(self, data):
+        ds = tf.data.Dataset.from_tensor_slices(data)
+        ds = ds.map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+        ds = ds.batch(batch_size=BATCH_SIZE)
+        return tf.argmax(self.model(ds.get_single_element()), axis=-1)
+
+    preprocessing_model = PreprocessingModel(model)
+    your_exported_model_dir = ... # save the model to this path.
+    tf.saved_model.save(preprocessing_model, your_exported_model_dir,
+                  signatures={'serving_default': preprocessing_model.serving_fn}
+                  )
+    ```
+
+    # Estimator
+
+    In the case of estimators, you need to generally define a `serving_input_fn`
+    which would require the features to be processed by the model while
+    inferencing.
+
+    ```python
+    def serving_input_fn():
+
+      raw_feature_spec = ... # Spec for the raw_features
+      input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
+          raw_feature_spec, default_batch_size=None)
+      )
+      serving_input_receiver = input_fn()
+      raw_features = serving_input_receiver.features
+
+      def preprocessing_fn(raw_feature):
+        # ... the raw_feature is preprocessed as per the use-case
+        return feature
+
+      dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
+                .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+                .batch(BATCH_SIZE))
+
+      processed_features = dataset.get_single_element()
+
+      # Please note that the value of `BATCH_SIZE` should be equal to
+      # the size of the leading dimension of `raw_features`. This ensures
+      # that `dataset` has only element, which is a pre-requisite for
+      # using `dataset.get_single_element()`.
+
+      return tf.estimator.export.ServingInputReceiver(
+          processed_features, serving_input_receiver.receiver_tensors)
+
+    estimator = ... # A pre-built or custom estimator
+    estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
+    ```
+
+    Returns:
+      A nested structure of `tf.Tensor` objects, corresponding to the single
+      element of `dataset`.
+
+    Raises:
+      InvalidArgumentError: (at runtime) if `dataset` does not contain exactly
+        one element.
+    """
+
+    return structure.from_compatible_tensor_list(
+        self.element_spec,
+        gen_dataset_ops.dataset_to_single_element(self._variant_tensor,
+                                                  **self._flat_structure))  # pylint: disable=protected-access
+
   def unbatch(self):
     """Splits elements of a dataset into multiple elements.
 
@@ -2340,6 +2486,72 @@ name=None))
       `tf.data.UNKNOWN_CARDINALITY` respectively.
     """
     return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
+
+  def group_by_window(self,
+                      key_func,
+                      reduce_func,
+                      window_size=None,
+                      window_size_func=None):
+    """Groups windows of elements by key and reduces them.
+
+    This transformation maps each consecutive element in a dataset to a key
+    using `key_func` and groups the elements by key. It then applies
+    `reduce_func` to at most `window_size_func(key)` elements matching the same
+    key. All except the final window for each key will contain
+    `window_size_func(key)` elements; the final window may be smaller.
+
+    You may provide either a constant `window_size` or a window size determined
+    by the key through `window_size_func`.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> window_size = 5
+    >>> key_func = lambda x: x%2
+    >>> reduce_func = lambda key, dataset: dataset.batch(window_size)
+    >>> dataset = dataset.group_by_window(
+    ...           key_func=key_func,
+    ...           reduce_func=reduce_func,
+    ...           window_size=window_size)
+    >>> for elem in dataset.as_numpy_iterator():
+    ...   print(elem)
+    [0 2 4 6 8]
+    [1 3 5 7 9]
+
+    Args:
+      key_func: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to a
+        scalar `tf.int64` tensor.
+      reduce_func: A function mapping a key and a dataset of up to `window_size`
+        consecutive elements matching that key to another dataset.
+      window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements matching the same key to combine in a single batch,
+        which will be passed to `reduce_func`. Mutually exclusive with
+        `window_size_func`.
+      window_size_func: A function mapping a key to a `tf.int64` scalar
+        `tf.Tensor`, representing the number of consecutive elements matching
+        the same key to combine in a single batch, which will be passed to
+        `reduce_func`. Mutually exclusive with `window_size`.
+
+    Returns:
+      A `tf.data.Dataset`
+
+    Raises:
+      ValueError: if neither or both of {`window_size`, `window_size_func`} are
+        passed.
+    """
+    if (window_size is not None and window_size_func or
+        not (window_size is not None or window_size_func)):
+      raise ValueError("Must pass either window_size or window_size_func.")
+
+    if window_size is not None:
+
+      def constant_window_func(unused_key):
+        return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
+
+      window_size_func = constant_window_func
+
+    assert window_size_func is not None
+
+    return _GroupByWindowDataset(self, key_func, reduce_func, window_size_func)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -2616,14 +2828,19 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.from_generator)
+  @deprecation.deprecated_args(None, "Use output_signature instead",
+                               "output_types", "output_shapes")
   def from_generator(generator,
                      output_types=None,
                      output_shapes=None,
                      args=None,
                      output_signature=None):
-    return DatasetV1Adapter(
-        DatasetV2.from_generator(generator, output_types, output_shapes, args,
-                                 output_signature))
+    # Calling DatasetV2.from_generator with output_shapes or output_types is
+    # deprecated, but this is already checked by the decorator on this function.
+    with deprecation.silence():
+      return DatasetV1Adapter(
+          DatasetV2.from_generator(generator, output_types, output_shapes, args,
+                                   output_signature))
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
@@ -2695,7 +2912,7 @@ class DatasetV1(DatasetV2):
 
   @functools.wraps(DatasetV2.map)
   def map(self, map_func, num_parallel_calls=None, deterministic=None):
-    if num_parallel_calls is None:
+    if num_parallel_calls is None or DEBUG_MODE:
       return DatasetV1Adapter(
           MapDataset(self, map_func, preserve_cardinality=False))
     else:
@@ -2828,9 +3045,6 @@ class DatasetV1Adapter(DatasetV1):
 
   def _as_variant_tensor(self):
     return self._dataset._variant_tensor  # pylint: disable=protected-access
-
-  def _has_captured_ref(self):
-    return self._dataset._has_captured_ref()  # pylint: disable=protected-access
 
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
@@ -3514,12 +3728,6 @@ class StructuredFunctionWrapper(object):
 
     self._func = func
 
-    # There is no graph to add in eager mode.
-    add_to_graph &= not context.executing_eagerly()
-    # There are some lifetime issues when a legacy function is not added to a
-    # out-living graph. It's already deprecated so de-prioritizing the fix.
-    add_to_graph |= use_legacy_function
-
     if defun_kwargs is None:
       defun_kwargs = {}
 
@@ -3536,7 +3744,7 @@ class StructuredFunctionWrapper(object):
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
-    def _warn_if_collections(transformation_name):
+    def warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
       NOTE(mrry): Currently a warning is only generated for resources. Any
@@ -3552,25 +3760,14 @@ class StructuredFunctionWrapper(object):
                     "function, and capture it inside the function to use it." %
                     transformation_name, stacklevel=5)
 
-    def _wrapper_helper(*args):
+    def wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
           self._input_structure, args)
-      if not _should_unpack_args(nested_args):
+      if not _should_unpack(nested_args):
         nested_args = (nested_args,)
-
-      ret = autograph.tf_convert(func, ag_ctx)(*nested_args)
-      # If `func` returns a list of tensors, `nest.flatten()` and
-      # `ops.convert_to_tensor()` would conspire to attempt to stack
-      # those tensors into a single tensor, because the customized
-      # version of `nest.flatten()` does not recurse into lists. Since
-      # it is more likely that the list arose from returning the
-      # result of an operation (such as `tf.numpy_function()`) that returns a
-      # list of not-necessarily-stackable tensors, we treat the
-      # returned value is a `tuple` instead. A user wishing to pack
-      # the return value into a single tensor can use an explicit
-      # `tf.stack()` before returning.
-      if isinstance(ret, list):
+      ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
+      if _should_pack(ret):
         ret = tuple(ret)
 
       try:
@@ -3583,61 +3780,100 @@ class StructuredFunctionWrapper(object):
             sys.exc_info()[2])
       return ret
 
-    if use_legacy_function:
-      func_name = func_name + "_" + str(ops.uid())
-
-      @function.Defun(
-          *structure.get_flat_tensor_types(self._input_structure),
-          func_name=func_name,
-          **defun_kwargs)
-      def wrapper_fn(*args):
-        ret = _wrapper_helper(*args)
-        # _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
+    def trace_legacy_function(defun_kwargs):
+      @function.Defun(*structure.get_flat_tensor_types(self._input_structure),
+                      **defun_kwargs)
+      def wrapped_fn(*args):
+        ret = wrapper_helper(*args)
         return structure.to_tensor_list(self._output_structure, ret)
 
-      self._function = wrapper_fn
-      resource_tracker = tracking.ResourceTracker()
-      with tracking.resource_tracker_scope(resource_tracker):
-        if add_to_graph:
-          self._function.add_to_graph(ops.get_default_graph())
-        else:
-          # Use the private method that will execute `wrapper_fn` but delay
-          # adding it to the graph in case (e.g.) we need to rerun the function.
-          self._function._create_definition_if_needed()
-      if resource_tracker.resources:
-        _warn_if_collections(transformation_name)
+      return lambda: wrapped_fn
 
-    else:
-      if def_function.functions_run_eagerly():
-        warnings.warn(
-            "Even though the tf.config.experimental_run_functions_eagerly "
-            "option is set, this option does not apply to tf.data functions. "
-            "tf.data functions are still traced and executed as graphs.")
-
-      defun_kwargs.update({"func_name": func_name})
-      defun_kwargs.update({"_tf_data_function": True})
-
-      # Note: _wrapper_helper will apply autograph based on context.
+    def trace_py_function(defun_kwargs):
+      # First we trace the function to infer the output structure.
       @eager_function.defun_with_attributes(
           input_signature=structure.get_flat_tensor_specs(
               self._input_structure),
           autograph=False,
           attributes=defun_kwargs)
-      def wrapper_fn(*args):  # pylint: disable=missing-docstring
-        ret = _wrapper_helper(*args)
+      def unused(*args):  # pylint: disable=missing-docstring,unused-variable
+        ret = wrapper_helper(*args)
         ret = structure.to_tensor_list(self._output_structure, ret)
         return [ops.convert_to_tensor(t) for t in ret]
 
-      resource_tracker = tracking.ResourceTracker()
-      with tracking.resource_tracker_scope(resource_tracker):
-        # TODO(b/141462134): Switch to using garbage collection.
-        self._function = wrapper_fn.get_concrete_function()
-        if add_to_graph:
-          self._function.add_to_graph(ops.get_default_graph())
+      _ = unused.get_concrete_function()
 
-      if resource_tracker.resources:
-        _warn_if_collections(transformation_name)
+      def py_function_wrapper(*args):
+        nested_args = structure.from_compatible_tensor_list(
+            self._input_structure, args)
+        if not _should_unpack(nested_args):
+          nested_args = (nested_args,)
+        ret = self._func(*nested_args)
+        if _should_pack(ret):
+          ret = tuple(ret)
+        ret = structure.to_tensor_list(self._output_structure, ret)
+        return [ops.convert_to_tensor(t) for t in ret]
 
+      # Next we trace the function wrapped in `eager_py_func` to force eager
+      # execution.
+      @eager_function.defun_with_attributes(
+          input_signature=structure.get_flat_tensor_specs(
+              self._input_structure),
+          autograph=False,
+          attributes=defun_kwargs)
+      def wrapped_fn(*args):  # pylint: disable=missing-docstring
+        return script_ops.eager_py_func(
+            py_function_wrapper, args,
+            structure.get_flat_tensor_types(self._output_structure))
+
+      return wrapped_fn.get_concrete_function
+
+    def trace_tf_function(defun_kwargs):
+      # Note: wrapper_helper will apply autograph based on context.
+      @eager_function.defun_with_attributes(
+          input_signature=structure.get_flat_tensor_specs(
+              self._input_structure),
+          autograph=False,
+          attributes=defun_kwargs)
+      def wrapped_fn(*args):  # pylint: disable=missing-docstring
+        ret = wrapper_helper(*args)
+        ret = structure.to_tensor_list(self._output_structure, ret)
+        return [ops.convert_to_tensor(t) for t in ret]
+
+      return wrapped_fn.get_concrete_function
+
+    if use_legacy_function:
+      defun_kwargs.update({"func_name": func_name + "_" + str(ops.uid())})
+      fn_factory = trace_legacy_function(defun_kwargs)
+    else:
+      defun_kwargs.update({"func_name": func_name})
+      defun_kwargs.update({"_tf_data_function": True})
+      if DEBUG_MODE:
+        fn_factory = trace_py_function(defun_kwargs)
+      else:
+        if def_function.functions_run_eagerly():
+          warnings.warn(
+              "Even though the `tf.config.experimental_run_functions_eagerly` "
+              "option is set, this option does not apply to tf.data functions. "
+              "To force eager execution of tf.data functions, please use "
+              "`tf.data.experimental.enable.debug_mode()`.")
+        fn_factory = trace_tf_function(defun_kwargs)
+
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      self._function = fn_factory()
+      # There is no graph to add in eager mode.
+      add_to_graph &= not context.executing_eagerly()
+      # There are some lifetime issues when a legacy function is not added to a
+      # out-living graph. It's already deprecated so de-prioritizing the fix.
+      add_to_graph |= use_legacy_function
+      if add_to_graph:
+        self._function.add_to_graph(ops.get_default_graph())
+
+    if resource_tracker.resources:
+      warn_if_collections(transformation_name)
+
+    if not use_legacy_function:
       outer_graph_seed = ops.get_default_graph().seed
       if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
         if self._function.graph._seed_used:
@@ -4071,22 +4307,14 @@ class ParallelBatchDataset(UnaryDataset):
           lambda component_spec: component_spec._batch(None),
           input_dataset.element_spec)
 
-    if tf_compat.forward_compatible(2021, 3,
-                                    18) or self._deterministic != "default":
-      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-          input_dataset._variant_tensor,
-          batch_size=self._batch_size,
-          num_parallel_calls=self._num_parallel_calls,
-          drop_remainder=self._drop_remainder,
-          deterministic=self._deterministic,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-          input_dataset._variant_tensor,
-          batch_size=self._batch_size,
-          num_parallel_calls=self._num_parallel_calls,
-          drop_remainder=self._drop_remainder,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+        input_dataset._variant_tensor,
+        batch_size=self._batch_size,
+        num_parallel_calls=self._num_parallel_calls,
+        drop_remainder=self._drop_remainder,
+        deterministic=self._deterministic,
+        **self._flat_structure)
+
     super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -4358,9 +4586,37 @@ class PaddedBatchDataset(UnaryDataset):
     return self._structure
 
 
-def _should_unpack_args(args):
-  """Returns `True` if `args` should be `*args` when passed to a callable."""
-  return type(args) is tuple  # pylint: disable=unidiomatic-typecheck
+def _should_pack(arg):
+  """Determines whether the caller needs to pack the argument in a tuple.
+
+  If user-defined function returns a list of tensors, `nest.flatten()` and
+  `ops.convert_to_tensor()` and would conspire to attempt to stack those tensors
+  into a single tensor because the tf.data version of `nest.flatten()` does
+  not recurse into lists. Since it is more likely that the list arose from
+  returning the result of an operation (such as `tf.numpy_function()`) that
+  returns a list of not-necessarily-stackable tensors, we treat the returned
+  value as a `tuple` instead. A user wishing to pack the return value into a
+  single tensor can use an explicit `tf.stack()` before returning.
+
+  Args:
+    arg: argument to check
+
+  Returns:
+    Indication of whether the caller needs to pack the argument in a tuple.
+  """
+  return isinstance(arg, list)
+
+
+def _should_unpack(arg):
+  """Determines whether the caller needs to unpack the argument from a tuple.
+
+  Args:
+    arg: argument to check
+
+  Returns:
+    Indication of whether the caller needs to unpack the argument from a tuple.
+  """
+  return type(arg) is tuple  # pylint: disable=unidiomatic-typecheck
 
 
 class MapDataset(UnaryDataset):
@@ -4696,7 +4952,15 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, options):
     # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor
+    if tf_compat.forward_compatible(2021, 4, 25):
+      options_pb = dataset_options_pb2.Options()
+      options_pb.CopyFrom(options._to_proto())
+      with ops.colocate_with(input_dataset._variant_tensor):
+        variant_tensor = gen_dataset_ops.options_dataset(
+            input_dataset._variant_tensor,
+            options_pb.SerializeToString(), **self._flat_structure)
+    else:
+      variant_tensor = input_dataset._variant_tensor
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
@@ -4707,6 +4971,20 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     self._options_attr._set_mutable(False)
 
 
+class _FinalizeDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts on the options set on the input dataset."""
+
+  def __init__(self, input_dataset):
+    self._input_dataset = input_dataset
+    with ops.colocate_with(input_dataset._variant_tensor):
+      variant_tensor = gen_dataset_ops.finalize_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          **self._flat_structure)
+    super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
+
+
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
@@ -4721,6 +4999,8 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
@@ -4770,6 +5050,8 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and sets a stats aggregator."""
 
@@ -4788,6 +5070,8 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
                                                      variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, overriding intra-op parallelism."""
 
@@ -4805,6 +5089,8 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
                                                         variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, setting a private threadpool."""
 
@@ -4838,7 +5124,8 @@ def normalize_to_dense(dataset):
   # non-tensor components.
   #
   # TODO(mrry): Consider optimizing this if it turns out to be a bottleneck.
-  if _should_unpack_args(dataset.element_spec):
+  if _should_unpack(dataset.element_spec):
+
     def normalize(*args):
       return structure.to_batched_tensor_list(dataset.element_spec, tuple(args))
   else:
@@ -4894,6 +5181,78 @@ class _UnbatchDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._structure
+
+
+class _GroupByWindowDataset(UnaryDataset):
+  """A `Dataset` that groups its input and performs a windowed reduction."""
+
+  def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
+    """See `group_by_window()` for details."""
+    self._input_dataset = input_dataset
+    self._make_key_func(key_func, input_dataset)
+    self._make_reduce_func(reduce_func, input_dataset)
+    self._make_window_size_func(window_size_func)
+    variant_tensor = ged_ops.group_by_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._key_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._window_size_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        reduce_func=self._reduce_func.function,
+        window_size_func=self._window_size_func.function,
+        **self._flat_structure)
+    super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _make_window_size_func(self, window_size_func):
+    """Make wrapping defun for window_size_func."""
+
+    def window_size_func_wrapper(key):
+      return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
+
+    self._window_size_func = StructuredFunctionWrapper(
+        window_size_func_wrapper,
+        self._transformation_name(),
+        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
+    if not self._window_size_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int64)):
+      raise ValueError(
+          "`window_size_func` must return a single tf.int64 scalar tensor.")
+
+  def _make_key_func(self, key_func, input_dataset):
+    """Make wrapping defun for key_func."""
+
+    def key_func_wrapper(*args):
+      return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
+
+    self._key_func = StructuredFunctionWrapper(
+        key_func_wrapper, self._transformation_name(), dataset=input_dataset)
+    if not self._key_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int64)):
+      raise ValueError(
+          "`key_func` must return a single tf.int64 scalar tensor.")
+
+  def _make_reduce_func(self, reduce_func, input_dataset):
+    """Make wrapping defun for reduce_func."""
+    nested_dataset = DatasetSpec(input_dataset.element_spec)
+    input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
+    self._reduce_func = StructuredFunctionWrapper(
+        reduce_func,
+        self._transformation_name(),
+        input_structure=input_structure)
+    if not isinstance(self._reduce_func.output_structure, DatasetSpec):
+      raise TypeError("`reduce_func` must return a `Dataset` object.")
+    # pylint: disable=protected-access
+    self._element_spec = (self._reduce_func.output_structure._element_spec)
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+  def _functions(self):
+    return [self._key_func, self._reduce_func, self._window_size_func]
+
+  def _transformation_name(self):
+    return "Dataset.group_by_window()"
 
 
 def _collect_resource_inputs(op):
@@ -4976,3 +5335,62 @@ def _resource_resolver(op, resource_reads, resource_writes):
           resource_writes.add(inp)
 
   return updated
+
+
+DEBUG_MODE = False
+
+
+@tf_export("data.experimental.enable_debug_mode")
+def enable_debug_mode():
+  """Enables debug mode for tf.data.
+
+  Example usage with pdb module:
+  ```
+  import tensorflow as tf
+  import pdb
+
+  tf.data.experimental.enable_debug_mode()
+
+  def func(x):
+    # Python 3.7 and older requires `pdb.Pdb(nosigint=True).set_trace()`
+    pdb.set_trace()
+    x = x + 1
+    return x
+
+  dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  dataset = dataset.map(func)
+
+  for item in dataset:
+    print(item)
+  ```
+
+  The effect of debug mode is two-fold:
+
+  1) Any transformations that would introduce asynchrony, parallelism, or
+  non-determinism to the input pipeline execution will be forced to execute
+  synchronously, sequentially, and deterministically.
+
+  2) Any user-defined functions passed into tf.data transformations such as
+  `map` will be wrapped in `tf.py_function` so that their body is executed
+  "eagerly" as a Python function as opposed to a traced TensorFlow graph, which
+  is the default behavior. Note that even when debug mode is enabled, the
+  user-defined function is still traced  to infer the shape and type of its
+  outputs; as a consequence, any `print` statements or breakpoints will be
+  triggered once during the tracing before the actual execution of the input
+  pipeline.
+
+  NOTE: As the debug mode setting affects the construction of the tf.data input
+  pipeline, it should be enabled before any tf.data definitions.
+
+  Raises:
+    ValueError: When invoked from graph mode.
+  """
+  if context.executing_eagerly():
+    toggle_debug_mode(True)
+  else:
+    raise ValueError("Debug mode is only supported in eager mode.")
+
+
+def toggle_debug_mode(debug_mode):
+  global DEBUG_MODE
+  DEBUG_MODE = debug_mode

@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
-"""Callbacks: utilities called at certain points during model training.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Callbacks: utilities called at certain points during model training."""
 
 import os
-
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -386,7 +382,6 @@ class TensorBoard(callbacks.TensorBoard):
 
     # check if histogram summary should be run for this epoch
     if self.histogram_freq and epoch % self.histogram_freq == 0:
-      self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
       self.model._make_test_function()

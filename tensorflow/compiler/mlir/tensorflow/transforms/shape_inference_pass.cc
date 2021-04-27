@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stack>
+
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -31,11 +33,17 @@ namespace {
 class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
  public:
   void runOnOperation() override {
-    if (failed(InferModuleShape(getOperation(), max_iterations_)))
+    auto failure_or_converged =
+        InferModuleShape(getOperation(), max_iterations_);
+    if (failed(failure_or_converged)) return signalPassFailure();
+    if (!failure_or_converged.getValue()) {
+      getOperation().emitError()
+          << "shape inference pass did not reach convergence after "
+          << max_iterations_;
       return signalPassFailure();
+    }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass() {

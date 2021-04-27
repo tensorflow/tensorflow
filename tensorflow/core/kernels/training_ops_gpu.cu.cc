@@ -27,84 +27,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-#if TENSORFLOW_USE_ROCM
-
-#include "rocm/include/hip/hip_complex.h"
-
-#endif  // TENSORFLOW_USE_ROCM
-
-// if any kernels involving complex sqrt/rsqrt are compiled with ROCm, build
-// process completes without errors,but the resulting executable ends up
-// unusable (throwing errors "no device code available for function" for
-/// completely unrelated kernels.)
-// We also can't cast to hipFloatComplex etc. because (as of 2020-01) HIP does
-// not provide sqrt for complex.
-// We have no choice but to implement sqrt and rsqrt by hand
-template <typename T>
-__device__ T impl_sqrt(T x) {
-  return sqrt(x);
-}
-template <typename T>
-__device__ T impl_rsqrt(T x) {
-  return rsqrt(x);
-}
-template <>
-__device__ Eigen::half impl_sqrt(Eigen::half x) {
-  return __float2half(sqrt(__half2float(x)));
-}
-template <>
-__device__ Eigen::half impl_rsqrt(Eigen::half x) {
-  return __float2half(rsqrt(__half2float(x)));
-}
-
-template <class T>
-__device__ std::complex<T> impl_sqrt(std::complex<T> x) {
-  T re = x.real(), im = x.imag();
-  T mod_x = sqrt(re * re + im * im);
-  const T root2 = 0.7071067811865475;
-  // We pick the root with the same sign of the imaginary component as
-  // the input.
-  T root[2] = {T(sqrt(mod_x + re) * root2),
-               T(sqrt(mod_x - re) * root2 * (im >= 0 ? 1. : -1.))};
-  // hcc/clang is really weird with its support of complex in device code;
-  // for some reason it does not permit a 2-argument constructor
-  return *(reinterpret_cast<std::complex<T>*>(&root));
-}
-
-template <class T>
-__device__ T rsqrt_helper(T x) {
-  return 0.5 * x + 0.125 * x * x + 0.0625 * x * x * x;
-}
-
-template <class T>
-__device__ std::complex<T> impl_rsqrt(std::complex<T> x) {
-  T re = x.real(), im = x.imag();
-  T r = rsqrt(re * re + im * im);
-  T ar2 = re * r * r;
-  const T root2 = 0.7071067811865475;
-  T root[2];
-  // With float, calculating 1+re*r and 1-re*r may result in excessive errors
-  // due to subtraction of two close values. We have to get fancy
-  root[0] = sqrt(r * ((std::is_same<T, float>::value && re * r < -0.98)
-                          ? rsqrt_helper(im * im * r * r)
-                          : max(T(0.0), 1 + re * r))) *
-            root2;
-  root[1] = sqrt(r * ((std::is_same<T, float>::value && re * r > 0.98)
-                          ? rsqrt_helper(im * im * r * r)
-                          : max(T(0.0), 1 - re * r))) *
-            root2 * (im >= 0 ? -1. : 1.);
-  return *(reinterpret_cast<std::complex<T>*>(&root));
-}
-
-template <typename T>
-__device__ T impl_fabs(T x) {
-  return fabs(x);
-}
-template <>
-__device__ Eigen::half impl_fabs(Eigen::half x) {
-  return __float2half(fabs(__half2float(x)));
-}
-
 template <typename T>
 __device__ T impl_sign(T x) {
   return x == T(0) ? T(0) : x < T(0) ? T(-1) : T(1);
@@ -138,9 +60,9 @@ __global__ __launch_bounds__(1024) void SparseApplyAdagradKernel(
       accum_i += grad_i * grad_i;
     }
     if (has_epsilon) {
-      var_i -= lr_t * grad_i / (sqrt(accum_i) + epsilon_t);
+      var_i -= lr_t * grad_i / (Eigen::numext::sqrt(accum_i) + epsilon_t);
     } else {
-      var_i -= lr_t * grad_i * impl_rsqrt(accum_i);
+      var_i -= lr_t * grad_i * Eigen::numext::rsqrt(accum_i);
     }
 
     // Write update back to variables.
@@ -175,7 +97,7 @@ __global__ __launch_bounds__(1024) void SparseApplyProximalAdagradKernel(
     const T l2_t = *l2;
 
     accum_i += grad_i * grad_i;
-    T learning_rate = lr_t * impl_rsqrt(accum_i);
+    T learning_rate = lr_t * Eigen::numext::rsqrt(accum_i);
     // compute v = w - lr * grad.
     T prox_var_i = var_i - grad_i * learning_rate;
     // compute sign(v) * max(|v| - lr * max(l1, 0), 0)
@@ -225,10 +147,10 @@ __global__ void SparseApplyFtrlKernel(T* var, T* accum, T* linear, const T* lr,
     const T new_accum_i = accum_i + grad_i * grad_i;
     const bool lr_power_is_neg_half = lr_power_t == static_cast<T>(-0.5);
     const T pow_new_accum = lr_power_is_neg_half
-                                ? sqrt(new_accum_i)
+                                ? Eigen::numext::sqrt(new_accum_i)
                                 : pow(new_accum_i, -lr_power_t);
-    const T pow_accum =
-        lr_power_is_neg_half ? sqrt(accum_i) : pow(accum_i, -lr_power_t);
+    const T pow_accum = lr_power_is_neg_half ? Eigen::numext::sqrt(accum_i)
+                                             : pow(accum_i, -lr_power_t);
     T linear_change = grad_shr_i * lr_t - (pow_new_accum - pow_accum) * var_i;
     if (!multiply_linear_by_lr) {
       linear_change /= lr_t;
@@ -266,8 +188,9 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
   eigen_assert(gridDim.y == 1);
   eigen_assert(gridDim.z == 1);
 
-  const T mul_factor = (*lr_) * sqrt(static_cast<T>(1.0) - (*beta2_power_)) /
-                       (static_cast<T>(1.0) - (*beta1_power_));
+  const T mul_factor =
+      (*lr_) * Eigen::numext::sqrt(static_cast<T>(1.0) - (*beta2_power_)) /
+      (static_cast<T>(1.0) - (*beta1_power_));
   const T epsilon = (*epsilon_);
   const T beta1 = (*beta1_);
   const T one_minus_beta1 = static_cast<T>(1.0) - (beta1);
@@ -280,13 +203,14 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
     auto g_i = grad[i];
     auto v_i = v[i];
 
-    m_i += one_minus_beta1 * (g_i - m_i);
-    v_i += one_minus_beta2 * (g_i * g_i - v_i);
+    // Avoid += and -= due to std::complex<T> issues on device for MSVC.
+    m_i = m_i + one_minus_beta1 * (g_i - m_i);
+    v_i = v_i + one_minus_beta2 * (g_i * g_i - v_i);
     if (use_nesterov) {
-      var[i] -= mul_factor * (m_i * beta1 + one_minus_beta1 * g_i) /
-                (epsilon + sqrt(v_i));
+      var[i] = var[i] - mul_factor * (m_i * beta1 + one_minus_beta1 * g_i) /
+                            (epsilon + Eigen::numext::sqrt(v_i));
     } else {
-      var[i] -= mul_factor * m_i / (epsilon + sqrt(v_i));
+      var[i] = var[i] - mul_factor * m_i / (epsilon + Eigen::numext::sqrt(v_i));
     }
 
     m[i] = m_i;
@@ -321,10 +245,11 @@ __global__ __launch_bounds__(1024) void SparseApplyKerasMomentumKernel(
     // Variable update computation.
     accum_i = momentum_t * accum_i - lr_t * grad_i;
     // static branching in cuda does not impact performance.
+    // Avoid += due to std::complex<T> issues on device for MSVC.
     if (use_nesterov) {
-      var_i += (momentum_t * accum_i - lr_t * grad_i);
+      var_i = var_i + (momentum_t * accum_i - lr_t * grad_i);
     } else {
-      var_i += accum_i;
+      var_i = var_i + accum_i;
     }
 
     // Write update back to variables.
@@ -353,7 +278,7 @@ __global__ __launch_bounds__(1024) void ApplyAdagradKernel(GpuLaunchConfig cfg,
                                                            bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
-    var[i] -= lr[0] * grad[i] * impl_rsqrt(accum[i]);
+    var[i] -= lr[0] * grad[i] * Eigen::numext::rsqrt(accum[i]);
   }
 }
 
@@ -363,7 +288,7 @@ __global__ __launch_bounds__(1024) void ApplyAdagradV2Kernel(
     const T* grad, bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
-    T update = grad[i] / (impl_sqrt(accum[i]) + epsilon[0]);
+    T update = grad[i] / (Eigen::numext::sqrt(accum[i]) + epsilon[0]);
     var[i] -= lr[0] * update;
   }
 }
@@ -374,10 +299,11 @@ __global__ __launch_bounds__(1024) void ApplyProximalAdagradKernel(
     const T* l2, const T* grad) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     accum[i] += grad[i] * grad[i];
-    T lr_scaled = lr[0] * impl_rsqrt(accum[i]);
+    T lr_scaled = lr[0] * Eigen::numext::rsqrt(accum[i]);
     T prox_var = var[i] - grad[i] * lr_scaled;
     var[i] = impl_sign(prox_var) *
-             max(impl_fabs(prox_var) - lr_scaled * max(l1[0], T(0.f)), T(0.f)) /
+             max(Eigen::numext::abs(prox_var) - lr_scaled * max(l1[0], T(0.f)),
+                 T(0.f)) /
              (T(1.f) + l2[0] * lr_scaled);
   }
 }
@@ -391,8 +317,8 @@ __global__ __launch_bounds__(1024) void ApplyAdadeltaKernel(
   T lr = plr[0];
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     accum[i] = accum[i] * rho + grad[i] * grad[i] * (T(1.0) - rho);
-    T update =
-        impl_sqrt(accum_update[i] + eps) * grad[i] * impl_rsqrt(accum[i] + eps);
+    T update = Eigen::numext::sqrt(accum_update[i] + eps) * grad[i] *
+               Eigen::numext::rsqrt(accum[i] + eps);
     var[i] -= update * lr;
     accum_update[i] = accum_update[i] * rho + update * update * (T(1.0) - rho);
   }
@@ -408,7 +334,8 @@ __global__ __launch_bounds__(1024) void ApplyRMSPropKernel(
   T momentum = pmomentum[0];
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     ms[i] += (T(1.0) - rho) * (grad[i] * grad[i] - ms[i]);
-    mom[i] = mom[i] * momentum + lr * grad[i] * impl_rsqrt(eps + ms[i]);
+    mom[i] =
+        mom[i] * momentum + lr * grad[i] * Eigen::numext::rsqrt(eps + ms[i]);
     var[i] -= mom[i];
   }
 }
@@ -426,7 +353,7 @@ __global__ __launch_bounds__(1024) void ApplyCenteredRMSPropKernel(
     ms[i] += one_minus_rho * (grad[i] * grad[i] - ms[i]);
     mg[i] += one_minus_rho * (grad[i] - mg[i]);
     T denom = (ms[i] - mg[i] * mg[i]) + eps;
-    mom[i] = mom[i] * momentum + lr * grad[i] * impl_rsqrt(denom);
+    mom[i] = mom[i] * momentum + lr * grad[i] * Eigen::numext::rsqrt(denom);
     var[i] -= mom[i];
   }
 }
@@ -1086,29 +1013,20 @@ struct ApplyPowerSign<GPUDevice, T> {
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
 template struct functor::ApplyGradientDescent<GPUDevice, float>;
 template struct functor::ApplyGradientDescent<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyGradientDescent<GPUDevice, complex64>;
 template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagradV2<GPUDevice, float>;
 template struct functor::ApplyAdagradV2<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
-#endif
 
 #define EXPLICITLY_INSTANTIATE_FUNCTOR(T)                             \
   template struct functor::SparseApplyAdagrad<GPUDevice, T, int32,    \
@@ -1140,11 +1058,8 @@ template struct functor::SparseApplyProximalAdagrad<GPUDevice, double, int64>;
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdadelta<GPUDevice, complex64>;
 template struct functor::ApplyAdadelta<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyFtrl<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrl<GPUDevice, float>;
@@ -1179,22 +1094,14 @@ EXPLICITLY_INSTANTIATE_FUNCTOR(double);
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyMomentum<GPUDevice, complex64>;
 template struct functor::ApplyMomentum<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyKerasMomentum<GPUDevice, float>;
 template struct functor::ApplyKerasMomentum<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyKerasMomentum<GPUDevice, complex64>;
 template struct functor::ApplyKerasMomentum<GPUDevice, complex128>;
-#endif
 
 template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
                                                   int32>;
@@ -1204,24 +1111,16 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int64>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
-#endif
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyAdam<GPUDevice, complex64>;
 template struct functor::ApplyAdam<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, float>;
@@ -1234,20 +1133,14 @@ template struct functor::ApplyAdaMax<GPUDevice, double>;
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyRMSProp<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAddSign<GPUDevice, Eigen::half>;
 template struct functor::ApplyAddSign<GPUDevice, float>;

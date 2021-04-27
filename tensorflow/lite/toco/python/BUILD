@@ -5,7 +5,7 @@ package(
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(

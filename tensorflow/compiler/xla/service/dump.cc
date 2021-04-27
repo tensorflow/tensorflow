@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -47,7 +49,8 @@ struct CanonicalDebugOptions {
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()) {
+        dump_module_metadata(opts.xla_dump_module_metadata()),
+        dump_compress_protos(opts.xla_dump_compress_protos()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -65,6 +68,11 @@ struct CanonicalDebugOptions {
     // If we haven't specified an output format, default to dumping as text.
     if (!output_format_specified) {
       dump_as_text = true;
+    }
+
+    // Disable dumping if specified by the user.
+    if (!opts.xla_detailed_logging_and_dumping()) {
+      dump_to = "";
     }
 
     // If dump_to is empty, default to dumping to stdout, so long as some dump
@@ -110,7 +118,7 @@ struct CanonicalDebugOptions {
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
-    string dump_to_lower = absl::AsciiStrToLower(opts.xla_dump_to());
+    string dump_to_lower = absl::AsciiStrToLower(dump_to);
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
       if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {
@@ -141,11 +149,28 @@ struct CanonicalDebugOptions {
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
   bool dump_module_metadata;
+  bool dump_compress_protos;
 };
+
+Status WriteStringToFile(tensorflow::Env* env, const string& fname,
+                         const tensorflow::StringPiece& data, bool compressed) {
+  if (!compressed) {
+    return tensorflow::WriteStringToFile(env, fname, data);
+  }
+  std::unique_ptr<tensorflow::WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
+  tensorflow::io::ZlibOutputBuffer gz_file(file.get(),
+                                           gz_opts.input_buffer_size,
+                                           gz_opts.output_buffer_size, gz_opts);
+  TF_RETURN_IF_ERROR(gz_file.Init());
+  TF_RETURN_IF_ERROR(gz_file.Append(data));
+  return gz_file.Close();
+}
 
 absl::optional<std::string> DumpToFileInDirImpl(
     string_view filename, string_view contents,
-    const CanonicalDebugOptions& opts) {
+    const CanonicalDebugOptions& opts, bool compress = false) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
                << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
@@ -176,23 +201,35 @@ absl::optional<std::string> DumpToFileInDirImpl(
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
     std::vector<string> matches;
-    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.0000.*");
+    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.*");
     auto status = env->GetMatchingPaths(pattern, &matches);
     if (!status.ok()) {
       LOG(ERROR) << "Could not get matching paths for pattern " << pattern
                  << ": " << status;
     }
-    if (matches.size() > opts.dump_max_hlo_modules) {
-      LOG(ERROR) << "Have already dumped " << matches.size()
-                 << " modules, more than the limit of "
-                 << opts.dump_max_hlo_modules;
-      return absl::nullopt;
+    static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
+    absl::flat_hash_set<int64> dumped_module_ids;
+    for (const string& match : matches) {
+      int64 dumped_module_id;
+      if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
+        dumped_module_ids.insert(dumped_module_id);
+      }
+    }
+    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
+      int64 module_id;
+      if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
+          !dumped_module_ids.contains(module_id)) {
+        LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
+                   << " modules, more than the limit of "
+                   << opts.dump_max_hlo_modules;
+        return absl::nullopt;
+      }
     }
   }
 
   string file_path =
       tensorflow::io::JoinPath(dir, SanitizeFileName(string(filename)));
-  auto status = tensorflow::WriteStringToFile(env, file_path, contents);
+  auto status = WriteStringToFile(env, file_path, contents, compress);
   if (!status.ok()) {
     LOG(ERROR) << "Could not write XLA debug data to " << file_path << ": "
                << status;
@@ -233,7 +270,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
         opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), buffer_assn->ToString(),
+          StrCat(filename, "-buffer-assignment.txt"),
+          StrCat(buffer_assn->ToString(), "\n\n",
+                 buffer_assn->hlo_live_range().ToString()),
           opts));
     }
   }
@@ -245,8 +284,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
     if (!tensorflow::SerializeToStringDeterministic(module_proto, &pb)) {
       pb = "Failed to serialize HLO module proto.";
     }
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrCat(filename, ".hlo.pb"), pb, opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
+        pb, opts, opts.dump_compress_protos));
   }
 
   auto render_graph = [&](RenderedGraphFormat format) {
@@ -356,11 +396,12 @@ int64 StepNumberForModule(const HloModule& module) {
   return module_id_to_step_number[module.unique_id()]++;
 }
 
+}  // namespace
+
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
-string TimestampFor(const HloModule& module,
-                    const DebugOptions& debug_options) {
-  if (!debug_options.xla_dump_include_timestamp()) {
+string TimestampFor(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
   tensorflow::mutex_lock lock(mu);
@@ -369,16 +410,15 @@ string TimestampFor(const HloModule& module,
   return std::to_string(timestamp_emplace.first->second);
 }
 
-string TimestampFor(const HloModule& module) {
-  return TimestampFor(module, module.config().debug_options());
+static string FilenameFor(int unique_id, string_view prefix,
+                          string_view suffix) {
+  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
+                   unique_id, suffix);
 }
-
-}  // namespace
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   module.unique_id(), suffix);
+  return FilenameFor(module.unique_id(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -392,6 +432,13 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, file_prefix, file_suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             string_view file_prefix, string_view file_suffix,
+                             string_view contents) {
+  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
+                              contents, CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
@@ -424,17 +471,12 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   }
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name,
-                            const DebugOptions& debug_options) {
-  CanonicalDebugOptions opts(debug_options);
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+  CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                      TimestampFor(module, debug_options), name, opts);
+                      TimestampFor(module), name, opts);
   }
-}
-
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
-  DumpHloModuleIfEnabled(module, name, module.config().debug_options());
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module,

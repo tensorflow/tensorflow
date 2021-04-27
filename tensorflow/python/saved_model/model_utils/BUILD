@@ -24,10 +24,8 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_strict_library(
     name = "model_utils",

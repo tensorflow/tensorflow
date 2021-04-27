@@ -169,15 +169,35 @@ tf_executor::IslandOp CreateIsland(TypeRange result_types,
   return island;
 }
 
-// A struct contains the operations in an island that do not have incoming or
-// outgoing dependencies.
+// A struct that contains the operations in an island that need explicit control
+// dependencies added going into and out of the island to capture inter-island
+// dependencies properly.
 struct IslandSourcesAndSinks {
-  // Sub-ops that do not depend on other sub-ops in the island.
+  // Sub-ops that need a control dependency going into the island. This includes
+  // sub-ops that do not depend on other sub-ops in the island and functional
+  // control ops (e.g. if, while, case) with side effects that must not take
+  // effect before the previous island is finished executing.
   llvm::SmallPtrSet<Operation*, 4> sources;
-  // Sub-ops that do not have other sub-ops in the island depending on them
-  // (excluding yield).
+
+  // Sub-ops that need a control dependency going out of the island. This
+  // includes sub-ops that do not have other sub-ops in the island depending on
+  // them (excluding yield) and functional control ops (e.g. if, while, case)
+  // with side effects that must take effect before the next island starts
+  // executing.
   llvm::SmallPtrSet<Operation*, 4> sinks;
 };
+
+// Returns true if the operation is a stateful If, Case, or While op.
+bool IsStatefulFunctionalControlFlowOp(Operation* op) {
+  if (!isa<TF::IfOp, TF::CaseOp, TF::WhileOp>(op)) {
+    return false;
+  }
+
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless")) {
+    return !is_stateless.getValue();
+  }
+  return false;
+}
 
 // Finds IslandSourcesAndSinks for an unmodified island.
 IslandSourcesAndSinks FindSourcesAndSinksInIsland(
@@ -194,11 +214,19 @@ IslandSourcesAndSinks FindSourcesAndSinksInIsland(
     for (auto operand : sub_op.getOperands()) {
       auto defining_op = operand.getDefiningOp();
       if (!defining_op || defining_op->getParentOp() != island) continue;
-      // Remove operands from sinks.
-      result.sinks.erase(defining_op);
       has_in_island_operands = true;
+
+      // Remove operands from sinks.
+      // We don't remove the operand if it is a stateful functional control flow
+      // op to work around an issue in LowerFunctionalOpsPass where the operand
+      // dependency isn't enough to ensure the side effects take place
+      // (b/185483669).
+      if (!IsStatefulFunctionalControlFlowOp(defining_op)) {
+        result.sinks.erase(defining_op);
+      }
     }
-    if (predecessors.empty() && !has_in_island_operands) {
+    if (predecessors.empty() && (!has_in_island_operands ||
+                                 IsStatefulFunctionalControlFlowOp(&sub_op))) {
       result.sources.insert(&sub_op);
     }
   }
@@ -251,7 +279,7 @@ void BreakUpIslands::BreakUpIsland(
     island_control_inputs.push_back(new_island.control());
   }
   // Find sources and sinks inside the original island.
-  auto sources_and_sinks =
+  IslandSourcesAndSinks sources_and_sinks =
       FindSourcesAndSinksInIsland(island_op, side_effect_analysis);
   // The corresponding control output of the new island created for each sub-op.
   llvm::SmallDenseMap<Operation*, Value, 8> new_control_for_sub_ops;

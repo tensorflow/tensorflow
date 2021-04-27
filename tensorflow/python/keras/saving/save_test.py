@@ -14,20 +14,15 @@
 # ==============================================================================
 """Tests for Keras model saving code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
+import pathlib
 import shutil
-import sys
 import tempfile
 import warnings
 
 from absl.testing import parameterized
 import numpy as np
-from six import string_types
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
@@ -59,8 +54,6 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.training import training as training_module
 
 
-if sys.version_info >= (3, 6):
-  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -91,8 +84,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_format_defaults_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model_path'
     save.save_model(self.model, path)
     self.assert_saved_model(path)
@@ -109,8 +100,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='h5')
     save.load_model(path)
@@ -134,24 +123,18 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='tf')
     save.load_model(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='tf')
     self.model.load_weights(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='h5')
     self.model.load_weights(path)
@@ -900,15 +883,20 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
 
     cls = _get_cls_definition()
     self.assertEqual(cls.__bases__[0], keras.Model)
-    input_ = keras.layers.Input(shape=(1,))
-    output = keras.layers.Dense(1)(input_)
-    model = cls(input_, output)
-    # `cls` now inherits from `Functional` class.
-    self.assertEqual(cls.__bases__[0], functional.Functional)
 
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    with self.cached_session() as sess:
+      input_ = keras.layers.Input(shape=(1,))
+      output = keras.layers.Dense(1)(input_)
+      model = cls(input_, output)
+      # `cls` now inherits from `Functional` class.
+      self.assertEqual(cls.__bases__[0], functional.Functional)
+
+      if not context.executing_eagerly():
+        sess.run([v.initializer for v in model.variables])
+
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
     loaded_model = keras.models.load_model(
         saved_model_dir, custom_objects={'CustomModel': cls})
@@ -992,7 +980,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
           yield key
         for key in _get_all_keys_recursive(dict_or_iterable.values()):
           yield key
-      elif isinstance(dict_or_iterable, string_types):
+      elif isinstance(dict_or_iterable, str):
         return
       else:
         try:

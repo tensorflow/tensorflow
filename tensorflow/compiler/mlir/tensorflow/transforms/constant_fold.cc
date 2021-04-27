@@ -72,8 +72,11 @@ LogicalResult ConstantFoldFallbackHook(
     Operation* inst, ArrayRef<Attribute> operands,
     SmallVectorImpl<OpFoldResult>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
-  // the original semantics.
-  if (inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
+  // the original semantics. Ops that have no side effect and zero results but
+  // could be folded should have a custom folder instead of relying on the
+  // TensorFlow folding hook.
+  if (inst->getNumResults() == 0 ||
+      inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
       inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
     return failure();
 
@@ -100,7 +103,10 @@ LogicalResult ConstantFoldFallbackHook(
         return shaped_ty.hasStaticShape() && shaped_ty.getNumElements() == 0 &&
                element_ty.isIntOrFloat();
       });
-  if (has_empty_numerical_results) {
+  if (has_empty_numerical_results &&
+      // TODO(jpienaar): Remove this once some unmodeled op behavior is
+      // addressed.
+      inst->getAbstractOperation()) {
     for (Type ty : inst->getResultTypes()) {
       auto shaped_ty = ty.cast<ShapedType>();
       results.push_back(

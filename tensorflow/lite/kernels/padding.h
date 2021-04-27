@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tflite {
 
-// TODO(renjieliu): Migrate others to use ComputePaddingWithLeftover.
 inline int ComputePadding(int stride, int dilation_rate, int in_size,
                           int filter_size, int out_size) {
   int effective_filter_size = (filter_size - 1) * dilation_rate + 1;

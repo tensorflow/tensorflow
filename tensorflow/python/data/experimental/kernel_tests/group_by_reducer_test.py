@@ -214,7 +214,7 @@ class GroupByReducerCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         grouping.group_by_reducer(lambda x: x % 5, reducer))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testCoreGroupByReducer(self):
+  def testCore(self):
     components = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.int64)
     self.verify_unused_iterator(
         lambda: self._build_dataset(components), 5, verify_exhausted=True)

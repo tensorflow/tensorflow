@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.lite.python import util
 from tensorflow.core.framework import types_pb2
+from tensorflow.lite.python import util
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging

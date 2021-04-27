@@ -52,7 +52,7 @@ class HloRunnerInterface {
 
     // If the HLO module being run has an infeed instruction, this will be the
     // data which will be fed to it, for as many as infeed_steps steps.
-    const Literal* infeed = nullptr;
+    std::vector<const Literal*> infeed_values;
 
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
@@ -170,7 +170,11 @@ class HloRunnerInterface {
       std::function<const Literal*(int64, int64)> argument_provider,
       const ReplicatedExecuteOptions& options) = 0;
 
-  typedef std::function<Shape(const Shape&)> TpuShapeRepresentationFn;
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+ protected:
+  void UpdateEntryComputationLayout(
+      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

@@ -139,12 +139,14 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
 
       return control_flow_ops.while_loop(math_ops.less, body, [i, x])
 
+    num_elements = 1
     dataset = dataset.map(fn)
     self.run_and_report_benchmark(
         dataset,
-        num_elements=1,
+        num_elements=num_elements,
         extras={
             "model_name": "map.benchmark.8",
+            "parameters": "%d" % num_elements,
         },
         name="sequential_control_flow",
         apply_default_optimizations=True)
@@ -157,12 +159,14 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
       return map_fn.map_fn(
           lambda y: y * array_ops.transpose(y), x, parallel_iterations=10)
 
+    num_elements = 1
     dataset = dataset.map(fn)
     self.run_and_report_benchmark(
         dataset,
         num_elements=1,
         extras={
             "model_name": "map.benchmark.9",
+            "parameters": "%d" % num_elements,
         },
         name="parallel_control_flow",
         apply_default_optimizations=True)

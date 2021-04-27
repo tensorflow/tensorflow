@@ -108,21 +108,25 @@ tf_proto {
     }
     enum_type {
       name: "MlirBridgeRollout"
-      value: {
+      value {
         name: "MLIR_BRIDGE_ROLLOUT_UNSPECIFIED"
         number: 0
       }
-      value: {
+      value {
         name: "MLIR_BRIDGE_ROLLOUT_ENABLED"
         number: 1
       }
-      value: {
+      value {
         name: "MLIR_BRIDGE_ROLLOUT_DISABLED"
         number: 2
       }
-      value: {
+      value {
         name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
         number: 3
+      }
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED"
+        number: 4
       }
     }
     reserved_range {

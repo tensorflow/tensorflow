@@ -192,6 +192,7 @@ from __future__ import print_function
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
+import functools
 import threading
 import weakref
 
@@ -594,6 +595,7 @@ class RunOptions(
     collections.namedtuple("RunOptions", [
         "experimental_enable_dynamic_batch_size",
         "experimental_bucketizing_dynamic_shape",
+        "experimental_xla_options",
     ])):
   """Run options for `strategy.run`.
 
@@ -609,14 +611,18 @@ class RunOptions(
       bucketize inputs passed into `run` if the input shape is
       dynamic. This is a performance optimization to reduce XLA recompilation,
       which should not have impact on correctness.
+    experimental_xla_options: A `tf.tpu.XLAOptions` instance. Only applies to
+      TPUStrategy. Controls the XLA compiling options on TPUs. Default to None.
   """
 
   def __new__(cls,
               experimental_enable_dynamic_batch_size=True,
-              experimental_bucketizing_dynamic_shape=False):
+              experimental_bucketizing_dynamic_shape=False,
+              experimental_xla_options=None):
     return super(RunOptions,
                  cls).__new__(cls, experimental_enable_dynamic_batch_size,
-                              experimental_bucketizing_dynamic_shape)
+                              experimental_bucketizing_dynamic_shape,
+                              experimental_xla_options)
 
 
 @tf_export("distribute.InputOptions", v1=[])
@@ -893,7 +899,7 @@ class StrategyBase(object):
       automatically enter it for you. Any variable that is created outside scope
       will not be distributed and may have performance implications. Some common
       objects that create variables in TF are Models, Optimizers, Metrics. Such
-      objects should always be initiliazized in the scope, and any functions
+      objects should always be initialized in the scope, and any functions
       that may lazily create variables (e.g., `Model.__call__()`, tracing a
       `tf.function`, etc.) should similarly be called within scope. Another
       source of variable creation can be a checkpoint restore - when variables
@@ -2100,6 +2106,16 @@ class StrategyExtendedV2(object):
                       trackable.CheckpointInitialValueCallable):
         checkpoint_restore_uid = kwargs[
             "initial_value"].checkpoint_position.restore_uid
+      elif (isinstance(kwargs["initial_value"], functools.partial) and
+            isinstance(kwargs["initial_value"].func,
+                       trackable.CheckpointInitialValueCallable)):
+        # Some libraries (e.g, Keras) create partial function out of initializer
+        # to bind shape/dtype, for example:
+        #  initial_val = functools.partial(initializer, shape, dtype=dtype)
+        # Therefore to get the restore_uid we need to examine the "func" of
+        # the partial function.
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].func.checkpoint_position.restore_uid
       else:
         checkpoint_restore_uid = None
 
@@ -2437,7 +2453,7 @@ class StrategyExtendedV2(object):
     reduced = replica_context.merge_call(merge_fn, args=(nest.flatten(value),))
     return nest.pack_sequence_as(value, reduced)
 
-  def _replica_ctx_update(self, var, fn, args=(), kwargs=None):
+  def _replica_ctx_update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` with `args` and `kwargs` to update `var`."""
     # This method is called by ReplicaContext.update. Strategies who'd like to
     # remove merge_call in this path should override this method.
@@ -2447,7 +2463,7 @@ class StrategyExtendedV2(object):
                        "in a replica context.")
 
     def merge_fn(_, *merged_args, **merged_kwargs):
-      return self.update(var, fn, merged_args, merged_kwargs, group=True)
+      return self.update(var, fn, merged_args, merged_kwargs, group=group)
 
     return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
@@ -2557,13 +2573,21 @@ class StrategyExtendedV2(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    _require_cross_replica_or_default_context_extended(self)
+    # TODO(b/178944108): Update the documentation to relfect the fact that
+    # `update` can be called in a replica context.
     if kwargs is None:
       kwargs = {}
-    fn = autograph.tf_convert(
-        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
-    with self._container_strategy().scope():
-      return self._update(var, fn, args, kwargs, group)
+    replica_context = distribution_strategy_context.get_replica_context()
+    # pylint: disable=protected-access
+    if (replica_context is None or replica_context is
+        distribution_strategy_context._get_default_replica_context()):
+      fn = autograph.tf_convert(
+          fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
+      with self._container_strategy().scope():
+        return self._update(var, fn, args, kwargs, group)
+    else:
+      return self._replica_ctx_update(
+          var, fn, args=args, kwargs=kwargs, group=group)
 
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
@@ -2887,6 +2911,10 @@ class StrategyExtendedV1(StrategyExtendedV2):
       A sequence of devices for non-slot variables.
     """
     raise NotImplementedError("must be implemented in descendants")
+
+  def _use_merge_call(self):
+    """Whether to use merge-calls inside the distributed strategy."""
+    return True
 
   @property
   def experimental_between_graph(self):
@@ -3353,7 +3381,7 @@ class ReplicaContext(ReplicaContextBase):
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
-  def _update(self, var, fn, args=(), kwargs=None):
+  def _update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` to update `var` with `args` and `kwargs` in replica context.
 
     `tf.distribute.ReplicaContext.update` takes a (distributed) variable `var`
@@ -3430,13 +3458,16 @@ class ReplicaContext(ReplicaContextBase):
       fn: Function to call. Should take the variable as the first argument.
       args: Tuple or list. Additional positional arguments to pass to `fn()`.
       kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. Most strategies enter a merge_call to
+      conduct update in cross-replica context, and group=True guarantees updates
+      on all replicas is executed.
 
     Returns:
       The return value of `fn` for the local replica.
     """
     if kwargs is None:
       kwargs = {}
-    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs)  # pylint: disable=protected-access
+    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs, group=group)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["distribute.ReplicaContext"])

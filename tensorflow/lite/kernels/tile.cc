@@ -107,6 +107,13 @@ template <typename T, typename M>
 std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
                                      const T* in_data, const M* multipliers,
                                      T* out_data, int dimension) {
+  if (in_dimensions.size == 0) {
+    // If input tensor is a scalar, then just copy it to output (no need to
+    // multiply).
+    *out_data = *in_data;
+    return std::make_pair(0, 0);
+  }
+
   const int dimension_size = in_dimensions.data[dimension];
   if (dimension == in_dimensions.size - 1) {
     CopyMultipleTimes(in_data, dimension_size, multipliers[dimension],

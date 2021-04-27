@@ -16,6 +16,7 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -84,7 +85,7 @@ XLAJIT_MAKE_UNARY(Neg, -x);
 XLAJIT_MAKE_UNARY(Rint, xla::RoundToEven(x));
 XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
 
-XLAJIT_MAKE_UNARY(Rsqrt, xla::Rsqrt(x));
+REGISTER_XLA_OP(Name("Rsqrt"), MlirXlaOpKernel);
 
 XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
 
@@ -128,7 +129,7 @@ XLAJIT_MAKE_UNARY(Erfinv, xla::ErfInv(x));
 XLAJIT_MAKE_UNARY(Ndtri, xla::ScalarLike(x, std::sqrt(2.0)) *
                              xla::ErfInv(xla::ScalarLike(x, 2.0) * x -
                                          xla::ScalarLike(x, 1.0)));
-XLAJIT_MAKE_UNARY(Lgamma, xla::Lgamma(x));
+REGISTER_XLA_OP(Name("Lgamma"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
 XLAJIT_MAKE_UNARY(BesselI0e, xla::BesselI0e(x));
 XLAJIT_MAKE_UNARY(BesselI1e, xla::BesselI1e(x));

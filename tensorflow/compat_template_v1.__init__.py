@@ -43,13 +43,12 @@ if _module_dir:
 setattr(_current_module, "estimator", estimator)
 
 if _os.environ.get("_PREFER_OSS_KERAS", False):
-  try:
-    from keras.api._v1 import keras
-    _current_module.__path__ = (
-        [_module_util.get_parent_dir(keras)] + _current_module.__path__)
-    setattr(_current_module, "keras", keras)
-  except ImportError:
-    pass
+  _keras_module = "keras.api._v1.keras"
+  keras = _LazyLoader("keras", globals(), _keras_module)
+  _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+  if _module_dir:
+    _current_module.__path__ = [_module_dir] + _current_module.__path__
+  setattr(_current_module, "keras", keras)
 else:
   try:
     from tensorflow.python.keras.api._v1 import keras
@@ -71,3 +70,9 @@ if not _six.PY2:
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
+
+# Add module aliases from Keras to TF.
+# Some tf endpoints actually lives under Keras.
+if (hasattr(_current_module, "keras") and
+    _os.environ.get("_PREFER_OSS_KERAS", False)):
+  _current_module.layers.InputSpec = keras.layers.InputSpec

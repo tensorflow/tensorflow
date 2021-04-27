@@ -338,7 +338,7 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
 @np_utils.np_doc_only('vdot')
 def vdot(a, b):  # pylint: disable=missing-docstring
-  a, b = np_array_ops._promote_dtype(a, b)
+  a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
   a = np_array_ops.reshape(a, [-1])
   b = np_array_ops.reshape(b, [-1])
   if a.dtype == np_dtypes.complex128 or a.dtype == np_dtypes.complex64:
@@ -1408,6 +1408,9 @@ def enable_numpy_methods_on_tensor():
   setattr(ops.Tensor, 'clip', clip)
   setattr(ops.Tensor, 'astype', math_ops.cast)
   setattr(ops.Tensor, '__round__', np_array_ops.around)
+  setattr(ops.Tensor, 'max', np_array_ops.amax)
+  setattr(ops.Tensor, 'mean', np_array_ops.mean)
+  setattr(ops.Tensor, 'min', np_array_ops.amin)
 
   # TODO(wangpeng): Remove `data` when all uses of it are removed
   data = property(lambda self: self)

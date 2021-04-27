@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras callbacks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import csv
 import json
@@ -38,6 +34,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
@@ -80,6 +77,14 @@ INPUT_DIM = 3
 NUM_HIDDEN = 5
 BATCH_SIZE = 5
 
+CALLBACK_HOOKS = [
+    'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
+    'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
+    'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
+    'on_test_begin', 'on_test_end', 'on_train_batch_begin',
+    'on_train_batch_end', 'on_train_begin', 'on_train_end'
+]
+
 
 class Counter(keras.callbacks.Callback):
   """Counts the number of times each callback method was run.
@@ -91,14 +96,7 @@ class Counter(keras.callbacks.Callback):
 
   def __init__(self):
     self.method_counts = collections.defaultdict(int)
-    methods_to_count = [
-        'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
-        'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
-        'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
-        'on_test_begin', 'on_test_end', 'on_train_batch_begin',
-        'on_train_batch_end', 'on_train_begin', 'on_train_end'
-    ]
-    for method_name in methods_to_count:
+    for method_name in CALLBACK_HOOKS:
       setattr(self, method_name,
               self.wrap_with_counts(method_name, getattr(self, method_name)))
 
@@ -109,6 +107,17 @@ class Counter(keras.callbacks.Callback):
       return method(*args, **kwargs)
 
     return _call_and_count
+
+
+class CallAllHooks(keras.callbacks.Callback):
+  """A callback that calls self._run for all hooks"""
+
+  def __init__(self):
+    for method_name in CALLBACK_HOOKS:
+      setattr(self, method_name, self._run)
+
+  def _run(self, *args, logs=None):
+    raise NotImplementedError
 
 
 def _get_numpy():
@@ -256,7 +265,8 @@ class CallbackCountsTest(keras_parameterized.TestCase):
 
 class KerasCallbacksTest(keras_parameterized.TestCase):
 
-  def _get_model(self, input_shape=None):
+  def _get_model(self, input_shape=None, additional_metrics=None):
+    additional_metrics = additional_metrics or []
     layers = [
         keras.layers.Dense(3, activation='relu'),
         keras.layers.Dense(2, activation='softmax')
@@ -265,7 +275,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
+        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')] +
+        additional_metrics,
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
@@ -282,6 +293,45 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegex(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_with_stateful_metrics(self):
+
+    class AddAllOnes(keras.metrics.Metric):
+      """A simple metric that adds all the one's in `y_true`."""
+
+      def __init__(self, name='add_all_ones', **kwargs):
+        super(AddAllOnes, self).__init__(name=name, **kwargs)
+        self.total = self.add_weight(name='total', initializer='zeros')
+
+      def update_state(self, y_true, y_pred, sample_weight=None):
+        self.total.assign_add(
+            math_ops.cast(math_ops.reduce_sum(y_true), dtype=dtypes.float32))
+
+      def result(self):
+        return self.total
+
+    x_train = np.array([[0, 1, 0, 1, 0, 1, 0, 1]] * 8).astype(float)
+    y_train = np.array([[1, 0], [0, 0], [1, 1], [1, 0], [0, 1], [1, 0], [1, 0],
+                        [0, 0]])
+    # There are 7 ones in total in `y_train` after two batches.
+    expected_log = r'(.*- loss:.*- my_acc:.*- add_all_ones: 7.0000)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model = self._get_model(
+          input_shape=(8,), additional_metrics=[AddAllOnes()])
+      model.fit(x_train, y_train, verbose=1, batch_size=4, shuffle=False)
+      self.assertRegex(printed.contents(), expected_log)
+
+    # When not executing eagerly, `model.evaluate` does not have the metrics
+    # results printed.
+    if context.executing_eagerly():
+      with self.captureWritesToStream(sys.stdout) as printed:
+        model = self._get_model(
+            input_shape=(8,), additional_metrics=[AddAllOnes()])
+        model.evaluate(x_train, y_train, verbose=1, batch_size=4)
+        self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_all_keras_modes
   def test_trivial_backup_restore(self):
@@ -1687,6 +1737,12 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       def on_predict_batch_end(self, batch, logs=None):
         self.predict_batches += 1
 
+    class MyCallbackWithTFBatchHooks(keras.callbacks.Callback):
+
+      def __init__(self):
+        super(MyCallbackWithTFBatchHooks, self).__init__()
+        self._supports_tf_logs = True
+
     class MyCallbackWithoutBatchHooks(keras.callbacks.Callback):
 
       def __init__(self):
@@ -1704,6 +1760,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertTrue(cb_list._should_call_train_batch_hooks)
     self.assertTrue(cb_list._should_call_test_batch_hooks)
     self.assertTrue(cb_list._should_call_predict_batch_hooks)
+    self.assertFalse(cb_list._batch_hooks_support_tf_logs)
 
     model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
     model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
@@ -1712,6 +1769,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.train_batches, 2)
     self.assertEqual(my_cb.test_batches, 1)
     self.assertEqual(my_cb.predict_batches, 1)
+
+    my_cb = MyCallbackWithTFBatchHooks()
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertTrue(cb_list._batch_hooks_support_tf_logs)
 
     my_cb = MyCallbackWithoutBatchHooks()
     cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
@@ -1723,6 +1784,61 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
     model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
     model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_logs_conversion(self):
+    assert_dict_equal = self.assertDictEqual
+
+    class MutateNumpyLogs(CallAllHooks):
+
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        logs['numpy'] = 1
+
+    class MutateTensorFlowLogs(CallAllHooks):
+
+      def __init__(self):
+        super(MutateTensorFlowLogs, self).__init__()
+        self._supports_tf_logs = True
+
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        logs['tf'] = 2
+
+    class AssertNumpyLogs(CallAllHooks):
+
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        assert_dict_equal(logs, {'all': 0, 'numpy': 1, 'tf': 2})
+
+    class AssertTensorFlowLogs(AssertNumpyLogs):
+
+      def __init__(self):
+        super(AssertTensorFlowLogs, self).__init__()
+        self._supports_tf_logs = True
+
+    cb_list = keras.callbacks.CallbackList([
+        MutateNumpyLogs(),
+        MutateTensorFlowLogs(),
+        AssertNumpyLogs(),
+        AssertTensorFlowLogs()
+    ])
+
+    assert len(cb_list.callbacks) == 4
+    cb_list.on_epoch_begin(0, logs={'all': 0})
+    cb_list.on_epoch_end(0, logs={'all': 0})
+    cb_list.on_predict_batch_begin(0, logs={'all': 0})
+    cb_list.on_predict_batch_end(0, logs={'all': 0})
+    cb_list.on_predict_begin(logs={'all': 0})
+    cb_list.on_predict_end(logs={'all': 0})
+    cb_list.on_test_batch_begin(0, logs={'all': 0})
+    cb_list.on_test_batch_end(0, logs={'all': 0})
+    cb_list.on_test_begin(logs={'all': 0})
+    cb_list.on_test_end(logs={'all': 0})
+    cb_list.on_train_batch_begin(0, logs={'all': 0})
+    cb_list.on_train_batch_end(0, logs={'all': 0})
+    cb_list.on_train_begin(logs={'all': 0})
+    cb_list.on_train_end(logs={'all': 0})
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_implements_batch_hooks_override(self):
@@ -2828,7 +2944,7 @@ class SummaryOpsTest(test.TestCase):
         return self.activation(x)
 
     model = SimpleSubclass()
-    with test.mock.patch.object(logging, 'warn') as mock_log:
+    with test.mock.patch.object(logging, 'warning') as mock_log:
       self.assertFalse(
           keras.callbacks.keras_model_summary(
               name='my_name', data=model, step=1))
@@ -2840,7 +2956,7 @@ class SummaryOpsTest(test.TestCase):
     model = keras.Sequential()
 
     with test.mock.patch.object(model, 'to_json') as mock_to_json:
-      with test.mock.patch.object(logging, 'warn') as mock_log:
+      with test.mock.patch.object(logging, 'warning') as mock_log:
         mock_to_json.side_effect = Exception('oops')
         self.assertFalse(
             keras.callbacks.keras_model_summary(

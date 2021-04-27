@@ -69,6 +69,7 @@ def parse_saved_model_with_debug_info(export_dir):
   return (saved_model, debug_info)
 
 
+@tf_export("__internal__.saved_model.parse_saved_model", v1=[])
 def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
@@ -110,10 +111,10 @@ def parse_saved_model(export_dir):
     except text_format.ParseError as e:
       raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
   else:
-    raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
-                  (export_dir,
-                   constants.SAVED_MODEL_FILENAME_PBTXT,
-                   constants.SAVED_MODEL_FILENAME_PB))
+    raise IOError(
+        "SavedModel file does not exist at: %s%s{%s|%s}" %
+        (export_dir, os.path.sep, constants.SAVED_MODEL_FILENAME_PBTXT,
+         constants.SAVED_MODEL_FILENAME_PB))
 
 
 # TODO(b/120594573): Make this symbol also available as private, so that

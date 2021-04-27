@@ -15,11 +15,8 @@
 # pylint: disable=protected-access
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
-"""Keras backend API.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Keras backend API."""
 
 import collections
 import itertools
@@ -35,12 +32,8 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as eager_function
-from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
@@ -54,6 +47,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import object_identity
@@ -134,7 +128,7 @@ class _DummyEagerGraph(threading.local):
   weak references.
   """
 
-  class _WeakReferencableClass(object):
+  class _WeakReferencableClass:
     """This dummy class is needed for two reasons.
 
     - We need something that supports weak references. Basic types like string
@@ -318,6 +312,9 @@ def clear_session():
     _GRAPH_LEARNING_PHASES.setdefault(graph)
     _GRAPH_VARIABLES.pop(graph, None)
     _GRAPH_TF_OPTIMIZERS.pop(graph, None)
+  if context.executing_eagerly():
+    # Clear pending nodes in eager executors, kernel caches and step_containers.
+    context.context().clear_kernel_cache()
 
 # Inject the clear_session function to keras_deps to remove the dependency
 # from TFLite to Keras.
@@ -840,7 +837,7 @@ def get_default_graph_uid_map():
 # DEVICE MANIPULATION
 
 
-class _TfDeviceCaptureOp(object):
+class _TfDeviceCaptureOp:
   """Class for capturing the TF device scope."""
 
   def __init__(self):
@@ -1044,7 +1041,8 @@ def name_scope(name):
   return ops.name_scope_v2(name)
 
 # Export V1 version.
-keras_export(v1=['keras.backend.name_scope'])(ops.name_scope_v1)
+_v1_name_scope = ops.name_scope_v1
+keras_export(v1=['keras.backend.name_scope'])(_v1_name_scope)
 
 
 @keras_export('keras.backend.variable')
@@ -1106,6 +1104,7 @@ def track_tf_optimizer(tf_optimizer):
   optimizers.add(tf_optimizer)
 
 
+@keras_export('keras.__internal__.backend.track_variable', v1=[])
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
@@ -1184,6 +1183,7 @@ def _get_variables(graph=None):
   return variables
 
 
+@keras_export('keras.__internal__.backend.initialize_variables', v1=[])
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
   variables = _get_variables(get_graph())
@@ -1280,7 +1280,7 @@ def is_keras_tensor(x):
                      keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
-  if keras_tensor.keras_tensors_enabled():
+  if ops.executing_eagerly_outside_functions():
     return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
@@ -1310,7 +1310,6 @@ def placeholder(shape=None,
           [guide](https://www.tensorflow.org/guide/ragged_tensors).
 
   Raises:
-      ValueError: If called with eager execution
       ValueError: If called with sparse = True and ragged = True.
 
   Returns:
@@ -1333,7 +1332,7 @@ def placeholder(shape=None,
   if not shape:
     if ndim:
       shape = (None,) * ndim
-  if keras_tensor.keras_tensors_enabled():
+  if ops.executing_eagerly_outside_functions():
     if sparse:
       spec = sparse_tensor.SparseTensorSpec(
           shape=shape, dtype=dtype)
@@ -1376,8 +1375,7 @@ def placeholder(shape=None,
     # (intended to be used with keras.backend.function)
     from tensorflow.python.keras.engine import input_layer  # pylint: disable=g-import-not-at-top
     x = input_layer.Input(tensor=x)
-    if keras_tensor.keras_tensors_enabled():
-      x._is_backend_placeholder = True
+    x._is_backend_placeholder = True
 
   return x
 
@@ -1392,7 +1390,7 @@ def is_placeholder(x):
       Boolean.
   """
   try:
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       return hasattr(x, '_is_backend_placeholder')
     from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
     if tf_utils.is_extension_type(x):
@@ -1939,9 +1937,13 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  zero_debias = not tf2.enabled()
-  return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=zero_debias)
+  if tf2.enabled():
+    momentum = math_ops.cast(momentum, x.dtype)
+    value = math_ops.cast(value, x.dtype)
+    return x.assign(x * momentum + value * (1 - momentum))
+  else:
+    return moving_averages.assign_moving_average(
+        x, value, momentum, zero_debias=True)
 
 
 # LINEAR ALGEBRA
@@ -3699,7 +3701,7 @@ _VALUE_SET_CODE_STRING = """
 def get_value(x):
   """Returns the value of a variable.
 
-  `backend.get_value` is the compliment of `backend.set_value`, and provides
+  `backend.get_value` is the complement of `backend.set_value`, and provides
   a generic interface for reading from variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3723,7 +3725,8 @@ def get_value(x):
 
   if ops.executing_eagerly_outside_functions():
     # This method of evaluating works inside the Keras FuncGraph.
-    return eval_in_eager_or_function(x)
+    with ops.init_scope():
+      return x.numpy()
 
   with x.graph.as_default():
     return x.eval(session=get_session((x,)))
@@ -3759,7 +3762,7 @@ def batch_get_value(tensors):
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
-  `backend.set_value` is the compliment of `backend.get_value`, and provides
+  `backend.set_value` is the complement of `backend.get_value`, and provides
   a generic interface for assigning to variables while abstracting away the
   differences between TensorFlow 1.x and 2.x semantics.
 
@@ -3770,7 +3773,7 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value, dtype=dtype(x))
+  value = np.asarray(value, dtype=dtype_numpy(x))
   if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
@@ -3812,7 +3815,7 @@ def batch_set_value(tuples):
         assign_ops = []
         feed_dict = {}
         for x, value in tuples:
-          value = np.asarray(value, dtype=dtype(x))
+          value = np.asarray(value, dtype=dtype_numpy(x))
           tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
           if hasattr(x, '_assign_placeholder'):
             assign_placeholder = x._assign_placeholder
@@ -3840,7 +3843,7 @@ set_value.__doc__ = set_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
 @keras_export('keras.backend.print_tensor')
 @dispatch.add_dispatch_support
 @doc_controls.do_not_generate_docs
-def print_tensor(x, message=''):
+def print_tensor(x, message='', summarize=3):
   """Prints `message` and the tensor value when evaluated.
 
   Note that `print_tensor` returns a new tensor identical to `x`
@@ -3858,23 +3861,29 @@ def print_tensor(x, message=''):
   Args:
       x: Tensor to print.
       message: Message to print jointly with the tensor.
+      summarize: The first and last `summarize` elements within each dimension
+          are recursively printed per Tensor. If None, then the first 3 and last
+          3 elements of each dimension are printed for each tensor. If set to
+          -1, it will print all elements of every tensor.
 
   Returns:
       The same tensor `x`, unchanged.
   """
   if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
     with get_graph().as_default():
-      op = logging_ops.print_v2(message, x, output_stream=sys.stdout)
+      op = logging_ops.print_v2(
+          message, x, output_stream=sys.stdout, summarize=summarize)
       with ops.control_dependencies([op]):
         return array_ops.identity(x)
   else:
-    logging_ops.print_v2(message, x, output_stream=sys.stdout)
+    logging_ops.print_v2(
+        message, x, output_stream=sys.stdout, summarize=summarize)
     return x
 
 # GRAPH MANIPULATION
 
 
-class GraphExecutionFunction(object):
+class GraphExecutionFunction:
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
@@ -3975,7 +3984,7 @@ class GraphExecutionFunction(object):
       connection = callable_opts.tensor_connection.add()
       if x.dtype != y.dtype:
         y = math_ops.cast(y, dtype=x.dtype)
-      from_tensor = ops._as_graph_element(y)
+      from_tensor = _as_graph_element(y)
       if from_tensor is None:
         from_tensor = y
       connection.from_tensor = from_tensor.name  # Data tensor
@@ -4046,7 +4055,7 @@ class GraphExecutionFunction(object):
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(
-            np.asarray(self.feed_dict[key], dtype=key.dtype.base_dtype.name))
+            np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
 
     # Refresh callable if anything has changed.
     if (self._callable_fn is None or feed_arrays != self._feed_arrays or
@@ -4069,76 +4078,6 @@ class GraphExecutionFunction(object):
     # this ensures that we return its value as a SparseTensorValue rather than
     # a SparseTensor.
     return nest.map_structure(self._eval_if_composite, output_structure)
-
-
-def eval_in_eager_or_function(outputs):
-  """Method to evaluate a tensor in eager or in a tf.function.
-
-  In the case of a tf.function, it will lift the tensor out of the function
-  and try to evaluate that piece of the graph.
-
-  Warning: Do not add new usages of this function.
-  TODO(b/150169018): delete this function once _keras_history_helper is no
-  longer needed, after Keras switches to KerasTensors and op layers
-  work via dispatch.
-
-  Args:
-    outputs: tensors to fetch.
-  Returns:
-    The value of the tensors (as numpy arrays).
-  """
-  outputs_structure = outputs
-  outputs = nest.flatten(outputs, expand_composites=True)
-
-  graphs = {
-      i.graph
-      for i in nest.flatten([outputs])
-      if hasattr(i, 'graph')
-  }
-  if len(graphs) > 1:
-    raise ValueError('Cannot create an execution function which is comprised '
-                     'of elements from multiple graphs.')
-
-  source_graph = graphs.pop()
-
-  with _scratch_graph() as exec_graph:
-    global_graph = get_graph()
-    if source_graph not in (exec_graph, global_graph):
-      raise ValueError('Unknown graph. Aborting.')
-
-    if source_graph is global_graph and exec_graph is not global_graph:
-      init_tensors = outputs
-      lifted_map = lift_to_graph.lift_to_graph(
-          tensors=init_tensors,
-          graph=exec_graph,
-          sources=[],
-          add_sources=True,
-          handle_captures=True,
-          base_graph=source_graph)
-
-      outputs = [lifted_map[i] for i in outputs]
-
-  # Consolidate updates
-  with exec_graph.as_default():
-    outputs = cast_variables_to_tensor(outputs)
-
-    exec_graph.inputs = exec_graph.internal_captures
-    exec_graph.outputs = outputs
-    graph_fn = eager_function.ConcreteFunction(exec_graph)
-
-  graph_fn._num_positional_args = 0
-  graph_fn._arg_keywords = []
-
-  outputs = graph_fn()
-
-  # EagerTensor.numpy() will often make a copy to ensure memory safety.
-  # However in this case `outputs` is not directly returned, so it is always
-  # safe to reuse the underlying buffer without checking. In such a case the
-  # private numpy conversion method is preferred to guarantee performance.
-  return nest.pack_sequence_as(
-      outputs_structure,
-      [x._numpy() for x in outputs],  # pylint: disable=protected-access
-      expand_composites=True)
 
 
 @keras_export('keras.backend.function')
@@ -4175,7 +4114,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
       outs = model(model_inputs)
       if wrap_outputs:
         outs = [outs]
-      return tf_utils.to_numpy_or_python_type(outs)
+      return tf_utils.sync_to_numpy_or_python_type(outs)
+
     return func
 
   if kwargs:
@@ -4867,7 +4807,7 @@ def softplus(x):
   Returns:
       A tensor.
   """
-  return nn.softplus(x)
+  return math_ops.softplus(x)
 
 
 @keras_export('keras.backend.softsign')
@@ -6510,7 +6450,7 @@ def configure_and_create_distributed_session(distribution_strategy):
       master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
       session = session_module.Session(config=session_config, target=master)
     else:
-      worker_context = dc_context.get_current_worker_context()
+      worker_context = dc.get_current_worker_context()
       if worker_context:
         dc_session_config = worker_context.session_config
         # Merge the default session config to the one from distribute
@@ -6528,8 +6468,7 @@ def configure_and_create_distributed_session(distribution_strategy):
   if distribution_strategy.extended._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
-        distribution_strategy,
-        mode='independent_worker')
+        distribution_strategy)
   else:
     _create_session(distribution_strategy)
 
@@ -6583,12 +6522,20 @@ def convert_inputs_if_ragged(inputs):
   return inputs, nested_row_lengths
 
 
-def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths):
+def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths,
+                            go_backwards=False):
   """Converts any ragged input back to its initial structure."""
   if not is_ragged_input:
     return output
 
-  return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+  if go_backwards:
+    # Reverse based on the timestep dim, so that nested_row_lengths will mask
+    # from the correct direction. Return the reverse ragged tensor.
+    output = reverse(output, [1])
+    ragged = ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+    return reverse(ragged, [1])
+  else:
+    return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
 
 
 class ContextValueCache(weakref.WeakKeyDictionary):

@@ -52,7 +52,7 @@ class HloRematerializationTest : public RematerializationTestBase {
         ByteSizeOf, memory_limit_bytes,
         /*sizes=*/nullptr,
         HloRematerialization::RematerializationPass::kPreFusion,
-        /*block_size_limit=*/1, nullptr,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1, nullptr,
         HloRematerialization::RematerializationMode::kRecomputeAndCompress,
         min_remat_size);
     return remat.Run(module);
@@ -605,7 +605,8 @@ class CompressingRematerializationTest : public RematerializationTestBase {
         ShapeSizePadMinorTo64, memory_limit_bytes,
         /*sizes=*/nullptr,
         HloRematerialization::RematerializationPass::kPreFusion,
-        /*block_size_limit=*/1, ChooseCompactLayoutForShape,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+        ChooseCompactLayoutForShape,
         HloRematerialization::RematerializationMode::kCompressOnly,
         min_remat_size);
     return remat.Run(module);

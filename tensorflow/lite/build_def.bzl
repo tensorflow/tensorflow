@@ -115,6 +115,7 @@ def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
         clean_dep("//tensorflow:debug"): [],
+        clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],
@@ -283,7 +284,7 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by adding it to the blacklists specified in
+# Disable a test by adding it to the denylists specified in
 # generated_test_models_failing().
 def generated_test_models():
     return [
@@ -424,8 +425,12 @@ def generated_test_models_failing(conversion_mode):
       List of failing test models for the conversion mode.
     """
     if conversion_mode == "toco-flex":
+        # These tests mean to fuse multiple TF ops to TFLite fused RNN & LSTM
+        # ops (e.g. LSTM, UnidirectionalSequentceLSTM) with some semantic
+        # changes (becoming stateful). We have no intention to make these
+        # work in Flex.
         return [
-            "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
+            "lstm",
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
@@ -832,7 +837,6 @@ def tflite_custom_cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
-            # TODO(b/161323860) replace this by generated header.
             "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),

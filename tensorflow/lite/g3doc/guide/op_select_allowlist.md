@@ -38,6 +38,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.ApproximateEqual`
 *   `raw_ops.ArgMax`
 *   `raw_ops.ArgMin`
+*   `raw_ops.AsString`
 *   `raw_ops.Assert`
 *   `raw_ops.Assign`
 *   `raw_ops.AssignAdd`
@@ -56,6 +57,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.BatchDatasetV2`
 *   `raw_ops.BatchMatMul`
 *   `raw_ops.BatchMatMulV2`
+*   `raw_ops.BatchMatrixBandPart`
 *   `raw_ops.BatchMatrixDiag`
 *   `raw_ops.BatchMatrixDiagPart`
 *   `raw_ops.BatchMatrixInverse`
@@ -207,6 +209,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.GetSessionTensor`
 *   `raw_ops.Greater`
 *   `raw_ops.GreaterEqual`
+*   `raw_ops.HSVToRGB`
 *   `raw_ops.HashTable`
 *   `raw_ops.HashTableV2`
 *   `raw_ops.HistogramSummary`
@@ -224,6 +227,11 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.InplaceUpdate`
 *   `raw_ops.InTopK`
 *   `raw_ops.InTopKV2`
+*   `raw_ops.InitializeTable`
+*   `raw_ops.InitializeTableFromDataset`
+*   `raw_ops.InitializeTableFromTextFile`
+*   `raw_ops.InitializeTableFromTextFileV2`
+*   `raw_ops.InitializeTableV2`
 *   `raw_ops.Inv`
 *   `raw_ops.Invert`
 *   `raw_ops.InvertPermutation`
@@ -264,6 +272,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.LRN`
 *   `raw_ops.MapDataset`
 *   `raw_ops.MatMul`
+*   `raw_ops.MatrixBandPart`
 *   `raw_ops.MatrixDiag`
 *   `raw_ops.MatrixDiagPart`
 *   `raw_ops.MatrixDiagPartV2`
@@ -379,14 +388,22 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.QueueIsClosedV2`
 *   `raw_ops.QueueSize`
 *   `raw_ops.QueueSizeV2`
+*   `raw_ops.RFFT`
+*   `raw_ops.RFFT2D`
+*   `raw_ops.RFFT3D`
+*   `raw_ops.RGBToHSV`
 *   `raw_ops.RaggedBincount`
 *   `raw_ops.RaggedGather`
 *   `raw_ops.RaggedRange`
+*   `raw_ops.RaggedTensorFromVariant`
 *   `raw_ops.RaggedTensorToSparse`
 *   `raw_ops.RaggedTensorToTensor`
+*   `raw_ops.RaggedTensorToVariant`
+*   `raw_ops.RaggedTensorToVariantGradient`
 *   `raw_ops.RandomGamma`
 *   `raw_ops.RandomPoisson`
 *   `raw_ops.RandomPoissonV2`
+*   `raw_ops.RandomShuffle`
 *   `raw_ops.RandomStandardNormal`
 *   `raw_ops.RandomUniform`
 *   `raw_ops.RandomUniformInt`
@@ -414,6 +431,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Relu6Grad`
 *   `raw_ops.ReluGrad`
 *   `raw_ops.RemoteCall`
+*   `raw_ops.RepeatDataset`
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`
@@ -474,9 +492,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Reverse`
 *   `raw_ops.ReverseSequence`
 *   `raw_ops.ReverseV2`
-*   `raw_ops.RFFT`
-*   `raw_ops.RFFT2D`
-*   `raw_ops.RFFT3D`
 *   `raw_ops.RightShift`
 *   `raw_ops.Roll`
 *   `raw_ops.Round`
@@ -551,6 +566,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSqrtNWithNumSegments`
 *   `raw_ops.SparseSegmentSum`
 *   `raw_ops.SparseSegmentSumWithNumSegments`
+*   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
 *   `raw_ops.SparseToDense`
 *   `raw_ops.SparseToSparseSetOperation`
 *   `raw_ops.Split`
@@ -570,6 +586,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StackV2`
 *   `raw_ops.StatelessMultinomial`
 *   `raw_ops.StatelessRandomGammaV2`
+*   `raw_ops.StatelessRandomGetAlg`
+*   `raw_ops.StatelessRandomGetKeyCounter`
 *   `raw_ops.StatelessRandomGetKeyCounterAlg`
 *   `raw_ops.StatelessRandomNormal`
 *   `raw_ops.StatelessRandomNormalV2`
@@ -672,10 +690,12 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.TensorScatterMin`
 *   `raw_ops.TensorScatterSub`
 *   `raw_ops.TensorScatterUpdate`
+*   `raw_ops.TensorSliceDataset`
 *   `raw_ops.TensorStridedSliceUpdate`
 *   `raw_ops.Tile`
 *   `raw_ops.TileGrad`
 *   `raw_ops.Timestamp`
+*   `raw_ops.TokenizerFromLogits`
 *   `raw_ops.TopK`
 *   `raw_ops.TopKV2`
 *   `raw_ops.Transpose`
@@ -789,3 +809,99 @@ model_data = converter.convert()
 
 On the runtime side, it is also required to link your operators library into the
 final app or binary.
+
+## Add TensorFlow core operators to the allowed list.
+
+If you hit the case where the TensorFlow core operators are not in the above
+allowed
+[list](https://www.tensorflow.org/lite/guide/op_select_allowlist#tensorflow_core_operators),
+you can report the feature request at
+[here](https://github.com/tensorflow/tensorflow/issues) with the names of the
+TensorFlow core operators, not listed in the allowed list.
+
+You can also create own your pull request from the source code. For example, if
+you want to add the `raw_ops.StringToNumber` op in the allowed list, there are
+three places to update like this
+[commit](https://github.com/tensorflow/tensorflow/commit/02e691329517eb5e76522ed8d8bef79ceb082ff8).
+
+(1) Add the operator kernel source code to the `portable_extended_ops_group2`
+BUILD rule.
+
+```
+filegroup(
+    name = "portable_extended_ops_group2",
+    srcs = [
+        ...
++       "string_to_number_op.cc",
+
+        ...
+    ],
+)
+```
+
+In order to find the relvant operator kernel source file under the
+`tensorflow/core/kernels` directory, you can search the source code location,
+which contains the following kernel declaration with the operator name:
+
+```
+REGISTER_KERNEL_BUILDER(Name("StringToNumber")                 \
+                            .Device(DEVICE_CPU)                \
+                            .TypeConstraint<type>("out_type"), \
+                        StringToNumberOp<type>)
+```
+
+If there are any header files under the `tensorflow/core/kernels` directory,
+required in the operator kernel source code, you need to add the header file
+into the `portable_extended_ops_headers` BUILD rule as the follows:
+
+```
+filegroup(
+    name = "portable_extended_ops_headers",
+    srcs = [
+        ...
++       "string_util.h",
+
+        ...
+    ],
+)
+```
+
+(2) Add the operator name to the allowed list.
+
+The allowed list is defined in the
+`tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc`. The TensorFlow core
+operator name is need to be listed in order to be allowed through the Select TF
+option.
+
+```
+static const std::set<std::string>* allowlisted_flex_ops =
+    new std::set<std::string>({
+        ...
++       "StringToNumber",
+
+        ...
+    });
+```
+
+Since the above list is sorted in alphabetical order, it makes sure to place the
+name in the right place.
+
+(3) Add the operator name to this guide page.
+
+To show the operator inclusion to the other developers, this guide page should
+be updated as well. This page is located at the
+`tensorflow/lite/g3doc/guide/op_select_allowlist.md`.
+
+```
+## TensorFlow core operators
+
+The following is an exhaustive list of TensorFlow core operations that are
+supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
+
+...
++*   `raw_ops.StringToNumber`
+...
+```
+
+Since the above list is sorted in alphabetical order, it makes sure to place the
+name in the right place.

@@ -63,7 +63,7 @@ struct CubinOrPTXImage {
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the
 // resulting binary (i.e. a fatbin) as a byte array.
 port::StatusOr<std::vector<uint8>> BundleGpuAsm(
-    std::vector<CubinOrPTXImage> images, const std::string preferred_cuda_dir);
+    std::vector<CubinOrPTXImage> images, GpuAsmOpts options);
 
 struct HsacoImage {
   std::string gfx_arch;

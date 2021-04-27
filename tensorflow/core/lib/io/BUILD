@@ -12,7 +12,7 @@ package(
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): Remaining targets to add to this BUILD file are: all tests.

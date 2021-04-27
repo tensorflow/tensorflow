@@ -41,7 +41,11 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
 )
 
 # List of exported source files.
@@ -237,6 +241,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

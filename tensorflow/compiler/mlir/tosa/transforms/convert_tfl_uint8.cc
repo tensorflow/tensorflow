@@ -29,6 +29,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -46,13 +47,14 @@ limitations under the License.
 #define DEBUG_TYPE PASS_NAME
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public PassWrapper<ConvertUint8ToInt8, FunctionPass> {
+    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
   explicit ConvertUint8ToInt8() {}
   void runOnFunction() override;
@@ -332,7 +334,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 }
 
 void ConvertUint8ToInt8::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto &ctx = getContext();
   auto func = getFunction();
 

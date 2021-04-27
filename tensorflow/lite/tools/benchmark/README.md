@@ -25,8 +25,9 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
@@ -47,6 +48,20 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+*  `print_preinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before calling
+    tflite::Interpreter::Invoke. The internals will include allocated memory
+    size of each tensor etc. Enabling this could help understand TfLite graph
+    and memory usage.
+*  `print_postinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before benchmark
+    completes (i.e. after all repeated Invoke calls complete). The internals
+    will include allocated memory size of each tensor etc. Enabling this could
+    help understand TfLite graph and memory usage, particularly when there are
+    dynamic-shaped tensors in the graph.
+*  `dry_run`: `bool` (default=false) \
+    Whether to run the tool just with simply loading the model, allocating
+    tensors etc. but without actually invoking any op kernels.
 *  `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
@@ -101,6 +116,7 @@ where applicable. For details about each parameter, please refer to
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
@@ -118,6 +134,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)

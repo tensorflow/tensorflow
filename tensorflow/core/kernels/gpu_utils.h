@@ -57,7 +57,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result);
+                   AutotuneResult* autotune_result);
 
 template <typename T>
 inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
@@ -240,9 +240,12 @@ void LogFusedConvForwardAutotuneResults(
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored.
-Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
-                              se::dnn::AlgorithmConfig* algo);
+// allowed and ignored. The "plans" can be null when Cudnn frontend APIs are not
+// used.
+Status BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results,
+    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    se::dnn::AlgorithmConfig* algo);
 
 }  // namespace tensorflow
 

@@ -39,6 +39,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "if_mkl_ml",
 )
 
 default_package_visibility = [
@@ -48,7 +49,8 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 tf_cuda_library(
@@ -89,6 +91,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime",
     ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
@@ -1080,11 +1083,13 @@ cc_library(
     hdrs = ["optimization_registry.h"],
     copts = tf_copts(),
     deps = [
+        ":composite_device",
         ":device_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1542,7 +1547,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-    ] + if_mkl([":mkl_cpu_allocator"]),
+    ] + if_mkl([":mkl_cpu_allocator"]) + if_mkl_ml([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 cc_library(
@@ -1575,6 +1582,7 @@ tf_cuda_library(
         ":collective_param_resolver_local",
         ":collective_rma_local",
         ":collective_util",
+        ":composite_device",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
@@ -1696,7 +1704,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/framework:allocator",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -2213,7 +2220,7 @@ tf_cuda_cc_test(
     name = "direct_session_test",
     size = "medium",
     srcs = ["direct_session_test.cc"],
-    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
+    args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu",
@@ -2296,7 +2303,7 @@ tf_cc_test(
     name = "direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [

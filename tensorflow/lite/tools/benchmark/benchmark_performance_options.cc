@@ -294,7 +294,7 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
     if (!nnapi_accelerators.empty()) {
       std::vector<std::string> device_names;
       util::SplitAndParse(nnapi_accelerators, ',', &device_names);
-      for (const auto name : device_names) {
+      for (const auto& name : device_names) {
         BenchmarkParams params;
         params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
         params.AddParam("nnapi_accelerator_name",

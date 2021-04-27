@@ -20,12 +20,14 @@ from __future__ import print_function
 
 import functools
 import os
+import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -637,7 +639,6 @@ class _RestoredResource(tracking.TrackableResource):
 
   def __init__(self, device=""):
     super(_RestoredResource, self).__init__(device=device)
-    self._destroy_resource_fn = None
 
   def _create_resource(self):
     raise RuntimeError()
@@ -645,15 +646,13 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  @property
+  # _list_functions_for_serialization expects Function objects, but unlike
+  # _create_resource and _initialize, _destroy_function didn't always exist in
+  # older TrackableResource implementations, so this default stub must be a
+  # Function.
+  @def_function.function
   def _destroy_resource(self):
-    return self._destroy_resource_fn
-
-  @_destroy_resource.setter
-  def _destroy_resource(self, destroy_resource_fn):
-    self._resource_deleter = tracking.CapturableResourceDeleter(
-        destroy_resource_fn)
-    self._destroy_resource_fn = destroy_resource_fn
+    raise RuntimeError()
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -662,9 +661,8 @@ class _RestoredResource(tracking.TrackableResource):
     functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
-    if self._destroy_resource:
-      functions.update(_destroy_resource=self._destroy_resource)
     return functions
 
 
@@ -861,7 +859,7 @@ def load(export_dir, tags=None, options=None):
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
     it also points to trackable objects, functions, debug info which it has been
     saved.
 
@@ -885,6 +883,12 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
+    # tensor_content field contains raw bytes in litle endian format
+    # which causes problems when loaded on big-endian systems
+    # requiring byteswap
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(

@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The V2 implementation of Normalization layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""The V2 implementation of Normalization layers."""
 
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.distribute import reduce_util
@@ -147,7 +143,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         local_sum = math_ops.reduce_sum(y, axis=axes, keepdims=True)
         local_squared_sum = math_ops.reduce_sum(math_ops.square(y), axis=axes,
                                                 keepdims=True)
-        batch_size = math_ops.cast(array_ops.shape_v2(y)[0], dtypes.float32)
+        batch_size = math_ops.cast(array_ops.shape_v2(y)[axes[0]],
+                                   dtypes.float32)
         # TODO(b/163099951): batch the all-reduces once we sort out the ordering
         # issue for NCCL. We don't have a mechanism to launch NCCL in the same
         # order in each replica nowadays, so we limit NCCL to batch all-reduces.
@@ -157,7 +154,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         global_batch_size = replica_ctx.all_reduce(reduce_util.ReduceOp.SUM,
                                                    batch_size)
 
-        axes_vals = [(array_ops.shape_v2(y))[i] for i in range(1, len(axes))]
+        axes_vals = [(array_ops.shape_v2(y))[axes[i]]
+                     for i in range(1, len(axes))]
         multiplier = math_ops.cast(math_ops.reduce_prod(axes_vals),
                                    dtypes.float32)
         multiplier = multiplier * global_batch_size
@@ -202,7 +200,7 @@ class BatchNormalization(normalization.BatchNormalizationBase):
   with the argument `training=True`), the layer normalizes its output using
   the mean and standard deviation of the current batch of inputs. That is to
   say, for each channel being normalized, the layer returns
-  `(batch - mean(batch)) / (var(batch) + epsilon) * gamma + beta`, where:
+  `gamma * (batch - mean(batch)) / sqrt(var(batch) + epsilon) + beta`, where:
 
   - `epsilon` is small constant (configurable as part of the constructor
   arguments)
@@ -216,7 +214,7 @@ class BatchNormalization(normalization.BatchNormalizationBase):
   default), the layer normalizes its output using a moving average of the
   mean and standard deviation of the batches it has seen during training. That
   is to say, it returns
-  `(batch - self.moving_mean) / (self.moving_var + epsilon) * gamma + beta`.
+  `gamma * (batch - self.moving_mean) / sqrt(self.moving_var + epsilon) + beta`.
 
   `self.moving_mean` and `self.moving_var` are non-trainable variables that
   are updated each time the layer in called in training mode, as such:

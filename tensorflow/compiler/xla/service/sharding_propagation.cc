@@ -1523,10 +1523,7 @@ StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {
-      if (instruction->opcode() != HloOpcode::kCustomCall) {
-        continue;
-      }
-      if (instruction->custom_call_target() != "Sharding") {
+      if (!instruction->IsCustomCall("Sharding")) {
         continue;
       }
       TF_RET_CHECK(instruction->has_sharding())
@@ -1689,37 +1686,37 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // then propagate its sharding to the while instruction, to its body root,
   // and to its condition parameter.
   std::function<void(HloInstruction*, absl::flat_hash_set<HloInstruction*>*)>
-      maybe_computation_propagation = [&](HloInstruction* instruction,
-                                          absl::flat_hash_set<HloInstruction*>*
-                                              changed) {
-        auto propagate_to_instruction = [&](HloInstruction* search_inst) {
-          auto related_instructions = get_related_instructions(search_inst);
-          if (absl::c_count(related_instructions, instruction)) {
-            for (HloInstruction* inst : related_instructions) {
-              if (!inst->has_sharding() ||
-                  inst->sharding() != instruction->sharding()) {
-                VLOG(2) << "Add computation sharding: " << inst->name();
-                inst->set_sharding(instruction->sharding());
-                changed->insert(inst);
-                maybe_computation_propagation(inst, changed);
+      maybe_computation_propagation =
+          [&](HloInstruction* instruction,
+              absl::flat_hash_set<HloInstruction*>* changed) {
+            auto propagate_to_instruction = [&](HloInstruction* search_inst) {
+              auto related_instructions = get_related_instructions(search_inst);
+              if (absl::c_count(related_instructions, instruction)) {
+                for (HloInstruction* inst : related_instructions) {
+                  if (!inst->has_sharding() ||
+                      inst->sharding() != instruction->sharding()) {
+                    VLOG(2) << "Add computation sharding: " << inst->name();
+                    inst->set_sharding(instruction->sharding());
+                    changed->insert(inst);
+                    maybe_computation_propagation(inst, changed);
+                  }
+                }
+              }
+            };
+
+            if (instruction->opcode() == HloOpcode::kConditional ||
+                instruction->opcode() == HloOpcode::kWhile) {
+              propagate_to_instruction(instruction);
+            }
+
+            if (instruction->opcode() == HloOpcode::kParameter ||
+                instruction->parent()->root_instruction() == instruction) {
+              auto it = computation_map.find(instruction->parent());
+              if (it != computation_map.end()) {
+                propagate_to_instruction(it->second);
               }
             }
-          }
-        };
-
-        if (instruction->opcode() == HloOpcode::kConditional ||
-            instruction->opcode() == HloOpcode::kWhile) {
-          propagate_to_instruction(instruction);
-        }
-
-        if (instruction->opcode() == HloOpcode::kParameter ||
-            instruction->parent()->root_instruction() == instruction) {
-          auto it = computation_map.find(instruction->parent());
-          if (it != computation_map.end()) {
-            propagate_to_instruction(it->second);
-          }
-        }
-      };
+          };
 
   for (auto computation : module->computations()) {
     for (auto instruction : computation->instructions()) {

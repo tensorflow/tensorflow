@@ -24,7 +24,8 @@ export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-setup_python_from_pyenv_macos
+export PYENV_VERSION=3.9.1
+setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -34,13 +35,15 @@ export PATH=$PATH:/usr/local/bin
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
-# Run configure.
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python)
-yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=release_cpu_macos tensorflow/tools/pip_package:build_pip_package
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
+bazel build \
+  --config=release_cpu_macos \
+  --action_env=PYENV_VERSION="$PYENV_VERSION" \
+  tensorflow/tools/pip_package:build_pip_package
+
 mkdir pip_pkg
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 

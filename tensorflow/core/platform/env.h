@@ -111,13 +111,6 @@ class Env {
   Status NewRandomAccessFile(const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result);
 
-  Status NewRandomAccessFile(const std::string& fname, TransactionToken* token,
-                             std::unique_ptr<RandomAccessFile>* result) {
-    // We duplicate these methods due to Google internal coding style prevents
-    // virtual functions with default arguments. See PR #41615.
-    return Status::OK();
-  }
-
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
   ///
@@ -134,11 +127,6 @@ class Env {
   Status NewWritableFile(const std::string& fname,
                          std::unique_ptr<WritableFile>* result);
 
-  Status NewWritableFile(const std::string& fname, TransactionToken* token,
-                         std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
-  }
-
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
   ///
@@ -154,10 +142,6 @@ class Env {
   Status NewAppendableFile(const std::string& fname,
                            std::unique_ptr<WritableFile>* result);
 
-  Status NewAppendableFile(const std::string& fname, TransactionToken* token,
-                           std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
-  }
   /// \brief Creates a readonly region of memory with the file context.
   ///
   /// On success, it returns a pointer to read-only memory region
@@ -172,18 +156,8 @@ class Env {
   Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
-  Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, TransactionToken* token,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-    return Status::OK();
-  }
-
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   Status FileExists(const std::string& fname);
-
-  Status FileExists(const std::string& fname, TransactionToken* token) {
-    return Status::OK();
-  }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -191,21 +165,11 @@ class Env {
   bool FilesExist(const std::vector<string>& files,
                   std::vector<Status>* status);
 
-  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
-                  std::vector<Status>* status) {
-    return true;
-  }
-
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
   Status GetChildren(const std::string& dir, std::vector<string>* result);
-
-  Status GetChildren(const std::string& dir, TransactionToken* token,
-                     std::vector<string>* result) {
-    return Status::OK();
-  }
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
@@ -219,17 +183,8 @@ class Env {
   virtual Status GetMatchingPaths(const std::string& pattern,
                                   std::vector<string>* results);
 
-  Status GetMatchingPaths(const std::string& pattern, TransactionToken* token,
-                          std::vector<string>* results) {
-    return Status::OK();
-  }
-
   /// Deletes the named file.
   Status DeleteFile(const std::string& fname);
-
-  Status DeleteFile(const std::string& fname, TransactionToken* token) {
-    return Status::OK();
-  }
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -258,11 +213,6 @@ class Env {
   Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs);
 
-  Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
-                           int64* undeleted_files, int64* undeleted_dirs) {
-    return Status::OK();
-  }
-
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories. Typical return codes.
   ///  * OK - successfully created the directory and sub directories, even if
@@ -270,34 +220,17 @@ class Env {
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
   Status RecursivelyCreateDir(const std::string& dirname);
 
-  Status RecursivelyCreateDir(const std::string& dirname,
-                              TransactionToken* token) {
-    return Status::OK();
-  }
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
   Status CreateDir(const std::string& dirname);
 
-  Status CreateDir(const std::string& dirname, TransactionToken* token) {
-    return Status::OK();
-  }
-
   /// Deletes the specified directory.
   Status DeleteDir(const std::string& dirname);
 
-  Status DeleteDir(const std::string& dirname, TransactionToken* token) {
-    return Status::OK();
-  }
-
   /// Obtains statistics for the given path.
   Status Stat(const std::string& fname, FileStatistics* stat);
-
-  Status Stat(const std::string& fname, TransactionToken* token,
-              FileStatistics* stat) {
-    return Status::OK();
-  }
 
   /// \brief Returns whether the given path is a directory or not.
   /// Typical return codes (not guaranteed exhaustive):
@@ -323,58 +256,12 @@ class Env {
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const std::string& fname, uint64* file_size);
 
-  Status GetFileSize(const std::string& fname, TransactionToken* token,
-                     uint64* file_size) {
-    return Status::OK();
-  }
-
   /// \brief Renames file src to target. If target already exists, it will be
   /// replaced.
   Status RenameFile(const std::string& src, const std::string& target);
 
-  Status RenameFile(const std::string& src, const std::string& target,
-                    TransactionToken* token) {
-    return Status::OK();
-  }
-
   /// \brief Copy the src to target.
   Status CopyFile(const std::string& src, const std::string& target);
-
-  Status CopyFile(const std::string& src, const std::string& target,
-                  TransactionToken* token) {
-    return Status::OK();
-  }
-
-  /// \brief starts a new transaction on the filesystem that handles filename
-  Status StartTransaction(const std::string& filename,
-                          TransactionToken** token) {
-    *token = nullptr;
-    return Status::OK();
-  }
-
-  /// \brief Adds `path` to transaction in `token` if token belongs to
-  /// filesystem that handles the path.
-  Status AddToTransaction(const std::string& path, TransactionToken* token) {
-    return Status::OK();
-  }
-
-  /// \brief Get token for `path` or start a new transaction and add `path` to
-  /// it.
-  Status GetTokenOrStartTransaction(const std::string& path,
-                                    TransactionToken** token) {
-    *token = nullptr;
-    return Status::OK();
-  }
-
-  /// \brief Returns the transaction for `path` or nullptr in `token`
-  Status GetTransactionForPath(const std::string& path,
-                               TransactionToken** token) {
-    *token = nullptr;
-    return Status::OK();
-  }
-
-  /// \brief Finalizes the transaction
-  Status EndTransaction(TransactionToken* token) { return Status::OK(); }
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
@@ -406,6 +293,9 @@ class Env {
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
+
+  /// Returns the process ID of the calling process.
+  int32 GetProcessId();
 
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
@@ -604,6 +494,10 @@ Status ReadBinaryProto(Env* env, const std::string& fname,
                        protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
+inline Status WriteTextProto(Env* /* env */, const std::string& /* fname */,
+                             const protobuf::MessageLite& /* proto */) {
+  return errors::Unimplemented("Can't write text protos with protolite.");
+}
 Status WriteTextProto(Env* env, const std::string& fname,
                       const protobuf::Message& proto);
 
@@ -632,21 +526,22 @@ namespace register_file_system {
 
 template <typename Factory>
 struct Register {
-  Register(Env* env, const std::string& scheme, bool legacy) {
+  Register(Env* env, const std::string& scheme, bool try_modular_filesystems) {
     // TODO(yongtang): Remove legacy file system registration for hdfs/s3/gcs
     // after TF 2.6+.
-    if (legacy) {
-      const char* enable_legacy_env = getenv("TF_ENABLE_LEGACY_FILESYSTEM");
-      string enable_legacy =
-          enable_legacy_env ? absl::AsciiStrToLower(enable_legacy_env) : "";
-      if (!(enable_legacy == "true" || enable_legacy == "1")) {
+    if (try_modular_filesystems) {
+      const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
+      string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
+      if (load_plugin == "true" || load_plugin == "1") {
+        // We don't register the static filesystem and wait for SIG IO one
+        LOG(WARNING) << "Using modular file system for '" << scheme << "'."
+                     << " Please switch to tensorflow-io"
+                     << " (https://github.com/tensorflow/io) for file system"
+                     << " support of '" << scheme << "'.";
         return;
       }
-      LOG(WARNING) << "Legacy file system for '" << scheme << "' is deprecated"
-                   << " and will be removed in tensorflow 2.6 or higher."
-                   << " Please switch to tensorflow-io"
-                   << " (https://github.com/tensorflow/io) for file system"
-                   << " support of '" << scheme << "'.";
+      // If the envvar is missing or not "true"/"1", then fall back to legacy
+      // implementation to be backwards compatible.
     }
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
@@ -662,15 +557,15 @@ struct Register {
 
 // Register a FileSystem implementation for a scheme. Files with names that have
 // "scheme://" prefixes are routed to use this implementation.
-#define REGISTER_FILE_SYSTEM_ENV(env, scheme, factory, legacy) \
-  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, env, scheme, factory, legacy)
-#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, env, scheme, factory, legacy) \
-  REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, legacy)
-#define REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, legacy)         \
+#define REGISTER_FILE_SYSTEM_ENV(env, scheme, factory, modular) \
+  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, env, scheme, factory, modular)
+#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, env, scheme, factory, modular) \
+  REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, modular)
+#define REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory, modular)        \
   static ::tensorflow::register_file_system::Register<factory>               \
       register_ff##ctr TF_ATTRIBUTE_UNUSED =                                 \
           ::tensorflow::register_file_system::Register<factory>(env, scheme, \
-                                                                legacy)
+                                                                modular)
 
 #define REGISTER_FILE_SYSTEM(scheme, factory)                             \
   REGISTER_FILE_SYSTEM_ENV(::tensorflow::Env::Default(), scheme, factory, \

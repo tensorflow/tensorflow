@@ -739,11 +739,9 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
-  auto call_op = rewriter.create<PartitionedCallOp>(
-      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+  ReplaceTfOpWithNewOp<PartitionedCallOp>(
+      rewriter, op, op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-  rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
 
@@ -1171,12 +1169,22 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis.
-  auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
-  auto lhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis));
-  auto rhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis));
+  // New lhs and rhs concatenation axis
+  auto axis_type =
+      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
+  DenseIntElementsAttr lhs_attr, rhs_attr;
+  if (axis_type.getElementType().isInteger(32)) {
+    lhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
+    rhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
+  } else {
+    assert(axis_type.getElementType().isInteger(64));
+    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
+    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
+  }
+  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
+  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
 
   // Concatenate binary ops operands on the new axis.
   auto lhs_concat = rewriter.create<ConcatV2Op>(
@@ -1421,6 +1429,11 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
 // ConstOp
 //===----------------------------------------------------------------------===//
 
+void ConstOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "cst");
+}
+
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
@@ -1605,7 +1618,7 @@ static LogicalResult inferConvReturnTypes(
                              "D tensor");
 
   if (padding == tensorflow::Padding::EXPLICIT) {
-    if (explicit_padding.size() == 0) {
+    if (explicit_padding.empty()) {
       return emitOptionalError(location,
                                "requires attribute 'explicit_paddings' with "
                                "'EXPLICIT' padding mode");
@@ -2131,6 +2144,35 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
+namespace {
+
+// Flips the incompatible_shape_error attribute to true if the shapes are
+// identical and static.
+static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+  if (op.incompatible_shape_error()) {
+    return rewriter.notifyMatchFailure(op, "the attribute is already true");
+  }
+
+  if (op.x().getType() != op.y().getType()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "require the shapes to be identical");
+  }
+
+  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!src_ty || !src_ty.hasStaticShape()) {
+    return rewriter.notifyMatchFailure(op, "require the shapes to be static");
+  }
+  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
+                                       rewriter.getBoolAttr(true));
+  return success();
+}
+}  // namespace
+
+void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert(convertEqualOp);
+}
+
 //===----------------------------------------------------------------------===//
 // ExpandDimsOp
 //===----------------------------------------------------------------------===//
@@ -2510,11 +2552,9 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   // Replace IfOp with PartitionedCallOp or StatefulPartitionedCallOp.
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
-    auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
-        op.getLoc(), op.getResultTypes(), op.input(), func,
+    ReplaceTfOpWithNewOp<typename decltype(op_type)::CallOp>(
+        rewriter, op, op.getResultTypes(), op.input(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-    rewriter.replaceOp(op, call_op.getResults());
   };
 
   if (op.is_stateless())
