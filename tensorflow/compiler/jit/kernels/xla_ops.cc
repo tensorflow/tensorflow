@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -66,6 +67,9 @@ namespace tensorflow {
 
 namespace {
 
+auto* xla_launch_counter = monitoring::Counter<1>::New(
+    "/tensorflow/core/xla_launch_counter",
+    "The number of times a XlaLaunch is called.", "device");
 
 // A closure describing how to run a compiled version of a TensorFlow function.
 //
@@ -281,6 +285,8 @@ static xla::StatusOr<xla::DeviceAssignment> ResolveDeviceAssignment(
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
+  xla_launch_counter->GetCell(platform_info_.device_type().type_string())
+      ->IncrementBy(1);
 
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   xla::LocalClient* client;
