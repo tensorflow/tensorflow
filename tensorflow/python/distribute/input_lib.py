@@ -1230,7 +1230,6 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       for i, worker in enumerate(input_workers.worker_devices):
         with ops.device(worker):
           cloned_dataset = replicated_ds[worker]
-          cloned_dataset = cloned_dataset.with_options(dataset.options())
           if rebatch_fn is not None:
             cloned_dataset = rebatch_fn(cloned_dataset, i)
           cloned_dataset = input_ops.auto_shard_dataset(
