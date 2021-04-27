@@ -599,6 +599,12 @@ def _get_next_as_optional(iterator, strategy, return_per_replica=False):
   replicas = []
   worker_has_values = []
   worker_devices = []
+  with distribution_strategy_context.enter_or_assert_strategy(strategy):
+    if distribution_strategy_context.get_replica_context() is not None:
+      raise ValueError("next(iterator) should be called from outside of "
+                       "replica_fn. e.g. strategy.run(replica_fn, "
+                       "args=(next(iterator),))")
+
   for i, worker in enumerate(iterator._input_workers.worker_devices):  # pylint: disable=protected-access
     with ops.device(worker):
       worker_has_value, next_element = (
@@ -705,6 +711,13 @@ class DistributedIteratorBase(DistributedIteratorInterface):
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
     if not self._enable_get_next_as_optional:
+      with distribution_strategy_context.enter_or_assert_strategy(
+          self._strategy):
+        if distribution_strategy_context.get_replica_context() is not None:
+          raise ValueError("next(iterator) should be called from outside of "
+                           "replica_fn. e.g. strategy.run(replica_fn, "
+                           "args=(next(iterator),))")
+
       replicas = []
       for i, worker in enumerate(self._input_workers.worker_devices):
         if name is not None:
