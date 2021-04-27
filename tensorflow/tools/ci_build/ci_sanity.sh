@@ -130,13 +130,6 @@ do_pylint() {
   echo "check whether pylint is available or not."
   echo ""
 
-  # !!!!!!This is only an hack to workaround CI VM with numpy 1.14.5!!!!!!!!
-  python3.8 --version
-  python3.8 -m pip install --upgrade numpy~=1.19.2 lazy-object-proxy
-  python3.8 -m pip uninstall -y tb-nightly tf-estimator-nightly
-  python3.8 -m pip list
-
-
   ${PYLINT_BIN} --version
   if [[ $? -eq 0 ]]
   then
