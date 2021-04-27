@@ -505,6 +505,73 @@ TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
   EXPECT_EQ(total_fusion_instrs, 2);
 }
 
+TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule cluster
+
+ %fused_computation (param_0: f32[256,256], param_1: f32[], param_2: f32[])
+     -> f32[256,256] {
+   %param_0 = f32[256,256]{1,0} parameter(0)
+   %param_1 = f32[] parameter(1)
+   %param_2 = f32[] parameter(2)
+   %multiply.0 = f32[] multiply(f32[] %param_1, f32[] %param_2)
+   %broadcast.0 = f32[256,256]{1,0} broadcast(f32[] %multiply.0), dimensions={}
+   ROOT %multiply.1 = f32[256,256]{1,0}
+       multiply(f32[256,256]{1,0} %param_0, f32[256,256]{1,0} %broadcast.0)
+ }
+
+ %fused_computation.1 (param_0: f32[256,256], param_1: f32[], param_2: f32[])
+     -> f32[256,256] {
+   %param_0 = f32[256,256]{1,0} parameter(0)
+   %param_1 = f32[] parameter(1)
+   %param_2 = f32[] parameter(2)
+   %multiply.0 = f32[] multiply(f32[] %param_1, f32[] %param_2)
+   %broadcast.0 = f32[256,256]{1,0} broadcast(f32[] %multiply.0), dimensions={}
+   ROOT %multiply.1 = f32[256,256]{1,0}
+       multiply(f32[256,256]{1,0} %param_0, f32[256,256]{1,0} %broadcast.0)
+ }
+
+ ENTRY %entry_computation (arg0: f32[256,256], arg1: f32[256,256], arg2: f32[],
+                           arg3: f32[], arg4: f32[], arg5: f32[])
+                               -> (f32[256,256], f32[256,256]) {
+   %arg0 = f32[256,256]{1,0} parameter(0), parameter_replication={false}
+   %arg1 = f32[256,256]{1,0} parameter(1), parameter_replication={false}
+   %arg2 = f32[] parameter(2), parameter_replication={false}
+   %arg3 = f32[] parameter(3), parameter_replication={false}
+   %arg4 = f32[] parameter(4), parameter_replication={false}
+   %arg5 = f32[] parameter(5), parameter_replication={false}
+   %sqrt = f32[] sqrt(f32[] %arg2)
+   %sqrt.1 = f32[] sqrt(f32[] %arg3)
+   %fusion = f32[256,256]{1,0}
+       fusion(f32[256,256]{1,0} %arg0, f32[] %sqrt, f32[] %sqrt.1),
+       kind=kLoop, calls=%fused_computation
+   %sqrt.2 = f32[] sqrt(f32[] %arg4)
+   %sqrt.3 = f32[] sqrt(f32[] %arg5)
+   %fusion.1 = f32[256,256]{1,0}
+       fusion(f32[256,256]{1,0} %arg1, f32[] %sqrt.2, f32[] %sqrt.3),
+       kind=kLoop, calls=%fused_computation.1
+   ROOT %tuple.163 = (f32[256,256]{1,0}, f32[256,256]{1,0})
+       tuple(f32[256,256]{1,0} %fusion.1, f32[256,256]{1,0} %fusion)
+ }
+)").ValueOrDie();
+
+  HloPassFix<HloPassPipeline> iterative_h_fusion("iterative_h_fusion");
+  iterative_h_fusion.AddPass<GpuHorizontalLoopFusion>();
+  EXPECT_TRUE(iterative_h_fusion.Run(module.get()).ValueOrDie());
+
+  // Verify that the total number of fusion instructions is 2 so that we
+  // know all the sqrt instructions are fused into a kernel. Note that if we
+  // traverse from def-to-use (i.e., top-to-down) instead of use-to-def, we
+  // will end up having 3 fusions instead of 2.
+  size_t total_fusion_instrs = 0;
+  for (auto instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      ++total_fusion_instrs;
+    }
+  }
+  EXPECT_EQ(total_fusion_instrs, 2);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
