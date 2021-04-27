@@ -382,6 +382,23 @@ std::string OpenClVersionToString(OpenClVersion version) {
   }
 }
 
+bool OpenClInfo::IsImage2dFromBufferSupported() const {
+  if (image_pitch_alignment == 0) {
+    return false;
+  }
+  if (cl_version == OpenClVersion::kCl2_0 ||
+      cl_version == OpenClVersion::kCl2_1 ||
+      cl_version == OpenClVersion::kCl2_2) {
+    return true;
+  }
+  for (const auto& ext : extensions) {
+    if (ext == "cl_khr_image2d_from_buffer") {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool GpuInfo::IsAdreno() const { return vendor == GpuVendor::kQualcomm; }
 
 bool GpuInfo::IsApple() const { return vendor == GpuVendor::kApple; }

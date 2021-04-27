@@ -287,6 +287,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
     ],
 )
 
@@ -586,6 +587,7 @@ cc_library(
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/modify_io_nodes.cc",
+        "transforms/optimize_op_order.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",

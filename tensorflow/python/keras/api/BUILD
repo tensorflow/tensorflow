@@ -105,6 +105,7 @@ keras_packages = [
     "tensorflow.python.keras.utils.losses_utils",
     "tensorflow.python.keras.utils.multi_gpu_utils",
     "tensorflow.python.keras.utils.np_utils",
+    "tensorflow.python.keras.utils.tf_utils",
     "tensorflow.python.keras.utils.vis_utils",
     "tensorflow.python.keras.wrappers.scikit_learn",
 ]

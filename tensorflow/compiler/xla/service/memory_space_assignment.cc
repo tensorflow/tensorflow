@@ -578,7 +578,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   // Find the earliest time we're allowed to start prefetching.
   float max_interval = GetMaxElapsedInAlternateMemory(async_copy_elapsed_);
   for (earliest_prefetch_time_ = start_time;
-       earliest_prefetch_time_ <= end_logical_time_ &&
+       earliest_prefetch_time_ < latest_prefetch_time_ &&
        (computation_nest_level_[earliest_prefetch_time_] != end_nest_level ||
         max_interval < GetLogicalIntervalElapsed(earliest_prefetch_time_,
                                                  end_logical_time_));

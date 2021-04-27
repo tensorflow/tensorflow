@@ -378,6 +378,20 @@ func @absf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_abs
+func @complex_abs(%input: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
+  "lmhlo.abs"(%input, %result)
+      : (memref<2x2xcomplex<f32>>, memref<2x2xf32>) -> ()
+  return
+}
+
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[CPLX_IN:.*]]: complex<f32>, %[[ABS_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[ABS:.*]] = complex.abs %[[CPLX_IN:.*]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[ABS]] : f32
+
+// -----
+
 // CHECK-LABEL: func @absi
 func @absi(%input: memref<2x2xi32>,
           %result: memref<2x2xi32>) {

@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -37,6 +39,11 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -123,6 +130,27 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsNamedTuple(self):
+    Foo = collections.namedtuple("Foo", ["x", "y"])
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsAttrs(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s
+    class Foo(object):
+      x = attr.ib()
+      y = attr.ib()
+
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):

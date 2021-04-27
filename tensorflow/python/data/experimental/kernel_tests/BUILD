@@ -53,25 +53,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "bucket_by_sequence_length_test",
-    size = "small",
-    srcs = ["bucket_by_sequence_length_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/experimental/ops:grouping",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "checkpoint_input_pipeline_hook_test",
     size = "small",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],
@@ -151,62 +132,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
-    ],
-)
-
-tf_py_test(
-    name = "data_service_ops_ft_test",
-    size = "small",
-    srcs = ["data_service_ops_ft_test.py"],
-    shard_count = 10,
-    tags = [
-        "notsan",  # TODO(b/185278546): Re-enable after bug fix.
-    ],
-    deps = [
-        ":data_service_test_base",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-tf_py_test(
-    name = "data_service_ops_test",
-    size = "small",
-    srcs = ["data_service_ops_test.py"],
-    shard_count = 16,
-    tags = [
-        "notsan",  # TODO(b/180454113)
-    ],
-    deps = [
-        ":data_service_test_base",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-py_library(
-    name = "data_service_test_base",
-    srcs = ["data_service_test_base.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -372,10 +297,6 @@ tf_py_test(
     name = "make_saveable_from_iterator_test",
     size = "small",
     srcs = ["make_saveable_from_iterator_test.py"],
-    tags = [
-        "no_tap",  # TODO(b/185378115): test timeout
-        "notsan",  # b/185381928
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",

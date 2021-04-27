@@ -67,8 +67,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     data->input_zero_point = 0;
   }
 
-  // TODO(ahentz): For some reason our implementations don't support
-  // activations.
+  // Our implementations don't currently support activations.
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
 
   return kTfLiteOk;

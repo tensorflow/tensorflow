@@ -155,9 +155,24 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     sample_dataset = interleave_ops.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
+    self.assertDatasetProduces(sample_dataset, [1, 1])
 
-    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
-    self.assertEqual(samples_list, [1, 1])
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromEmptyDataset(self, weights_as_dataset):
+    weights = np.asarray([1., 0.])
+    if weights_as_dataset:
+      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).skip(5),
+        dataset_ops.Dataset.from_tensors(1).repeat()
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=True)
+    self.assertDatasetProduces(sample_dataset, [])
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
@@ -190,8 +205,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     dataset = interleave_ops.choose_from_datasets(
         datasets, choice_dataset, stop_on_empty_dataset=True)
-    data_list = self.getIteratorOutput(self.getNext(dataset))
-    self.assertEqual(data_list, [b"foo", b"foo"])
+    self.assertDatasetProduces(dataset, [b"foo", b"foo"])
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasetsSkippingEmptyDatasets(self):
@@ -204,10 +218,9 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     dataset = interleave_ops.choose_from_datasets(
         datasets, choice_dataset, stop_on_empty_dataset=False)
-    data_list = self.getIteratorOutput(self.getNext(dataset))
     # Chooses 2 elements from the first dataset while the selector specifies 3.
-    self.assertEqual(
-        data_list,
+    self.assertDatasetProduces(
+        dataset,
         [b"foo", b"foo", b"bar", b"bar", b"bar", b"baz", b"baz", b"baz"])
 
   @combinations.generate(test_base.default_test_combinations())

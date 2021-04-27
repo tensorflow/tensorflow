@@ -2361,6 +2361,7 @@ cuda_py_test(
     name = "pad_op_test",
     size = "small",
     srcs = ["pad_op_test.py"],
+    tags = ["no_mac"],  # test is times out on mac b/186262388
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -2695,7 +2696,11 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2896,7 +2901,11 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//third_party/py/numpy",
     ],
 )
 

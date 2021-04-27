@@ -116,7 +116,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/training/experimental:loss_scale_optimizer",
     "//tensorflow/python/framework:meta_graph_testdata",
     "//tensorflow/python/data/benchmarks:benchmark_base",
-    "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
     "//tensorflow/python/data/kernel_tests:checkpoint_test_base",

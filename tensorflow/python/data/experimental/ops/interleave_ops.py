@@ -163,9 +163,9 @@ def sample_from_datasets_v2(datasets,
                             stop_on_empty_dataset=False):
   """Samples elements at random from the datasets in `datasets`.
 
-  Creates a dataset by interleaving elements of `datasets` with the `weight[i]`
-  probability of picking an element from dataset `i`. For example, suppose we
-  have 2 datasets:
+  Creates a dataset by interleaving elements of `datasets` with `weight[i]`
+  probability of picking an element from dataset `i`. Sampling is done without
+  replacement. For example, suppose we have 2 datasets:
 
   ```python
   dataset1 = tf.data.Dataset.range(0, 3)

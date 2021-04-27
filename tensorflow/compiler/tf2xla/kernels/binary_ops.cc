@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -60,7 +61,7 @@ XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(AddV2, xla::Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, xla::Sub(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mul, xla::Mul(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(Div, xla::Div(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("Div"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(Atan2, xla::Atan2(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
@@ -142,14 +143,7 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-xla::XlaOp XlogyImpl(xla::XlaOp x, xla::XlaOp y,
-                     const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = xla::ZerosLike(x);
-  auto is_zero = xla::Eq(x, zero);
-  return xla::Select(is_zero, zero, xla::Mul(x, xla::Log(y)));
-}
-XLA_MAKE_BINARY(Xlogy, XlogyImpl(lhs, rhs, broadcast_helper));
+REGISTER_XLA_OP(Name("Xlogy"), MlirXlaOpKernel);
 
 xla::XlaOp Xlog1pyImpl(xla::XlaOp x, xla::XlaOp y,
                        const BCast& broadcast_helper) {
@@ -298,12 +292,7 @@ xla::XlaOp PolygammaImpl(xla::XlaOp n, xla::XlaOp x,
 
 XLA_MAKE_BINARY(Polygamma, PolygammaImpl(lhs, rhs, broadcast_helper));
 
-xla::XlaOp ZetaImpl(xla::XlaOp x, xla::XlaOp q, const BCast& broadcast_helper) {
-  std::tie(x, q) = XlaBinaryOp::Broadcast(x, q, broadcast_helper);
-  return xla::Zeta(x, q);
-}
-
-XLA_MAKE_BINARY(Zeta, ZetaImpl(lhs, rhs, broadcast_helper));
+REGISTER_XLA_OP(Name("Zeta"), MlirXlaOpKernel);
 
 #undef XLA_MAKE_BINARY
 

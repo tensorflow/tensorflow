@@ -38,7 +38,7 @@ class SimpleTFDeviceAssignmentPass
     getFunction().walk([&](Operation* op) {
       if (auto device_attr = op->getAttrOfType<StringAttr>("device")) {
         // We assign default device to ops with device attribute that is empty.
-        if (device_attr.getValue() == "") {
+        if (device_attr.getValue().empty()) {
           op->setAttr("device", builder.getStringAttr(default_device_));
         }
       } else if (op->getDialect() == tf) {

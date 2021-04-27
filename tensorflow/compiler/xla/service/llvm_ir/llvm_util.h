@@ -329,7 +329,7 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
 
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).
-unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
+unsigned GetGlobalMemoryAddressSpace();
 }  // namespace llvm_ir
 }  // namespace xla
 

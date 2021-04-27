@@ -59,6 +59,24 @@ filegroup(
     ]
 ]
 
+gentbl(
+    name = "TensorEncodingIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-attr-interface-decls",
+            "include/mlir/IR/TensorEncInterfaces.h.inc",
+        ),
+        (
+            "-gen-attr-interface-defs",
+            "include/mlir/IR/TensorEncInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/TensorEncoding.td",
+    deps = [":TensorOpsTdFiles"],
+)
+
 td_library(
     name = "BuiltinDialectTdFiles",
     srcs = [
@@ -195,6 +213,7 @@ cc_library(
         ":SideEffectInterfacesIncGen",
         ":Support",
         ":SymbolInterfacesIncGen",
+        ":TensorEncodingIncGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -387,6 +406,7 @@ td_library(
         "include/mlir/IR/OpBase.td",
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/IR/TensorEncoding.td",
     ],
     includes = ["include"],
 )
@@ -1262,7 +1282,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
@@ -1725,6 +1745,28 @@ cc_library(
 )
 
 cc_library(
+    name = "MlirLspServerLib",
+    srcs = glob(
+        [
+            "lib/Tools/mlir-lsp-server/*.cpp",
+            "lib/Tools/mlir-lsp-server/*.h",
+            "lib/Tools/mlir-lsp-server/lsp/*.cpp",
+            "lib/Tools/mlir-lsp-server/lsp/*.h",
+        ],
+    ),
+    hdrs = glob(
+        ["include/mlir/Tools/mlir-lsp-server/*.h"],
+    ),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ParserTokenKinds",
     # strip_include_prefix does not apply to textual_hdrs.
     hdrs = ["lib/Parser/TokenKinds.def"],
@@ -1738,7 +1780,11 @@ cc_library(
         "lib/Parser/*.cpp",
         "lib/Parser/*.h",
     ]),
-    hdrs = ["include/mlir/Parser.h"],
+    hdrs = glob([
+        "include/mlir/Parser/*.h",
+    ]) + [
+        "include/mlir/Parser.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -3004,6 +3050,7 @@ cc_library(
 td_library(
     name = "TensorOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.td",
         "include/mlir/Dialect/Tensor/IR/TensorBase.td",
         "include/mlir/Dialect/Tensor/IR/TensorOps.td",
     ],
@@ -3017,16 +3064,20 @@ td_library(
 )
 
 gentbl(
-    name = "TensorBaseIncGen",
+    name = "TensorAttrDefsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-dialect-decls -dialect=tensor",
-            "include/mlir/Dialect/Tensor/IR/TensorOpsDialect.h.inc",
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Tensor/IR/TensorBase.td",
+    td_file = "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.td",
     deps = [":TensorOpsTdFiles"],
 )
 
@@ -3034,6 +3085,10 @@ gentbl(
     name = "TensorOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=tensor",
+            "include/mlir/Dialect/Tensor/IR/TensorOpsDialect.h.inc",
+        ),
         (
             "-gen-op-decls",
             "include/mlir/Dialect/Tensor/IR/TensorOps.h.inc",
@@ -3064,7 +3119,7 @@ cc_library(
         ":IR",
         ":SideEffectInterfaces",
         ":Support",
-        ":TensorBaseIncGen",
+        ":TensorAttrDefsIncGen",
         ":TensorOpsIncGen",
         "@llvm-project//llvm:Support",
     ],
@@ -3345,6 +3400,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         ":TransformUtils",
         ":TransformsPassIncGen",
         "@llvm-project//llvm:Support",
@@ -4084,7 +4140,7 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":MathDialect",
-        ":MathToLLVM",
+        ":MathToLibm",
         ":MathTransforms",
         ":MemRefDialect",
         ":MemRefTransforms",
@@ -4136,6 +4192,17 @@ alias(
     name = "AllPassesAndDialectsNoRegistration",
     actual = ":AllPassesAndDialects",
     deprecation = "Use AllPassesAndDialects instead",
+)
+
+cc_binary(
+    name = "mlir-lsp-server",
+    srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialects",
+        ":IR",
+        ":MlirLspServerLib",
+    ],
 )
 
 cc_binary(
@@ -5503,6 +5570,7 @@ exports_files(
         "include/mlir/IR/OpBase.td",
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/IR/TensorEncoding.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = [":friends"],
@@ -5603,13 +5671,13 @@ cc_library(
 )
 
 cc_library(
-    name = "MathToLLVM",
+    name = "MathToLibm",
     srcs = glob([
-        "lib/Conversion/MathToLLVM/*.cpp",
-        "lib/Conversion/MathToLLVM/*.h",
+        "lib/Conversion/MathToLibm/*.cpp",
+        "lib/Conversion/MathToLibm/*.h",
     ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
-        "include/mlir/Conversion/MathToLLVM/*.h",
+        "include/mlir/Conversion/MathToLibm/*.h",
     ]),
     includes = ["include"],
     deps = [
@@ -5618,9 +5686,10 @@ cc_library(
         ":LLVMDialect",
         ":MathDialect",
         ":Pass",
-        ":StandardToLLVM",
+        ":StandardOps",
         ":Support",
         ":Transforms",
+        ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],

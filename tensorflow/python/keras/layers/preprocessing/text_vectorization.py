@@ -166,7 +166,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   >>> text_dataset = tf.data.Dataset.from_tensor_slices(["foo", "bar", "baz"])
   >>> max_features = 5000  # Maximum vocab size.
   >>> max_len = 4  # Sequence length to pad the outputs to.
-  >>> embedding_dims = 2
   >>>
   >>> # Create the layer.
   >>> vectorize_layer = TextVectorization(

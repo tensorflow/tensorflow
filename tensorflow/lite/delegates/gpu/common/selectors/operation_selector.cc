@@ -459,6 +459,12 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       }
       return absl::OkStatus();
     }
+    case OperationType::DEPTH_TO_SPACE: {
+      auto attr =
+          absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
+      SelectDepthToSpace(attr, op_def, gpu_op);
+      return absl::OkStatus();
+    }
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);

@@ -757,8 +757,27 @@ gpu_kernel_library(
     )
     for op in [
         "square",
-        "add_v2",
         "squared_difference",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+            "c64",
+            "c128",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "add_v2",
         "sub",
     ]
 ]

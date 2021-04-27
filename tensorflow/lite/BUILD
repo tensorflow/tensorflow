@@ -579,7 +579,6 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
         "tflite_smoke_test",
     ],
     deps = [
@@ -758,6 +757,24 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "optional_debug_tools_test",
+    size = "small",
+    srcs = ["optional_debug_tools_test.cc"],
+    data = ["testdata/add.bin"],
+    tags = [
+        "nomsan",  # TODO(b/186359792)
+    ],
+    deps = [
+        ":framework",
+        ":optional_debug_tools",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "util",
     srcs = ["util.cc"],
@@ -857,9 +874,6 @@ cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
-    ],
     deps = [
         ":minimal_logging",
         "@com_google_googletest//:gtest",
