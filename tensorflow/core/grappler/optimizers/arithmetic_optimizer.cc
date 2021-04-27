@@ -243,24 +243,49 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
   }
 
   // Update consumers of node to take new_input as input instead.
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
+  Status UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
-    UpdateConsumers(node_name, new_input);
+    return UpdateConsumers(node_name, new_input);
   }
 
-  void UpdateConsumers(const string& old_input, const string& new_input) {
+  // Update consumers of old_input to take new_input as input instead.
+  Status UpdateConsumers(const string& old_input, const string& new_input) {
     const absl::flat_hash_set<NodeDef*> consumers =
         ctx().node_map->GetOutputs(NodeName(old_input));
+    if (consumers.empty()) return Status::OK();
+    const TensorId new_tensor = ParseTensorName(new_input);
+    const TensorId old_tensor = ParseTensorName(old_input);
+    if (new_tensor.index() < 0 && old_tensor.index() >= 0) {
+      // Overwriting a data input with a control input will make the graph
+      // invalid.
+      return errors::InvalidArgument(
+          "Cannot override data input ", old_tensor.ToString(),
+          " with control input ", new_tensor.ToString());
+    }
+    const string old_ctrl_input = absl::StrCat("^", NodeName(old_input));
+    const string new_ctrl_input = absl::StrCat("^", NodeName(new_input));
     for (NodeDef* consumer : consumers) {
+      if (consumer->name() == NodeName(new_input)) continue;
+      bool updated = false;
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == old_input &&
-            consumer->name() != NodeName(new_input)) {
+        if (consumer->input(i) == old_ctrl_input) {
+          consumer->set_input(i, new_ctrl_input);
+          ctx().node_map->UpdateInput(consumer->name(), old_ctrl_input,
+                                      new_ctrl_input);
+          updated = true;
+        }
+        else if (consumer->input(i) == old_input) {
           consumer->set_input(i, new_input);
           ctx().node_map->UpdateInput(consumer->name(), old_input, new_input);
+          updated = true;
         }
       }
-      AddToOptimizationQueue(consumer);
+      if (updated) {
+        DedupControlInputs(consumer);
+        AddToOptimizationQueue(consumer);
+      }
     }
+    return Status::OK();
   }
 
   // TODO(ezhulenev): remove this method from ArithmeticOptimizer when all
@@ -1779,7 +1804,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
     // Update the consumers of concat to consume the end of the chain
     // instead.
-    UpdateConsumers(concat_name, concat_replace->name());
+    TF_RETURN_IF_ERROR(UpdateConsumers(concat_name, concat_replace->name()));
 
     NodeDef* non_reshape = concat_replace;
     NodeDef* iters = nullptr;
@@ -1873,10 +1898,10 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     // Connect all consumers of the tail nodes directly to the
     // output port of Split from which the chain started.
     for (const auto& link : tails) {
-      UpdateConsumers(link.node,
-                      link.port_origin == 0
-                          ? split_name
-                          : strings::StrCat(split_name, ":", link.port_origin));
+      TF_RETURN_IF_ERROR(UpdateConsumers(
+          link.node, link.port_origin == 0
+                         ? split_name
+                         : strings::StrCat(split_name, ":", link.port_origin)));
     }
     return Status::OK();
   }
@@ -2006,7 +2031,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     const string split_name =
         (port == 0) ? split_node->name()
                     : strings::StrCat(split_node->name(), ":", port);
-    UpdateConsumers(split_name, reshape->name());
+    TF_RETURN_IF_ERROR(UpdateConsumers(split_name, reshape->name()));
 
     // Replace split output with reshape
     const string reshape_input = reshape->input(0);
