@@ -12,9 +12,6 @@ tf_py_test(
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
     shard_count = 16,
-    tags = [
-        "notsan",  # b/186231166
-    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -50,9 +47,6 @@ tf_py_test(
     size = "medium",
     srcs = ["data_service_ops_test.py"],
     shard_count = 32,
-    tags = [
-        "notsan",  # b/186231166
-    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
