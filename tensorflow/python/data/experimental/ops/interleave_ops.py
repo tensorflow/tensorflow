@@ -209,9 +209,13 @@ def sample_from_datasets_v2(datasets,
 
   Raises:
     TypeError: If the `datasets` or `weights` arguments have the wrong type.
-    ValueError: If the `weights` argument is specified and does not match the
-      length of the `datasets` element.
+    ValueError:
+      - If `datasets` is empty, or
+      - If `weights` is specified and does not match the length of `datasets`.
   """
+  if not datasets:
+    raise ValueError("`datasets` must be a non-empty list of datasets.")
+
   num_datasets = len(datasets)
   if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
@@ -326,11 +330,13 @@ def choose_from_datasets_v2(datasets,
     of `choice_dataset`.
 
   Raises:
-    TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
-      type.
+    TypeError: If `datasets` or `choice_dataset` has the wrong type.
+    ValueError: If `datasets` is empty.
   """
-  if not structure.are_compatible(choice_dataset.element_spec,
-                                  tensor_spec.TensorSpec([], dtypes.int64)):
+  if not datasets:
+    raise ValueError("`datasets` must be a non-empty list of datasets.")
+  if choice_dataset is None or not structure.are_compatible(
+      choice_dataset.element_spec, tensor_spec.TensorSpec([], dtypes.int64)):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets,
