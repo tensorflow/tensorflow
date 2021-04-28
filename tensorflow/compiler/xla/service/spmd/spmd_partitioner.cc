@@ -3596,9 +3596,8 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
-                     hlo->opcode() == HloOpcode::kInfeed ||
-                     hlo->opcode() == HloOpcode::kOutfeed)
-            << "Non-infeed side-effect HLO cannot have a replicated sharding:"
+                     CanSideEffectingHaveReplicatedSharding(hlo))
+            << "side-effect HLO cannot have a replicated sharding: "
             << hlo->ToString();
       }
 
