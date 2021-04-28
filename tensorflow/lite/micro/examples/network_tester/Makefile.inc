@@ -1,14 +1,5 @@
 NETWORK_TESTER_TEST_SRCS := \
-tensorflow/lite/micro/examples/network_tester/network_tester_test.cc \
-  $(MAKEFILE_DIR)/downloads/person_model_int8/person_image_data.cc
-
-ifeq ($(CO_PROCESSOR),ethos_u)
-  NETWORK_TESTER_TEST_SRCS += \
-  $(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data_vela.cc
-else
-  NETWORK_TESTER_TEST_SRCS += \
-  $(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data.cc
-endif
+tensorflow/lite/micro/examples/network_tester/network_tester_test.cc
 
 NETWORK_TESTER_TEST_HDRS := \
 tensorflow/lite/micro/examples/network_tester/network_model.h \

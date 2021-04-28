@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_INPUT_DATA_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_INPUT_DATA_H_
 
-#include "tensorflow/lite/micro/tools/make/downloads/person_model_int8/person_image_data.h"
-
-static const unsigned char* input_data = g_person_data;
-static const int input_data_len = g_person_data_size;
+static const int input_data_len = 16;
+static const unsigned char input_data[1][16] = {
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_INPUT_DATA_H_
