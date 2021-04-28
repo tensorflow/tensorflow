@@ -75,9 +75,11 @@ namespace wrap {
 
 #define FOREACH_HIPSPARSE_API(__macro)          \
   __macro(hipsparseCreate)                      \
+  __macro(hipsparseCreateCsr)                   \
+  __macro(hipsparseCreateDnMat)                 \
   __macro(hipsparseCreateMatDescr)              \
   __macro(hipsparseCcsr2csc)                    \
-  __macro(hipsparseCcsrgeam2)		                \
+  __macro(hipsparseCcsrgeam2)                   \
   __macro(hipsparseCcsrgeam2_bufferSizeExt)	    \
   __macro(hipsparseCcsrgemm)                    \
   __macro(hipsparseCcsrmm)                      \
