@@ -324,21 +324,16 @@ class GraphConstructor {
     int gdef_index;
     Node* node;  // nullptr until the NodeDef is converted to a Node.
   };
-  gtl::FlatMap<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
-
-  // Storage for StringPiece keys in gdef_nodes_. Typically, the StringPiece key
-  // will refer to the string stored in `NodeDef::name()`. This intern table is
-  // only used when the original NodeDef's name is changed.
-  std::vector<string> string_intern_table_;
+  absl::flat_hash_map<std::string, NodeInfo> gdef_nodes_;
 
   // Prefixes already used in the GraphDef being imported.
-  gtl::FlatSet<StringPiece, StringPieceHasher> gdef_prefixes_;
+  absl::flat_hash_set<StringPiece> gdef_prefixes_;
 
   // Mapping from node name to the existing node in g_.
-  gtl::FlatMap<StringPiece, Node*, StringPieceHasher> existing_nodes_;
+  absl::flat_hash_map<StringPiece, Node*> existing_nodes_;
 
   // Prefixes already used in the graph.
-  gtl::FlatSet<StringPiece, StringPieceHasher> existing_prefixes_;
+  absl::flat_hash_set<StringPiece> existing_prefixes_;
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.
@@ -566,7 +561,7 @@ bool NodeNameInValues(const std::vector<string>& control_dependencies,
 // Adds any prefixes of `node_name` (not including the full name itself) to
 // `prefixes`.
 void AddPrefixes(StringPiece node_name,
-                 gtl::FlatSet<StringPiece, StringPieceHasher>* prefixes) {
+                 absl::flat_hash_set<StringPiece>* prefixes) {
   size_t idx = -1;
   while ((idx = node_name.find('/', idx + 1)) != StringPiece::npos) {
     prefixes->insert(node_name.substr(0, idx));
@@ -651,8 +646,7 @@ Status GraphConstructor::BuildNodeIndex() {
           "Node '", node_def.name(),
           "': Node name contains invalid characters");
     }
-    if (!gdef_nodes_
-             .insert(std::make_pair(StringPiece(node_def.name()), NodeInfo(n)))
+    if (!gdef_nodes_.insert(std::make_pair(node_def.name(), NodeInfo(n)))
              .second) {
       return errors::InvalidArgument("Node '", node_def.name(),
                                      "' is not unique");
@@ -1139,14 +1133,9 @@ Status GraphConstructor::Convert() {
     input_already_exists.clear();
     input_already_exists.resize(node_def.input_size(), false);
 
-    ssize_t string_intern_table_index = -1;
+    std::string node_name = node_def.name();
 
     if (opts_.importing) {
-      // Intern the original node name, so that we can use a StringPiece of the
-      // name to index gdef_nodes_.
-      string_intern_table_index = string_intern_table_.size();
-      string_intern_table_.push_back(node_def.name());
-
       if (opts_.skip_mapped_nodes) {
         bool is_node_mapped = false;
         TF_RETURN_IF_ERROR(IsNodeFullyMapped(node_def, &is_node_mapped));
@@ -1245,14 +1234,7 @@ Status GraphConstructor::Convert() {
 
     TF_RETURN_IF_ERROR(MakeNode(std::move(node_def), &node));
 
-    if (opts_.importing) {
-      // Use interned original node name so StringPiece remains valid.
-      DCHECK_GE(string_intern_table_index, 0);
-      gdef_nodes_[string_intern_table_[string_intern_table_index]].node = node;
-    } else {
-      DCHECK_EQ(string_intern_table_index, -1);
-      gdef_nodes_[node->name()].node = node;
-    }
+    gdef_nodes_[node_name].node = node;
 
     // Remove duplicate control inputs before adding edges to the graph. It
     // will allow us to skip expensive duplicates check in 'AddControlEdge'.
