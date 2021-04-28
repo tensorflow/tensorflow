@@ -35,7 +35,7 @@ namespace {
 struct OpData {
   OpDataConv reference_op_data;
 
-#if defined(FUSION_F1)
+#if ((defined(FUSION_F1)) || (defined (HIFI5)))
   int scratch_tensor_index;
 #endif  // defined(FUSION_F1)
 };
@@ -294,7 +294,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, DepthwiseConvPrepare(context, node));
 
-#if defined(FUSION_F1)
+#if ((defined(FUSION_F1)) || (defined (HIFI5)))
   OpData* data = static_cast<OpData*>(node->user_data);
   const auto& params =
       *(static_cast<const TfLiteDepthwiseConvParams*>(node->builtin_data));
@@ -344,7 +344,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-#if defined(FUSION_F1)
+#if ((defined(FUSION_F1)) || (defined (HIFI5)))
 TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteDepthwiseConvParams& params,
                        const OpData& data, const TfLiteEvalTensor* input,
@@ -499,7 +499,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           tflite::micro::GetTensorData<int32_t>(bias),
           tflite::micro::GetTensorShape(output),
           tflite::micro::GetTensorData<int8_t>(output));
-#elif defined(FUSION_F1)
+#elif ((defined(FUSION_F1)) || (defined (HIFI5)))
       EvalHifi4(context, node, params, op_data, input, filter, bias, output);
 #else
       reference_integer_ops::DepthwiseConvPerChannel(

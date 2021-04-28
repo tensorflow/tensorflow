@@ -33,7 +33,7 @@ namespace {
 struct OpData {
   uint16_t* exp_lut;
 };
-#elif defined(FUSION_F1)
+#elif ((defined(FUSION_F1)) || (defined(HIFI5)))
 struct OpData {
   SoftmaxParams params;
   int scratch_tensor_index;
@@ -181,7 +181,7 @@ TfLiteStatus PrepareHifimini(TfLiteContext* context, TfLiteNode* node) {
 }
 #endif  // defined(HIFIMINI)
 
-#if defined(FUSION_F1)
+#if ((defined(FUSION_F1)) || (defined(HIFI5)))
 TfLiteStatus PrepareHifi4(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, SoftmaxPrepare(context, node));
 
@@ -237,7 +237,7 @@ TfLiteStatus EvalHifi4(const OpData* op_data, const TfLiteEvalTensor* input,
 #endif  // defined(FUSION_F1)
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-#if defined(HIFIMINI) || defined(FUSION_F1)
+#if defined(HIFIMINI) || defined(FUSION_F1) || defined(HIFI5)
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 #else
@@ -248,7 +248,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(HIFIMINI)
   return PrepareHifimini(context, node);
-#elif defined(FUSION_F1)
+#elif ((defined(FUSION_F1)) ||(defined(HIFI5)))
   return PrepareHifi4(context, node);
 #else
   return SoftmaxPrepare(context, node);
@@ -267,7 +267,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            tflite::micro::GetTensorData<int8_t>(input),
                            tflite::micro::GetTensorShape(output),
                            tflite::micro::GetTensorData<int16_t>(output));
-#elif defined(FUSION_F1)
+#elif ((defined(FUSION_F1)) || (defined(HIFI5)))
     return EvalHifi4(static_cast<OpData*>(node->user_data), input, output,
                      context);
 #else
