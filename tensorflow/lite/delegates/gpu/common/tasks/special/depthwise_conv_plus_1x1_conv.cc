@@ -233,7 +233,7 @@ std::string GenerateCode(const OperationDef& op_def,
 }  // namespace
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const OperationDef& definition,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr) {
   const auto dw_shape = dw_attr.weights.shape;
@@ -245,18 +245,34 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       conv_attr.strides.h == 1 && conv_attr.padding.prepended.w == 0 &&
       conv_attr.padding.prepended.h == 0 && conv_attr.padding.appended.w == 0 &&
       conv_attr.padding.appended.h == 0;
-  if (definition.precision == CalculationsPrecision::F16) {
-    bool recommended_dw =
-        dw_shape.i <= 32 && dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 32;
-    bool recommended_conv =
-        conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 32 * 32;
-    return good_dw && good_conv && recommended_dw && recommended_conv;
+  if (gpu_info.IsApple()) {
+    if (definition.precision == CalculationsPrecision::F16) {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 16 && conv_shape.i * conv_shape.o <= 16 * 16;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    } else {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 8 && conv_shape.i * conv_shape.o <= 8 * 16;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    }
   } else {
-    bool recommended_dw =
-        dw_shape.i <= 16 && dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
-    bool recommended_conv =
-        conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 16 * 32;
-    return good_dw && good_conv && recommended_dw && recommended_conv;
+    if (definition.precision == CalculationsPrecision::F16) {
+      bool recommended_dw = dw_shape.i <= 32 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 32;
+      bool recommended_conv =
+          conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 32 * 32;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    } else {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 16 * 32;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    }
   }
 }
 
