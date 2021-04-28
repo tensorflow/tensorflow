@@ -19364,11 +19364,20 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 
 // Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
 //
-// This is the angle \( \theta \in [-\pi, \pi] \) such that
-// \[ x = r \cos(\theta) \]
+// This is the angle \\( \theta \in [-\pi, \pi] \\) such that
+// \\[ x = r \cos(\theta) \\]
 // and
-// \[ y = r \sin(\theta) \]
-// where \(r = \sqrt(x^2 + y^2) \).
+// \\[ y = r \sin(\theta) \\]
+// where \\(r = \sqrt{x^2 + y^2} \\).
+//
+// For example:
+//
+// >>> x = [1., 1.]
+// >>> y = [1., -1.]
+// >>> print((tf.math.atan2(y,x) * (180 / np.pi)).numpy())
+// [ 45. -45.]
+//
+//
 func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
