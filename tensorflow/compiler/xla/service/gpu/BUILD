@@ -548,7 +548,6 @@ cc_library(
         "custom_call_thunk.cc",
         "fft_thunk.cc",
         "for_thunk.cc",
-        "gemm_thunk.cc",
         "gpu_executable.cc",
         "infeed_thunk.cc",
         "kernel_thunk.cc",
@@ -591,6 +590,7 @@ cc_library(
         ":buffer_allocations",
         ":cusolver_context",
         ":cudnn_batchnorm_runner",
+        ":gemm_thunk",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable_run_options",
@@ -722,14 +722,41 @@ cc_library(
 )
 
 cc_library(
+    name = "gemm_thunk",
+    srcs = ["gemm_thunk.cc"],
+    hdrs = ["gemm_thunk.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":buffer_allocations",
+        ":hlo_execution_profiler",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        ":thunk",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "gemm_algorithm_picker",
     srcs = if_cuda_is_configured(["gemm_algorithm_picker.cc"]),
     hdrs = if_cuda_is_configured(["gemm_algorithm_picker.h"]),
     deps = if_cuda_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
+        ":gemm_thunk",
         ":gpu_conv_runner",
-        ":gpu_executable",
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/types:optional",
