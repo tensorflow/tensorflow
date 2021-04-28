@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/experimental/threadpool_dataset_op.h"
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
 namespace tensorflow {
