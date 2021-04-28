@@ -278,6 +278,7 @@ cc_library(
         "floor.cc",
         "floor_div.cc",
         "floor_mod.cc",
+        "gather_nd.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
@@ -728,6 +729,21 @@ cc_test(
     name = "fully_connected_test",
     srcs = [
         "fully_connected_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "gather_nd_test",
+    srcs = [
+        "gather_nd_test.cc",
     ],
     deps = [
         ":kernel_runner",
