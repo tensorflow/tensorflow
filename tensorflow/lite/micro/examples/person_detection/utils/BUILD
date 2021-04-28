@@ -10,6 +10,9 @@ py_binary(
     srcs = ["raw_to_bitmap.py"],
     python_version = "PY3",
     srcs_version = "PY3ONLY",
+    tags = [
+        "no_oss",  # TODO(b/186670822): enable once tflite-micro supports bazel+Python
+    ],
     deps = ["//third_party/py/numpy"],
 )
 
@@ -17,6 +20,9 @@ py_library(
     name = "raw_to_bitmap_lib",
     srcs = ["raw_to_bitmap.py"],
     srcs_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/186670822): enable once tflite-micro supports bazel+Python
+    ],
     deps = [
         "//third_party/py/numpy",
     ],
