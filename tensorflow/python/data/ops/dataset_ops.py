@@ -31,7 +31,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -368,19 +367,18 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
-    if tf_compat.forward_compatible(2021, 4, 25):
-      if context.executing_eagerly():
-        options = self._options_tensor_to_options(self._options())
-        options._set_mutable(False)  # pylint: disable=protected-access
-        return options
-      warnings.warn("To make it possible to preserve tf.data options across "
-                    "serialization boundaries, their implementation has moved "
-                    "to be part of the TensorFlow graph. As a consequence, the "
-                    "options value is in general no longer known at graph "
-                    "construction time. Invoking this method in graph mode "
-                    "retains the legacy behavior of the original "
-                    "implementation, but note that the returned value might "
-                    "not reflect the actual value of the options.")
+    if context.executing_eagerly():
+      options = self._options_tensor_to_options(self._options())
+      options._set_mutable(False)  # pylint: disable=protected-access
+      return options
+    warnings.warn("To make it possible to preserve tf.data options across "
+                  "serialization boundaries, their implementation has moved to "
+                  "be part of the TensorFlow graph. As a consequence, the "
+                  "options value is in general no longer known at graph "
+                  "construction time. Invoking this method in graph mode "
+                  "retains the legacy behavior of the original implementation, "
+                  "but note that the returned value might not reflect the "
+                  "actual value of the options.")
     return self._options_attr
 
   def _apply_options(self):
@@ -396,44 +394,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     else:
       dataset = self
 
-    if tf_compat.forward_compatible(2021, 4, 25):
-      return _FinalizeDataset(dataset)  # pylint: disable=protected-access
-
-    options = dataset.options()
-
-    # (1) Apply threading options
-    if options.experimental_threading is not None:
-      t_options = options.experimental_threading
-      if t_options.max_intra_op_parallelism is not None:
-        dataset = _MaxIntraOpParallelismDataset(
-            dataset, t_options.max_intra_op_parallelism)
-      if t_options.private_threadpool_size is not None:
-        dataset = _PrivateThreadPoolDataset(dataset,
-                                            t_options.private_threadpool_size)
-
-    # (2) Apply autotune options
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
-    if autotune:
-      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
-
-    # (3) Apply graph rewrite options
-    # pylint: disable=protected-access
-    graph_rewrites = options._graph_rewrites()
-    graph_rewrite_configs = options._graph_rewrite_configs(autotune)
-    if (graph_rewrites.enabled or graph_rewrites.default or
-        (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
-         is not False)):
-      dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
-                                 graph_rewrites.disabled,
-                                 graph_rewrites.default, graph_rewrite_configs)
-
-    # (4) Apply stats aggregator options
-    if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
-      dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
-          dataset, options.experimental_stats.aggregator,
-          options.experimental_stats.prefix,
-          options.experimental_stats.counter_prefix)
-    return dataset
+    return _FinalizeDataset(dataset)  # pylint: disable=protected-access
 
   def __iter__(self):
     """Creates an iterator for elements of this dataset.
@@ -5091,15 +5052,12 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, options):
     # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    if tf_compat.forward_compatible(2021, 4, 25):
-      options_pb = dataset_options_pb2.Options()
-      options_pb.CopyFrom(options._to_proto())
-      with ops.colocate_with(input_dataset._variant_tensor):
-        variant_tensor = gen_dataset_ops.options_dataset(
-            input_dataset._variant_tensor,
-            options_pb.SerializeToString(), **self._flat_structure)
-    else:
-      variant_tensor = input_dataset._variant_tensor
+    options_pb = dataset_options_pb2.Options()
+    options_pb.CopyFrom(options._to_proto())
+    with ops.colocate_with(input_dataset._variant_tensor):
+      variant_tensor = gen_dataset_ops.options_dataset(
+          input_dataset._variant_tensor,
+          options_pb.SerializeToString(), **self._flat_structure)
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
