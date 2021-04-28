@@ -350,7 +350,9 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   const bool is_to_replicate =
       hlo_->shape().IsArray() && target.NumTiles() < sharding().NumTiles();
-  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+  const bool use_cache =
+      !is_to_replicate || state_.partitioner->options().cache_all_gather;
+  if (use_cache) {
     for (auto& entry : cache) {
       if (entry.first == target) {
         return entry.second;
@@ -360,7 +362,7 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   auto resharded = ReshardNoCache(target);
   state_.reshard_cache->per_hlo_cache[resharded.hlo()]
       .reshard_cache.emplace_back(sharding(), *this);
-  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+  if (use_cache) {
     cache.emplace_back(target, std::move(resharded));
     return cache.back().second;
   }
