@@ -2505,6 +2505,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "inline_function_utils_test",
+    size = "small",
+    srcs = ["inline_function_utils_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "input_colocation_exemption_registry_test",
     size = "small",
     srcs = ["input_colocation_exemption_registry_test.cc"],
