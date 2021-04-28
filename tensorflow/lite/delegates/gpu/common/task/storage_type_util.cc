@@ -208,22 +208,6 @@ absl::Status SelectBestStorageType(const GpuInfo& gpu_info, const BHWC& shape,
         gpu_info, shape,
         TensorDescriptor{data_type, TensorStorageType::BUFFER, layout});
   }
-  auto GetBestTypeAfterTexture2D = [&]() {
-    if (gpu_info.SupportsImageBuffer() &&
-        CanCreateTensorWithShape(
-            gpu_info, shape,
-            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER,
-                             layout})
-            .ok()) {
-      *result = TensorStorageType::IMAGE_BUFFER;
-      return absl::OkStatus();
-    } else {
-      *result = TensorStorageType::BUFFER;
-      return CanCreateTensorWithShape(
-          gpu_info, shape,
-          TensorDescriptor{data_type, TensorStorageType::BUFFER, layout});
-    }
-  };
   auto GetBestTypeAfterTextureArray = [&]() {
     if (gpu_info.SupportsImageBuffer() &&
         CanCreateTensorWithShape(
@@ -240,6 +224,19 @@ absl::Status SelectBestStorageType(const GpuInfo& gpu_info, const BHWC& shape,
           TensorDescriptor{data_type, TensorStorageType::BUFFER, layout});
     }
   };
+  auto GetBestTypeAfterTexture2D = [&]() {
+    if (gpu_info.SupportsTextureArray() &&
+        CanCreateTensorWithShape(
+            gpu_info, shape,
+            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
+                             layout})
+            .ok()) {
+      *result = TensorStorageType::IMAGE_BUFFER;
+      return absl::OkStatus();
+    } else {
+      return GetBestTypeAfterTextureArray();
+    }
+  };
   auto GetBestTypeAfterTexture3D = [&]() {
     if (CanCreateTensorWithShape(
             gpu_info, shape,
@@ -248,7 +245,7 @@ absl::Status SelectBestStorageType(const GpuInfo& gpu_info, const BHWC& shape,
       *result = TensorStorageType::TEXTURE_2D;
       return absl::OkStatus();
     } else {
-      return GetBestTypeAfterTextureArray();
+      return GetBestTypeAfterTexture2D();
     }
   };
   switch (desired) {

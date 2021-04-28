@@ -186,8 +186,7 @@ bool Environment::IsSupported(TensorStorageType storage_type) const {
 
 TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {
   if (gpu_info.IsAdreno()) {
-    if (gpu_info.adreno_info.IsAdreno6xxOrHigher() &&
-        !gpu_info.opencl_info.IsImage2dFromBufferSupported()) {
+    if (gpu_info.adreno_info.IsAdreno6xxOrHigher()) {
       return TensorStorageType::TEXTURE_ARRAY;
     } else {
       return TensorStorageType::TEXTURE_2D;
@@ -221,11 +220,7 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
         gpu_info.adreno_info.IsAdreno4xx()) {
       return TensorStorageType::BUFFER;
     } else {
-      if (gpu_info.opencl_info.IsImage2dFromBufferSupported()) {
-        return TensorStorageType::TEXTURE_2D;
-      } else {
-        return TensorStorageType::IMAGE_BUFFER;
-      }
+      return TensorStorageType::IMAGE_BUFFER;
     }
   } else if (gpu_info.IsPowerVR()) {
     return TensorStorageType::BUFFER;
