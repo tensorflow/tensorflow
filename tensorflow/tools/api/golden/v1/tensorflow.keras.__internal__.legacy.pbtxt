@@ -1,0 +1,7 @@
+path: "tensorflow.keras.__internal__.legacy"
+tf_module {
+  member {
+    name: "layers"
+    mtype: "<type \'module\'>"
+  }
+}
