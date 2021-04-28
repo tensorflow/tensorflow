@@ -67,6 +67,10 @@ class TFRecordWriter(object):
   dataset = dataset.apply(tf.data.experimental.group_by_window(
     lambda i, _: i % NUM_SHARDS, reduce_func, tf.int64.max
   ))
+
+  # Iterate through the dataset to trigger data writing.
+  for _ in dataset:
+    pass
   ```
   """
 
