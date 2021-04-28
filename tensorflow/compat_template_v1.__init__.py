@@ -79,7 +79,7 @@ if (hasattr(_current_module, "keras") and
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
-    _layer_package = "keras.__internal__.legacy.layers"
+    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
     setattr(_current_module, "layers", layers)
   except ImportError:
