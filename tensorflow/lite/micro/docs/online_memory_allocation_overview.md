@@ -1,8 +1,14 @@
-<!--
-TODO(kreeger): Generate this content here.
-Semi-automated TOC generation with instructions from
-https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
--->
+<!--ts-->
+* [Online Memory Allocation Overview in TensorFlow Lite Micro](#online-memory-allocation-overview-in-tensorflow-lite-micro)
+   * [Arena](#arena)
+   * [Existing buffers in the flatbuffer](#existing-buffers-in-the-flatbuffer)
+   * [Model Init Phase](#model-init-phase)
+   * [Model Prepare Phase](#model-prepare-phase)
+   * [Finish Model Allocation Phase](#finish-model-allocation-phase)
+
+<!-- Added by: kreeger, at: Wed Apr 28 10:52:04 CDT 2021 -->
+
+<!--te-->
 
 # Online Memory Allocation Overview in TensorFlow Lite Micro
 
