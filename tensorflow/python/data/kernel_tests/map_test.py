@@ -17,8 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
-from collections import namedtuple
 import threading
 import time
 import warnings
@@ -60,6 +60,11 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as trackable_utils
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 def _test_combinations_with_mode_v1(mode):
@@ -569,7 +574,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_tuple = dataset_ops.Dataset.zip((labels, images))
 
     # convert dataset of tuples to dataset of namedtuples
-    example = namedtuple("Example", ["label", "image"])
+    example = collections.namedtuple("Example", ["label", "image"])
     dataset_namedtuple = apply_map(dataset_tuple, example)
 
     def preprocess_tuple(label, image):
@@ -594,6 +599,37 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_namedtuple())
+
+  @combinations.generate(_test_combinations())
+  def testMapAttrs(self, apply_map):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    # construct dataset of tuples
+    labels = dataset_ops.Dataset.range(10)
+    images = apply_map(labels, lambda l: -l)
+    dataset = dataset_ops.Dataset.zip((labels, images))
+
+    @attr.s(cmp=True)
+    class Example(object):
+      label = attr.ib()
+      image = attr.ib()
+
+    dataset = apply_map(dataset, Example)
+
+    def preprocess(example):
+      example.image = 2 * example.image
+      return example
+
+    dataset = apply_map(dataset, preprocess)
+    get_next = self.getNext(dataset)
+
+    for i in range(10):
+      data = self.evaluate(get_next())
+      self.assertEqual(data, Example(i, -2 * i))
+
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @combinations.generate(_test_combinations())
   def testUseStepContainerInMap(self, apply_map):

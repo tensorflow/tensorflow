@@ -29,7 +29,6 @@ from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 def make_slice_tests(options):
   """Make a set of tests to do slice."""
 
-  # TODO(renjieliu): add test/support for uint8.
   test_parameters = [
       # 4-D
       {

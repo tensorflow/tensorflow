@@ -793,10 +793,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 // When is_training is set to true, the given variance and mean are not used.
 // In above calculation, they are replaced by new values. These new mean and
 // variance are calculated as following:
-// rest_size = shape(x)[0] * shape(x)[1] * shape(x)[2]
-// new_mean = sum(x, axis=[0, 1, 2]) / rest_size
-// new_variance = sum(squared_difference(x, new_mean), axis=[0, 1, 2])
-//                / rest_size
+// new_mean = mean(x, axis=[0, 1, 2])
+// new_variance = mean(squared_difference(x, new_mean), axis=[0, 1, 2])
 //
 // The DDR rule for the is_training equals true case is as following:
 // def : Pattern<
@@ -811,22 +809,14 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 //                 $scale,
 //                 (TF_RsqrtOp
 //                     (TF_AddOp
-//                         (TF_DivOp:$new_variance
-//                             (TF_SumOp
-//                                 (TF_SquaredDifferenceOp $x, $new_mean),
-//                                 (TF_ConstOp [0,1,2])),
-//                             $rest_size),
+//                         (TF_MeanOp
+//                             (TF_SquaredDifferenceOp $x, $new_mean),
+//                             (TF_ConstOp [0,1,2])),
 //                         (TF_ConstOp $epsilon))))),
 //         (TF_SubOp
 //             $offset,
 //             (TF_MulOp
-//                 (TF_DivOp:$new_mean
-//                     (TF_SumOp $x, (TF_ConstOp [0,1,2])),
-//                     (TF_ProdOp:$rest_size
-//                         (TF_SliceOp
-//                             (TF_ShapeOp $x),
-//                             (TF_ConstOp 0),
-//                             (TF_ConstOp 3)))),
+//                 (TF_MeanOp $x, (TF_ConstOp [0,1,2])),
 //                 $multiplier))),
 //    // We already guaranteed that the last five results have no use so it does
 //    // not matter what value we provide here for replacement.
@@ -941,8 +931,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
+    int64_t last_dim = -1;
     {
-      int64_t last_dim = -1;
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
@@ -990,83 +980,54 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       auto input_type = fused_batch_norm_op.x()
                             .getType()
                             .dyn_cast_or_null<RankedTensorType>();
-      if (!input_type || input_type.getRank() != 4 ||
-          !input_type.hasStaticShape()) {
+      if (!input_type || input_type.getRank() != 4) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
               diag << "op 'tf.FusedBatchNormV3' that has 'is_training' equals "
-                      "True is only supported with static input shape";
+                      "True is only supported with input of rank 4";
             });
       }
 
       ::mlir::TF::ConstOp reduce_dim_op;
       {
         auto reduce_dim_type =
-            ::mlir::RankedTensorType::get({3}, rewriter.getIntegerType(64));
-        ::mlir::SmallVector<int64_t, 3> reduce_dim_values = {0, 1, 2};
+            ::mlir::RankedTensorType::get({3}, rewriter.getIntegerType(32));
+        ::mlir::SmallVector<int32_t, 3> reduce_dim_values = {0, 1, 2};
         reduce_dim_op = rewriter.create<TF::ConstOp>(
             odsLoc, ::mlir::DenseIntElementsAttr::get(reduce_dim_type,
                                                       reduce_dim_values));
       }
 
-      ::mlir::TF::ConstOp rest_size_inv_op;
-      {
-        int64_t rest_size = input_type.getDimSize(0) *
-                            input_type.getDimSize(1) * input_type.getDimSize(2);
-        auto rest_size_inv_type =
-            ::mlir::RankedTensorType::get({1}, rewriter.getF32Type());
-        auto rest_size_inv_attr = ::mlir::DenseFPElementsAttr::get(
-            rest_size_inv_type, {1.0f / rest_size});
-        rest_size_inv_op =
-            rewriter.create<::mlir::TF::ConstOp>(odsLoc, rest_size_inv_attr);
-      }
-
-      ::mlir::TF::SumOp sum_op_1;
+      auto new_mean_type =
+          ::mlir::RankedTensorType::get({last_dim}, rewriter.getF32Type());
+      ::mlir::TF::MeanOp mean_op_1;
       {
         ::mlir::Value x_value = (*x.begin());
-        sum_op_1 = rewriter.create<TF::SumOp>(
-            odsLoc, x_value, reduce_dim_op,
+        mean_op_1 = rewriter.create<TF::MeanOp>(
+            odsLoc, new_mean_type, x_value, reduce_dim_op,
             /*keep_dims=*/rewriter.getBoolAttr(false));
-      }
-
-      ::mlir::TF::MulOp mul_op_1;
-      {
-        ::mlir::Value tblgen_value_0 = (*sum_op_1.getODSResults(0).begin());
-        ::mlir::Value tblgen_value_1 =
-            (*rest_size_inv_op.getODSResults(0).begin());
-        mul_op_1 = rewriter.create<::mlir::TF::MulOp>(odsLoc, tblgen_value_0,
-                                                      tblgen_value_1);
       }
 
       ::mlir::TF::SquaredDifferenceOp square_diff_op;
       {
         ::mlir::Value tblgen_value_0 = (*x.begin());
-        ::mlir::Value tblgen_value_1 = (*mul_op_1.getODSResults(0).begin());
-        // If x has shape of [b, h, w, c], the result of mul_op_1 will have
+        ::mlir::Value tblgen_value_1 = (*mean_op_1.getODSResults(0).begin());
+        // If x has shape of [b, h, w, c], the result of mean_op_1 will have
         // shape of [c]. Therefore, their shapes are always compatible.
         square_diff_op = rewriter.create<::mlir::TF::SquaredDifferenceOp>(
             odsLoc, tblgen_value_0, tblgen_value_1);
       }
 
-      ::mlir::TF::SumOp sum_op_2;
+      ::mlir::TF::MeanOp mean_op_2;
       {
         ::mlir::Value input_value = (*square_diff_op.getODSResults(0).begin());
-        sum_op_2 = rewriter.create<TF::SumOp>(
-            odsLoc, input_value, reduce_dim_op,
+        mean_op_2 = rewriter.create<TF::MeanOp>(
+            odsLoc, new_mean_type, input_value, reduce_dim_op,
             /*keep_dims=*/rewriter.getBoolAttr(false));
       }
 
-      ::mlir::TF::MulOp mul_op_2;
-      {
-        ::mlir::Value tblgen_value_0 = (*sum_op_2.getODSResults(0).begin());
-        ::mlir::Value tblgen_value_1 =
-            (*rest_size_inv_op.getODSResults(0).begin());
-        mul_op_2 = rewriter.create<::mlir::TF::MulOp>(odsLoc, tblgen_value_0,
-                                                      tblgen_value_1);
-      }
-
-      mean_value = (*mul_op_1.getODSResults(0).begin());
-      variance_value = (*mul_op_2.getODSResults(0).begin());
+      mean_value = (*mean_op_1.getODSResults(0).begin());
+      variance_value = (*mean_op_2.getODSResults(0).begin());
     }  // End is_training equals true if.
 
     ::llvm::SmallVector<::mlir::Value, 4> replace_values;

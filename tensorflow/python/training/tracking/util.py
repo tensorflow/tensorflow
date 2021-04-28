@@ -2262,11 +2262,11 @@ class Checkpoint(tracking.AutoTrackable):
 
     try:
       status = self.read(save_path, options=options)
-    except errors_impl.NotFoundError:
+    except errors_impl.NotFoundError as e:
       raise errors_impl.NotFoundError(
           None, None,
-          "Could not find checkpoint or SavedModel at {}."
-          .format(orig_save_path))
+          "Failed to restore from checkpoint or SavedModel at {}: {}".format(
+              orig_save_path, e.message))
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to errors when using,
     # say, train.Saver() to save the model before initializing it.

@@ -241,8 +241,8 @@ class TestBase(test_base.DatasetTestBase):
         max_outstanding_requests=max_outstanding_requests,
         compression=compression)
 
-  def make_round_robin_dataset(self, cluster, num_consumers):
-    """Creates a dataset that performs round-robin reads.
+  def make_coordinated_read_dataset(self, cluster, num_consumers):
+    """Creates a dataset that performs coordinated reads.
 
     The dataset simulates `num_consumers` consumers by using parallel
     interleave to read with `num_consumers` threads, one for each consumer. The
@@ -275,7 +275,7 @@ class TestBase(test_base.DatasetTestBase):
         num_parallel_calls=num_consumers)
     return ds
 
-  def checkRoundRobinGroups(self, results, num_consumers):
+  def checkCoordinatedReadGroups(self, results, num_consumers):
     groups = [
         results[start:start + num_consumers]
         for start in range(0, len(results), num_consumers)

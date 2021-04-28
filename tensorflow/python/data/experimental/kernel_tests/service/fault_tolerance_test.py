@@ -22,7 +22,7 @@ import time
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests import data_service_test_base
+from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -35,7 +35,7 @@ TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
 
 
-class DataServiceOpsTest(data_service_test_base.TestBase,
+class FaultToleranceTest(data_service_test_base.TestBase,
                          parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -106,8 +106,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     iterator = iter(ds)
     results = []
-    for breakpoint in breakpoints:
-      for _ in range(len(results), breakpoint):
+    for breakpoint_ in breakpoints:
+      for _ in range(len(results), breakpoint_):
         results.append(next(iterator).numpy())
       cluster.restart_dispatcher()
 
@@ -148,94 +148,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster.restart_dispatcher()
     cluster.workers[0].restart()
     self.assertDatasetProduces(ds, list(range(num_elements)))
-
-  @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(workers_to_add=[1, 3, 10])))
-  def testRoundRobinAddWorkers(self, workers_to_add):
-    starting_workers = 3
-    cluster = data_service_test_base.TestCluster(num_workers=starting_workers)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
-    num_consumers = 7
-    ds = self.make_round_robin_dataset(cluster, num_consumers)
-
-    get_next = self.getNext(ds, requires_initialization=True)
-    results = []
-    zeros_seen = 0
-    for _ in range(25):
-      results.append(self.evaluate(get_next()))
-      if results[-1] == 0:
-        zeros_seen += 1
-    for _ in range(workers_to_add):
-      cluster.add_worker()
-    # Read until all new workers have joined.
-    while zeros_seen < starting_workers + workers_to_add:
-      results.append(self.evaluate(get_next()))
-      if results[-1] == 0:
-        zeros_seen += 1
-    # Read some more.
-    for _ in range(25):
-      results.append(self.evaluate(get_next()))
-
-    self.checkRoundRobinGroups(results, num_consumers)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testRoundRobinRestartWorker(self):
-    num_workers = 3
-    # Set a shutdown quiet period to prevent workers from shutting down partway
-    # through a round.
-    cluster = data_service_test_base.TestCluster(
-        num_workers, worker_shutdown_quiet_period_ms=2000)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
-    num_consumers = 5
-    ds = self.make_round_robin_dataset(cluster, num_consumers)
-
-    get_next = self.getNext(ds, requires_initialization=True)
-    results = []
-
-    self.read(get_next, results, 20)
-    cluster.workers[1].stop()
-    # Check that we can continue to read even with a worker stopped.
-    self.read(get_next, results, 20)
-    cluster.workers[1].restart()
-    # Read until we get results from the restarted worker, then read some more.
-    while results[-1] != 0:
-      results.append(self.evaluate(get_next()))
-    self.read(get_next, results, 20)
-
-    self.checkRoundRobinGroups(results, num_consumers)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testRoundRobinMultiStartStop(self):
-    num_workers = 3
-    # Set a shutdown quiet period to prevent workers from shutting down partway
-    # through a round.
-    cluster = data_service_test_base.TestCluster(
-        num_workers, worker_shutdown_quiet_period_ms=2000)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
-    num_consumers = 5
-    ds = self.make_round_robin_dataset(cluster, num_consumers)
-
-    get_next = self.getNext(ds, requires_initialization=True)
-    results = []
-
-    self.read(get_next, results, 20)
-    for i in range(num_workers):
-      cluster.workers[i].stop()
-      self.read(get_next, results, 20)
-      cluster.workers[i].restart()
-      self.read(get_next, results, 20)
-
-    cluster.add_worker()
-    cluster.restart_dispatcher()
-    for i in range(num_workers):
-      cluster.workers[i].stop()
-    self.read(get_next, results, 20)
-
-    self.checkRoundRobinGroups(results, num_consumers)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherAndMultiWorkerRestart(self):

@@ -274,8 +274,9 @@ class StructSpec(type_spec.TypeSpec):
   """Base class for tf.Struct TypeSpec."""
 
   def _serialize(self):  # TypeSpec API.
-    # TODO(b/184565242) Preserve the order of the fields in the TypeSpec?
-    return _change_nested_mappings_to(self.__dict__, dict)
+    return tuple(
+        (f.name, _change_nested_mappings_to(self.__dict__[f.name], dict))
+        for f in self._tf_struct_fields())
 
   @classmethod
   def _deserialize(cls, state):  # TypeSpec API.
@@ -317,6 +318,8 @@ class StructSpec(type_spec.TypeSpec):
   def from_value(cls, value):
     value_fields = value.__dict__
     spec_fields = nest.map_structure(_replace_tensor_with_spec, value_fields)
+    spec_fields.pop('_tf_struct_cached_type_spec', None)
+    spec_fields.pop('_tf_struct_cached_fields', None)
     return _create_object_from_type_and_dict(cls, spec_fields)
 
   def __setattr__(self, name, value):
@@ -414,10 +417,24 @@ def _wrap_user_constructor(cls):
 # TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_struct_constructor(cls):
   """Builds a constructor for tf.Struct subclass `cls`."""
+  fields = cls._tf_struct_fields()  # pylint: disable=protected-access
+
+  # Check that no-default fields don't follow default fields.  (Otherwise, we
+  # can't build a well-formed constructor.)
+  default_fields = []
+  for field in fields:
+    if field.default is not struct_field.StructField.NO_DEFAULT:
+      default_fields.append(field.name)
+    elif default_fields:
+      raise ValueError(
+          f'In definition for {cls.__name__}: Field without default '
+          f'{field.name!r} follows field with default {default_fields[-1]!r}.  '
+          f'Either add a default value for {field.name!r}, or move it before '
+          f'{default_fields[0]!r} in the field annotations.')
 
   params = []
   kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
-  for field in cls._tf_struct_fields():  # pylint: disable=protected-access
+  for field in fields:
     if field.default is struct_field.StructField.NO_DEFAULT:
       default = tf_inspect.Parameter.empty
     else:
@@ -487,3 +504,8 @@ def _add_type_spec(cls):
   _build_spec_constructor(spec)
 
   cls.__abstractmethods__ -= {'_type_spec'}
+
+  # If the user included an explicit `__name__` attribute, then use that to
+  # register the TypeSpec (so it can be used in SavedModel signatures).
+  if '__name__' in cls.__dict__:
+    type_spec.register(cls.__dict__['__name__'] + '.Spec')(spec)

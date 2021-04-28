@@ -335,111 +335,34 @@ bool ShouldUseOptimizeDataset(const Options& options,
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
-}  // namespace
-
-FinalizeDatasetOp::FinalizeDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx) {
-  if (ctx->HasAttr(kHasCapturedRef)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kHasCapturedRef, &has_captured_ref_));
-  } else {
-    has_captured_ref_ = false;
-  }
-}
-
-class FinalizeDatasetOp::Dataset : public DatasetBase {
- public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, bool has_captured_ref)
-      : DatasetBase(DatasetContext(ctx)),
-        input_(input),
-        has_captured_ref_(has_captured_ref) {
-    input_->Ref();
-  }
-  ~Dataset() override { input_->Unref(); }
-
-  std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
-    DCHECK(false) << "FinalizeDatasetOp::Dataset::MakeIteratorInternal is "
-                     "not expected to be called because it is supposed to "
-                     "forward the iterator to its input dataset(s).";
-    LOG(ERROR) << "Datasets of type " << type_string()
-               << " forwards its iterator to its input dataset. "
-                  "`MakeIteratorInternal` is not implemented.";
-    return nullptr;
-  }
-
-  const DataTypeVector& output_dtypes() const override {
-    return input_->output_dtypes();
-  }
-  const std::vector<PartialTensorShape>& output_shapes() const override {
-    return input_->output_shapes();
-  }
-
-  int64 Cardinality() const override { return input_->Cardinality(); }
-
-  string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType);
-  }
-
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    inputs->push_back(input_);
-    return Status::OK();
-  }
-
-  Status CheckExternalState() const override {
-    return input_->CheckExternalState();
-  }
-
- protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
-    Node* input_graph_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-    AttrValue has_captured_ref_attr;
-    b->BuildAttrValue(has_captured_ref_, &has_captured_ref_attr);
-
-    TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node},
-                                     {{kHasCapturedRef, has_captured_ref_attr}},
-                                     output));
-    return Status::OK();
-  }
-
- private:
-  const DatasetBase* input_;
-  bool has_captured_ref_;
-};
-
-void FinalizeDatasetOp::MakeDataset(OpKernelContext* ctx,
-                                    DatasetBase** output) {
-  DatasetBase* input_dataset;
-  OP_REQUIRES_OK(ctx,
-                 GetDatasetFromVariantTensor(ctx->input(0), &input_dataset));
-  std::vector<DatasetBase*> new_datasets;
-  const Options& options = input_dataset->options();
+void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,
+                       DatasetBase* input, DatasetBase** output) {
+  *output = input;
+  input->Ref();
+  const Options& options = input->options();
   if (ShouldUseMaxIntraOpParallelismDataset(options)) {
     experimental::MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
-        ctx, input_dataset,
-        options.threading_options().max_intra_op_parallelism(), output);
-    input_dataset = *output;
-    new_datasets.push_back(*output);
+        ctx, input, options.threading_options().max_intra_op_parallelism(),
+        output);
+    input->Unref();
+    input = *output;
   }
   if (ShouldUsePrivateThreadPoolDataset(options)) {
     experimental::PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(
-        ctx, input_dataset,
-        options.threading_options().private_threadpool_size(), output);
-    input_dataset = *output;
-    new_datasets.push_back(*output);
+        ctx, input, options.threading_options().private_threadpool_size(),
+        output);
+    input->Unref();
+    input = *output;
   }
   if (ShouldUseModelDataset(options)) {
     model::AutotuneAlgorithm algorithm;
     bool cpu_budget;
     bool ram_budget;
     GetModelDatasetParams(options, &algorithm, &cpu_budget, &ram_budget);
-    ModelDatasetOp::MakeDatasetFromOptions(ctx, input_dataset, algorithm,
-                                           cpu_budget, ram_budget, output);
-    input_dataset = *output;
-    new_datasets.push_back(*output);
+    ModelDatasetOp::MakeDatasetFromOptions(ctx, input, algorithm, cpu_budget,
+                                           ram_budget, output);
+    input->Unref();
+    input = *output;
   }
   std::vector<tstring> optimizations_enabled;
   std::vector<tstring> optimizations_disabled;
@@ -447,20 +370,31 @@ void FinalizeDatasetOp::MakeDataset(OpKernelContext* ctx,
   GetOptimizationFromOptions(options, &optimizations_enabled,
                              &optimizations_disabled, &optimizations_default);
   if (ShouldUseOptimizeDataset(options, optimizations_enabled,
-                               optimizations_default, has_captured_ref_)) {
+                               optimizations_default, has_captured_ref)) {
     std::vector<std::string> optimization_configs;
     GraphRewriteConfigs(options, &optimization_configs);
     OptimizeDatasetOp::MakeDatasetFromOptions(
-        ctx, input_dataset, optimizations_enabled, optimizations_disabled,
+        ctx, input, optimizations_enabled, optimizations_disabled,
         optimizations_default, optimization_configs, output);
-    input_dataset = *output;
-    new_datasets.push_back(*output);
+    input->Unref();
+    input = *output;
   }
+}
 
-  *output = new Dataset(ctx, input_dataset, has_captured_ref_);
-  for (auto new_dataset : new_datasets) {
-    new_dataset->Unref();
+}  // namespace
+
+FinalizeDatasetOp::FinalizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  if (ctx->HasAttr(kHasCapturedRef)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kHasCapturedRef, &has_captured_ref_));
+  } else {
+    has_captured_ref_ = false;
   }
+}
+
+void FinalizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  MakeDatasetHelper(ctx, has_captured_ref_, input, output);
 }
 
 namespace {
