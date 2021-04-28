@@ -152,7 +152,7 @@ TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoRank3Tensor) {
                               5.1, -5.2, 5.3,  6.1,  -6.2, 6.3};
   const float golden_data[] = {-1.2, -4.1};
   float output_data[2];
-  int output_dims[] = {1, 0};
+  int output_dims[] = {2, 0, 0};
   tflite::testing::TestGatherNd<float, int32_t>(
       input_dims, input_data, index_dims, index_data, output_dims, output_data,
       golden_data);
