@@ -1103,6 +1103,35 @@ py_test(
 )
 
 py_library(
+    name = "tensor_struct",
+    srcs = ["tensor_struct.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dtypes",
+        ":immutable_dict",
+        ":ops",
+        ":struct_field",
+        ":tensor_shape",
+        ":tensor_spec",
+        ":type_spec",
+    ],
+)
+
+py_library(
+    name = "struct_field",
+    srcs = ["struct_field.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dtypes",
+        ":immutable_dict",
+        ":ops",
+        ":tensor_shape",
+        ":tensor_spec",
+        ":type_spec",
+    ],
+)
+
+py_library(
     name = "immutable_dict",
     srcs = ["immutable_dict.py"],
     srcs_version = "PY3",
@@ -1621,12 +1650,38 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "tensor_struct_test",
+    size = "small",
+    srcs = ["tensor_struct_test.py"],
+    main = "tensor_struct_test.py",
+    python_version = "PY3",
+    deps = [
+        ":tensor_struct",
+        ":test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "struct_field_test",
+    size = "small",
+    srcs = ["struct_field_test.py"],
+    main = "struct_field_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/184565242) Enable pip once we add a module that depends on this.
+    deps = [
+        ":struct_field",
+        ":test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "immutable_dict_test",
     size = "small",
     srcs = ["immutable_dict_test.py"],
     main = "immutable_dict_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],  # TODO(b/184565242) Enable pip once we add a module that depends on this.
     deps = [
         ":immutable_dict",
         ":test_lib",

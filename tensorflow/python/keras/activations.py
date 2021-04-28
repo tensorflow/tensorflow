@@ -433,7 +433,9 @@ def exponential(x):
 def hard_sigmoid(x):
   """Hard sigmoid activation function.
 
-  A faster approximation of the sigmoid activation.
+  A faster approximation of the sigmoid activation. 
+  Piecewise linear approximation of the sigmoid function.
+  Ref: 'https://en.wikipedia.org/wiki/Hard_sigmoid'
 
   For example:
 
@@ -505,6 +507,14 @@ def serialize(activation):
       activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
   return serialize_keras_object(activation)
+
+
+# Add additional globals so that deserialize can find these common activation
+# functions
+leaky_relu = nn.leaky_relu
+log_softmax = nn.log_softmax
+relu6 = nn.relu6
+silu = nn.swish
 
 
 @keras_export('keras.activations.deserialize')

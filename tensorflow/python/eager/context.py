@@ -440,6 +440,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._use_tfrt_distributed_runtime = None
     self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -543,6 +544,11 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        # pylint: disable=g-backslash-continuation
+        if self._use_tfrt is not None and \
+            self._use_tfrt_distributed_runtime is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
+              opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
             opts, self._run_eager_op_as_function)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -1743,6 +1749,28 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
+
+  @property
+  def use_tfrt_distributed_runtime(self):
+    return self._use_tfrt_distributed_runtime
+
+  @use_tfrt_distributed_runtime.setter
+  def use_tfrt_distributed_runtime(self, enable):
+    """Sets whether to use TFRT distributed runtime.
+
+    This is only effective when use_tfrt is also true. Note that currently TFRT
+    distributed runtime is not function complete and this config is for testing
+    only.
+    Args:
+      enable: A boolean to set whether to use TFRT distributed runtime.
+    """
+    if not isinstance(enable, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(enable))
+
+    if self._use_tfrt_distributed_runtime != enable:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt_distributed_runtime = enable
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.

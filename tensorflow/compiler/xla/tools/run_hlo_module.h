@@ -33,6 +33,7 @@ struct RunHloModuleOptions {
       : platform(""),
         reference_platform("default"),
         print_literals(false),
+        flatten_control_flow(false),
         run_test_hlo_passes(true),
         run_reference_hlo_passes(true),
         // Using small float range by default, as otherwise all reductions
@@ -48,6 +49,7 @@ struct RunHloModuleOptions {
   std::string platform;
   std::string reference_platform;
   bool print_literals;
+  bool flatten_control_flow;
   bool run_test_hlo_passes;
   bool run_reference_hlo_passes;
   bool use_large_float_range;

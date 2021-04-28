@@ -19,10 +19,11 @@ package_group(
         "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
-        "//tensorflow/lite/experimental/tf_runtime/...",
+        "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/python/...",
     ],
 )
@@ -958,6 +959,7 @@ cc_library(
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
+        "transforms/cluster_ops_by_policy.cc",
         "transforms/cluster_ops_by_policy_pass.cc",
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
@@ -982,6 +984,7 @@ cc_library(
         "transforms/gpu_fusion.cc",
         "transforms/graph_pruning.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
@@ -1010,6 +1013,7 @@ cc_library(
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
+        "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/test_visitor_util.cc",
@@ -1043,6 +1047,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
+        "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
         "transforms/passes.h",
@@ -1305,7 +1310,6 @@ cc_library(
         ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1401,15 +1405,6 @@ cc_library(
 cc_library(
     name = "mlir_roundtrip_pass_registration",
     srcs = ["translate/mlir_roundtrip_pass_registration.cc"],
-    deps = [
-        ":mlir_roundtrip_pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_import_pass_registration",
-    srcs = ["translate/mlir_import_pass_registration.cc"],
     deps = [
         ":mlir_roundtrip_pass",
     ],

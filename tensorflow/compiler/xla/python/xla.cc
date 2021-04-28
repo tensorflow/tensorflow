@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -205,6 +206,7 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def_property_readonly("platform_version", &PyClient::platform_version)
+      .def_property_readonly("runtime_type", &PyClient::runtime_type)
       .def("device_count", &PyClient::device_count)
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
@@ -238,6 +240,14 @@ PYBIND11_MODULE(xla_extension, m) {
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
+        return std::make_shared<PyClient>(std::move(client));
+      },
+      py::arg("asynchronous") = true);
+  m.def(
+      "get_tfrt_cpu_client",
+      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                            GetTfrtCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);

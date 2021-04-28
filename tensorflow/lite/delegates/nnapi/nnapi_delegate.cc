@@ -57,6 +57,9 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #include "tensorflow/lite/util.h"
+#ifdef NNAPI_VERBOSE_VALIDATION
+#include "tensorflow/lite/schema/schema_generated.h"
+#endif
 #include <farmhash.h>
 
 namespace tflite {
@@ -3854,14 +3857,14 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
 TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                          TfLiteNode* node, int* nnapi_errno) {
   const bool allow_padding =
-      nnapi_->android_sdk_version > kMinSdkVersionForNNAPI13;
+      nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13;
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
 
   // Check for conditions where we need to re-create NN Execution object and
   // re-configure the settings and inputs / outputs.
   bool should_reset_execution = false;
-  if (nnapi_->android_sdk_version <= kMinSdkVersionForNNAPI13 ||
+  if (nnapi_->nnapi_runtime_feature_level <= kMinSdkVersionForNNAPI13 ||
       delegate_options.allow_dynamic_dimensions) {
     // Must reset execution before Android API 31, or using dynamic dimensions.
     should_reset_execution = true;
@@ -3883,7 +3886,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                     nnapi_->ANeuralNetworksExecution_create(
                                         nn_compilation_.get(), &execution),
                                     "creating NNAPI execution", nnapi_errno);
-    if (nnapi_->android_sdk_version > kMinSdkVersionForNNAPI13) {
+    if (nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13) {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
           nnapi_->ANeuralNetworksExecution_setReusable(execution,
@@ -5217,6 +5220,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(
       delegate_options, nnapi, /*exclude_nnapi_reference=*/true);
+  std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
   for (int node_index : TfLiteIntArrayView(plan)) {
     TfLiteNode* node;
     TfLiteRegistration* registration;
@@ -5224,9 +5228,20 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, node_index, &node, &registration));
     if (NNAPIDelegateKernel::Validate(context, registration->builtin_code,
                                       registration->version, target_sdk_version,
-                                      node, is_accelerator_specified)) {
+                                      node, is_accelerator_specified,
+                                      &map_failures)) {
       supported_nodes.push_back(node_index);
     }
+#ifdef NNAPI_VERBOSE_VALIDATION
+    for (auto& failure : map_failures) {
+      TFLITE_LOG_PROD(
+          TFLITE_LOG_WARNING, "Operator %s (v%d) refused by NNAPI delegate: %s",
+          tflite::EnumNameBuiltinOperator(
+              static_cast<BuiltinOperator>(registration->builtin_code)),
+          registration->version, failure.message.c_str());
+    }
+    map_failures.clear();
+#endif
   }
 
   // If there are no delegated nodes, short-circuit node replacement.

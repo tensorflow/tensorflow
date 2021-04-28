@@ -366,7 +366,12 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # signatures, respectively). ConcreteFunction that are part of a saved
     # function is set up later by recreate_function(); and bare ConcreteFunction
     # is set up by by setup_bare_concrete_function().
-    func = function_lib.ConcreteFunction(func_graph)
+    # However, we copy the FunctionDef attributes to the new ConcreteFunction,
+    # excluding the "_input_shapes", which may cause an error during input shape
+    # initialization at a later stage.
+    if "_input_shapes" in copy.attr:
+      del copy.attr["_input_shapes"]
+    func = function_lib.ConcreteFunction(func_graph, attrs=copy.attr)
     func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func

@@ -102,8 +102,8 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
   // INBOUNDS-THEN-BODY, i.e. if INBOUNDS == true
 
   // CHECK: [[ARG_ELEM:%.*]] = memref.load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
-  // CHECK: [[IF_INIT_RES:%.*]]:4
-  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32, i1) {
+  // CHECK: [[IF_INIT_RES:%.*]]:3
+  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32) {
 
     // INIT-THEN-BODY, i.e. INBOUNDS == true and INIT = true
 
@@ -130,21 +130,20 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
     // CHECK:  [[IF_PRED_RES0:%.*]] = select [[PRED]], [[ARG_I]], [[SEL_I]]
     // CHECK:  [[IF_PRED_RES1:%.*]] = select [[PRED]], [[ARG_J]], [[SEL_J]]
     // CHECK:  [[IF_PRED_RES2:%.*]] = select [[PRED]], [[ARG_ELEM]], [[SEL_VAL]]
-    // CHECK:  [[IF_PRED_RES3:%.*]] = select [[PRED]], [[CTRUE]], [[SEL_INIT]]
 
     // INIT-THEN-BODY yield.
     // CHECK:  scf.yield [[IF_PRED_RES0]], [[IF_PRED_RES1]],
-    // CHECK-SAME:        [[IF_PRED_RES2]], [[IF_PRED_RES3]]
+    // CHECK-SAME:        [[IF_PRED_RES2]]
 
     // INIT-ELSE-BODY, i.e. if INBOUNDS == TRUE and INIT == FALSE, returns ARG
     // ivs and element without computing Select function.
-    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]],
-    // CHECK-SAME:        [[CTRUE]] : index, index, f32, i1
+    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]]
+    // CHECK-SAME:        : index, index, f32
     // CHECK:  }
 
   // INBOUNDS-THEN-BODY yield.
-  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2,
-  // CHECK-SAME:        [[IF_INIT_RES]]#3 : index, index, f32, i1
+  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2
+  // CHECK-SAME:        : index, index, f32
   // CHECK:  }
 
   // INBOUNDS-ELSE-REGION, i.e. if INBOUNDS == FALSE

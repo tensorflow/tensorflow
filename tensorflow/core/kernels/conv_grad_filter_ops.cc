@@ -495,6 +495,14 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     const int filter_total_size = dims.spatial_dims[0].filter_size *
                                   dims.spatial_dims[1].filter_size *
                                   dims.in_depth;
+    OP_REQUIRES(
+        context,
+        filter_total_size * dims.out_depth == filter_backprop->NumElements(),
+        errors::InvalidArgument(
+            "filter_size does not have enough elements, requested ",
+            filter_total_size * dims.out_depth, ", got ",
+            filter_backprop->NumElements()));
+
     // The output image size is the spatial size of the output.
     const int output_image_size =
         dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size;
@@ -517,6 +525,11 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     const size_t size_C = filter_total_size * dims.out_depth;
 
     const size_t work_unit_size = size_A + size_B + size_C;
+
+    OP_REQUIRES(
+        context, work_unit_size != 0,
+        errors::InvalidArgument(
+            "Work size for convolution would be 0, which is not acceptable"));
 
     const size_t shard_size =
         (target_working_set_size + work_unit_size - 1) / work_unit_size;

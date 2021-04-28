@@ -1166,7 +1166,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       if not context.executing_eagerly() and replica_id == 0:
         logging.info(
             "Collective all_reduce IndexedSlices: %d all_reduces, num_devices ="
-            "%d, group_size = %d, implementation = %s", len(dense_values),
+            "%d, group_size = %d, implementation = %s", len(sparse_values),
             len(self._launchers), self._group_size, implementation)
 
       for indexed_slice in sparse_values:

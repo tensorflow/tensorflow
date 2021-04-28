@@ -243,6 +243,7 @@ filegroup(
         "lower_if_op.h",
         "lower_case_op.h",
         "lower_functional_ops.h",
+        "control_flow_deps_to_chains.h",
         "lower_while_op.h",
         "memory_types.h",
         "mkl_cpu_allocator.h",
@@ -984,6 +985,26 @@ cc_library(
 )
 
 cc_library(
+    name = "control_flow_deps_to_chains",
+    srcs = ["control_flow_deps_to_chains.cc"],
+    hdrs = ["control_flow_deps_to_chains.h"],
+    copts = tf_copts(),
+    visibility = default_package_visibility + [
+        "//platforms/performance/autograppler:__subpackages__",
+        "//platforms/performance/tf_sim:__subpackages__",
+    ],
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/platform:errors",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lower_if_op",
     srcs = ["lower_if_op.cc"],
     hdrs = ["lower_if_op.h"],
@@ -1583,6 +1604,7 @@ tf_cuda_library(
         ":collective_rma_local",
         ":collective_util",
         ":composite_device",
+        ":control_flow_deps_to_chains",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
@@ -2220,7 +2242,7 @@ tf_cuda_cc_test(
     name = "direct_session_test",
     size = "medium",
     srcs = ["direct_session_test.cc"],
-    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
+    args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu",
@@ -2303,7 +2325,7 @@ tf_cc_test(
     name = "direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [

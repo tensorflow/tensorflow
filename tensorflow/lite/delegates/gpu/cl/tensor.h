@@ -119,8 +119,9 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   void Release();
 
   cl_mem memory_;
-  cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
+  cl_mem image_buffer_memory_;  // for IMAGE_BUFFER/TEXTURE_2D/SINGLE_TEXTURE_2D
   bool memory_owner_;
+  bool buffer_based_ = false;
   BHWDC shape_;
   TensorDescriptor descriptor_;
 };
@@ -150,6 +151,12 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment,
+                                             Tensor* result);
 
 template <DataType T>
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
@@ -207,10 +214,12 @@ absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(queue->EnqueueWriteImage(memory_, GetFullTensorRegion(),
+    case TensorStorageType::SINGLE_TEXTURE_2D: {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      RETURN_IF_ERROR(queue->EnqueueWriteImage(mem, GetFullTensorRegion(),
                                                data_copy.get()));
       break;
+    }
     default:
       return absl::InternalError("Unsupported tensor storage type");
   }
@@ -236,10 +245,12 @@ absl::Status Tensor::ReadDataBHWDC(T* out, CLCommandQueue* queue) const {
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(queue->EnqueueReadImage(memory_, GetFullTensorRegion(),
-                                              data_copy.get()));
+    case TensorStorageType::SINGLE_TEXTURE_2D: {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      RETURN_IF_ERROR(
+          queue->EnqueueReadImage(mem, GetFullTensorRegion(), data_copy.get()));
       break;
+    }
     default:
       return absl::InternalError("Unsupported tensor storage type");
   }

@@ -1697,9 +1697,15 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute ops in the graph, which indicates
+    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
+    // clustering.
+    if (n->type_string() == "TPUExecute") {
       return Status::OK();
     }
   }

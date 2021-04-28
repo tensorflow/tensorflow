@@ -50,6 +50,7 @@ keras_packages = [
     "tensorflow.python.keras.engine.training",
     "tensorflow.python.keras.estimator",
     "tensorflow.python.keras.feature_column.sequence_feature_column",
+    # Placeholder for internal API
     "tensorflow.python.keras.initializers",
     "tensorflow.python.keras.initializers.initializers_v1",
     "tensorflow.python.keras.initializers.initializers_v2",
@@ -71,6 +72,11 @@ keras_packages = [
     "tensorflow.python.keras.layers.recurrent_v2",
     "tensorflow.python.keras.layers.serialization",
     "tensorflow.python.keras.layers.wrappers",
+    "tensorflow.python.keras.legacy_tf_layers.base",
+    "tensorflow.python.keras.legacy_tf_layers.convolutional",
+    "tensorflow.python.keras.legacy_tf_layers.core",
+    "tensorflow.python.keras.legacy_tf_layers.normalization",
+    "tensorflow.python.keras.legacy_tf_layers.pooling",
     "tensorflow.python.keras.losses",
     "tensorflow.python.keras.metrics",
     "tensorflow.python.keras.mixed_precision.get_layer_policy",
@@ -104,6 +110,7 @@ keras_packages = [
     "tensorflow.python.keras.utils.losses_utils",
     "tensorflow.python.keras.utils.multi_gpu_utils",
     "tensorflow.python.keras.utils.np_utils",
+    "tensorflow.python.keras.utils.tf_utils",
     "tensorflow.python.keras.utils.vis_utils",
     "tensorflow.python.keras.wrappers.scikit_learn",
 ]

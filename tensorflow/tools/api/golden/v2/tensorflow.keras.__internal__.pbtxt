@@ -12,4 +12,8 @@ tf_module {
     name: "models"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "utils"
+    mtype: "<type \'module\'>"
+  }
 }
