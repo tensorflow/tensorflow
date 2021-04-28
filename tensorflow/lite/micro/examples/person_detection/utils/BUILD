@@ -36,6 +36,7 @@ py_test(
     tags = [
         "no_oss",  # TODO(b/174680668): Exclude Python tests from OSS.
         "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
+        "notap",  # TODO(b/186679612)
         "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
     ],
     deps = [
