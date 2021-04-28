@@ -93,7 +93,9 @@ namespace wrap {
   __macro(hipsparseDcsrmm2)                     \
   __macro(hipsparseDcsrmv)                      \
   __macro(hipsparseDestroy)                     \
+  __macro(hipsparseDestroyDnMat)                \
   __macro(hipsparseDestroyMatDescr)             \
+  __macro(hipsparseDestroySpMat)                \
   __macro(hipsparseScsr2csc)                    \
   __macro(hipsparseScsrgeam2)                   \
   __macro(hipsparseScsrgeam2_bufferSizeExt)     \

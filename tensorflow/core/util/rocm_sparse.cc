@@ -240,6 +240,39 @@ static inline Status CsrmmImpl(
 
 TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
 
+#define SPMM_BUFFERSIZE_INSTANCE(Scalar, dtype)                               \
+  template <>                                                                 \
+  Status GpuSparse::SpMMBufferSize<Scalar>(                                   \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,               \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                  \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,                   \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, size_t* bufferSize) \
+      const {                                                                 \
+    DCHECK(initialized_);                                                     \
+    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseSpMM_bufferSize(              \
+        *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,    \
+        dtype, alg, bufferSize));                                             \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_HIP_LAPACK_TYPES(SPMM_BUFFERSIZE_INSTANCE);
+
+#define SPMM_INSTANCE(Scalar, dtype)                                             \
+  template <>                                                                    \
+  Status GpuSparse::SpMM<Scalar>(                                                \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,                  \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                     \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,                      \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer) const {  \
+    DCHECK(initialized_);                                                        \
+    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseSpMM(*gpusparse_handle_, transA, \
+                                              transB, alpha, matA, matB, beta,   \
+                                              matC, dtype, alg, buffer));        \
+    return Status::OK();                                                         \
+  }
+
+TF_CALL_HIP_LAPACK_TYPES(SPMM_INSTANCE);
+
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                hipsparseHandle_t hipsparse_handle,
