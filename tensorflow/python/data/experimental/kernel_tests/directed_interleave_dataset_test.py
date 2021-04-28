@@ -166,35 +166,11 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       weights = dataset_ops.Dataset.from_tensors(weights).repeat()
 
     datasets = [
-        dataset_ops.Dataset.range(0),
-        dataset_ops.Dataset.range(1).repeat()
-    ]
-    sample_dataset = interleave_ops.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=True)
-    self.assertDatasetProduces(sample_dataset, [])
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
-    # Sampling skips the first dataset.
-    weights = np.asarray([0., 1.])
-    datasets = [
-        dataset_ops.Dataset.from_tensors(-1).repeat(),
-        dataset_ops.Dataset.from_tensors(1)
-    ]
-    sample_dataset = interleave_ops.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=False)
-    self.assertDatasetProduces(sample_dataset, [1])
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsAllWeightsAreZero(self):
-    # Sampling skips both datasets.
-    weights = np.asarray([0., 0.])
-    datasets = [
-        dataset_ops.Dataset.from_tensors(-1).repeat(),
+        dataset_ops.Dataset.from_tensors(-1).skip(5),
         dataset_ops.Dataset.from_tensors(1).repeat()
     ]
     sample_dataset = interleave_ops.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=False)
+        datasets, weights=weights, stop_on_empty_dataset=True)
     self.assertDatasetProduces(sample_dataset, [])
 
   @combinations.generate(test_base.default_test_combinations())

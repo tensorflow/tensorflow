@@ -156,14 +156,6 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
     return self._element_spec
 
 
-def _skip_datasets_with_zero_weight(datasets, weights):
-  datasets_and_weights = [(dataset, weight)
-                          for (dataset, weight) in zip(datasets, weights)
-                          if weight > 0]
-  return (zip(*datasets_and_weights) if datasets_and_weights else
-          ([datasets[0].take(0)], [1.]))
-
-
 @tf_export("data.experimental.sample_from_datasets", v1=[])
 def sample_from_datasets_v2(datasets,
                             weights=None,
@@ -224,23 +216,22 @@ def sample_from_datasets_v2(datasets,
   if not datasets:
     raise ValueError("`datasets` must be a non-empty list of datasets.")
 
+  num_datasets = len(datasets)
   if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
-      logits = [[1.0] * len(datasets)]
+      logits = [[1.0] * num_datasets]
 
     else:
-      if len(weights) != len(datasets):
-        raise ValueError(
-            "`weights` must be a vector of length `len(datasets)`.")
-
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):
         raise TypeError("`weights` must be convertible to a tensor of "
                         "`tf.float32` or `tf.float64` elements.")
+      if not weights.shape.is_compatible_with([num_datasets]):
+        raise ValueError(
+            "`weights` must be a vector of length `len(datasets)`.")
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.
