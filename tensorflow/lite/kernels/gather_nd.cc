@@ -144,6 +144,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndices);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  // Prevent division by 0 in the helper
+  TF_LITE_ENSURE(context, NumElements(params) > 0);
+
   switch (indices->type) {
     case kTfLiteInt32:
       return EvalGatherNd<int32_t>(context, params, indices, output);
