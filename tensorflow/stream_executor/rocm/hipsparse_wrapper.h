@@ -75,12 +75,10 @@ namespace wrap {
 
 #define FOREACH_HIPSPARSE_API(__macro)          \
   __macro(hipsparseCreate)                      \
-  __macro(hipsparseCreateCsr)                   \
-  __macro(hipsparseCreateDnMat)                 \
   __macro(hipsparseCreateMatDescr)              \
   __macro(hipsparseCcsr2csc)                    \
   __macro(hipsparseCcsrgeam2)                   \
-  __macro(hipsparseCcsrgeam2_bufferSizeExt)	    \
+  __macro(hipsparseCcsrgeam2_bufferSizeExt)	\
   __macro(hipsparseCcsrgemm)                    \
   __macro(hipsparseCcsrmm)                      \
   __macro(hipsparseCcsrmm2)                     \
@@ -93,9 +91,7 @@ namespace wrap {
   __macro(hipsparseDcsrmm2)                     \
   __macro(hipsparseDcsrmv)                      \
   __macro(hipsparseDestroy)                     \
-  __macro(hipsparseDestroyDnMat)                \
   __macro(hipsparseDestroyMatDescr)             \
-  __macro(hipsparseDestroySpMat)                \
   __macro(hipsparseScsr2csc)                    \
   __macro(hipsparseScsrgeam2)                   \
   __macro(hipsparseScsrgeam2_bufferSizeExt)     \
@@ -106,8 +102,6 @@ namespace wrap {
   __macro(hipsparseSetStream)                   \
   __macro(hipsparseSetMatIndexBase)             \
   __macro(hipsparseSetMatType)                  \
-  __macro(hipsparseSpMM_bufferSize)             \
-  __macro(hipsparseSpMM)                        \
   __macro(hipsparseXcoo2csr)                    \
   __macro(hipsparseXcsr2coo)                    \
   __macro(hipsparseXcsrgeam2Nnz)                \
@@ -119,6 +113,20 @@ namespace wrap {
   __macro(hipsparseZcsrmm)                      \
   __macro(hipsparseZcsrmm2)                     \
   __macro(hipsparseZcsrmv)
+
+#if TF_ROCM_VERSION >= 40200
+#define FOREACH_SpMM_API(__macro)               \
+  __macro(hipsparseCreateCsr)                   \
+  __macro(hipsparseCreateDnMat)                 \
+  __macro(hipsparseDestroyDnMat)                \
+  __macro(hipsparseDestroySpMat)                \
+  __macro(hipsparseSpMM_bufferSize)             \
+  __macro(hipsparseSpMM)                        
+ 
+FOREACH_SpMM_API(HIPSPARSE_API_WRAPPER)
+
+#undef FOREACH_SpMM_API
+#endif
 
 
 // clang-format on
