@@ -172,16 +172,22 @@ tf_py_test(
     name = "directed_interleave_dataset_test",
     size = "small",
     srcs = ["directed_interleave_dataset_test.py"],
-    shard_count = 12,
+    shard_count = 24,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_seed",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

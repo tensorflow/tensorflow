@@ -187,12 +187,12 @@ def sample_from_datasets_v2(datasets,
   ```
 
   Args:
-    datasets: A list of `tf.data.Dataset` objects with compatible structure.
-    weights: (Optional.) A list of `len(datasets)` floating-point values where
-      `weights[i]` represents the probability with which an element should be
-      sampled from `datasets[i]`, or a `tf.data.Dataset` object where each
-      element is such a list. Defaults to a uniform distribution across
-      `datasets`.
+    datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+      structure.
+    weights: (Optional.) A list or Tensor of `len(datasets)` floating-point
+      values where `weights[i]` represents the probability to sample from
+      `datasets[i]`, or a `tf.data.Dataset` object where each element is such a
+      list. Defaults to a uniform distribution across `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
       seed that will be used to create the distribution. See
       `tf.random.set_seed` for behavior.
@@ -315,7 +315,8 @@ def choose_from_datasets_v2(datasets,
   ```
 
   Args:
-    datasets: A list of `tf.data.Dataset` objects with compatible structure.
+    datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+      structure.
     choice_dataset: A `tf.data.Dataset` of scalar `tf.int64` tensors between `0`
       and `len(datasets) - 1`.
     stop_on_empty_dataset: If `True`, selection stops if it encounters an empty

@@ -28,8 +28,21 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
+
+
+def _weights_type_combinations():
+  return combinations.combine(weights_type=["list", "tensor", "dataset"])
+
+
+def _get_weights_of_type(weights_list, weights_type):
+  if weights_type == "list":
+    return weights_list
+  if weights_type == "tensor":
+    return ops.convert_to_tensor(weights_list, name="weights")
+  return dataset_ops.Dataset.from_tensors(weights_list).repeat()
 
 
 class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
@@ -63,9 +76,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(weights_as_dataset=[False, True]))
-  )
-  def testSampleFromDatasets(self, weights_as_dataset):
+                         _weights_type_combinations()))
+  def testSampleFromDatasets(self, weights_type):
     random_seed.set_random_seed(1619)
     num_samples = 5000
     rand_probs = self._normalize(np.random.random_sample((5,)))
@@ -74,9 +86,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     # expected distribution. Based on the implementation in
     # "third_party/tensorflow/python/kernel_tests/multinomial_op_test.py".
     for probs in [[.85, .05, .1], rand_probs, [1.]]:
-      weights = np.asarray(probs)
-      if weights_as_dataset:
-        weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+      weights = _get_weights_of_type(np.asarray(probs), weights_type)
       classes = len(probs)
 
       # Create a dataset that samples each integer in `[0, num_datasets)`
@@ -97,14 +107,10 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(weights_as_dataset=[False, True]))
-  )
-  def testSampleFromDatasetsStoppingOnEmptyDataset(self, weights_as_dataset):
-    weights = np.asarray([.5, .1, .4])
-    if weights_as_dataset:
-      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
-
+                         _weights_type_combinations()))
+  def testSampleFromDatasetsStoppingOnEmptyDataset(self, weights_type):
     # Sampling stops when the first dataset is exhausted.
+    weights = _get_weights_of_type(np.asarray([.5, .1, .4]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(np.int64(-1)),
         dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
@@ -118,14 +124,10 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(weights_as_dataset=[False, True]))
-  )
-  def testSampleFromDatasetsSkippingEmptyDataset(self, weights_as_dataset):
-    weights = np.asarray([.5, .1, .4])
-    if weights_as_dataset:
-      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
-
+                         _weights_type_combinations()))
+  def testSampleFromDatasetsSkippingEmptyDataset(self, weights_type):
     # Sampling skips the first dataset after it becomes empty.
+    weights = _get_weights_of_type(np.asarray([.5, .1, .4]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(np.int64(-1)),
         dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
@@ -140,14 +142,10 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(weights_as_dataset=[False, True]))
-  )
-  def testSampleFromDatasetsWithZeroWeight(self, weights_as_dataset):
-    weights = np.asarray([0., 1.])
-    if weights_as_dataset:
-      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
-
+                         _weights_type_combinations()))
+  def testSampleFromDatasetsWithZeroWeight(self, weights_type):
     # Sampling stops when the second dataset is exhausted.
+    weights = _get_weights_of_type(np.asarray([0., 1.]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(-1).repeat(2),
         dataset_ops.Dataset.from_tensors(1).repeat(2)
@@ -158,16 +156,12 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(weights_as_dataset=[False, True]))
-  )
-  def testSampleFromEmptyDataset(self, weights_as_dataset):
-    weights = np.asarray([1., 0.])
-    if weights_as_dataset:
-      weights = dataset_ops.Dataset.from_tensors(weights).repeat()
-
+                         _weights_type_combinations()))
+  def testSampleFromEmptyDataset(self, weights_type):
+    weights = _get_weights_of_type(np.asarray([1., 0.]), weights_type)
     datasets = [
-        dataset_ops.Dataset.from_tensors(-1).skip(5),
-        dataset_ops.Dataset.from_tensors(1).repeat()
+        dataset_ops.Dataset.range(0),
+        dataset_ops.Dataset.range(1).repeat()
     ]
     sample_dataset = interleave_ops.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
