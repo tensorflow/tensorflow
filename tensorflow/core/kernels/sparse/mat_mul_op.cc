@@ -865,26 +865,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matC));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
 
-#else
-
-#if GOOGLE_CUDA
-
-      const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
-
-      gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
-
-      TF_RETURN_IF_ERROR(
-          cuda_sparse.Csrmm(transA, transB, m, n, k, nnz, &alpha, descrA,
-                            a.values.data(), a.row_ptr.data(), a.col_ind.data(),
-                            b.data(), ldb, &beta, c.data(), ldc));
-
-
-#elif TENSORFLOW_USE_ROCM
+#elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40200
       //Use SPMM
       const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
       gpusparseSpMatDescr_t matA;
@@ -922,7 +903,37 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matC));
       TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroySpMat(matA));
 
+
+#else
+
+#if GOOGLE_CUDA
+
+      const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
+
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+
+#elif TENSORFLOW_USE_ROCM
+
+     const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
+     gpusparseMatDescr_t descrA;
+     TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
+     TF_RETURN_IF_GPUSPARSE_ERROR(
+		     wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+     TF_RETURN_IF_GPUSPARSE_ERROR(
+		     wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+
 #endif  // GOOGLE_CUDA
+
+      TF_RETURN_IF_ERROR(
+          cuda_sparse.Csrmm(transA, transB, m, n, k, nnz, &alpha, descrA,
+                            a.values.data(), a.row_ptr.data(), a.col_ind.data(),
+                            b.data(), ldb, &beta, c.data(), ldc));
+
 #endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
     }
 

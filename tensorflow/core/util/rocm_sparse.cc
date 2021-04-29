@@ -181,6 +181,11 @@ Status GpuSparse::Initialize() {
   return Status::OK();
 }
 
+#define TF_CALL_HIPSPARSE_DTYPES(m)                       \
+	m(float, ROCM_R_32F) m(double, ROCM_R_64F)        \
+	m(std::complex<float>, ROCM_C_32F)                \
+	m(std::complex<double>, ROCM_C_64F) 
+
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
 #define TF_CALL_HIP_LAPACK_TYPES(m) \
@@ -206,6 +211,8 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
                               HIPSPARSE_INDEX_BASE_ZERO));
   return Status::OK();
 }
+
+#if TF_ROCM_VERSION < 40200
 
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmmImpl(
@@ -240,6 +247,8 @@ static inline Status CsrmmImpl(
 
 TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
 
+#else
+
 #define SPMM_BUFFERSIZE_INSTANCE(Scalar, dtype)                               \
   template <>                                                                 \
   Status GpuSparse::SpMMBufferSize<Scalar>(                                   \
@@ -255,7 +264,7 @@ TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
     return Status::OK();                                                      \
   }
 
-TF_CALL_HIP_LAPACK_TYPES(SPMM_BUFFERSIZE_INSTANCE);
+TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
 
 #define SPMM_INSTANCE(Scalar, dtype)                                             \
   template <>                                                                    \
@@ -271,7 +280,9 @@ TF_CALL_HIP_LAPACK_TYPES(SPMM_BUFFERSIZE_INSTANCE);
     return Status::OK();                                                         \
   }
 
-TF_CALL_HIP_LAPACK_TYPES(SPMM_INSTANCE);
+TF_CALL_HIPSPARSE_DTYPES(SPMM_INSTANCE);
+
+#endif
 
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
