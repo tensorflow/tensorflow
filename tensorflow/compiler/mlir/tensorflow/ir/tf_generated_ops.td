@@ -16696,6 +16696,22 @@ variables.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_TPURoundRobinOp : TF_Op<"TPURoundRobin", []> {
+  let summary = "A load balancing op that round-robins among TPU cores.";
+
+  let description = [{
+This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
+is useful for interfacing with TensorFlow ops that take as input a TPU core on
+which to execute computations, such as `TPUPartitionedCall`.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_Int32Tensor, [{An integer in [0, NumTPUCoresVisiblePerHost].}]>:$device_ordinal
+  );
+}
+
 def TF_TanOp : TF_Op<"Tan", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes tan of x element-wise.";
 
