@@ -205,6 +205,9 @@ HloInstructionSequence postprocessor_to_custom_schedule(
   std::deque<HloInstruction*> early_as_possible_sched;
   {
     absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
     const std::vector<HloInstruction*>& instrs = input.instructions();
     for (HloInstruction* instr : instrs) {
       if (scheduled.contains(instr)) {
@@ -216,12 +219,11 @@ HloInstructionSequence postprocessor_to_custom_schedule(
 
       for (HloInstruction* user : instr->users()) {
         // Schedule any user who has the attribute `early_as_possible` and all
-        // of its producers have been scheduled.
+        // of its producers and control_predecessors have been scheduled.
         if (CustomCallWithSchedule(user,
                                    CustomCallSchedule::EARLY_AS_POSSIBLE) &&
-            absl::c_all_of(user->operands(), [&](const HloInstruction* opnd) {
-              return scheduled.contains(opnd);
-            })) {
+            absl::c_all_of(user->operands(), is_scheduled) &&
+            absl::c_all_of(user->control_predecessors(), is_scheduled)) {
           early_as_possible_sched.push_back(user);
           scheduled.insert(user);
         }
@@ -233,6 +235,9 @@ HloInstructionSequence postprocessor_to_custom_schedule(
   std::deque<HloInstruction*> late_as_possible_sched;
   {
     absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
     for (auto it = early_as_possible_sched.rbegin();
          it != early_as_possible_sched.rend(); it++) {
       if (scheduled.contains(*it)) {
@@ -244,12 +249,11 @@ HloInstructionSequence postprocessor_to_custom_schedule(
 
       for (HloInstruction* opnd : (*it)->unique_operands()) {
         // Schedule any opnd who has the attribute `late_as_possible` if all of
-        // its users have been scheduled.
+        // its users and control_successors have been scheduled.
         if (CustomCallWithSchedule(opnd,
                                    CustomCallSchedule::LATE_AS_POSSIBLE) &&
-            absl::c_all_of(opnd->users(), [&](const HloInstruction* u) {
-              return scheduled.contains(u);
-            })) {
+            absl::c_all_of(opnd->users(), is_scheduled) &&
+            absl::c_all_of(opnd->control_successors(), is_scheduled)) {
           late_as_possible_sched.push_front(opnd);
           scheduled.insert(opnd);
         }

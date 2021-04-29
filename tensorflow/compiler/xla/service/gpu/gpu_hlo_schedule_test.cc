@@ -355,18 +355,22 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
       /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
   HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
-  HloInstruction* add1 = builder.AddInstruction(
+  HloInstruction* add0 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
   HloInstruction* add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, y, z));
-  // Nonblocking call depends on add1 but not add2.
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+  // Create nonblocking_call(add0).
   HloInstruction* nonblocking_call =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
-          f32_2x2_, {add1},
+          f32_2x2_, {add0},
           /*custom_call_target=*/"nonblocking-call-start",
           /*opaque=*/""));
   static_cast<HloCustomCallInstruction*>(nonblocking_call)
       ->set_custom_call_schedule(EARLY_AS_POSSIBLE);
+  // In addition, add control_depedency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
   // Blocking call, which only add4 depends on.
   HloInstruction* blocking_call =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -389,13 +393,18 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   auto order = schedule->ConsumeHloOrdering();
   VLOG(2) << order->ToString();
 
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order->ExecutesBefore(add0, nonblocking_call));
+  // Order constrained by control dependency.
   EXPECT_TRUE(order->ExecutesBefore(add1, nonblocking_call));
+  // Test that nonblocking_call is scheduled before add2, so that we know
+  // EARLY_AS_POSSIBLE is in effect.
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add2));
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add3));
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add4));
 
-  EXPECT_TRUE(order->ExecutesBefore(add1, blocking_call));
-  EXPECT_TRUE(order->ExecutesBefore(add2, blocking_call));
+  // Test that blocking_call is scheduled after add3, so that we know
+  // LATE_AS_POSSIBLE is in effect.
   EXPECT_TRUE(order->ExecutesBefore(add3, blocking_call));
   EXPECT_TRUE(order->ExecutesBefore(blocking_call, add4));
 }
