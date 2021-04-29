@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
@@ -823,6 +824,9 @@ class _FunctionConverterData(_ConverterData):
       if idx in map_index_to_variable:
         data = map_index_to_variable[idx].numpy()
       else:
+        if val_tensor.dtype == dtypes.resource:
+          logging.vlog(1, "Skip converting resource tensor %s" % tensor_name)
+          continue
         data = np.array(val_tensor.numpy())
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
