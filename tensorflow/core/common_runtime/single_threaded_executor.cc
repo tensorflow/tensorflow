@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/single_threaded_executor.h"
+#include "tensorflow/core/common_runtime/single_threaded_executor.h"
 
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -21,9 +21,42 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
-namespace data {
+
+Status ValidateOp(const Node& n) {
+  for (DataType dt : n.output_types()) {
+    if (IsRefType(dt)) {
+      return errors::Unimplemented(
+          "Single-threaded executor does not support reference-typed "
+          "edges.  But saw type ",
+          DataTypeString(dt), " in outputs of node ", n.name());
+    }
+  }
+  if (n.IsControlFlow()) {
+    return errors::FailedPrecondition(
+        "Single-threaded executor does not support low level control flow, "
+        " but saw control flow node ",
+        n.name(),
+        ".  Perhaps your graph contains old-style control flow primitives? "
+        "Try using tf.compat.v1.enable_control_flow_v2().");
+  }
+  if (n.IsSend() || n.IsHostSend() || n.IsRecv() || n.IsHostRecv()) {
+    return errors::Unimplemented(
+        "Single-threaded executor does not support partitioned graphs.  "
+        "But saw send/recv node ",
+        n.name());
+  }
+  if (n.IsCollective()) {
+    return errors::Unimplemented(
+        "Single-threaded executor does not support collective ops.  But "
+        "saw collective node ",
+        n.name());
+  }
+  return Status::OK();
+}
+
 namespace {
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
@@ -64,39 +97,11 @@ class SingleThreadedExecutorImpl : public Executor {
     nodes_with_kernels.reserve(ordered_nodes.size());
 
     std::map<size_t, Node*> arg_index_to_node_map;
-    std::unordered_map<Node*, size_t> node_to_index_map;
+    absl::flat_hash_map<Node*, size_t> node_to_index_map;
 
     // Create the kernel and input-related structures for each node in `graph`.
     for (Node* n : ordered_nodes) {
-      for (DataType dt : n->output_types()) {
-        if (IsRefType(dt)) {
-          return errors::Unimplemented(
-              "Single-threaded executor does not support reference-typed "
-              "edges.  But saw type ",
-              DataTypeString(dt), " in outputs of node ", n->name());
-        }
-      }
-      if (n->IsControlFlow()) {
-        return errors::FailedPrecondition(
-            "Single-threaded executor does not support low level control flow, "
-            " but saw control flow node ",
-            n->name(),
-            ".  Perhaps your graph contains old-style control flow primitives? "
-            "Try using tf.compat.v1.enable_control_flow_v2().");
-      }
-      if (n->IsSend() || n->IsHostSend() || n->IsRecv() || n->IsHostRecv()) {
-        return errors::Unimplemented(
-            "Single-threaded executor does not support partitioned graphs.  "
-            "But saw send/recv node ",
-            n->name());
-      }
-      if (n->IsCollective()) {
-        return errors::Unimplemented(
-            "Single-threaded executor does not support collective ops.  But "
-            "saw collective node ",
-            n->name());
-      }
-
+      TF_RETURN_IF_ERROR(ValidateOp(*n));
       if (n->IsArg()) {
         int32 arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));
@@ -286,9 +291,10 @@ class SingleThreadedExecutorImpl : public Executor {
     params.step_id = args.step_id;
     Device* device = params_.device;
     params.device = device;
-    params.log_memory = false;              // TODO(mrry): Too severe?
+    params.log_memory = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
     params.session_state = args.session_state;
+    params.session_metadata = params_.session_metadata;
     params.tensor_store = args.tensor_store;
     params.cancellation_manager = args.cancellation_manager;
     params.call_frame = args.call_frame;
@@ -309,8 +315,13 @@ class SingleThreadedExecutorImpl : public Executor {
     params.frame_iter = FrameAndIter(0, 0);
     params.is_input_dead = false;
 
-    // TODO(mrry): Add non-default device context inference.
-    params.op_device_context = nullptr;
+    device->TryGetDeviceContext(&params.op_device_context).IgnoreError();
+    auto context_cleanup = gtl::MakeCleanup([&params] {
+      if (params.op_device_context != nullptr) {
+        params.op_device_context->Unref();
+      }
+    });
+
     // TODO(mrry): Consider implementing forwarding.
     params.forward_from_array = nullptr;
 
@@ -554,5 +565,4 @@ Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
   return Status::OK();
 }
 
-}  // namespace data
 }  // namespace tensorflow

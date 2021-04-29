@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_SINGLE_THREADED_EXECUTOR_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_SINGLE_THREADED_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_EXECUTOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/executor.h"
 
 namespace tensorflow {
-namespace data {
 
 // Creates a new `Executor` for executing `graph` synchronously on the caller
 // thread.
@@ -55,7 +54,6 @@ namespace data {
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  const Graph& graph, Executor** executor);
 
-}  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_SINGLE_THREADED_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_EXECUTOR_H_

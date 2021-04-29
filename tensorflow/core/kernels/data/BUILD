@@ -144,7 +144,6 @@ cc_library(
     hdrs = ["captured_function.h"],
     deps = [
         ":dataset_utils",
-        ":single_threaded_executor",
         ":stats_utils",
         "@com_google_absl//absl/time",
         "//tensorflow/core:core_cpu_internal",
@@ -1229,49 +1228,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-cc_library(
-    name = "single_threaded_executor",
-    srcs = ["single_threaded_executor.cc"],
-    hdrs = ["single_threaded_executor.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime:core_cpu_internal",
-        "//tensorflow/core/common_runtime:entry",
-        "//tensorflow/core/common_runtime:local_executor_params",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "single_threaded_executor_test",
-    size = "small",
-    srcs = ["single_threaded_executor_test.cc"],
-    deps = [
-        ":single_threaded_executor",
-        "//tensorflow/core:bitwise_ops_op_lib",
-        "//tensorflow/core:control_flow_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:random_ops_op_lib",
-        "//tensorflow/core:spectral_ops_op_lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:array",
-        "//tensorflow/core/kernels:control_flow_ops",
-        "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:math",
-        "//tensorflow/core/kernels:random_ops",
-        "//tensorflow/core/kernels:state",
     ],
 )
 

@@ -84,7 +84,9 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 
   ~MapFunctionCallFrame() override = default;
 
-  size_t num_args() const override { return compute_opts_->args.size(); }
+  size_t num_args() const override {
+    return compute_opts_->args.size() + compute_opts_->captured_inputs.size();
+  }
 
   size_t num_retvals() const override {
     return static_cast<size_t>(kernel_->num_outputs());

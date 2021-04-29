@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/single_threaded_executor.h"
-
 #include <algorithm>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -51,7 +50,6 @@ class ExecutorTest : public ::testing::Test {
     // There should always be exactly one Ref left on the Rendezvous
     // when the test completes.
     CHECK(rendez_->Unref());
-    delete exec_;
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
@@ -68,8 +66,8 @@ class ExecutorTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
-    delete exec_;
-    TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
+    TF_CHECK_OK(
+        NewExecutor("SINGLE_THREADED_EXECUTOR", params, *graph, &exec_));
     runner_ = [](const std::function<void()>& fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }
@@ -89,7 +87,7 @@ class ExecutorTest : public ::testing::Test {
   }
 
   std::unique_ptr<Device> device_;
-  Executor* exec_ = nullptr;
+  std::unique_ptr<Executor> exec_ = nullptr;
   Executor::Args::Runner runner_;
   Rendezvous* rendez_ = nullptr;
 };
@@ -98,27 +96,6 @@ class ExecutorTest : public ::testing::Test {
 Tensor V(const float val) {
   Tensor tensor(DT_FLOAT, TensorShape({}));
   tensor.scalar<float>()() = val;
-  return tensor;
-}
-
-// A int32 val -> Tensor<int32>
-Tensor VI(const int32 val) {
-  Tensor tensor(DT_INT32, TensorShape({}));
-  tensor.scalar<int32>()() = val;
-  return tensor;
-}
-
-// A bool val -> Tensor<bool>
-Tensor VB(const bool val) {
-  Tensor tensor(DT_BOOL, TensorShape({}));
-  tensor.scalar<bool>()() = val;
-  return tensor;
-}
-
-// A double val -> Tensor<double>
-Tensor VD(const double val) {
-  Tensor tensor(DT_DOUBLE, TensorShape({}));
-  tensor.scalar<double>()() = val;
   return tensor;
 }
 
