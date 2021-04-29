@@ -1088,7 +1088,8 @@ R"(HloModule custom_call
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", schedule=LATE_AS_POSSIBLE
+  %custom-call.0 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", schedule=EARLY_AS_POSSIBLE
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1,2,3]{0,2,1} %custom-call.0), custom_call_target="bar", schedule=LATE_AS_POSSIBLE
 }
 
 )"
