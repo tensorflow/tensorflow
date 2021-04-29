@@ -547,7 +547,7 @@ Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
-  if (type_string() == "OptionsDataset") {
+  if (type_string() == "OptionsDataset" || type_string() == "FinalizeDataset") {
     std::vector<const DatasetBase*> inputs;
     Status s = InputDatasets(&inputs);
     return inputs[0]->MakeIterator(ctx, parent, output_prefix, iterator);
