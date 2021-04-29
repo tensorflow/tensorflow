@@ -1036,6 +1036,7 @@ cc_library(
     name = "all_passes",
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
+        "include/mlir-hlo/Transforms/register_passes.h",
     ],
     visibility = [
         ":friends",
@@ -1043,6 +1044,7 @@ cc_library(
     deps = [
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":mlir_buffer_transforms_pass_inc_gen",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1055,6 +1057,7 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":memref_view_to_alloc",
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
@@ -1063,6 +1066,55 @@ cc_library(
         ":test_passes",
         ":transform_unranked_hlo",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl(
+    name = "mlir_buffer_transforms_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name BufferTransforms",
+            "include/mlir-hlo/Transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "buffer_transforms_pass_details",
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+    ],
+    visibility = [
+        "//visibility:private",  # This target is a private detail of pass implementations
+    ],
+    deps = [
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "memref_view_to_alloc",
+    srcs = ["lib/Transforms/memref_view_to_alloc.cc"],
+    hdrs = [
+        "include/mlir-hlo/Transforms/passes.h",
+        "include/mlir-hlo/Transforms/PassDetail.h"
+    ],
+    includes = ["include"],
+    deps = [
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
