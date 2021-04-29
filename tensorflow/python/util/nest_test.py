@@ -1252,11 +1252,6 @@ class NestTest(parameterized.TestCase, test.TestCase):
           expand_composites=array_ops.ones((2)))
 
   def testIsNamedtuple(self):
-    # The `tree` library runs this test after monkey-patching in its
-    # `compat` module, but that doesn't cover this internal-only symbol.
-    if nest.__name__.endswith("tree.compat"):
-      self.skipTest("is_namedtuple() is not part of tree.compat")
-
     # A classic namedtuple.
     Foo = collections.namedtuple("Foo", ["a", "b"])
     self.assertTrue(nest.is_namedtuple(Foo(1, 2)))
@@ -1294,11 +1289,6 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertFalse(nest.is_namedtuple(SomethingElseWithFields()))
 
   def testSameNamedtuples(self):
-    # The `tree` library runs this test after monkey-patching in its
-    # `compat` module, but that doesn't cover this internal-only symbol.
-    if nest.__name__.endswith("tree.compat"):
-      self.skipTest("same_namedtuples() is not part of tree.compat")
-
     # A classic namedtuple and an equivalent cppy.
     Foo1 = collections.namedtuple("Foo", ["a", "b"])
     Foo2 = collections.namedtuple("Foo", ["a", "b"])
