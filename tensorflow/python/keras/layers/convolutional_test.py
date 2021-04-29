@@ -169,7 +169,7 @@ class Conv1DTest(keras_parameterized.TestCase):
   def test_conv1d_invalid_output_shapes(self):
     kwargs = {'filters': 2 , 'kernel_size': 10}
     with self.assertRaises(ValueError):
-        keras.layers.Conv1D(**kwargs)
+      keras.layers.Conv1D(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -306,7 +306,7 @@ class Conv2DTest(keras_parameterized.TestCase):
   def test_conv2d_invalid_output_shapes(self):
     kwargs = {'filters': 2 , 'kernel_size': 10}
     with self.assertRaises(ValueError):
-        keras.layers.Conv2D(**kwargs)
+      keras.layers.Conv2D(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -446,7 +446,7 @@ class Conv3DTest(keras_parameterized.TestCase):
   def test_conv3d_invalid_output_shapes(self):
     kwargs = {'filters': 2 , 'kernel_size': 10}
     with self.assertRaises(ValueError):
-        keras.layers.Conv3D(**kwargs)
+      keras.layers.Conv3D(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -536,7 +536,7 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
   def test_conv1dtranspose_invalid_output_shapes(self):
     kwargs = {'filters': 2 , 'kernel_size': 10}
     with self.assertRaises(ValueError):
-        keras.layers.Conv1DTranspose(**kwargs)
+      keras.layers.Conv1DTranspose(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -574,7 +574,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
   def test_conv3dtanspose_invalid_output_shapes(self):
     kwargs = {'filters': 2 , 'kernel_size': 10}
     with self.assertRaises(ValueError):
-        keras.layers.Conv3DTranspose(**kwargs)
+      keras.layers.Conv3DTranspose(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes

@@ -87,8 +87,8 @@ class Conv(Layer):
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer: An initializer for the convolution kernel. If None, the 
-      default initializer (glorot_uniform) will be used. 
+    kernel_initializer: An initializer for the convolution kernel. If None, the
+      default initializer (glorot_uniform) will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
       initializer (zeros) will be used.
     kernel_regularizer: Optional regularizer for the convolution kernel.
@@ -230,11 +230,33 @@ class Conv(Layer):
     tf_op_name = self.__class__.__name__
     if tf_op_name == 'Conv1D':
       tf_op_name = 'conv1d'  # Backwards compat.
-    
+
     # Check if output shapes are valid
     # They must not have 0 entries along any dimension
-    output_shape = self.compute_output_shape(input_shape).as_list()
-    output_shape = list(filter((None).__ne__, output_shape))
+    if self._channels_first:
+      for idx,dimension in enumerate(input_shape.as_list()[2:]):
+        output_dimension = conv_utils.conv_output_length(dimension,
+                                                         self.kernel_size[idx],
+                                                         self.padding,
+                                                         self.strides[idx],
+                                                         dilation = self.dilation_rate[idx])
+        if output_dimesion<=0:
+          raise ValueError('One of the dimensions in output tensor is less than or'
+          ' equal to zero. Please check the input shape. '
+          ' Recieved input: %s'%input_shape)
+
+    else:
+      for idx,dimension in enumerate(input_shape.as_list()[1:-1]):
+        output_dimension = conv_utils.conv_output_length(dimension,
+                                                         self.kernel_size[idx],
+                                                         self.padding,
+                                                         self.strides[idx],
+                                                         dilation = self.dilation_rate[idx])
+        if output_dimesion<=0:
+          raise ValueError('One of the dimensions in output tensor is less than or'
+          ' equal to zero. Please check the input shape. '
+          ' Recieved input: %s'%input_shape)
+
     if 0 in output_shape:
       raise ValueError('One of the dimensions in output tensor is less than or'
       ' equal to zero. Please check the input shape. '
@@ -619,9 +641,9 @@ class Conv2D(Conv):
     bias_initializer: Initializer for the bias vector (see
       `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix (see `keras.regularizers`). 
+      matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (see
-      `keras.regularizers`). 
+      `keras.regularizers`).
     activity_regularizer: Regularizer function applied to the output of the
       layer (its "activation") (see `keras.regularizers`).
     kernel_constraint: Constraint function applied to the kernel matrix (see
@@ -1744,7 +1766,7 @@ class SeparableConv(Conv):
       see `keras.initializers`). If None, then the default initializer (
       'glorot_uniform') will be used.
     pointwise_initializer: An initializer for the pointwise convolution kernel (
-      see `keras.initializers`). If None, then the default initializer 
+      see `keras.initializers`). If None, then the default initializer
       ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
       initializer ('zeros') will be used (see `keras.initializers`).
@@ -1953,7 +1975,7 @@ class SeparableConv1D(SeparableConv):
       see `keras.initializers`). If None, then the default initializer (
       'glorot_uniform') will be used.
     pointwise_initializer: An initializer for the pointwise convolution kernel (
-      see `keras.initializers`). If None, then the default initializer 
+      see `keras.initializers`). If None, then the default initializer
       ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
       initializer ('zeros') will be used (see `keras.initializers`).
@@ -2115,7 +2137,7 @@ class SeparableConv2D(SeparableConv):
     strides: An integer or tuple/list of 2 integers,
       specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
-      all spatial dimensions. Current implementation only supports equal 
+      all spatial dimensions. Current implementation only supports equal
       length strides in the row and column dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
@@ -2149,7 +2171,7 @@ class SeparableConv2D(SeparableConv):
       see `keras.initializers`). If None, then the default initializer (
       'glorot_uniform') will be used.
     pointwise_initializer: An initializer for the pointwise convolution kernel (
-      see `keras.initializers`). If None, then the default initializer 
+      see `keras.initializers`). If None, then the default initializer
       ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
       initializer ('zeros') will be used (see `keras.initializers`).
