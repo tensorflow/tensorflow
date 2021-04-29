@@ -35,7 +35,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
-from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
@@ -163,7 +163,7 @@ class BackendUtilsTest(test.TestCase):
       # Test running with a learning-phase-consuming layer
       with backend.learning_phase_scope(0):
         x = input_layer.Input((3,))
-        y = normalization.BatchNormalization()(x)
+        y = batch_normalization_v1.BatchNormalization()(x)
         if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
