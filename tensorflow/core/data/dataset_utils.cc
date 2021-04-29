@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/data/dataset_utils.h"
 
 #include <memory>
 #include <queue>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 #include <algorithm>
 #include <complex>
@@ -33,6 +33,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -56,16 +59,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/data/batch_dataset_op.h"
-#include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/map_dataset_op.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/options_dataset_op.h"
-#include "tensorflow/core/kernels/data/range_dataset_op.h"
-#include "tensorflow/core/kernels/data/split_utils.h"
-#include "tensorflow/core/kernels/data/take_dataset_op.h"
-#include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -1014,20 +1007,17 @@ std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
 
 Status RangeDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  *input_names = {RangeDatasetOp::kStart, RangeDatasetOp::kStop,
-                  RangeDatasetOp::kStep};
+  *input_names = {"start", "stop", "step"};
   return Status::OK();
 }
 
 Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
-  *attr_vector = {{RangeDatasetOp::kOutputTypes, output_dtypes_},
-                  {RangeDatasetOp::kOutputShapes, output_shapes_}};
+  *attr_vector = {{"output_types", output_dtypes_},
+                  {"output_shapes", output_shapes_}};
   return Status::OK();
 }
 
-string RangeDatasetParams::dataset_type() const {
-  return RangeDatasetOp::kDatasetType;
-}
+string RangeDatasetParams::dataset_type() const { return "Range"; }
 
 std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
   Tensor batch_size = CreateTensor<int64>(TensorShape({}), {batch_size_});
@@ -1038,49 +1028,42 @@ std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
 
 Status BatchDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  *input_names = {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
-                  BatchDatasetOp::kDropRemainder};
+  *input_names = {"input_dataset", "batch_size", "drop_remainder"};
   return Status::OK();
 }
 
 Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
-  *attr_vector = {{BatchDatasetOp::kParallelCopy, parallel_copy_},
-                  {BatchDatasetOp::kOutputTypes, output_dtypes_},
-                  {BatchDatasetOp::kOutputShapes, output_shapes_}};
+  *attr_vector = {{"parallel_copy", parallel_copy_},
+                  {"output_types", output_dtypes_},
+                  {"output_shapes", output_shapes_}};
   return Status::OK();
 }
 
-string BatchDatasetParams::dataset_type() const {
-  return BatchDatasetOp::kDatasetType;
-}
+string BatchDatasetParams::dataset_type() const { return "Batch"; }
 
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;
 }
 
 Status MapDatasetParams::GetInputNames(std::vector<string>* input_names) const {
-  input_names->emplace_back(MapDatasetOp::kInputDataset);
+  input_names->emplace_back("input_dataset");
   for (int i = 0; i < other_arguments_.size(); ++i) {
-    input_names->emplace_back(
-        absl::StrCat(MapDatasetOp::kOtherArguments, "_", i));
+    input_names->emplace_back(absl::StrCat("other_arguments_", i));
   }
   return Status::OK();
 }
 
 Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
-  *attr_vector = {
-      {MapDatasetOp::kFunc, func_},
-      {MapDatasetOp::kTarguments, type_arguments_},
-      {MapDatasetOp::kOutputShapes, output_shapes_},
-      {MapDatasetOp::kOutputTypes, output_dtypes_},
-      {MapDatasetOp::kUseInterOpParallelism, use_inter_op_parallelism_},
-      {MapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+  *attr_vector = {{"f", func_},
+                  {"Targuments", type_arguments_},
+                  {"output_shapes", output_shapes_},
+                  {"output_types", output_dtypes_},
+                  {"use_inter_op_parallelism", use_inter_op_parallelism_},
+                  {"preserve_cardinality", preserve_cardinality_}};
   return Status::OK();
 }
 
-string MapDatasetParams::dataset_type() const {
-  return MapDatasetOp::kDatasetType;
-}
+string MapDatasetParams::dataset_type() const { return "Map"; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
@@ -1100,16 +1083,15 @@ Status TensorSliceDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
   input_names->reserve(components_.size());
   for (int i = 0; i < components_.size(); ++i) {
-    input_names->emplace_back(
-        absl::StrCat(TensorSliceDatasetOp::kComponents, "_", i));
+    input_names->emplace_back(absl::StrCat("components_", i));
   }
   return Status::OK();
 }
 
 Status TensorSliceDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
-  *attr_vector = {{TensorSliceDatasetOp::kToutputTypes, output_dtypes_},
-                  {TensorSliceDatasetOp::kOutputShapes, output_shapes_}};
+  *attr_vector = {{"Toutput_types", output_dtypes_},
+                  {"output_shapes", output_shapes_}};
   return Status::OK();
 }
 
@@ -1135,9 +1117,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
-string TensorSliceDatasetParams::dataset_type() const {
-  return TensorSliceDatasetOp::kDatasetType;
-}
+string TensorSliceDatasetParams::dataset_type() const { return "TensorSlice"; }
 
 std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
   return {CreateTensor<int64>(TensorShape({}), {count_})};
@@ -1145,19 +1125,17 @@ std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
 
 Status TakeDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  *input_names = {TakeDatasetOp::kInputDataset, TakeDatasetOp::kCount};
+  *input_names = {"input_dataset", "count"};
   return Status::OK();
 }
 
 Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
-  *attr_vector = {{TakeDatasetOp::kOutputShapes, output_shapes_},
-                  {TakeDatasetOp::kOutputTypes, output_dtypes_}};
+  *attr_vector = {{"output_shapes", output_shapes_},
+                  {"output_types", output_dtypes_}};
   return Status::OK();
 }
 
-string TakeDatasetParams::dataset_type() const {
-  return TakeDatasetOp::kDatasetType;
-}
+string TakeDatasetParams::dataset_type() const { return "Take"; }
 
 std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
   return {};
@@ -1165,40 +1143,35 @@ std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
 
 Status ConcatenateDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  *input_names = {ConcatenateDatasetOp::kInputDataset,
-                  ConcatenateDatasetOp::kAnotherDataset};
+  *input_names = {"input_dataset", "another_dataset"};
   return Status::OK();
 }
 
 Status ConcatenateDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
-  *attr_vector = {{ConcatenateDatasetOp::kOutputTypes, output_dtypes_},
-                  {ConcatenateDatasetOp::kOutputShapes, output_shapes_}};
+  *attr_vector = {{"output_types", output_dtypes_},
+                  {"output_shapes", output_shapes_}};
   return Status::OK();
 }
 
-string ConcatenateDatasetParams::dataset_type() const {
-  return ConcatenateDatasetOp::kDatasetType;
-}
+string ConcatenateDatasetParams::dataset_type() const { return "Concatenate"; }
 
 std::vector<Tensor> OptionsDatasetParams::GetInputTensors() const { return {}; }
 
 Status OptionsDatasetParams::GetInputNames(
     std::vector<string>* input_names) const {
-  input_names->emplace_back(OptionsDatasetOp::kInputDataset);
+  input_names->emplace_back("input_dataset");
   return Status::OK();
 }
 
 Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
-  *attr_vector = {{OptionsDatasetOp::kSerializedOptions, serialized_options_},
-                  {OptionsDatasetOp::kOutputShapes, output_shapes_},
-                  {OptionsDatasetOp::kOutputTypes, output_dtypes_}};
+  *attr_vector = {{"serialized_options", serialized_options_},
+                  {"output_shapes", output_shapes_},
+                  {"output_types", output_dtypes_}};
   return Status::OK();
 }
 
-string OptionsDatasetParams::dataset_type() const {
-  return OptionsDatasetOp::kDatasetType;
-}
+string OptionsDatasetParams::dataset_type() const { return "Options"; }
 
 }  // namespace data
 }  // namespace tensorflow
