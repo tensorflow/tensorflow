@@ -61,6 +61,9 @@
     *   Promoting `tf.data.experimental.group_by_window` API to
         `tf.data.Dataset.group_by_window` and deprecating the experimental
         endpoint.
+    *   Promoting `tf.data.experimental.RandomDataset` API to
+        `tf.data.Dataset.random` and deprecating the experimental
+        endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling

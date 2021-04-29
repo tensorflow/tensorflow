@@ -2653,6 +2653,15 @@ name=None))
         reduce_func=batching_fn,
         window_size_func=window_size_fn)
 
+  @staticmethod
+  def random(seed=None):
+    """create a `Dataset` of pseudorandom values.
+
+    Args:
+      seed: (Optional) the seed value for generating pseudorandom values.
+    """
+    return RandomDataset(seed=seed)      
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
@@ -5350,6 +5359,20 @@ class _GroupByWindowDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.group_by_window()"
+
+class RandomDataset(DatasetSource):
+  """A `Dataset` of pseudorandom values."""
+
+  def __init__(self, seed=None):
+    """A `Dataset` of pseudorandom values."""
+    self._seed, self._seed2 = random_seed.get_seed(seed)
+    variant_tensor = ged_ops.random_dataset(
+        seed=self._seed, seed2=self._seed2, **self._flat_structure)
+    super(RandomDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return tensor_spec.TensorSpec([], dtypes.int64)
 
 
 def _collect_resource_inputs(op):

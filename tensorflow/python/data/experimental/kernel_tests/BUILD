@@ -545,20 +545,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "random_dataset_test",
-    size = "small",
-    srcs = ["random_dataset_test.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
