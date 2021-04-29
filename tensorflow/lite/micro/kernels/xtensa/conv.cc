@@ -35,6 +35,8 @@ limitations under the License.
 * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifdef (HIFIMINI)||(FUSION_F1)
+#if defined(HIFIMINI) || defined(FUSION_F1)
 #include "conv_hifi.cc"
+#else
+#include "../conv.cc"
 #endif
