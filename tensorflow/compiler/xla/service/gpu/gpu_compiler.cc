@@ -859,6 +859,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
             }
             llvm::SMDiagnostic err;
             new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+            if (!new_llvm_module) {
+              std::string err_string;
+              llvm::raw_string_ostream os(err_string);
+              err.print(/*ProgName=*/nullptr, os, /*ShowColors=*/false);
+              LOG(FATAL) << "Failed to parse IR: " << err_string;
+            }
           }
 
           compile_results[i] = compile_single_module(
