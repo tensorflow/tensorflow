@@ -3302,11 +3302,30 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },
-      [](SpmdBuilder* b, HloInstruction* operand,
-         std::vector<std::pair<int64, int64>>& src_dst_pairs,
-         int64 channel_id) {
-        return b->AddInstruction(HloInstruction::CreateCollectivePermute(
-            operand->shape(), operand, src_dst_pairs, channel_id));
+      [num_partitions](SpmdBuilder* b, HloInstruction* operand,
+                       std::vector<std::pair<int64, int64>>& src_dst_pairs,
+                       int64 channel_id) {
+        /* optimize trivial collective permute */
+        if (src_dst_pairs.empty()) {
+          // If the src/dst pairs are empty, then the collective permute just
+          // initializes the output to zero.
+          return CreateZero(operand->shape(), b);
+        } else {
+          // A collective-permute is a copy if all pairs are "identity" and
+          // all partitions are listed.
+          bool is_copy =
+              src_dst_pairs.size() == num_partitions &&
+              absl::c_all_of(src_dst_pairs,
+                             [](const std::pair<int64, int64>& pair) {
+                               return pair.first == pair.second;
+                             });
+          if (is_copy) {
+            return operand;
+          } else {
+            return b->AddInstruction(HloInstruction::CreateCollectivePermute(
+                operand->shape(), operand, src_dst_pairs, channel_id));
+          }
+        }
       },
       [](SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
          const std::vector<std::vector<int64>>& partition_subgroups,
