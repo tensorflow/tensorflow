@@ -1340,6 +1340,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           test_function, experimental_relax_shapes=True)
 
     self.test_function = test_function
+
+    if self._cluster_coordinator:
+      self.test_function = lambda iterator: self._cluster_coordinator.schedule(  # pylint: disable=g-long-lambda
+          test_function, args=(iterator,))
+
     return self.test_function
 
   def evaluate(self,
@@ -1446,8 +1451,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       raise TypeError('Invalid keyword arguments: %s' % (kwargs,))
 
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.evaluate` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      self._cluster_coordinator = cluster_coordinator.ClusterCoordinator(
+          self.distribute_strategy)
 
     with self.distribute_strategy.scope():
       # Use cached evaluation data only when it's called in `Model.fit`
@@ -2723,10 +2728,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     return functions
 
   def _should_eval(self, epoch, validation_freq):
-    if self._cluster_coordinator:
-      raise NotImplementedError(
-          'Evaluation in `model.fit` with '
-          '`ParameterServerStrategy` is not yet supported.')
     epoch = epoch + 1  # one-index the user-facing epoch.
     if isinstance(validation_freq, int):
       return epoch % validation_freq == 0
