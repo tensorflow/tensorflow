@@ -241,16 +241,15 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
              !(t.getElementType().isSignlessIntOrFloat() ||
                t.getElementType().isa<ComplexType>());
     };
-    if (llvm::any_of(args,
-                     [&](Value v) {
-                       return fail(v.getType().dyn_cast<ShapedType>());
-                     }) ||
-        llvm::any_of(op.getOperation()->getResultTypes(),
-                     [&](Type t) { return fail(t.dyn_cast<ShapedType>()); }))
+    if (llvm::any_of(op.getOperation()->getResultTypes(), [&](Type t) {
+          return fail(this->typeConverter->convertType(t)
+                          .template dyn_cast<ShapedType>());
+        })) {
       return emitError(loc,
-                       "lhlo to linalg conversion expects ranked args of "
+                       "hlo to linalg conversion expects ranked args of "
                        "signless int, float or complex element type with ")
              << nloops << " parallel iterators: " << *(op.getOperation());
+    }
 
     // Construct the indexing maps needed for linalg.generic ops.
     SmallVector<Type, 4> body_arg_types, body_result_types, op_result_types;
@@ -270,12 +269,12 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     if (isLHLO) {
       output_buffers.append(args.begin() + num_inputs, args.end());
     } else {
-      Value result = op.getOperation()->getResult(0);
-      ShapedType result_type = result.getType().template cast<ShapedType>();
+      Type result_type = this->typeConverter->convertType(
+          op.getOperation()->getResult(0).getType());
       auto dyn_sizes = ExtractDynamicSizes(rewriter, loc, args[0]);
-      output_buffers.push_back(
-          GetInitTensor(rewriter, loc, result_type, dyn_sizes));
-      op_result_types.push_back(result.getType());
+      output_buffers.push_back(GetInitTensor(
+          rewriter, loc, result_type.cast<ShapedType>(), dyn_sizes));
+      op_result_types.push_back(result_type);
     }
     body_result_types = llvm::to_vector<4>(llvm::map_range(
         output_buffers, [](Value v) { return getElementTypeOrSelf(v); }));
@@ -1279,8 +1278,10 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
       // map_lmhlo_to_scalar_op.h requires to pass a mhlo op. It will convert it
       // to an lmhlo op and call the lmhlo implementation.
       start_index = lmhlo::HloOpToStdScalarOp::map<lmhlo::ClampOp>(
-          loc, start_index.getType(), ArrayRef<Value>{zero, start_index, ub},
-          &rewriter);
+          loc, start_index.getType(),
+          ArrayRef<Type>{start_index.getType(), start_index.getType(),
+                         start_index.getType()},
+          ArrayRef<Value>{zero, start_index, ub}, &rewriter);
       start_indices.push_back(
           rewriter.create<IndexCastOp>(loc, index_type, start_index)
               .getResult());
@@ -2073,6 +2074,7 @@ struct TorchIndexSelectOpOnTensorsConversion
 };
 
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
+                                           TypeConverter& typeConverter,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastConverter<lmhlo::BroadcastOp>,
@@ -2128,9 +2130,64 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    ScalarPointwiseToStandardConverter<lmhlo::MaxOp>,
                    SliceConverter<lmhlo::SliceOp>,
                    TransposeConverter<lmhlo::TransposeOp>
-                  >(context);
+                  >(typeConverter, context);
   // clang-format on
 }
+
+// Converter that turns signed/unsigned integers types into signless types.
+class RemoveSignTypeConverter : public TypeConverter {
+ public:
+  RemoveSignTypeConverter() {
+    addConversion([](Type type) { return type; });
+
+    addConversion(convertInteger);
+    addConversion(convertShapedType);
+
+    addArgumentMaterialization(materializeCastFromIllegal);
+    addSourceMaterialization(materializeCastToIllegal);
+    addTargetMaterialization(materializeCastFromIllegal);
+  }
+
+ private:
+  static Type convertInteger(IntegerType int_type) {
+    return IntegerType::get(int_type.getContext(),
+                            int_type.getIntOrFloatBitWidth());
+  }
+
+  static Type convertShapedType(ShapedType shaped_type) {
+    if (auto int_type = shaped_type.getElementType().dyn_cast<IntegerType>())
+      return shaped_type.clone(convertInteger(int_type));
+    return shaped_type;
+  }
+
+  static llvm::Optional<Value> materializeCastFromIllegal(OpBuilder& builder,
+                                                          Type type,
+                                                          ValueRange inputs,
+                                                          Location loc) {
+    Type from_type = getElementTypeOrSelf(inputs[0].getType());
+    Type to_type = getElementTypeOrSelf(type);
+    if ((!from_type.isSignedInteger() && !from_type.isUnsignedInteger()) ||
+        !to_type.isSignlessInteger())
+      return llvm::None;
+    // Use unrealized conversion casts to do signful->signless conversions.
+    return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+        ->getResult(0);
+  }
+
+  static llvm::Optional<Value> materializeCastToIllegal(OpBuilder& builder,
+                                                        Type type,
+                                                        ValueRange inputs,
+                                                        Location loc) {
+    Type from_type = getElementTypeOrSelf(inputs[0].getType());
+    Type to_type = getElementTypeOrSelf(type);
+    if (!from_type.isSignlessInteger() ||
+        (!to_type.isSignedInteger() && !to_type.isUnsignedInteger()))
+      return llvm::None;
+    // Use unrealized conversion casts to do signless->signful conversions.
+    return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+        ->getResult(0);
+  }
+};
 
 // Converts LHLO ops to Linalg generic.
 // Sample result for lmhlo::AddOp.
@@ -2163,9 +2220,12 @@ struct LhloLegalizeToLinalgPass
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
                            math::MathDialect, memref::MemRefDialect,
                            StandardOpsDialect, AffineDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
+    RemoveSignTypeConverter type_converter;
     auto func = getFunction();
-    populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    populateLHLOToLinalgConversionPattern(func.getContext(), type_converter,
+                                          &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -2181,17 +2241,20 @@ struct HloLegalizeToLinalgPass
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    ConversionTarget target(getContext());
+    MLIRContext& ctx = getContext();
+    OwningRewritePatternList patterns(&ctx);
+    ConversionTarget target(ctx);
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
                            math::MathDialect, StandardOpsDialect,
                            tensor::TensorDialect, scf::SCFDialect>();
 
     // TODO: DimOp shouldn't be in MemRefDialect
     target.addLegalOp<memref::DimOp>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
+    RemoveSignTypeConverter type_converter;
     auto func = getFunction();
-    mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    mhlo::populateHLOToLinalgConversionPattern(&ctx, type_converter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -2209,6 +2272,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass() {
 namespace mhlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
+                                          TypeConverter& type_converter,
                                           OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
@@ -2272,7 +2336,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReduceOnTensorsConversion,
       ReduceWindowOpOnTensorsConversion,
       TorchIndexSelectOpOnTensorsConversion,
-      PadOpOnTensorsConversion>(context);
+      PadOpOnTensorsConversion>(type_converter, context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                    ReduceRegionXLAOpConversion<mhlo::MinOp>,
@@ -2287,5 +2351,10 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
   return std::make_unique<HloLegalizeToLinalgPass>();
 }
+
+std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter() {
+  return std::make_unique<RemoveSignTypeConverter>();
+}
+
 }  // namespace mhlo
 }  // namespace mlir

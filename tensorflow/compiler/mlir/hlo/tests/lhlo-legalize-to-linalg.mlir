@@ -93,6 +93,21 @@ func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @maxu
+func @maxu(%lhs: memref<2x2xui32>, %rhs: memref<2x2xui32>,
+           %result: memref<2x2xui32>) {
+  "lmhlo.maximum"(%lhs, %rhs, %result)
+      : (memref<2x2xui32>, memref<2x2xui32>, memref<2x2xui32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi ugt, %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @and
 func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
           %result: memref<2x2xi32>) {
