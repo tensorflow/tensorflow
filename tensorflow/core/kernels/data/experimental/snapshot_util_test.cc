@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

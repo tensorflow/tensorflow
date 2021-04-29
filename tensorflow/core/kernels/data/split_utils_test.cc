@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/split_utils.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 
-#include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

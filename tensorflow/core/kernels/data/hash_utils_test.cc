@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"

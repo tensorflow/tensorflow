@@ -4,7 +4,6 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 
 package(
     default_visibility = [
-        "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
         "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
@@ -51,15 +50,15 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -499,7 +498,7 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/data:stats_utils",
+        "//tensorflow/core/kernels/data:stats_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",

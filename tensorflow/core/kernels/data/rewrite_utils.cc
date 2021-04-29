@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
@@ -20,9 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
-#include "tensorflow/core/data/dataset_utils.h"
-#include "tensorflow/core/data/hash_utils.h"
-#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -35,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
+#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"

@@ -15,6 +15,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 
-#include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/platform/platform.h"
+
+// On mobile we do not provide this functionality because not all of its
+// dependencies are available there.
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+
+namespace tensorflow {
+namespace data {
+
+// Rewrites the input dataset using the given config.
+Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                      std::function<RewriterConfig(void)> config_factory,
+                      bool record_fingerprint, DatasetBase** rewritten_input);
+
+}  // namespace data
+}  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_

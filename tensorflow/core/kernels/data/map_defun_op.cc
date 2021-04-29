@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"

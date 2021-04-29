@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/single_threaded_executor.h"
+#include "tensorflow/core/kernels/data/single_threaded_executor.h"
 
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor.h"

@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
 #include <queue>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/record_writer.h"

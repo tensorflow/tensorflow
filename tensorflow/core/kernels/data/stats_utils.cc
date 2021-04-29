@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 
 #include "absl/base/attributes.h"
 #include "tensorflow/core/lib/strings/strcat.h"

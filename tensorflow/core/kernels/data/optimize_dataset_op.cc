@@ -19,10 +19,10 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include <map>
 
-#include "tensorflow/core/data/dataset_utils.h"
-#include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
