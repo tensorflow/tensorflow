@@ -307,6 +307,25 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPIAsync",
+    srcs = [
+        "lib/CAPI/Dialect/Async.cpp",
+        "lib/CAPI/Dialect/AsyncPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/Async.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Async",
+        ":AsyncPassIncGen",
+        ":AsyncTransforms",
+        ":CAPIIR",
+        ":Pass",
+    ],
+)
+
+cc_library(
     name = "CAPILinalg",
     srcs = [
         "lib/CAPI/Dialect/Linalg.cpp",
@@ -321,6 +340,25 @@ cc_library(
         ":LinalgOps",
         ":LinalgPassIncGen",
         ":LinalgTransforms",
+        ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIGPU",
+    srcs = [
+        "lib/CAPI/Dialect/GPU.cpp",
+        "lib/CAPI/Dialect/GPUPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/GPU.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":GPUDialect",
+        ":GPUPassIncGen",
+        ":GPUTransforms",
         ":Pass",
     ],
 )
@@ -734,6 +772,14 @@ gentbl(
         (
             "-gen-pass-decls -name Async",
             "include/mlir/Dialect/Async/Passes.h.inc",
+        ),
+        (
+            "-gen-pass-capi-header --prefix Async",
+            "include/mlir/Dialect/Async/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Async",
+            "include/mlir/Dialect/Async/Passes.capi.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -2140,6 +2186,14 @@ gentbl(
         (
             "-gen-pass-decls -name GPU",
             "include/mlir/Dialect/GPU/Passes.h.inc",
+        ),
+        (
+            "-gen-pass-capi-header --prefix GPU",
+            "include/mlir/Dialect/GPU/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix GPU",
+            "include/mlir/Dialect/GPU/Passes.capi.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
