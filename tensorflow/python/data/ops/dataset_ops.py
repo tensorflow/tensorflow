@@ -2657,10 +2657,22 @@ name=None))
   def random(seed=None):
     """create a `Dataset` of pseudorandom values.
 
+    The dataset generates an indefinite number of pseudorandom values.
+    In order to generate datasets with reproducible pseudorandom values,
+    the `seed` value can be passed while initializing the dataset.
+
+    >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
+    >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
+    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    True
+
     Args:
       seed: (Optional) the seed value for generating pseudorandom values.
+
+    Returns:
+      A `tf.data.Dataset`
     """
-    return RandomDataset(seed=seed)      
+    return RandomDataset(seed=seed)
 
 
 @tf_export(v1=["data.Dataset"])
