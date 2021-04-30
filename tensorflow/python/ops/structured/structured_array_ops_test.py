@@ -192,6 +192,126 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
           row_partitions=None,
           shape=(),
           dtype=dtypes.int32,
+          expected=1),
+      dict(
+          testcase_name="scalar_int64",
+          row_partitions=None,
+          shape=(),
+          dtype=dtypes.int64,
+          expected=1),
+      dict(
+          testcase_name="list_0_int32",
+          row_partitions=None,
+          shape=(0),
+          dtype=dtypes.int32,
+          expected=0),
+      dict(
+          testcase_name="list_0_0_int32",
+          row_partitions=None,
+          shape=(0, 0),
+          dtype=dtypes.int32,
+          expected=0),
+      dict(
+          testcase_name="list_int32",
+          row_partitions=None,
+          shape=(7),
+          dtype=dtypes.int32,
+          expected=7),
+      dict(
+          testcase_name="list_int64",
+          row_partitions=None,
+          shape=(7),
+          dtype=dtypes.int64,
+          expected=7),
+      dict(
+          testcase_name="matrix_int32",
+          row_partitions=[[0, 3, 6]],
+          shape=(2, 3),
+          dtype=dtypes.int32,
+          expected=6),
+      dict(
+          testcase_name="tensor_int32",
+          row_partitions=[[0, 3, 6], [0, 1, 2, 3, 4, 5, 6]],
+          shape=(2, 3, 1),
+          dtype=dtypes.int32,
+          expected=6),
+      dict(
+          testcase_name="ragged_1_int32",
+          row_partitions=[[0, 3, 4]],
+          shape=(2, None),
+          dtype=dtypes.int32,
+          expected=4),
+      dict(
+          testcase_name="ragged_2_float32",
+          row_partitions=[[0, 3, 4], [0, 2, 3, 5, 7]],
+          shape=(2, None, None),
+          dtype=dtypes.float32,
+          expected=7),
+  ])  # pyformat: disable
+  def testSizeObject(self, row_partitions, shape, dtype, expected):
+    if row_partitions is not None:
+      row_partitions = [
+          row_partition.RowPartition.from_row_splits(r) for r in row_partitions
+      ]
+    st = StructuredTensor.from_fields({},
+                                      shape=shape,
+                                      row_partitions=row_partitions)
+    # NOTE: size is very robust. There aren't arguments that
+    # should cause this operation to fail.
+    actual = array_ops.size(st, out_type=dtype)
+    self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.size_v2(st, out_type=dtype)
+    self.assertAllEqual(actual2, expected)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="list_empty_2_1",
+          values=[[{}, {}], [{}]],
+          dtype=dtypes.int32,
+          expected=3),
+      dict(
+          testcase_name="list_empty_2",
+          values=[{}, {}],
+          dtype=dtypes.int32,
+          expected=2),
+      dict(
+          testcase_name="list_empty_1",
+          values=[{}],
+          dtype=dtypes.int32,
+          expected=1),
+      dict(
+          testcase_name="list_example_1",
+          values=[{"x": [3]}, {"x": [4, 5]}],
+          dtype=dtypes.int32,
+          expected=2),
+      dict(
+          testcase_name="list_example_2",
+          values=[[{"x": [3]}], [{"x": [4, 5]}, {"x": []}]],
+          dtype=dtypes.float32,
+          expected=3),
+      dict(
+          testcase_name="list_example_2_None",
+          values=[[{"x": [3]}], [{"x": [4, 5]}, {"x": []}]],
+          dtype=None,
+          expected=3),
+  ])  # pyformat: disable
+  def testSizeAlt(self, values, dtype, expected):
+    st = StructuredTensor.from_pyval(values)
+    # NOTE: size is very robust. There aren't arguments that
+    # should cause this operation to fail.
+    actual = array_ops.size(st, out_type=dtype)
+    self.assertAllEqual(actual, expected)
+
+    actual2 = array_ops.size_v2(st, out_type=dtype)
+    self.assertAllEqual(actual2, expected)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="scalar_int32",
+          row_partitions=None,
+          shape=(),
+          dtype=dtypes.int32,
           expected=0),
       dict(
           testcase_name="scalar_bool",

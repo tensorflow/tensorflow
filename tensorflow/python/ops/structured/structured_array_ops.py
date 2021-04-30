@@ -190,6 +190,29 @@ def random_shuffle(value, seed=None, name=None):
     return gather(value, index, axis=0)
 
 
+@dispatch.dispatch_for_types(array_ops.size_v2, StructuredTensor)
+def size_v2(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  """Returns the size of a tensor."""
+  return size(input, name=name, out_type=out_type)
+
+
+# pylint: disable=protected-access
+@dispatch.dispatch_for_types(array_ops.size, StructuredTensor)
+def size(input, name=None, out_type=dtypes.int32):
+  # pylint: disable=redefined-builtin
+  """Returns the size of a tensor."""
+  with ops.name_scope(name, 'size', [input]) as name:
+    if not input._row_partitions:
+      if input._nrows is not None:
+        return math_ops.cast(input._nrows, out_type)  # vector.
+      else:
+        return math_ops.cast(1, out_type)  # scalar.
+    # 2D and up.
+    last_row_partition = input._row_partitions[-1]
+    return last_row_partition.nvals(out_type)
+
+
 # pylint: disable=protected-access
 @dispatch.dispatch_for_types(array_ops.zeros_like, StructuredTensor)
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
