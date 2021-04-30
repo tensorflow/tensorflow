@@ -132,12 +132,8 @@ void UpdateArgAttributes(mlir::FuncOp func) {
             func.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       if (!sharding.getValue().empty()) {
         BlockArgument arg = func.getArgument(i);
-        // TODO(hinsu): Instead of setting both 'sharding' and '_XlaSharding'
-        // attributes, only set the 'sharding' attribute. Both attributes are
-        // currently required as the XlaSharding xla op kernel doesn't use the
-        // 'sharding' attribute.
         auto updated_arg = builder.create<TF::XlaShardingOp>(
-            func.getLoc(), arg.getType(), arg, sharding, sharding);
+            func.getLoc(), arg.getType(), arg, sharding, StringAttr());
         func.getArgument(i).replaceAllUsesExcept(
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));
       }

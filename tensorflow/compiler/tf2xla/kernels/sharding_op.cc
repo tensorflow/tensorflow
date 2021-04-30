@@ -25,7 +25,17 @@ namespace {
 
 class ShardingOp : public XlaOpKernel {
  public:
-  explicit ShardingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ShardingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    std::string sharding_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sharding", &sharding_attr));
+
+    bool has_sharding_attr_ = !sharding_attr.empty();
+    if (has_sharding_attr_ && !sharding_.ParseFromString(sharding_attr)) {
+      OP_REQUIRES_OK(ctx,
+                     xla::InvalidArgument("sharding attribute was not a valid "
+                                          "encoded xla::OpSharding proto."));
+    }
+  }
 
   ~ShardingOp() override = default;
 
@@ -41,6 +51,9 @@ class ShardingOp : public XlaOpKernel {
     auto shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, shape_or.status());
 
+    xla::XlaScopedShardingAssignment sharding(
+        ctx->builder(),
+        has_sharding_attr_ ? sharding_ : ctx->builder()->sharding());
     ctx->SetOutput(
         0, xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
                            {input}, shape_or.ValueOrDie()));
@@ -48,6 +61,8 @@ class ShardingOp : public XlaOpKernel {
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ShardingOp);
+  bool has_sharding_attr_;
+  xla::OpSharding sharding_;
 };
 
 REGISTER_XLA_OP(Name("XlaSharding"), ShardingOp);
