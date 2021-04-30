@@ -5341,7 +5341,7 @@ shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.}]>:$outpu
   }];
 }
 
-def TF_GeneratorDatasetOp : TF_Op<"GeneratorDataset", [AttrSizedOperandSegments, NoSideEffect, TF_NoConstantFold]> {
+def TF_GeneratorDatasetOp : TF_Op<"GeneratorDataset", [AttrSizedOperandSegments, TF_GeneratorOpSideEffect]> {
   let summary = [{
 Creates a dataset that invokes a function to generate elements.
   }];
