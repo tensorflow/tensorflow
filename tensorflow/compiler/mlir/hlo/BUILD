@@ -1047,6 +1047,7 @@ cc_library(
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":mlir_buffer_transforms_pass_inc_gen",
+        ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1129,6 +1130,24 @@ cc_library(
         ":hlo",
         ":mlir_buffer_transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "buffer_reuse",
+    srcs = ["lib/Transforms/buffer_reuse.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],

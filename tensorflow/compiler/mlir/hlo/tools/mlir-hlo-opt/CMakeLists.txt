@@ -22,6 +22,7 @@ set(LIBS
 
         MhloRegisterDialects
         AllMhloPasses
+        MLIRBufferTransforms
         MLIRHLOAnalysis
         MLIRHLOTestAnalysis
         )
