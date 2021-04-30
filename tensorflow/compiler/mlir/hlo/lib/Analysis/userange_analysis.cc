@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Analysis/userange_analysis.h"
-
 #include <algorithm>
 #include <utility>
 
 #include "llvm/ADT/SetOperations.h"
+#include "mlir-hlo/Analysis/userange_analysis.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Region.h"
-#include "mlir/Interfaces/LoopLikeInterface.h"
 
 using namespace mlir;
 
