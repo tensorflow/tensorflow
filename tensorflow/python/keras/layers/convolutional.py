@@ -240,7 +240,7 @@ class Conv(Layer):
                                                          self.padding,
                                                          self.strides[idx],
                                                          dilation = self.dilation_rate[idx])
-        if output_dimension<=0:
+        if output_dimension not None and output_dimension<=0:
           raise ValueError('One of the dimensions in output tensor is less than or'
           ' equal to zero. Please check the input shape. '
           ' Recieved input: %s'%input_shape)
@@ -252,15 +252,11 @@ class Conv(Layer):
                                                          self.padding,
                                                          self.strides[idx],
                                                          dilation = self.dilation_rate[idx])
-        if output_dimension<=0:
+        if output_dimension not None and output_dimension<=0:
           raise ValueError('One of the dimensions in output tensor is less than or'
           ' equal to zero. Please check the input shape. '
           ' Recieved input: %s'%input_shape)
 
-    if 0 in output_shape:
-      raise ValueError('One of the dimensions in output tensor is less than or'
-      ' equal to zero. Please check the input shape. '
-      ' Recieved input: %s'%input_shape)
 
     self._convolution_op = functools.partial(
         nn_ops.convolution_v2,
