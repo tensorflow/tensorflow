@@ -78,7 +78,7 @@ namespace wrap {
   __macro(hipsparseCreateMatDescr)              \
   __macro(hipsparseCcsr2csc)                    \
   __macro(hipsparseCcsrgeam2)                   \
-  __macro(hipsparseCcsrgeam2_bufferSizeExt)	\
+  __macro(hipsparseCcsrgeam2_bufferSizeExt)     \
   __macro(hipsparseCcsrgemm)                    \
   __macro(hipsparseCcsrmm)                      \
   __macro(hipsparseCcsrmm2)                     \
