@@ -795,9 +795,10 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    # TODO(b/...): The TF XLA build fails when adding a dependency on
-    # @llvm/llvm-project/llvm:aarch64_target.
-    return otherwise
+    return select({
+        "//tensorflow:linux_aarch64": then,
+        "//conditions:default": otherwise,
+    })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
