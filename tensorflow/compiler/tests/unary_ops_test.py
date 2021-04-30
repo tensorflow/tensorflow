@@ -196,6 +196,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._assertOpOutputMatchesExpected(
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
 
+  @unittest.skip("triggers crash in LLVM from D100865")
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)
