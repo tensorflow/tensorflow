@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from typing import Sequence
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -277,6 +278,14 @@ def ones_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-bui
         array_ops.ones(last_row_partition.nvals(), dtype=dtype),
         input._row_partitions)
     return result
+
+
+@dispatch.dispatch_for_types(array_ops.rank, StructuredTensor)
+def rank(input, name=None):
+  # pylint: disable=redefined-builtin
+  """Returns the rank of a tensor."""
+  with ops.name_scope(name, 'rank', [input]) as name:
+    return constant_op.constant(input.rank, dtype=dtypes.int32)
 
 
 def _expand_dims_impl(st, axis, name=None):  # pylint: disable=redefined-builtin

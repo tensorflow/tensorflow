@@ -488,6 +488,91 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
 
   @parameterized.named_parameters([
       dict(
+          testcase_name="scalar",
+          row_partitions=None,
+          shape=(),
+          expected=0),
+      dict(
+          testcase_name="list_0",
+          row_partitions=None,
+          shape=(0,),
+          expected=1),
+      dict(
+          testcase_name="list_0_0",
+          row_partitions=None,
+          shape=(0, 0),
+          expected=2),
+      dict(
+          testcase_name="list_7",
+          row_partitions=None,
+          shape=(7,),
+          expected=1),
+      dict(
+          testcase_name="matrix",
+          row_partitions=[[0, 3, 6]],
+          shape=(2, 3),
+          expected=2),
+      dict(
+          testcase_name="tensor",
+          row_partitions=[[0, 3, 6], [0, 1, 2, 3, 4, 5, 6]],
+          shape=(2, 3, 1),
+          expected=3),
+      dict(
+          testcase_name="ragged_1",
+          row_partitions=[[0, 3, 4]],
+          shape=(2, None),
+          expected=2),
+      dict(
+          testcase_name="ragged_2",
+          row_partitions=[[0, 3, 4], [0, 2, 3, 5, 7]],
+          shape=(2, None, None),
+          expected=3),
+  ])  # pyformat: disable
+  def testRank(self, row_partitions, shape, expected):
+    if row_partitions is not None:
+      row_partitions = [
+          row_partition.RowPartition.from_row_splits(r) for r in row_partitions
+      ]
+    st = StructuredTensor.from_fields({},
+                                      shape=shape,
+                                      row_partitions=row_partitions)
+
+    # NOTE: rank is very robust. There aren't arguments that
+    # should cause this operation to fail.
+    actual = structured_array_ops.rank(st)
+    self.assertAllEqual(expected, actual)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="list_empty_2_1",
+          values=[[{}, {}], [{}]],
+          expected=2),
+      dict(
+          testcase_name="list_empty_2",
+          values=[{}, {}],
+          expected=1),
+      dict(
+          testcase_name="list_empty_1",
+          values=[{}],
+          expected=1),
+      dict(
+          testcase_name="list_example_1",
+          values=[{"x": [3]}, {"x": [4, 5]}],
+          expected=1),
+      dict(
+          testcase_name="list_example_2",
+          values=[[{"x": [3]}], [{"x": [4, 5]}, {"x": []}]],
+          expected=2),
+  ])  # pyformat: disable
+  def testRankAlt(self, values, expected):
+    st = StructuredTensor.from_pyval(values)
+    # NOTE: rank is very robust. There aren't arguments that
+    # should cause this operation to fail.
+    actual = array_ops.rank(st)
+    self.assertAllEqual(expected, actual)
+
+  @parameterized.named_parameters([
+      dict(
           testcase_name="list_empty",
           values=[[{}], [{}]],
           axis=0,
