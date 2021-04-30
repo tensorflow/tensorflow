@@ -350,7 +350,9 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   const bool is_to_replicate =
       hlo_->shape().IsArray() && target.NumTiles() < sharding().NumTiles();
-  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+  const bool use_cache =
+      !is_to_replicate || state_.partitioner->options().cache_all_gather;
+  if (use_cache) {
     for (auto& entry : cache) {
       if (entry.first == target) {
         return entry.second;
@@ -360,7 +362,7 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   auto resharded = ReshardNoCache(target);
   state_.reshard_cache->per_hlo_cache[resharded.hlo()]
       .reshard_cache.emplace_back(sharding(), *this);
-  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+  if (use_cache) {
     cache.emplace_back(target, std::move(resharded));
     return cache.back().second;
   }
@@ -576,7 +578,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
       base_shape_.rank(), nullptr);
 
   Window shard_window = window;
-  auto padded_shape = base_shape_;
+  Shape padded_shape = base_shape_;
   std::vector<HloInstruction*> offsets_on_padded_shape(base_shape_.rank());
   std::vector<int64> per_shard_window_counts(base_shape_.rank());
   std::vector<int64> explicit_left_padding(base_shape_.rank());
@@ -588,11 +590,10 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
       continue;
     }
-    const auto& wd = window.dimensions(i);
-    const auto dilated_size = 1 + (wd.size() - 1) * wd.window_dilation();
-    int64 full_size =
-        base_shape_.dimensions(i) +
-        (wd.base_dilation() - 1) * (base_shape_.dimensions(i) - 1) +
+    const WindowDimension& wd = window.dimensions(i);
+    const int64 dilated_size = 1 + (wd.size() - 1) * wd.window_dilation();
+    const int64 full_size =
+        1 + (base_shape_.dimensions(i) - 1) * wd.base_dilation() +
         wd.padding_high() + wd.padding_low();
     if (full_size < dilated_size) {
       VLOG(2) << "Failed to reshard window operand because the window size is "
@@ -612,7 +613,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     // padding_high on the sharded op for the remaining. padding_low and
     // padding_high are now given initial values, which will be later updated if
     // dilation is not 1.
-    auto swd = shard_window.mutable_dimensions(i);
+    WindowDimension* swd = shard_window.mutable_dimensions(i);
     explicit_left_padding[i] = wd.padding_low() / wd.base_dilation();
     swd->set_padding_low(wd.padding_low() % wd.base_dilation());
     swd->set_padding_high(0);
@@ -3301,11 +3302,30 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },
-      [](SpmdBuilder* b, HloInstruction* operand,
-         std::vector<std::pair<int64, int64>>& src_dst_pairs,
-         int64 channel_id) {
-        return b->AddInstruction(HloInstruction::CreateCollectivePermute(
-            operand->shape(), operand, src_dst_pairs, channel_id));
+      [num_partitions](SpmdBuilder* b, HloInstruction* operand,
+                       std::vector<std::pair<int64, int64>>& src_dst_pairs,
+                       int64 channel_id) {
+        /* optimize trivial collective permute */
+        if (src_dst_pairs.empty()) {
+          // If the src/dst pairs are empty, then the collective permute just
+          // initializes the output to zero.
+          return CreateZero(operand->shape(), b);
+        } else {
+          // A collective-permute is a copy if all pairs are "identity" and
+          // all partitions are listed.
+          bool is_copy =
+              src_dst_pairs.size() == num_partitions &&
+              absl::c_all_of(src_dst_pairs,
+                             [](const std::pair<int64, int64>& pair) {
+                               return pair.first == pair.second;
+                             });
+          if (is_copy) {
+            return operand;
+          } else {
+            return b->AddInstruction(HloInstruction::CreateCollectivePermute(
+                operand->shape(), operand, src_dst_pairs, channel_id));
+          }
+        }
       },
       [](SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
          const std::vector<std::vector<int64>>& partition_subgroups,
@@ -3594,9 +3614,8 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
-                     hlo->opcode() == HloOpcode::kInfeed ||
-                     hlo->opcode() == HloOpcode::kOutfeed)
-            << "Non-infeed side-effect HLO cannot have a replicated sharding:"
+                     CanSideEffectingHaveReplicatedSharding(hlo))
+            << "side-effect HLO cannot have a replicated sharding: "
             << hlo->ToString();
       }
 

@@ -52,6 +52,9 @@
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
 *   `tf.data`:
+    *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
+        `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
+        experimental endpoint.
     *   Promoting `tf.data.experimental.get_single_element` API to
         `tf.data.Dataset.get_single_element` and deprecating the experimental
         endpoint.
@@ -68,6 +71,7 @@
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
+    *   Add `keepdims` argument to all `GlobalPooling` layers.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
 
@@ -146,11 +150,11 @@ This release contains contributions from many people at Google, as well as:
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
       * Register custom graph optimization passes with
-        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
-* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md).
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN)
   CPU performance optimizations from
   [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
-  are now available in the official x86-64 Linux and Windows builds. 
+  are now available in the official x86-64 Linux and Windows builds.
     * They are off by default. Enable them by setting the environment variable
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been

@@ -603,6 +603,21 @@ func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @maxu
+func @maxu(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
+  %0 = "mhlo.maximum"(%lhs, %rhs)
+          : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
+  return %0 : tensor<2x2xui32>
+}
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi32>
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %{{.*}}: i32):
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi ugt, %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-DAG: #[[MAP:.*]] = affine_map<() -> ()>
 // CHECK-LABEL: func @add_scalar
 func @add_scalar(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32> {
@@ -2195,4 +2210,44 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
       dimension = 1
     } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
     return %concat : tensor<?x?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: unsigned_divide
+func @unsigned_divide(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
+  // CHECK: linalg.generic
+  // CHECK: divi_unsigned
+  %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
+  return %0 : tensor<2x2xui32>
+}
+
+// -----
+
+// CHECK-LABEL: unsigned_remainder
+func @unsigned_remainder(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
+  // CHECK: linalg.generic
+  // CHECK: remi_unsigned
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
+  return %0 : tensor<2x2xui32>
+}
+
+// -----
+
+// CHECK-LABEL: unsigned_convert
+func @unsigned_convert(%in: tensor<2x2xui32>) -> tensor<2x2xui64> {
+  // CHECK: linalg.generic
+  // CHECK: zexti
+  %0 = "mhlo.convert"(%in) : (tensor<2x2xui32>) -> tensor<2x2xui64>
+  return %0 : tensor<2x2xui64>
+}
+
+// -----
+
+// CHECK-LABEL: unsigned_compare
+func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xi1> {
+  // CHECK: linalg.generic
+  // CHECK: cmpi ugt
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "GT"} : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
 }

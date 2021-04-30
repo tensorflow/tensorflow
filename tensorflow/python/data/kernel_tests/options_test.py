@@ -24,7 +24,6 @@ import sys
 from absl.testing import parameterized
 
 from tensorflow.core.framework import dataset_options_pb2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -41,12 +40,10 @@ from tensorflow.python.platform import test
 class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _get_options(self, dataset):
-    if tf_compat.forward_compatible(2021, 4, 25):
-      if context.executing_eagerly():
-        return dataset.options()
-      return dataset_ops.Dataset._options_tensor_to_options(
-          self.evaluate(dataset._options()))
-    return dataset.options()
+    if context.executing_eagerly():
+      return dataset.options()
+    return dataset_ops.Dataset._options_tensor_to_options(
+        self.evaluate(dataset._options()))
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsDefault(self):
@@ -216,8 +213,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(lambda x: 10 * x)
       return dataset
 
-    if not tf_compat.forward_compatible(2021, 4, 25):
-      self.skipTest("Behavior is currently not supported")
     dataset = dataset_ops.Dataset.range(5)
     options = dataset_ops.Options()
     options.experimental_slack = True
@@ -238,8 +233,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(lambda x: 10 * x)
       return dataset
 
-    if not tf_compat.forward_compatible(2021, 4, 25):
-      self.skipTest("Behavior is currently not supported")
     dataset = dataset_ops.Dataset.range(5)
     dataset = fn(dataset)
     result = dataset_ops.Dataset._options_tensor_to_options(
@@ -248,8 +241,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsPersistenceGraphRoundTrip(self):
-    if not tf_compat.forward_compatible(2021, 4, 25):
-      self.skipTest("Behavior is currently not supported")
     dataset = dataset_ops.Dataset.range(5)
     options = dataset_ops.Options()
     options.experimental_slack = True
@@ -266,8 +257,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       test_base.default_test_combinations(),
       combinations.combine(map_parallelization=[True, False])))
   def testOptionsGraphRoundTripOptimization(self, map_parallelization):
-    if not tf_compat.forward_compatible(2021, 4, 25):
-      self.skipTest("Behavior is currently not supported")
     dataset = dataset_ops.Dataset.range(6)
     options = dataset_ops.Options()
     options.experimental_optimization.map_parallelization = (

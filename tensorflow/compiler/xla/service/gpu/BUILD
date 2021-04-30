@@ -548,7 +548,6 @@ cc_library(
         "custom_call_thunk.cc",
         "fft_thunk.cc",
         "for_thunk.cc",
-        "gemm_thunk.cc",
         "gpu_executable.cc",
         "infeed_thunk.cc",
         "kernel_thunk.cc",
@@ -591,6 +590,7 @@ cc_library(
         ":buffer_allocations",
         ":cusolver_context",
         ":cudnn_batchnorm_runner",
+        ":gemm_thunk",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable_run_options",
@@ -722,14 +722,41 @@ cc_library(
 )
 
 cc_library(
+    name = "gemm_thunk",
+    srcs = ["gemm_thunk.cc"],
+    hdrs = ["gemm_thunk.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":buffer_allocations",
+        ":hlo_execution_profiler",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        ":thunk",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "gemm_algorithm_picker",
     srcs = if_cuda_is_configured(["gemm_algorithm_picker.cc"]),
     hdrs = if_cuda_is_configured(["gemm_algorithm_picker.h"]),
     deps = if_cuda_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
+        ":gemm_thunk",
         ":gpu_conv_runner",
-        ":gpu_executable",
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/types:optional",
@@ -1215,6 +1242,18 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_spmd_partitioner",
+    srcs = ["gpu_spmd_partitioner.cc"],
+    hdrs = ["gpu_spmd_partitioner.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = [
         "gpu_compiler.cc",
@@ -1236,6 +1275,7 @@ cc_library(
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
+        ":gpu_spmd_partitioner",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
         ":instruction_fusion",
@@ -1318,7 +1358,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",

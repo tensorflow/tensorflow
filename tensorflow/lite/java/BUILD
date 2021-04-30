@@ -1,11 +1,12 @@
 # Description:
 # TensorFlow Lite Java API.
 
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
-load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -67,13 +68,15 @@ aar_with_jni(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "tensorflowlite",
     srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [
+    tflite_deps = [
         ":tensorflowlite_native",
+    ],
+    deps = [
         "@org_checkerframework_qual",
     ],
 )
@@ -445,9 +448,9 @@ alias(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "tensorflowlite_native",
-    srcs = ["libtensorflowlite_jni.so"],
+    tflite_jni_binaries = ["libtensorflowlite_jni.so"],
 )
 
 cc_library(
@@ -456,9 +459,12 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
     linkscript = ":tflite_version_script.lds",
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native",
+    ],
     deps = [
         # Note that we explicitly include the C API here for convenience, as it
         # allows bundling of the C lib w/ AAR distribution.
@@ -466,7 +472,6 @@ tflite_jni_binary(
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/java/src/main/native",
     ],
 )
 

@@ -70,3 +70,17 @@ if not _six.PY2:
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
+
+# Add module aliases from Keras to TF.
+# Some tf endpoints actually lives under Keras.
+if (hasattr(_current_module, "keras") and
+    _os.environ.get("_PREFER_OSS_KERAS", False)):
+  # It is possible that keras is a lazily loaded module, which might break when
+  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
+  # when it doing some very initial loading, like tf.compat.v2, etc.
+  try:
+    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
+    layers = _LazyLoader("layers", globals(), _layer_package)
+    setattr(_current_module, "layers", layers)
+  except ImportError:
+    pass

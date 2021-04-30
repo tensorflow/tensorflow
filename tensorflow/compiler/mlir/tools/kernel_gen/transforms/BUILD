@@ -103,6 +103,7 @@ cc_library(
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
+        "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",

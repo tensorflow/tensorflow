@@ -15,6 +15,7 @@
 """Tests for tf.framework.tensor_struct."""
 
 import contextlib
+import tempfile
 import typing
 
 from absl.testing import parameterized
@@ -29,12 +30,16 @@ from tensorflow.python.framework import struct_field
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_struct
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -197,6 +202,39 @@ class StructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(x.values, [[1.0, 2, 3], [4, 5, 6]])
     self.assertAllEqual(x.mean, 3.5)
     self.assertAllEqual(x.max, 6)
+
+  class Node(tensor_struct.Struct):
+    x: ops.Tensor
+    y: typing.Optional[str] = None
+    children: typing.Tuple['StructTest.Node', ...] = ()
+
+  def testCustomConstructorWithDefaultValues(self):
+    a = StructTest.Node(5)
+    self.assertAllEqual(a.x, 5)
+    self.assertIsNone(a.y)
+    self.assertEqual(a.children, ())
+
+    b = StructTest.Node(6, 'blue')
+    self.assertAllEqual(b.x, 6)
+    self.assertEqual(b.y, 'blue')
+    self.assertEqual(b.children, ())
+
+    c = StructTest.Node(7, children=(a, b))
+    self.assertAllEqual(c.x, 7)
+    self.assertIsNone(c.y)
+    self.assertEqual(c.children, (a, b))
+
+  def testCustomConstructorNondefaultCanotFollowDefault(self):
+    with self.assertRaisesRegex(
+        ValueError, "Field without default 'd' follows field with default 'c'"):
+
+      class MyStruct(tensor_struct.Struct):
+        a: int
+        b: str = 'Hello world'
+        c: typing.Optional[ops.Tensor] = None
+        d: ops.Tensor
+
+      del MyStruct
 
   def testCustomConstrutorCantMutateNestedValues(self):
 
@@ -502,43 +540,16 @@ class StructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(toy_info.boxes['green'], [b'car'])
     self.assertAllEqual(toy_info.boxes['blue'], ['car', 'book', 'book'])
 
-    if context.executing_eagerly():
-      expected_repr = (
-          "ToyInfo(version='1.0 alpha', "
-          "toys=(('car', <tf.Tensor: shape=(), dtype=float32, numpy=1.0>, "
-          'ImmutableDict('
-          "{'size': <tf.Tensor: shape=(3,), dtype=int32, "
-          'numpy=array([8, 3, 2], dtype=int32)>, '
-          "'color': <tf.Tensor: shape=(3,), dtype=float32, "
-          'numpy=array([0.3, 0.2, 0.8], dtype=float32)>})), '
-          "('book', <tf.Tensor: shape=(), dtype=float32, numpy=3.7>, "
-          'ImmutableDict('
-          "{'authors': <tf.RaggedTensor [[b'A', b'Aardvark'], "
-          "[b'Z', b'Zhook']]>}))), "
-          'boxes=ImmutableDict('
-          "{'green': <tf.Tensor: shape=(1,), dtype=string, "
-          "numpy=array([b'car'], dtype=object)>, "
-          "'blue': <tf.Tensor: shape=(3,), "
-          "dtype=string, numpy=array([b'car', b'book', b'book'], "
-          'dtype=object)>}))')
-    else:
-      expected_repr = (
-          "ToyInfo(version='1.0 alpha', "
-          "toys=(('car', <tf.Tensor 'Const:0' shape=() dtype=float32>, "
-          'ImmutableDict('
-          "{'size': <tf.Tensor 'Const_1:0' shape=(3,) dtype=int32>, "
-          "'color': <tf.Tensor 'Const_2:0' shape=(3,) dtype=float32>})), "
-          "('book', <tf.Tensor 'Const_3:0' shape=() dtype=float32>, "
-          'ImmutableDict('
-          "{'authors': tf.RaggedTensor(values=Tensor("
-          '"RaggedConstant/values:0", shape=(4,), dtype=string), '
-          'row_splits=Tensor("RaggedConstant/Const:0", shape=(3,), '
-          'dtype=int64))}))), '
-          'boxes=ImmutableDict({'
-          "'green': <tf.Tensor 'Const_4:0' shape=(1,) dtype=string>, "
-          "'blue': <tf.Tensor 'Const_5:0' shape=(3,) dtype=string>}))")
+    expected_repr = (
+        r"ToyInfo\(version='1.0 alpha', toys=\("
+        r"\('car', <tf.Tensor[^>]*>, ImmutableDict\("
+        r"{'size': <tf.Tensor[^>]*>, 'color': <tf.Tensor[^>]*>}\)\), "
+        r"\('book', <tf.Tensor[^>]*>, ImmutableDict\("
+        r"{'authors': (<tf.RaggedTensor[^>]*>|tf.RaggedTensor\(.*\))}\)\)\), "
+        r'boxes=ImmutableDict\('
+        r"{'green': <tf.Tensor[^>]*>, 'blue': <tf.Tensor[^>]*>}\)\)")
 
-    self.assertEqual(repr(toy_info), expected_repr)
+    self.assertRegex(repr(toy_info), expected_repr)
 
   def testNestedStructs(self):
     MaskedTensor = build_simple_masked_tensor_type()
@@ -721,6 +732,33 @@ class StructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 'Struct is an abstract base class.'):
       tensor_struct.Struct()
 
+  class StructWithName(tensor_struct.Struct):
+    __name__ = 'tf.__test__.StructWithName'  # For SavedModel serialization
+    x: typing.Tuple[ops.Tensor, int]
+    y: ops.Tensor
+
+  def testSavedModelSupport(self):
+
+    class TestModule(module.Module):
+
+      @def_function.function
+      def f(self, s):
+        return s.x[0] + s.x[1] + s.y
+
+    s1 = self.StructWithName((1, 2), 3)
+    s2 = self.StructWithName((1.0, 2), [3.0, 4.0])
+
+    m = TestModule()
+    m.f.get_concrete_function(s1)
+    m.f.get_concrete_function(s2)
+
+    path = tempfile.mkdtemp(prefix=test.get_temp_dir())
+    save.save(m, path)
+    loaded = load.load(path)
+
+    self.assertAllEqual(loaded.f(s1), 6)
+    self.assertAllEqual(loaded.f(s2), [6.0, 7.0])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class StructSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -795,20 +833,19 @@ class StructSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         })
 
     serialized = zoo_spec._serialize()
-    self.assertEqual(
-        serialized,
-        dict(
-            zookeepers=('Zoey', 'Zack'),
-            animals={
-                'tiger': featurespec,
-                'elephant': featurespec
-            }))
+    self.assertEqual(serialized,
+                     (('zookeepers', ('Zoey', 'Zack')), ('animals', {
+                         'tiger': featurespec,
+                         'elephant': featurespec
+                     })))
     restored = Zoo.Spec._deserialize(serialized)
     self.assertEqual(zoo_spec, restored)
 
     # ImmutableDict is used for the field, but dict for the serialization:
     self.assertIsInstance(zoo_spec.animals, immutable_dict.ImmutableDict)
-    self.assertIsInstance(serialized['animals'], dict)
+    serialized_field_name, serialized_field_value = serialized[1]
+    self.assertEqual(serialized_field_name, 'animals')
+    self.assertIsInstance(serialized_field_value, dict)
 
   def testSpecComponents(self):
 

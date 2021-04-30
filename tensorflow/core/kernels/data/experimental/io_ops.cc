@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/io_ops.h"
 
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"

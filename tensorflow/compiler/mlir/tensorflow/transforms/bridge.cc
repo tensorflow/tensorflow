@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -85,11 +86,12 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addPass(CreateTPUClusterFormationPass());
+  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
-    pm.addPass(CreateTPUClusterFormationPass());
-    pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
@@ -98,6 +100,11 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
+
   // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
   // the remaining passes including Inliner support it, remove this
   // LaunchToDeviceAttributePass. This LaunchToDeviceAttribute pass needs to
@@ -125,6 +132,10 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // op.
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_merge_control_flow_pass) {
+    pm.addPass(TFDevice::CreateMergeControlFlowPass());
+  }
 
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());

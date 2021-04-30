@@ -71,7 +71,7 @@ py_library(
         ":layers_base",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers:normalization",
+        "//tensorflow/python/keras/layers/normalization",
     ],
 )
 

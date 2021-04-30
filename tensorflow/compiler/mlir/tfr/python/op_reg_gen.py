@@ -101,19 +101,19 @@ class OpRegGenImpl(transformer.CodeGenerator):
     if len(expected_args) != len(all_func_args):
       raise KeyError('Composition arguments do not match the registration.')
 
-    cxx_reg_code = '\nREGISTER_OP("{0}")'.format(op_name)
+    cxx_reg_code = ['\nREGISTER_OP("{}")'.format(op_name)]
     for input_ in inputs:
-      cxx_reg_code += '\n    .Input("{0}")'.format(input_)
+      cxx_reg_code.append('.Input("{}")'.format(input_))
     for attr in attrs:
-      py_str = attr.replace('"', '\'')
-      cxx_reg_code += '\n    .Attr("{0}")'.format(py_str)
+      py_str = attr.replace('"', "'")
+      cxx_reg_code.append('.Attr("{}")'.format(py_str))
     for attr in all_dec_args.get('derived_attrs', []):
-      py_str = attr.replace('"', '\'')
-      cxx_reg_code += '\n    .Attr("{0}")'.format(py_str)
+      py_str = attr.replace('"', "'")
+      cxx_reg_code.append('.Attr("{}")'.format(py_str))
     for output_ in all_dec_args.get('outputs', []):
-      cxx_reg_code += '\n    .Output("{0}")'.format(output_)
-    cxx_reg_code += ';\n'
-    self.emit(cxx_reg_code)
+      cxx_reg_code.append('.Output("{}")'.format(output_))
+    cxx_reg_code[-1] += ';\n'
+    self.emit('\n    '.join(cxx_reg_code))
 
 
 class OpRegGen(transpiler.GenericTranspiler):

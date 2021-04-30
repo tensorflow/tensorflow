@@ -129,7 +129,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'binary\', \'False\'], "
+    argspec: "args=[\'self\', \'num_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'multi_hot\', \'False\'], "
   }
   member_method {
     name: "add_loss"

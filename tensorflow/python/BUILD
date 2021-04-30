@@ -3407,7 +3407,6 @@ pywrap_tensorflow_macro(
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
-        "//tensorflow/c:ops",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",

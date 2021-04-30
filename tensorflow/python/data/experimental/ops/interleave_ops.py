@@ -187,12 +187,12 @@ def sample_from_datasets_v2(datasets,
   ```
 
   Args:
-    datasets: A list of `tf.data.Dataset` objects with compatible structure.
-    weights: (Optional.) A list of `len(datasets)` floating-point values where
-      `weights[i]` represents the probability with which an element should be
-      sampled from `datasets[i]`, or a `tf.data.Dataset` object where each
-      element is such a list. Defaults to a uniform distribution across
-      `datasets`.
+    datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+      structure.
+    weights: (Optional.) A list or Tensor of `len(datasets)` floating-point
+      values where `weights[i]` represents the probability to sample from
+      `datasets[i]`, or a `tf.data.Dataset` object where each element is such a
+      list. Defaults to a uniform distribution across `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
       seed that will be used to create the distribution. See
       `tf.random.set_seed` for behavior.
@@ -209,9 +209,13 @@ def sample_from_datasets_v2(datasets,
 
   Raises:
     TypeError: If the `datasets` or `weights` arguments have the wrong type.
-    ValueError: If the `weights` argument is specified and does not match the
-      length of the `datasets` element.
+    ValueError:
+      - If `datasets` is empty, or
+      - If `weights` is specified and does not match the length of `datasets`.
   """
+  if not datasets:
+    raise ValueError("`datasets` must be a non-empty list of datasets.")
+
   num_datasets = len(datasets)
   if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
@@ -311,7 +315,8 @@ def choose_from_datasets_v2(datasets,
   ```
 
   Args:
-    datasets: A list of `tf.data.Dataset` objects with compatible structure.
+    datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+      structure.
     choice_dataset: A `tf.data.Dataset` of scalar `tf.int64` tensors between `0`
       and `len(datasets) - 1`.
     stop_on_empty_dataset: If `True`, selection stops if it encounters an empty
@@ -326,11 +331,13 @@ def choose_from_datasets_v2(datasets,
     of `choice_dataset`.
 
   Raises:
-    TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
-      type.
+    TypeError: If `datasets` or `choice_dataset` has the wrong type.
+    ValueError: If `datasets` is empty.
   """
-  if not structure.are_compatible(choice_dataset.element_spec,
-                                  tensor_spec.TensorSpec([], dtypes.int64)):
+  if not datasets:
+    raise ValueError("`datasets` must be a non-empty list of datasets.")
+  if choice_dataset is None or not structure.are_compatible(
+      choice_dataset.element_spec, tensor_spec.TensorSpec([], dtypes.int64)):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets,

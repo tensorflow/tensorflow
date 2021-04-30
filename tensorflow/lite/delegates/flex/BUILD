@@ -162,7 +162,10 @@ cc_library(
         ":util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -176,6 +179,7 @@ cc_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -186,8 +190,10 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core:test",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",

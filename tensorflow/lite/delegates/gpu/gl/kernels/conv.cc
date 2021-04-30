@@ -203,12 +203,11 @@ class Convolution1x1 : public NodeShader {
     for (int i = 0; i < multiplier; i++) {
       absl::StrAppend(&source, "highp vec4 result", i, " = vec4(0);\n");
     }
-    absl::StrAppend(&source, "highp vec4 f;\n");
+    absl::StrAppend(&source, "vec4 f;\n");
     absl::StrAppend(&source, "for (int l = 0; l < $src_depth$; ++l) {\n");
     for (int i = 0; i < multiplier; i++) {
-      absl::StrAppend(&source, "  highp vec4 input", i,
-                      " = $input_data_0[gid.x * ", multiplier, " + ", i,
-                      ",gid.y,l]$;\n");
+      absl::StrAppend(&source, "  vec4 input", i, " = $input_data_0[gid.x * ",
+                      multiplier, " + ", i, ",gid.y,l]$;\n");
     }
     for (int k = 0; k < 4; k++) {
       absl::StrAppend(&source, "  f = $weights[", k, ", l, gid.z]$;\n");
@@ -220,7 +219,7 @@ class Convolution1x1 : public NodeShader {
     absl::StrAppend(&source, "}\n");
     if (!attr.bias.data.empty()) {
       objects.push_back({"bias", MakeReadonlyObject(attr.bias.data)});
-      absl::StrAppend(&source, "highp vec4 b = $bias[gid.z]$;\n");
+      absl::StrAppend(&source, "vec4 b = $bias[gid.z]$;\n");
       for (int i = 0; i < multiplier; i++) {
         absl::StrAppend(&source, "result", i, " += b;\n");
       }
