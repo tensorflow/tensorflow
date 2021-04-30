@@ -2655,9 +2655,9 @@ name=None))
 
   @staticmethod
   def random(seed=None):
-    """create a `Dataset` of pseudorandom values.
+    """Creates a `Dataset` of pseudorandom values.
 
-    The dataset generates an indefinite number of pseudorandom values.
+    The dataset generates a sequence of pseudorandom values.
     In order to generate datasets with reproducible pseudorandom values,
     the `seed` value can be passed while initializing the dataset.
 
@@ -2670,7 +2670,7 @@ name=None))
       seed: (Optional) the seed value for generating pseudorandom values.
 
     Returns:
-      A `tf.data.Dataset`
+      Dataset: A `Dataset`.
     """
     return RandomDataset(seed=seed)
 
