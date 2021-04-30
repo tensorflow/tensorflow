@@ -115,17 +115,25 @@ namespace wrap {
   __macro(hipsparseZcsrmv)
 
 #if TF_ROCM_VERSION >= 40200
-#define FOREACH_SpMM_API(__macro)               \
+#define FOREACH_HIPSPARSE_ROCM_42_API(__macro)  \
   __macro(hipsparseCreateCsr)                   \
   __macro(hipsparseCreateDnMat)                 \
+  __macro(hipsparseCcsru2csr_bufferSizeExt)     \
+  __macro(hipsparseCcsru2csr)                   \
   __macro(hipsparseDestroyDnMat)                \
   __macro(hipsparseDestroySpMat)                \
+  __macro(hipsparseDcsru2csr_bufferSizeExt)     \
+  __macro(hipsparseDcsru2csr)                   \
   __macro(hipsparseSpMM_bufferSize)             \
-  __macro(hipsparseSpMM)                        
+  __macro(hipsparseSpMM)                        \
+  __macro(hipsparseScsru2csr_bufferSizeExt)     \
+  __macro(hipsparseScsru2csr)                   \
+  __macro(hipsparseZcsru2csr_bufferSizeExt)     \
+  __macro(hipsparseZcsru2csr)
  
-FOREACH_SpMM_API(HIPSPARSE_API_WRAPPER)
+FOREACH_HIPSPARSE_ROCM42_API(HIPSPARSE_API_WRAPPER)
 
-#undef FOREACH_SpMM_API
+#undef FOREACH_HIPSPARSE_ROCM42_API
 #endif
 
 
