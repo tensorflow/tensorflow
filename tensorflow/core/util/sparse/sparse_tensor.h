@@ -527,6 +527,10 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
   for (int i = 0; i < input_tensor.indices().dim_size(0); ++i) {
     const int dim = input_tensor.indices().matrix<int64>()(i, split_dim);
     int slice_index = GetSliceIndex(dim, split_size, residual);
+    if (slice_index >= num_values.size()) {
+      return errors::InvalidArgument("Slice index ", slice_index,
+                                     " is larger than num_split.");
+    }
     num_values[slice_index]++;
   }
 
