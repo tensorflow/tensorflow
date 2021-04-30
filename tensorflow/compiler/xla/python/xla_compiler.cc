@@ -317,6 +317,19 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("result_shape", &ProgramShape::result)
       .def("__repr__", &ProgramShape::ToString);
 
+  py::class_<ShapeIndex>(m, "ShapeIndex")
+      .def(py::init([](const std::vector<int64>& v) {
+        return std::make_unique<ShapeIndex>(v.begin(), v.end());
+      }))
+      .def("__repr__", &ShapeIndex::ToString)
+      .def("__eq__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind == other; })
+      .def("__ne__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind != other; })
+      .def("__hash__", [](const ShapeIndex& shape_ind) {
+        return absl::Hash<ShapeIndex>()(shape_ind);
+      });
+
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);

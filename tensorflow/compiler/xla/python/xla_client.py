@@ -286,6 +286,28 @@ class ProgramShape(object):
 """
 
 
+ShapeIndex = _xla.ShapeIndex
+ShapeIndex.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class ShapeIndex(object):
+  '''Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.
+  '''
+
+  def __init__(self, List[int]) -> ShapeIndex:
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+"""
+
+
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
