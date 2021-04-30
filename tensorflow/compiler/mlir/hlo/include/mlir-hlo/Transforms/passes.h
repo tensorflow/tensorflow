@@ -26,6 +26,9 @@ class FunctionPass;
 // Passes
 //===----------------------------------------------------------------------===//
 
+/// Creates a pass that reuses buffers which are already allocated.
+std::unique_ptr<FunctionPass> createBufferReusePass();
+
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<FunctionPass> createTestUserangePass();
 
