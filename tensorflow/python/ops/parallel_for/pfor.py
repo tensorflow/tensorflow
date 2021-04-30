@@ -2892,14 +2892,24 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Xlog1py", math_ops.xlog1py)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
-def _convert_cwise(pfor_input, op_type, op_func):
+def _convert_cwise(pfor_input, op_type, _):
   # Note that ops handled here do not have attributes except those listed below
   # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
-    assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
+    assert attr in [u"T", u"Tout", u"_xla_compile_id",
+                    u"_class"], (op_type, attr)
   if pfor_input.num_inputs > 1:
     pfor_input.expanddim_inputs_for_broadcast()
-  return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+  out = _create_op(
+      op_type, [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+  assert len(out) == 1
+  out = out[0]
+
+  op_output = wrap(out, True)
+  return op_output
 
 
 @RegisterPFor("XlaSharding")
