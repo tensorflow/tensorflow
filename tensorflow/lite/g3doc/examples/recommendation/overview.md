@@ -127,34 +127,40 @@ Performance benchmark numbers are generated with the tool
       <th>CPU</th>
     </tr>
   </thead>
-  <tr>
-    <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/recommendation/20200720/model.tar.gz">recommendation (movie ID as input)</a>
-    </td>
-    <td rowspan = 3>
-      0.52 Mb
-    </td>
-    <td>Pixel 3</td>
-    <td>0.09ms*</td>
-  </tr>
-   <tr>
-     <td>Pixel 4 </td>
-    <td>0.05ms*</td>
-  </tr>
-  <tr>
-    <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/recommendation/20210317/recommendation_cnn_i10i32o100.tflite">recommendation (movie ID and movie genre as inputs)</a>
-    </td>
-    <td rowspan = 3>
-      1.3 Mb
-    </td>
-    <td>Pixel 3</td>
-    <td>0.13ms*</td>
-  </tr>
-   <tr>
-     <td>Pixel 4 </td>
-    <td>0.06ms*</td>
-  </tr>
+  <tbody>
+    <tr>
+      <tr>
+        <td rowspan = 3>
+          <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/recommendation/20200720/model.tar.gz">recommendation (movie ID as input)</a>
+        </td>
+        <td rowspan = 3>
+          0.52 Mb
+        </td>
+        <td>Pixel 3</td>
+        <td>0.09ms*</td>
+      </tr>
+       <tr>
+         <td>Pixel 4 </td>
+        <td>0.05ms*</td>
+      </tr>
+    </tr>
+    <tr>
+      <tr>
+        <td rowspan = 3>
+          <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/recommendation/20210317/recommendation_cnn_i10i32o100.tflite">recommendation (movie ID and movie genre as inputs)</a>
+        </td>
+        <td rowspan = 3>
+          1.3 Mb
+        </td>
+        <td>Pixel 3</td>
+        <td>0.13ms*</td>
+      </tr>
+       <tr>
+         <td>Pixel 4 </td>
+        <td>0.06ms*</td>
+      </tr>
+    </tr>
+  </tbody>
 </table>
 
 \* 4 threads used.
