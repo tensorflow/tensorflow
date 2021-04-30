@@ -219,12 +219,6 @@ llvm::Optional<ResourceIdsByValue> GetResourceIdsByValue(
 
 // Returns true if `op` is known to not have any side effect.
 bool OpIsKnownToHaveNoSideEffect(Operation* op) {
-  // Note: Identity op is really side-effect free, but it is not marked as such
-  // in the TF dialect (see comments in definition of Identity op in tf_ops.td)
-  // However, for adding control dependencies, its safe to assume
-  // that the Identity op is side-effect free.
-  if (isa<IdentityOp>(op)) return true;
-
   // For op's in the Tensorflow dialect, query the dialect.
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return !TensorFlowDialect::CanHaveSideEffects(op);
