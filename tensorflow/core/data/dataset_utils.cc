@@ -674,6 +674,21 @@ std::vector<tstring> SelectOptimizations(
 
   optimizations.insert(optimizations.end(), optimizations_set.begin(),
                        optimizations_set.end());
+
+  // Log and record the live experiments that will be applied.
+  if (!job_name.empty() && !live_experiments.empty()) {
+    VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+               "Please see `go/tf-data-experiments` for more details.";
+
+    for (auto& pair : live_experiments) {
+      string experiment = pair.first;
+      if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
+          optimizations.end()) {
+        VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
+        metrics::RecordTFDataExperiment(experiment);
+      }
+    }
+  }
   return optimizations;
 }
 
