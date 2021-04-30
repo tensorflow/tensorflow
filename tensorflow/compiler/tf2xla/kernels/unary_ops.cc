@@ -53,23 +53,23 @@ XLAJIT_MAKE_UNARY(Angle, xla::Atan2(xla::Imag(x), xla::Real(x)));
 XLAJIT_MAKE_UNARY(Conj, xla::Conj(x));
 
 // Return x if x>0, otherwise -x.
-XLAJIT_MAKE_UNARY(Abs, xla::Abs(x));
+REGISTER_XLA_OP(Name("Abs"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Acos, xla::Acos(x));
 XLAJIT_MAKE_UNARY(Acosh, xla::Acosh(x));
 XLAJIT_MAKE_UNARY(Asin, xla::Asin(x))
 XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
-XLAJIT_MAKE_UNARY(Atan, xla::Atan(x));
+REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Atanh, xla::Atanh(x));
-XLAJIT_MAKE_UNARY(Ceil, xla::Ceil(x));
+REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cos, xla::Cos(x));
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
-XLAJIT_MAKE_UNARY(Exp, xla::Exp(x));
+REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
 XLAJIT_MAKE_UNARY(Floor, xla::Floor(x));
 XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
 XLAJIT_MAKE_UNARY(IsInf, xla::IsInf(x));
-XLAJIT_MAKE_UNARY(IsNan, xla::IsNan(x));
+REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
 XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);
