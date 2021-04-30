@@ -96,7 +96,7 @@ tf_class {
   }
   member_method {
     name: "random"
-    argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "range"
