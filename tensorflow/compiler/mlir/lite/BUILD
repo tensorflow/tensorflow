@@ -483,6 +483,7 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
+        "transforms/get_arithmetic_count.cc",
         "transforms/initialize_variables.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",

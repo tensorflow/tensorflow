@@ -898,7 +898,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
-      [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+      [DeclareOpInterfaceMethods<InferTypeOpInterface>,
+       DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{

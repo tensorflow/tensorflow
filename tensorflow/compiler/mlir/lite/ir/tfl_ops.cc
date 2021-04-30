@@ -1080,6 +1080,9 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   return true;
 }
 
+// TODO(b/186119062): Implement this.
+int64_t Conv2DOp::GetArithmeticCount(Operation *op) { return -1; }
+
 //===----------------------------------------------------------------------===//
 // DepthwiseConv2DO
 //===----------------------------------------------------------------------===//
