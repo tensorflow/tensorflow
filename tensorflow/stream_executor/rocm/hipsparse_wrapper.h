@@ -77,8 +77,8 @@ namespace wrap {
   __macro(hipsparseCreate)                      \
   __macro(hipsparseCreateMatDescr)              \
   __macro(hipsparseCcsr2csc)                    \
-  __macro(hipsparseCcsrgeam2)		                \
-  __macro(hipsparseCcsrgeam2_bufferSizeExt)	    \
+  __macro(hipsparseCcsrgeam2)                   \
+  __macro(hipsparseCcsrgeam2_bufferSizeExt)	\
   __macro(hipsparseCcsrgemm)                    \
   __macro(hipsparseCcsrmm)                      \
   __macro(hipsparseCcsrmm2)                     \
@@ -113,6 +113,20 @@ namespace wrap {
   __macro(hipsparseZcsrmm)                      \
   __macro(hipsparseZcsrmm2)                     \
   __macro(hipsparseZcsrmv)
+
+#if TF_ROCM_VERSION >= 40200
+#define FOREACH_SpMM_API(__macro)               \
+  __macro(hipsparseCreateCsr)                   \
+  __macro(hipsparseCreateDnMat)                 \
+  __macro(hipsparseDestroyDnMat)                \
+  __macro(hipsparseDestroySpMat)                \
+  __macro(hipsparseSpMM_bufferSize)             \
+  __macro(hipsparseSpMM)                        
+ 
+FOREACH_SpMM_API(HIPSPARSE_API_WRAPPER)
+
+#undef FOREACH_SpMM_API
+#endif
 
 
 // clang-format on
