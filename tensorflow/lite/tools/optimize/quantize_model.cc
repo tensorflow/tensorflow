@@ -887,9 +887,9 @@ TfLiteStatus QuantizeOpOutput(
   return kTfLiteOk;
 }
 
-TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
-                                        TensorType activations_type,
-                                        ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeIntermediateTensors(ModelT* model,
+                                         TensorType activations_type,
+                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -1446,7 +1446,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
       model, operator_names, real_value_op_set, activations_type,
       disable_per_channel, error_reporter));
   TF_LITE_ENSURE_STATUS(
-      QuantizeIntemediateTensors(model, activations_type, error_reporter));
+      QuantizeIntermediateTensors(model, activations_type, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeSharedRange(model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeWeightsInputOutput(
       model, allow_float, operator_names, real_value_op_set, activations_type,
