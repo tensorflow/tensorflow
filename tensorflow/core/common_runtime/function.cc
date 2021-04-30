@@ -952,9 +952,6 @@ bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
 // This currently specializes for the case of a single operation, as created
 // via eager execution.
 bool IsSingleThreadedExecutorCompatible(const Graph* g) {
-  // TODO(b/186861995): Re-enable this logic once this does not regress tf.data.
-  return false;
-
   // Not worth analyzing large graphs.
   if (g->num_nodes() > kMaxNodesForSingleThreadedExecutor) {
     return false;
