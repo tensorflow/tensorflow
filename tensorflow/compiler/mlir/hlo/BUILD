@@ -1343,6 +1343,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
         "lib/Dialect/mhlo/transforms/test_infer_shaped_type_pass.cc",
         "lib/Dialect/mhlo/transforms/unfuse_batch_norm_pass.cc",
+        "lib/Analysis/test_userange_analysis.cc",
     ],
     deps = [
         ":chlo_legalize_to_hlo",  # build-cleaner: keep
@@ -1350,6 +1351,7 @@ cc_library(
         ":lhlo",
         ":materialize_broadcasts",  # build-cleaner: keep
         ":pass_details",
+        ":buffer_transforms_pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -1370,6 +1372,7 @@ cc_library(
     name = "all_passes",
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
+        "include/mlir-hlo/Transforms/register_passes.h",
     ],
     visibility = [
         ":friends",
@@ -1379,6 +1382,7 @@ cc_library(
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":broadcast_propagation",
+        ":mlir_buffer_transforms_pass_inc_gen",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1403,7 +1407,71 @@ cc_library(
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
+        ":userange_analysis",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl(
+    name = "mlir_buffer_transforms_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name BufferTransforms",
+            "include/mlir-hlo/Transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "buffer_transforms_pass_details",
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+    ],
+    visibility = [
+        "//visibility:private",  # This target is a private detail of pass implementations
+    ],
+    deps = [
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "userange_analysis",
+    srcs = ["lib/Analysis/userange_analysis.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "test_userange_analysis",
+    srcs = ["lib/Analysis/test_userange_analysis.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mlir_buffer_transforms_pass_inc_gen",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
