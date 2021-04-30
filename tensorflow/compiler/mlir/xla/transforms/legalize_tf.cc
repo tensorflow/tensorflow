@@ -1446,6 +1446,120 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
   }
 };
 
+/// Converts a TF::SeluOp to HLO.
+/// Selu(x) = scaledAlpha * (exp(x) - 1) if x < 0 else scale * x. Here
+/// scale(`kScale`) is taken as a constant 1.0507009873554804934193349852946 and
+/// scaledAlpha(`kScaledAlpha`) is taken as a
+/// constant 1.7580993408473768599402175208123. This choice of constants is in
+/// accordance with existing TF2XLA bridge.
+class ConvertSeluOp : public OpRewritePattern<TF::SeluOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::SeluOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value features = op.features();
+    auto featureType = features.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> featureShape = featureType.getShape();
+    auto eltType = featureType.getElementType();
+
+    // Broadcast constant values to match the shape of features.
+    auto featureShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
+        featureShape);
+    Value scaleValue = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, kScale));
+    auto broadcastScaleValue = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, scaleValue, featureShapeAttr);
+    Value scaledAlphaValue = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, kScaledAlpha));
+    auto broadcastScaledAlphaValue = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, scaledAlphaValue, featureShapeAttr);
+    Value oneValue =
+        rewriter.create<mhlo::ConstOp>(loc, rewriter.getFloatAttr(eltType, 1));
+    auto broadcastOneValue = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, oneValue, featureShapeAttr);
+
+    // Get the value of exp(x).
+    Value expValue = rewriter.create<ExpOp>(loc, featureType, features);
+    Value eluValue =
+        rewriter.create<mhlo::SubOp>(loc, expValue, broadcastOneValue);
+
+    Value seluValue =
+        rewriter.create<mhlo::MulOp>(loc, eluValue, broadcastScaledAlphaValue);
+    Value scaledFeaturesValue =
+        rewriter.create<mhlo::MulOp>(loc, features, broadcastScaleValue);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
+    Value zeroValue = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, features, zeroValue, compare_direction);
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
+                                          scaledFeaturesValue, seluValue);
+    return success();
+  }
+
+ private:
+  static constexpr double kScaledAlpha = 1.7580993408473768599402175208123;
+  static constexpr double kScale = 1.0507009873554804934193349852946;
+};
+
+/// Converts a TF::SeluGradOp to HLO.
+/// SeluGradOp(gradients, outputs) = gradients * scale if outputs > 0
+/// else gradients * (outputs + scaledAlpha). Here scale(`kScale`) is taken as a
+/// constant 1.0507009873554804934193349852946 and scaledAlpha(`kScaledAlpha`)
+/// is taken as a constant 1.7580993408473768599402175208123. This choice of
+/// constants is in accordance with existing TF2XLA bridge.
+class ConvertSeluGradOp : public OpRewritePattern<TF::SeluGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::SeluGradOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value gradients = op.gradients();
+    Value outputs = op.outputs();
+    auto outputType = outputs.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> outputShape = outputType.getShape();
+    auto eltType = outputType.getElementType();
+
+    // Broadcast constant values to match the shape of features.
+    auto outputShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(outputShape.size(), rewriter.getIntegerType(64)),
+        outputShape);
+    Value scaleValue = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, kScale));
+    auto broadcastScaleValue = rewriter.create<mhlo::BroadcastOp>(
+        loc, outputType, scaleValue, outputShapeAttr);
+    Value scaledAlphaValue = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, kScaledAlpha));
+    auto broadcastScaledAlphaValue = rewriter.create<mhlo::BroadcastOp>(
+        loc, outputType, scaledAlphaValue, outputShapeAttr);
+
+    Value scaledGradValue =
+        rewriter.create<mhlo::MulOp>(loc, gradients, broadcastScaleValue);
+    Value outputsPlusScaledAlphaValue =
+        rewriter.create<mhlo::AddOp>(loc, outputs, broadcastScaledAlphaValue);
+    Value seluGradValue = rewriter.create<mhlo::MulOp>(
+        loc, gradients, outputsPlusScaledAlphaValue);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(outputType);
+    Value zeroValue = rewriter.create<ConstantOp>(loc, outputType, zeroAttr);
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, outputs, zeroValue, compare_direction);
+    rewriter.replaceOpWithNewOp<SelectOp>(op, outputType, compareGtZero,
+                                          scaledGradValue, seluGradValue);
+    return success();
+  }
+
+ private:
+  static constexpr double kScaledAlpha = 1.7580993408473768599402175208123;
+  static constexpr double kScale = 1.0507009873554804934193349852946;
+};
+
 /// Converts a TF::LeakyReluOp to HLO.
 /// LeakyRelu(x) = alpha * x if x < 0 else x.
 class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
@@ -6506,6 +6620,8 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertMatrixDiagPartV3Op,
     ConvertRangeOp,
     ConvertSelectOp,
+    ConvertSeluOp,
+    ConvertSeluGradOp,
     ConvertSigmoidOp,
     ConvertShapeOp,
     ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,

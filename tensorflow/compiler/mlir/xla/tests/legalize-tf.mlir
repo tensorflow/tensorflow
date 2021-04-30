@@ -1633,6 +1633,48 @@ func @elu_grad(%gradients: tensor<4x8xf32>, %features: tensor<?x?xf32>) -> tenso
 }
 
 //===----------------------------------------------------------------------===//
+// Selu op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @selu
+// CHECK-SAME:  (%[[FEATURES:.*]]: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
+func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
+  // CHECK-NEXT:  %[[SCALE:.*]] = mhlo.constant dense<1.05070102> : tensor<f32>
+  // CHECK-NEXT:  %[[BROADCAST_SCALE:.*]] = "mhlo.broadcast"(%[[SCALE]]) {broadcast_sizes = dense<[1, 4, 4, 3]> : tensor<4xi64>} : (tensor<f32>) -> tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[SCALED_ALPHA:.*]] = mhlo.constant dense<1.75809932> : tensor<f32>
+  // CHECK-NEXT:  %[[BROADCAST_SCALED_ALPHA:.*]] = "mhlo.broadcast"(%[[SCALED_ALPHA]]) {broadcast_sizes = dense<[1, 4, 4, 3]> : tensor<4xi64>} : (tensor<f32>) -> tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-NEXT:  %[[BROADCAST_ONE:.*]] = "mhlo.broadcast"(%[[ONE]]) {broadcast_sizes = dense<[1, 4, 4, 3]> : tensor<4xi64>} : (tensor<f32>) -> tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[EXPONENTIAL:.*]] = "mhlo.exponential"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[EXP_MINUS_ONE:.*]] = mhlo.subtract %[[EXPONENTIAL]], %[[BROADCAST_ONE]] : tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[SELU_VAL:.*]] = mhlo.multiply %[[EXP_MINUS_ONE]], %[[BROADCAST_SCALED_ALPHA]] : tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[SCALED_FEATURES:.*]] = mhlo.multiply %[[FEATURES]], %[[BROADCAST_SCALE]] : tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  %[[CMP:.*]] = "mhlo.compare"(%[[FEATURES]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xi1>
+  // CHECK-NEXT:  %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+  // CHECK-NEXT:  return %[[RES]] : tensor<1x4x4x3xf32>
+  %0 = "tf.Selu"(%arg0) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+  return %0 : tensor<1x4x4x3xf32>
+}
+
+// CHECK-LABEL: func @selu_grad
+// CHECK-SAME: (%[[GRADIENTS:.*]]: tensor<4x8xf32>, %[[OUTPUTS:.*]]: tensor<4x8xf32>) -> tensor<4x8xf32> {
+func @selu_grad(%gradients: tensor<4x8xf32>, %outputs: tensor<4x8xf32>) -> tensor<4x8xf32> {
+  // CHECK-NEXT:  %[[SCALE:.*]] = mhlo.constant dense<1.05070102> : tensor<f32>
+  // CHECK-NEXT:  %[[BROADCAST_SCALE:.*]] = "mhlo.broadcast"(%[[SCALE]]) {broadcast_sizes = dense<[4, 8]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:  %[[SCALED_ALPHA:.*]] = mhlo.constant dense<1.75809932> : tensor<f32>
+  // CHECK-NEXT:  %[[BROADCAST_SCALED_ALPHA:.*]] = "mhlo.broadcast"(%[[SCALED_ALPHA]]) {broadcast_sizes = dense<[4, 8]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:  %[[SCALED_GRADIENTS:.*]] = mhlo.multiply %[[GRADIENTS]], %[[BROADCAST_SCALE]] : tensor<4x8xf32>
+  // CHECK-NEXT:  %[[OUTPUT_PLUS_SCALED_ALPHA:.*]] = mhlo.add %[[OUTPUTS]], %[[BROADCAST_SCALED_ALPHA]] : tensor<4x8xf32>
+  // CHECK-NEXT:  %[[SELU_GRAD_VALUE:.*]] = mhlo.multiply %[[GRADIENTS]], %[[OUTPUT_PLUS_SCALED_ALPHA]] : tensor<4x8xf32>
+  // CHECK-NEXT:  %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<4x8xf32>
+  // CHECK-NEXT:  %[[CMP:.*]] = "mhlo.compare"(%[[OUTPUTS]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xi1>
+  // CHECK-NEXT:  %[[RES:.*]] =  "mhlo.select"(%[[CMP]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+  %2 = "tf.SeluGrad"(%gradients, %outputs) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+  return %2 : tensor<4x8xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Relu op legalizations.
 //===----------------------------------------------------------------------===//
 
