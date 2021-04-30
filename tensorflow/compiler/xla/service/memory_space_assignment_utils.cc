@@ -94,4 +94,28 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
 }
 
+/*static*/ void MemorySpaceAssignmentUtils::HoistConstantOperations(
+    HloModule& module) {
+  CHECK(module.has_schedule());
+  HloSchedule& schedule = module.schedule();
+  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+    CHECK(schedule.is_computation_scheduled(computation));
+    const HloInstructionSequence& sequence = schedule.sequence(computation);
+    HloInstructionSequence new_sequence;
+
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        new_sequence.push_back(instruction);
+      }
+    }
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() != HloOpcode::kConstant) {
+        new_sequence.push_back(instruction);
+      }
+    }
+    CHECK_EQ(new_sequence.size(), sequence.size());
+    schedule.set_sequence(computation, new_sequence);
+  }
+}
+
 }  // namespace xla
