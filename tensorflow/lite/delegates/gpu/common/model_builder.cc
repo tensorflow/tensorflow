@@ -573,6 +573,36 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
+// Doesn't have a kernel implementation.
+class DensifyOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/0, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::DENSIFY);
+    const TfLiteTensor* const_tensor = reader->GetInputTensor(0);
+    if (!const_tensor->sparsity) {
+      return absl::InvalidArgumentError("Input tensor must be sparse.");
+    }
+    TensorFloat32 sparse_tensor;
+    RETURN_IF_ERROR(reader->ReadTensor(0, &sparse_tensor));
+    DensifyAttributes attributes;
+    attributes.tensor = std::move(sparse_tensor);
+    node->operation.attributes = attributes;
+    return reader->AddOutputs(node);
+  }
+};
+
 class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -746,13 +776,17 @@ class DequantizeOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     const int num_inputs = NumInputs(tflite_node);
     const int num_outputs = NumOutputs(tflite_node);
     if (num_inputs != 1 || num_outputs != 1) {
       return absl::InternalError(absl::StrCat(
           "Expected 1 input & output each from Dequantize, got: %d, %d",
           num_inputs, num_outputs));
+    }
+    if (context->tensors[tflite_node->inputs->data[0]].type ==
+        TfLiteType::kTfLiteInt16) {
+      return absl::UnimplementedError("Unsupported dequantization type.");
     }
     return absl::OkStatus();
   }
@@ -787,6 +821,12 @@ class DequantizeOperationParser : public TFLiteOperationParser {
     // Quantization attributes should already be present in the input tensor.
     auto input_value = graph->FindInputs(node->id)[0];
     if (!input_value->quant_params) {
+      if (runtime_inputs == 1) {
+        // DEQUANTIZE op is preceded by DENSIFY op and doesn't have any
+        // quantization params. The DEQUANTIZE op latter will be removed from
+        // the graph in `MergeDensify` graph transformation.
+        return absl::OkStatus();
+      }
       return absl::InvalidArgumentError(
           "Encountered Dequantize input with no quant params");
     }
@@ -2799,6 +2839,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Conv2DOperationParser>();
     case kTfLiteBuiltinCos:
       return std::make_unique<ElementwiseOperationParser>(OperationType::COS);
+    case kTfLiteBuiltinDensify:
+      return std::make_unique<DensifyOperationParser>();
     case kTfLiteBuiltinDepthwiseConv2d:
       return std::make_unique<DepthwiseConvolutionOperationParser>();
     case kTfLiteBuiltinDepthToSpace:
@@ -3023,7 +3065,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type isn't matched!";
+            "OP is supported, but tensor type doesn't match.";
       }
       return false;
     }
@@ -3151,8 +3193,11 @@ absl::Status BuildModelEnforceIO(
         &registration));
     if (registration->builtin_code == kTfLiteBuiltinDequantize &&
         context->tensors[tflite_node->inputs->data[0]].type ==
-            TfLiteType::kTfLiteFloat16) {
-      // Ignore Fp16 Dequantize nodes.
+            TfLiteType::kTfLiteFloat16 &&
+        context->tensors[tflite_node->inputs->data[0]].allocation_type ==
+            TfLiteAllocationType::kTfLiteMmapRo) {
+      // Ignore Fp16 Dequantize nodes only if they are the final nodes before
+      // weights, i.e. no other nodes preceded them (e.g. DENSIFY).
       continue;
     }
     auto op_parser = NewOperationParser(
