@@ -18,6 +18,8 @@ package(
 # TODO(b/185903858): This should not be needed with the definition of "portable_all_op_kernels" below.
 exports_files([
     "lookup_ops.cc",
+    "threadpool_dataset_op.cc",
+    "threadpool_dataset_op.h",
 ])
 
 # A file group which contains all operators which are known to work on mobile.

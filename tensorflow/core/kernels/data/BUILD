@@ -25,6 +25,8 @@ exports_files([
     "batch_dataset_op.h",
     "iterator_ops.cc",
     "iterator_ops.h",
+    "finalize_dataset_op.h",
+    "finalize_dataset_op.cc",
     "map_dataset_op.cc",
     "map_dataset_op.h",
     "model_dataset_op.cc",
