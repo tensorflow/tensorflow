@@ -168,6 +168,30 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     self.assertDatasetProduces(sample_dataset, [])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
+    # Sampling skips the first dataset.
+    weights = np.asarray([0., 1.])
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).repeat(),
+        dataset_ops.Dataset.from_tensors(1)
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=False)
+    self.assertDatasetProduces(sample_dataset, [1])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsAllWeightsAreZero(self):
+    # Sampling skips both datasets.
+    weights = np.asarray([0., 0.])
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).repeat(),
+        dataset_ops.Dataset.from_tensors(1).repeat()
+    ]
+    sample_dataset = interleave_ops.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=False)
+    self.assertDatasetProduces(sample_dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
     ds1 = dataset_ops.Dataset.from_tensors([1.0]).repeat()
     ds2 = dataset_ops.Dataset.from_tensors([2.0]).repeat()
@@ -230,8 +254,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
-    with self.assertRaisesRegex(ValueError,
-                                r"vector of length `len\(datasets\)`"):
+    with self.assertRaisesRegex(ValueError, r"must have the same length"):
       interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
