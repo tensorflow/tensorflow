@@ -33,10 +33,8 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
-from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
@@ -3379,14 +3377,6 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
-  experimental_stats = options_lib.create_option(
-      name="experimental_stats",
-      ty=stats_options.StatsOptions,
-      docstring=
-      "The statistics options associated with the dataset. See "
-      "`tf.data.experimental.StatsOptions` for more details.",
-      default_factory=stats_options.StatsOptions)
-
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=threading_options.ThreadingOptions,
@@ -3440,62 +3430,6 @@ class Options(options_lib.OptionsBase):
     self.experimental_distribute._set_mutable(mutable)
     self.experimental_optimization._set_mutable(mutable)
     self.experimental_threading._set_mutable(mutable)
-
-  def _graph_rewrites(self):
-    """Produces lists of enabled, disabled, default static graph rewrites.
-
-    Returns:
-      result: a namedtuple with three attributes. `result.enabled` is the list
-        of user enabled graph rewrites. `result.disabled` is the list of user
-        disabled graph rewrites. `result.default` is the list of graph
-        rewrites that are enabled by default (the user has not explicitly
-        enabled or disabled them).
-    """
-    if self.experimental_optimization is not None:
-      result = self.experimental_optimization._graph_rewrites()  # pylint: disable=protected-access
-    else:
-      # Apply default options
-      result = optimization_options.OptimizationOptions()._graph_rewrites()  # pylint: disable=protected-access
-
-    if self.experimental_deterministic is False:  # pylint: disable=g-bool-id-comparison
-      result.enabled.append("make_sloppy")
-    elif self.experimental_deterministic is True:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("make_sloppy")
-    if self.experimental_stats:
-      if  self.experimental_stats.latency_all_edges is True:  # pylint: disable=g-bool-id-comparison
-        result.enabled.append("latency_all_edges")
-      elif self.experimental_stats.latency_all_edges is False:  # pylint: disable=g-bool-id-comparison
-        result.disabled.append("latency_all_edges")
-    if self.experimental_slack is True:  # pylint: disable=g-bool-id-comparison
-      result.enabled.append("slack")
-    elif self.experimental_slack is False:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("slack")
-
-    graph_rewrites = options_lib.graph_rewrites()
-    return graph_rewrites(enabled=list(set(result.enabled)),
-                          disabled=list(set(result.disabled)),
-                          default=list(set(result.default)))
-
-  def _graph_rewrite_configs(self, autotune):
-    """Produces the list of configurations for enabled graph optimizations."""
-    result = []
-    if self.experimental_optimization:
-      result.extend(
-          self.experimental_optimization._graph_rewrite_configs(autotune))  # pylint: disable=protected-access
-
-    if self.experimental_slack:
-      num_devices = self.experimental_distribute.num_devices
-      if num_devices is None:
-        num_devices = 1
-      result.append("slack:slack_period:%d" % num_devices)
-    return result
-
-  def _autotune_settings(self):
-    if self.experimental_optimization is not None:
-      return self.experimental_optimization._autotune_settings()  # pylint: disable=protected-access
-
-    # Return default autotune options
-    return optimization_options.OptimizationOptions()._autotune_settings()  # pylint: disable=protected-access
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -5078,129 +5012,6 @@ class _FinalizeDataset(UnaryUnchangedStructureDataset):
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           **self._flat_structure)
     super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
-
-
-# TODO(b/147325552): This class can be removed after we switch to using C++
-# based implementation for tf.data options (on 4/12/2021).
-class _ModelDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, and models performance."""
-
-  def __init__(self, input_dataset, algorithm, cpu_budget, ram_budget):
-    self._input_dataset = input_dataset
-    variant_tensor = gen_dataset_ops.model_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        algorithm=algorithm.value,
-        cpu_budget=cpu_budget,
-        ram_budget=ram_budget,
-        **self._flat_structure)
-    super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
-
-
-# TODO(b/147325552): This class can be removed after we switch to using C++
-# based implementation for tf.data options (on 4/12/2021).
-class _OptimizeDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, and applies optimizations."""
-
-  def __init__(self,
-               input_dataset,
-               optimizations_enabled,
-               optimizations_disabled,
-               optimizations_default,
-               optimization_configs=None):
-    self._input_dataset = input_dataset
-    if optimization_configs is None:
-      optimization_configs = []
-
-    # We sort the options here before embedding as constant tensors to ensure
-    # that serialization to NodeDef is determinstic.
-    if optimizations_enabled:
-      optimizations_enabled.sort()
-    if optimizations_disabled:
-      optimizations_disabled.sort()
-    if optimizations_default:
-      optimizations_default.sort()
-
-    self._optimizations_enabled = convert.optional_param_to_tensor(
-        argument_name="optimizations_enabled",
-        argument_value=optimizations_enabled,
-        argument_default=[],
-        argument_dtype=dtypes.string)
-    self._optimizations_disabled = convert.optional_param_to_tensor(
-        argument_name="optimizations_disabled",
-        argument_value=optimizations_disabled,
-        argument_default=[],
-        argument_dtype=dtypes.string)
-    self._optimizations_default = convert.optional_param_to_tensor(
-        argument_name="optimizations_default",
-        argument_value=optimizations_default,
-        argument_default=[],
-        argument_dtype=dtypes.string)
-
-    variant_tensor = gen_dataset_ops.optimize_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._optimizations_enabled,
-        self._optimizations_disabled,
-        self._optimizations_default,
-        optimization_configs=optimization_configs,
-        **self._flat_structure)
-
-    super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
-
-
-# TODO(b/147325552): This class can be removed after we switch to using C++
-# based implementation for tf.data options (on 4/12/2021).
-class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, and sets a stats aggregator."""
-
-  def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
-    self._input_dataset = input_dataset
-    self._stats_aggregator = aggregator
-    self._prefix = prefix
-    self._counter_prefix = counter_prefix
-    variant_tensor = ged_ops.set_stats_aggregator_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._stats_aggregator._resource,  # pylint: disable=protected-access
-        self._prefix,
-        self._counter_prefix,
-        **self._flat_structure)
-    super(_SetStatsAggregatorDataset, self).__init__(input_dataset,
-                                                     variant_tensor)
-
-
-# TODO(b/147325552): This class can be removed after we switch to using C++
-# based implementation for tf.data options (on 4/12/2021).
-class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, overriding intra-op parallelism."""
-
-  def __init__(self, input_dataset, max_intra_op_parallelism):
-    self._input_dataset = input_dataset
-    self._max_intra_op_parallelism = ops.convert_to_tensor(
-        max_intra_op_parallelism,
-        dtype=dtypes.int64,
-        name="max_intra_op_parallelism")
-    variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._max_intra_op_parallelism,
-        **self._flat_structure)
-    super(_MaxIntraOpParallelismDataset, self).__init__(input_dataset,
-                                                        variant_tensor)
-
-
-# TODO(b/147325552): This class can be removed after we switch to using C++
-# based implementation for tf.data options (on 4/12/2021).
-class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, setting a private threadpool."""
-
-  def __init__(self, input_dataset, num_threads):
-    self._input_dataset = input_dataset
-    self._num_threads = ops.convert_to_tensor(
-        num_threads, dtype=dtypes.int64, name="num_threads")
-    variant_tensor = ged_ops.private_thread_pool_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._num_threads,
-        **self._flat_structure)
-    super(_PrivateThreadPoolDataset, self).__init__(input_dataset,
-                                                    variant_tensor)
 
 
 def normalize_to_dense(dataset):

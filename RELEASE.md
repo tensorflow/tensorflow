@@ -68,6 +68,12 @@
         skipping over exhausted datasets, until all datasets are exhausted. By
         default, the original behavior (`stop_on_empty_dataset=False`) is
         preserved.
+    *   Removed previously deprecated tf.data statistics related APIs:
+        *   `tf.data.Options.experimental_stats`
+        *   `tf.data.experimental.StatsAggregator`
+        *   `tf.data.experimental.StatsOptions.*`
+        *   `tf.data.experimental.bytes_produced_stats`
+        *   `tf.data.experimental.latency_stats`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.

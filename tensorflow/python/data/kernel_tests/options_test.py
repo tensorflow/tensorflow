@@ -26,7 +26,6 @@ from absl.testing import parameterized
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
-from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
@@ -111,13 +110,10 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options2 = dataset_ops.Options()
     self.assertIsNot(options1.experimental_optimization,
                      options2.experimental_optimization)
-    self.assertIsNot(options1.experimental_stats,
-                     options2.experimental_stats)
     self.assertIsNot(options1.experimental_threading,
                      options2.experimental_threading)
     self.assertEqual(options1.experimental_optimization,
                      optimization_options.OptimizationOptions())
-    self.assertEqual(options1.experimental_stats, stats_options.StatsOptions())
     self.assertEqual(options1.experimental_threading,
                      threading_options.ThreadingOptions())
 
