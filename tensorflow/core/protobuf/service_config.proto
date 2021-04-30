@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow.data.experimental;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
 // Configuration for a tf.data service DispatchServer.
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
