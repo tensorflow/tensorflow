@@ -46,8 +46,9 @@ class ReshapeOp : public XlaOpKernel {
     const int64 num_dims = sizes_shape.num_elements();
 
     std::vector<int64> shape_input;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
-
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntVector(
+                       1, &shape_input, xla::ValueInferenceMode::kUpperBound));
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one if there
     // is one.
