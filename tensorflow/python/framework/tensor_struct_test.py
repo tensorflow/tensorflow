@@ -30,6 +30,7 @@ from tensorflow.python.framework import struct_field
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_struct
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -886,6 +887,174 @@ class StructSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                       tensor_spec.TensorSpec([], dtypes.float32)))
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class AnonymousStructTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  @parameterized.parameters([
+      [dict(i=5, f=3.2, b=True, n=None)],
+      [dict(x=(1, 2), y={
+          3: 4,
+          5: 6
+      })],
+      [lambda: dict(t=constant_op.constant(123))],
+      [lambda: dict(r=ragged_factory_ops.constant([[1, 2], [3]]))],
+  ])
+  def testConstruction(self, fields):
+    if callable(fields):
+      fields = fields()
+    tensor_struct.AnonymousStruct(**fields)
+
+  @parameterized.parameters([
+      [dict(x=[1, 2, 3]), 'Unsupported field value'],
+      [dict(x=set([1, 2])), 'Unsupported field value'],
+      [dict(x=(1, dict([(2, [])]))), 'Unsupported field value'],
+      [dict(_tf_struct_xyz=5), "The field name '_tf_struct_xyz' is reserved"],
+  ])
+  def testConstructionErrors(self, fields, error):
+    with self.assertRaisesRegex(ValueError, error):
+      tensor_struct.AnonymousStruct(**fields)
+
+  @parameterized.parameters([
+      [dict(i=5, f=3.2, b=True, n=None)],
+      [dict(x=(1, 2), y={
+          3: 4,
+          5: 6
+      })],
+      [lambda: dict(t=constant_op.constant(123))],
+      [lambda: dict(r=ragged_factory_ops.constant([[1, 2], [3]]))],
+  ])
+  def testAttributeAccessors(self, fields):
+    if callable(fields):
+      fields = fields()
+    s = tensor_struct.AnonymousStruct(**fields)
+    for (name, value) in fields.items():
+      actual = getattr(s, name)
+      if isinstance(actual, (ops.Tensor, ragged_tensor.RaggedTensor)):
+        self.assertAllEqual(actual, value)
+      else:
+        self.assertEqual(actual, value)
+
+  def testAttributeAccessorsAreImmutable(self):
+    s = tensor_struct.AnonymousStruct(x=12, y={'x': 55})
+    with self.assertRaisesRegex(AttributeError, "cannot assign to field 'x'"):
+      s.x = 22
+    with self.assertRaisesRegex(AttributeError, "cannot delete field 'y'"):
+      del s.y
+    with self.assertRaisesRegex(TypeError, 'does not support item assignment'):
+      s.y['x'] = 66
+
+  def testReinterpretStruct(self):
+    SimpleMaskedTensor = build_simple_masked_tensor_type()
+    AdvancedMaskedTensor = build_advanced_masked_tensor_type()
+
+    x = AdvancedMaskedTensor([4, 5], [True, False])
+    anon_x = tensor_struct.reinterpret_struct(x, tensor_struct.AnonymousStruct)
+    self.assertAllEqual(anon_x.values, [4, 5])
+    self.assertAllEqual(anon_x.mask, [True, False])
+
+    round_trip_x = tensor_struct.reinterpret_struct(anon_x,
+                                                    AdvancedMaskedTensor)
+    self.assertAllEqual(round_trip_x.values, [4, 5])
+    self.assertAllEqual(round_trip_x.mask, [True, False])
+
+    converted_x = tensor_struct.reinterpret_struct(anon_x, SimpleMaskedTensor)
+    self.assertAllEqual(converted_x.values, [4, 5])
+    self.assertAllEqual(converted_x.mask, [True, False])
+
+  # pylint: disable=g-long-lambda
+  @parameterized.parameters([
+      [
+          lambda: tensor_struct.AnonymousStruct(
+              values=constant_op.constant([1, 2, 3])),
+          build_advanced_masked_tensor_type(),
+          "Missing required fields: {'mask'}"
+      ],
+      [
+          lambda: tensor_struct.AnonymousStruct(values=(1, 2, 3), mask=None),
+          build_advanced_masked_tensor_type(),
+          'mask: expected a tf.bool Tensor, got None'
+      ],
+      [
+          lambda: tensor_struct.AnonymousStruct(
+              values=constant_op.constant([[1, 2], [3, 4]]),
+              mask=ragged_factory_ops.constant([[1, 2], [3]])),
+          build_advanced_masked_tensor_type(), 'mask: expected a tf.bool Tensor'
+      ],
+      [
+          lambda: tensor_struct.AnonymousStruct(
+              values=constant_op.constant([1, 2, 3]),
+              mask=constant_op.constant([True, False])),
+          build_advanced_masked_tensor_type(), 'Shapes .* are incompatible'
+      ],
+      [
+          lambda: tensor_struct.AnonymousStruct(
+              values=constant_op.constant([1, 2, 3])), ops.Tensor,
+          'Expected `new_type` to be a subclass of tf.Struct'
+      ],
+      [
+          lambda: constant_op.constant([1, 2, 3]),
+          tensor_struct.AnonymousStruct, 'Expected `struct` to be a tf.Struct'
+      ],
+  ])
+  def testReinterpretStructErrors(self, struct, new_type, error):
+    if callable(struct):
+      struct = struct()
+    with self.assertRaisesRegex((TypeError, ValueError), error):
+      tensor_struct.reinterpret_struct(struct, new_type)
+
+  def testLoadSavedModelWithUnregisteredStruct(self):
+    MaskedTensor = build_simple_masked_tensor_type()
+
+    def f(x, y):
+      x_values = x.values if isinstance(x, MaskedTensor) else x
+      y_values = y.values if isinstance(y, MaskedTensor) else y
+      x_mask = x.mask if isinstance(x, MaskedTensor) else True
+      y_mask = y.mask if isinstance(y, MaskedTensor) else True
+      return MaskedTensor(x_values + y_values, x_mask & y_mask)
+
+    t_spec = tensor_spec.TensorSpec(None, dtypes.int32)
+    b_spec = tensor_spec.TensorSpec(None, dtypes.bool)
+    mt_spec = MaskedTensor.Spec(values=t_spec, mask=b_spec)
+    model = module.Module()
+    model.f = def_function.function(f)
+    model.f.get_concrete_function(t_spec, t_spec)
+    model.f.get_concrete_function(t_spec, mt_spec)
+    model.f.get_concrete_function(mt_spec, t_spec)
+    model.f.get_concrete_function(mt_spec, mt_spec)
+
+    path = tempfile.mkdtemp(prefix=test.get_temp_dir())
+    with temporarily_register_type_spec('tf.test.MaskedTensor.Spec',
+                                        MaskedTensor.Spec):
+      save.save(model, path)
+    loaded_model = load.load(path)
+
+    with self.assertRaises(ValueError):
+      type_spec.lookup('tf.test.MaskedTensor')
+
+    t = constant_op.constant([10, 20, 30])
+    v1 = loaded_model.f(t, t)
+    self.assertIsInstance(v1, tensor_struct.AnonymousStruct)
+    self.assertAllEqual(v1.values, [20, 40, 60])
+    self.assertAllEqual(v1.mask, True)
+
+    v2 = loaded_model.f(v1, v1)
+    self.assertIsInstance(v2, tensor_struct.AnonymousStruct)
+    self.assertAllEqual(v2.values, [40, 80, 120])
+    self.assertAllEqual(v2.mask, True)
+
+    mt = MaskedTensor([1, 2, 3], [True, True, False])
+    v3 = loaded_model.f(
+        t, tensor_struct.reinterpret_struct(mt, tensor_struct.AnonymousStruct))
+    self.assertIsInstance(v3, tensor_struct.AnonymousStruct)
+    self.assertAllEqual(v3.values, [11, 22, 33])
+    self.assertAllEqual(v3.mask, [True, True, False])
+
+    v4 = tensor_struct.reinterpret_struct(v3, MaskedTensor)
+    self.assertIsInstance(v4, MaskedTensor)
+    self.assertAllEqual(v4.values, [11, 22, 33])
+    self.assertAllEqual(v4.mask, [True, True, False])
+
+
 def replace_tensors_with_placeholders(value):
 
   def repl(x):
@@ -904,6 +1073,15 @@ def temporarily_add_dispatch(op, typ, fn):
   yield
   assert len(op._tf_dispatchers) == n + 1
   del op._tf_dispatchers[-1]
+
+
+@contextlib.contextmanager
+def temporarily_register_type_spec(name, cls):
+  """Context manager for making temporary changes to the TypeSpec registry."""
+  type_spec.register(name)(cls)
+  yield
+  assert type_spec._TYPE_SPEC_TO_NAME.pop(cls) == name
+  assert type_spec._NAME_TO_TYPE_SPEC.pop(name) is cls
 
 
 if __name__ == '__main__':
