@@ -182,7 +182,7 @@ class Ones(Initializer):
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
     dtype = _get_dtype(dtype)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -299,7 +299,7 @@ class RandomUniform(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -375,7 +375,7 @@ class RandomNormal(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -454,7 +454,7 @@ class TruncatedNormal(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -559,7 +559,7 @@ class VarianceScaling(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -675,7 +675,7 @@ class Orthogonal(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs, support_partition=False)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
@@ -756,7 +756,7 @@ class Identity(Initializer):
       **kwargs: Additional keyword arguments.
     """
     _validate_kwargs(self.__class__.__name__, kwargs, support_partition=False)
-    is_complex = dtype.is_complex
+    is_complex = dtype is not None and dtype.is_complex
 
     if is_complex:
       if dtype == dtypes.complex64:
