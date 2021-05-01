@@ -399,6 +399,7 @@ class Traceback:
 
 def make_python_traceback(tb_next: Optional[Any], tb_frame: Any, tb_lasti: int,
                           tb_lineno: int) -> Any: ...
+def replace_thread_exc_traceback(traceback: Any): ...
 
 # === END py_traceback.cc
 

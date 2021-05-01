@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/traceback.h"
 
+#include <stdexcept>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pytypes.h"
@@ -168,6 +170,46 @@ void BuildTracebackSubmodule(py::module& m) {
 #if PY_VERSION_HEX < 0x03070000
   m.def("make_python_traceback", &MakePythonTraceback, py::arg("tb_next"),
         py::arg("tb_frame"), py::arg("tb_lasti"), py::arg("tb_lineno"));
+#endif  // PY_VERSION_HEX < 0x3070000
+
+  // This function replaces the exception traceback associated with the current
+  // Python thread.
+#if PY_VERSION_HEX < 0x03070000
+  m.def(
+      "replace_thread_exc_traceback",
+      [](py::object tb) {
+        if (!PyTraceBack_Check(tb.ptr())) {
+          throw std::runtime_error("argument must be a traceback object");
+        }
+        PyThreadState* thread_state = PyThreadState_Get();
+        if (!thread_state->exc_traceback) {
+          throw std::runtime_error(
+              "Current thread does not have an active "
+              "exception traceback");
+        }
+        PyObject* old_exc_traceback = thread_state->exc_traceback;
+        thread_state->exc_traceback = tb.release().ptr();
+        Py_XDECREF(old_exc_traceback);
+      },
+      py::arg("traceback"));
+#else   // PY_VERSION_HEX < 0x3070000
+  m.def(
+      "replace_thread_exc_traceback",
+      [](py::object tb) {
+        if (!PyTraceBack_Check(tb.ptr())) {
+          throw std::runtime_error("argument must be a traceback object");
+        }
+        PyThreadState* thread_state = PyThreadState_Get();
+        if (!thread_state->exc_info->exc_traceback) {
+          throw std::runtime_error(
+              "Current thread does not have an active "
+              "exception traceback");
+        }
+        PyObject* old_exc_traceback = thread_state->exc_info->exc_traceback;
+        thread_state->exc_info->exc_traceback = tb.release().ptr();
+        Py_XDECREF(old_exc_traceback);
+      },
+      py::arg("traceback"));
 #endif  // PY_VERSION_HEX < 0x3070000
 }
 
