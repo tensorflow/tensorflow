@@ -233,13 +233,13 @@ class Conv(Layer):
 
     # Check if output shapes are valid
     # They must not have 0 entries along any dimension
-    # Check if first or last dimension is number of channels 
+    # Check dimensions other than batch and channel, must be greater than 0
     if self._channels_first:
-      for idx,dimension in enumerate(input_shape.as_list()[2:]):
+      for idx, dimension in enumerate(input_shape.as_list()[2:]):
         self._check_invalid_dimension(dimension, idx)
 
     else:
-      for idx,dimension in enumerate(input_shape.as_list()[1:-1]):
+      for idx, dimension in enumerate(input_shape.as_list()[1:-1]):
         self._check_invalid_dimension(dimension, idx)
 
     self._convolution_op = functools.partial(
