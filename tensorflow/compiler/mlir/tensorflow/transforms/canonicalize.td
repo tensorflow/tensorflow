@@ -73,11 +73,10 @@ def AddV2TransDistr : Pat<(TF_AddV2Op (TF_TransposeOp $tensor0, $perm0),
 def ApproximateEqualTransDistr : Pat<(TF_ApproximateEqualOp 
                                       (TF_TransposeOp $tensor0, $perm0),
                                       (TF_TransposeOp $tensor1, $perm1),
-                                      (TF_TransposeOp $tolerance, $perm2)),
-                          (TF_TransposeOp (TF_ApproximateEqualOp $tensor0, $tensor1, $tolerance),
+                                      $threshold),
+                          (TF_TransposeOp (TF_ApproximateEqualOp $tensor0, $tensor1, $threshold),
                                           $perm0),
-                          [(PermutationsAreEqual $perm0, $perm1),
-                           (PermutationsAreEqual $perm1, $perm2)]>;
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
 
 //===----------------------------------------------------------------------===//
 // BatchMatMul op patterns.

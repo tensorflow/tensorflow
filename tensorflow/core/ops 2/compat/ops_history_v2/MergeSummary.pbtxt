@@ -1,0 +1,18 @@
+op {
+  name: "MergeSummary"
+  input_arg {
+    name: "inputs"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

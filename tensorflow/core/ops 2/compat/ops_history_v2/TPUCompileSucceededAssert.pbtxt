@@ -1,0 +1,8 @@
+op {
+  name: "TPUCompileSucceededAssert"
+  input_arg {
+    name: "compilation_status"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

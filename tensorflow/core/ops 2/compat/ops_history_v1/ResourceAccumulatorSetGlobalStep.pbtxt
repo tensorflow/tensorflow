@@ -1,0 +1,12 @@
+op {
+  name: "ResourceAccumulatorSetGlobalStep"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "new_global_step"
+    type: DT_INT64
+  }
+  is_stateful: true
+}

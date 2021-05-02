@@ -1,0 +1,24 @@
+op {
+  name: "TemporaryVariable"
+  output_arg {
+    name: "ref"
+    type_attr: "dtype"
+    is_ref: true
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "var_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

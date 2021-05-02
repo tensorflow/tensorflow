@@ -135,7 +135,7 @@ static LogicalResult Verify(AnyOp op) {
 
 void ApproximateEqualOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ApproximateEqualOpTransDistr>(context);
+  results.insert<ApproximateEqualTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2948,7 +2948,7 @@ void MinimumOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ModOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<ModOpTransDistr>(context);
+  results.insert<ModTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//

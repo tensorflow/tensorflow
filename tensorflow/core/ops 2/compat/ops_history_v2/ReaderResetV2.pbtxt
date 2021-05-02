@@ -1,0 +1,8 @@
+op {
+  name: "ReaderResetV2"
+  input_arg {
+    name: "reader_handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

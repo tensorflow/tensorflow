@@ -1,0 +1,45 @@
+op {
+  name: "LogSoftmax"
+  input_arg {
+    name: "logits"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "logsoftmax"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "LogSoftmax"
+  input_arg {
+    name: "logits"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "logsoftmax"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

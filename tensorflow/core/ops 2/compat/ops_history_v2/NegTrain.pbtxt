@@ -1,0 +1,37 @@
+op {
+  name: "NegTrain"
+  input_arg {
+    name: "w_in"
+    type: DT_FLOAT
+    is_ref: true
+  }
+  input_arg {
+    name: "w_out"
+    type: DT_FLOAT
+    is_ref: true
+  }
+  input_arg {
+    name: "examples"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "labels"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "lr"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "vocab_count"
+    type: "list(int)"
+  }
+  attr {
+    name: "num_negative_samples"
+    type: "int"
+  }
+  deprecation {
+    version: 19
+  }
+  is_stateful: true
+}

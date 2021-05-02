@@ -1,0 +1,23 @@
+op {
+  name: "ConcatOffset"
+  input_arg {
+    name: "concat_dim"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "shape"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  output_arg {
+    name: "offset"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+}

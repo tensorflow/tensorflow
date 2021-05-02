@@ -1,0 +1,11 @@
+op {
+  name: "DecodeGif"
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "image"
+    type: DT_UINT8
+  }
+}

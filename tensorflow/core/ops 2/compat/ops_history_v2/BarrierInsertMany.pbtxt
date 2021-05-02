@@ -1,0 +1,24 @@
+op {
+  name: "BarrierInsertMany"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "component_index"
+    type: "int"
+  }
+}
