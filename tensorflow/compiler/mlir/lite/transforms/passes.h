@@ -61,6 +61,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops);
 
+// Creates an instance of the TensorFlow Lite optimize op order pass.
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass();
+
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(

@@ -102,11 +102,15 @@ class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating a tflite model.
 
   DEFAULT
-      Default optimization strategy that quantizes model weights. Enhanced
-      optimizations are gained by providing a representative dataset that
-      quantizes biases and activations as well.
-      Converter will do its best to reduce size and latency, while minimizing
-      the loss in accuracy.
+      Default optimization strategy.
+
+      When enabled, converter quantizes static tensors (weights, bias etc).
+
+      Enhanced optimizations are gained by providing representative_dataset in
+      the converter so activations are quantized as well.
+
+      In any case, converter will do its best to reduce size and latency, while
+      minimizing the loss in accuracy from optimization.
 
   OPTIMIZE_FOR_SIZE
       Deprecated. Does the same as DEFAULT.

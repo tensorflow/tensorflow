@@ -1725,6 +1725,28 @@ cc_library(
 )
 
 cc_library(
+    name = "MlirLspServerLib",
+    srcs = glob(
+        [
+            "lib/Tools/mlir-lsp-server/*.cpp",
+            "lib/Tools/mlir-lsp-server/*.h",
+            "lib/Tools/mlir-lsp-server/lsp/*.cpp",
+            "lib/Tools/mlir-lsp-server/lsp/*.h",
+        ],
+    ),
+    hdrs = glob(
+        ["include/mlir/Tools/mlir-lsp-server/*.h"],
+    ),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ParserTokenKinds",
     # strip_include_prefix does not apply to textual_hdrs.
     hdrs = ["lib/Parser/TokenKinds.def"],
@@ -1738,7 +1760,11 @@ cc_library(
         "lib/Parser/*.cpp",
         "lib/Parser/*.h",
     ]),
-    hdrs = ["include/mlir/Parser.h"],
+    hdrs = glob([
+        "include/mlir/Parser/*.h",
+    ]) + [
+        "include/mlir/Parser.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -4136,6 +4162,17 @@ alias(
     name = "AllPassesAndDialectsNoRegistration",
     actual = ":AllPassesAndDialects",
     deprecation = "Use AllPassesAndDialects instead",
+)
+
+cc_binary(
+    name = "mlir-lsp-server",
+    srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialects",
+        ":IR",
+        ":MlirLspServerLib",
+    ],
 )
 
 cc_binary(

@@ -433,7 +433,9 @@ def exponential(x):
 def hard_sigmoid(x):
   """Hard sigmoid activation function.
 
-  A faster approximation of the sigmoid activation.
+  A faster approximation of the sigmoid activation. 
+  Piecewise linear approximation of the sigmoid function.
+  Ref: 'https://en.wikipedia.org/wiki/Hard_sigmoid'
 
   For example:
 

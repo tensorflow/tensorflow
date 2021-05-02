@@ -46,13 +46,6 @@ struct FetchConstantMinMaxInputs {
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
     Value min = tf_op.min(), max = tf_op.max();
-
-    // TODO(fengliuai): incomplete  neither IdentityN ops
-    // nor chains of Identity* (not rare) are handled
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
-      min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
-      max = id2.input();
     if (!matchPattern(min, m_Constant(&min_value))) {
       return false;
     }
@@ -98,9 +91,6 @@ struct FetchConstantMinMaxInputs {
 //                   |
 //             tf.FakeQuant*
 //
-// tf.identity / tf.IdentityN between the tf.FakeQuant* ops
-// need no special treatment are already eliminated before the rewrites / check
-// is applied.
 template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
 class InsertTFLQuantOpsAfterTFFakeQuantOp {
  public:

@@ -1087,7 +1087,7 @@ def tf_cc_test(
         linkstatic = 0,
         extra_copts = [],
         suffix = "",
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         kernels = [],
         **kwargs):
     cc_test(

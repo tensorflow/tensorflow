@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <queue>
+#include <stack>
 
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/None.h"

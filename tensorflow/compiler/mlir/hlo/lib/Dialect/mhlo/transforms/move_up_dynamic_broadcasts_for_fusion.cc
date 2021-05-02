@@ -305,6 +305,31 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
   }
 };
 
+// Eliminate casted extent tensors. Instead, produce the concrete extent tensor
+// type where possible.
+struct CanonicalizeCastedShapeOfOpPattern
+    : public OpRewritePattern<tensor::CastOp> {
+  using OpRewritePattern<tensor::CastOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::CastOp op,
+                                PatternRewriter &rewriter) const override {
+    // Only merge tensor cast into `shape_of` ops.
+    auto shape_of_op = op.source().getDefiningOp<shape::ShapeOfOp>();
+    if (!shape_of_op) return failure();
+
+    // Desired type must be an extent tensor type.
+    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty || result_ty.getRank() != 1 ||
+        !result_ty.getElementType().isIndex())
+      return failure();
+
+    rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(op, result_ty,
+                                                  shape_of_op.arg());
+    if (shape_of_op->getUses().empty()) rewriter.eraseOp(shape_of_op);
+    return success();
+  }
+};
+
 // TODO(frgossen): Only move up broadcasting operations if there is a consumer.
 struct MoveUpBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
@@ -376,6 +401,7 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      CanonicalizeCastedShapeOfOpPattern,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveIntoAssumingOpPattern<shape::ShapeOfOp>,

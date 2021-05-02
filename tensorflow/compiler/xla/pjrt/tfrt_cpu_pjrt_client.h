@@ -618,6 +618,10 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
+
+  // Cached result of comparing HloCostAnalysis FLOP estimate for execute
+  // critical path.
+  bool cheap_computation_;
 };
 
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
