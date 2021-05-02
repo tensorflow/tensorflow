@@ -28,6 +28,7 @@ import json
 import os
 import re
 import time
+import shutil
 
 import numpy as np
 import six
@@ -2392,7 +2393,9 @@ class CSVLogger(Callback):
     self.filename = path_to_string(filename)
     self.append = append
     self.log_all = log_all
-    self._row_dicts = []
+    self.starting_pos = 0
+    self.header_pos = 0
+    self.backup_file_name = self.filename + ".tf_backup"
     self.writer = None
     self.keys = None
     self.append_header = True
@@ -2409,9 +2412,17 @@ class CSVLogger(Callback):
       if file_io.file_exists(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
+          self._starting_pos = f.tell()
       mode = 'a'
     else:
       mode = 'w'
+
+    # If we want to log all, then we need to be able to read the file as well
+    # in case we need to adjust previous writes. See call to
+    # self.adjust_csv_file_columns below.
+    if self.log_all:
+      mode += '+'
+
     self.csv_file = io.open(self.filename,
                             mode + self.file_flags,
                             **self._open_args)
@@ -2431,53 +2442,117 @@ class CSVLogger(Callback):
     if self.keys is None:
       self.keys = sorted(logs.keys())
     elif self.log_all and len(self.keys) < len(logs.keys()):
-      # have to make a new writer to accommodate for the new keys
-      self.keys = sorted(logs.keys())
-      self.writer = None
+      # If the user wants to log all, then it is possible at some point that
+      # we may have more keys than previous writes. So we have to adjust the
+      # lines written previously to accomodate for the new keys
+      # (put them as empty strings).
+      self.adjust_csv_file_columns(logs.keys())
 
     if self.model.stop_training:
       # We set NA so that csv parsers do not fail for this last epoch.
       logs = dict((k, logs[k]) if k in logs else (k, 'NA') for k in self.keys)
 
+    # Create a writer if we don't have one.
     if not self.writer:
-
-      class CustomDialect(csv.excel):
-        delimiter = self.sep
-
-      fieldnames = ['epoch'] + self.keys
-      if six.PY2:
-        fieldnames = [unicode(x) for x in fieldnames]
-
-      self.writer = csv.DictWriter(
-          self.csv_file,
-          fieldnames=fieldnames,
-          dialect=CustomDialect)
-      # if user wants to log all, then we append_header
-      # at the end of training
-      if self.append_header and not self.log_all:
+      self.writer = self.create_csv_dict(self.csv_file, dict_type="writer")
+      if self.append_header:
+        self.header_pos = self.csv_file.tell()
         self.writer.writeheader()
+        self.csv_file.flush()
+        self.starting_pos = self.csv_file.tell()
 
     row_dict = collections.OrderedDict({'epoch': epoch})
     row_dict.update((key, handle_value(logs[key]))
                     for key in self.keys if key in logs)
-    # if user wants to log all, then we write all rows to csv file
-    # at the end of training
-    if not self.log_all:
-      self.writer.writerow(row_dict)
-      self.csv_file.flush()
-    else:
-      self._row_dicts.append(row_dict)
+    self.writer.writerow(row_dict)
+    self.csv_file.flush()
 
   def on_train_end(self, logs=None):
-    if self.log_all:
-      if self.append_header:
-        self.writer.writeheader()
-      self.writer.writerows(self._row_dicts)
-      self._row_dicts = []
-      self.csv_file.flush()
-
     self.csv_file.close()
     self.writer = None
+
+  def create_csv_dict(self, file, dict_type="writer"):
+    """
+    Create a CSV dict writer or reader.
+    """
+    class CustomDialect(csv.excel):
+      delimiter = self.sep
+
+    fieldnames = ['epoch'] + self.keys
+    if six.PY2:
+      fieldnames = [unicode(x) for x in fieldnames]
+
+    if dict_type and dict_type == "reader":
+      return csv.DictReader(file, fieldnames=fieldnames, dialect=CustomDialect)
+    else:
+      return csv.DictWriter(file, fieldnames=fieldnames, dialect=CustomDialect)
+
+  def adjust_csv_file_columns(self, columns):
+    """
+    This will adjust previous columns in the csv file starting from the
+    starting pos.
+    """
+    # Have to make a new writer to accommodate for the new keys.
+    curr_file_name = path_to_string(self.csv_file.name)
+
+    # Create a temp file with the same contents as current file. We will
+    # overwrite this temp file while reading from current file.
+    temp_file_name = curr_file_name + ".tf_temp_file"
+    try:
+      # Create a backup file for current csv file.
+      shutil.copyfile(curr_file_name, self.backup_file_name)
+      temp_file = io.open(temp_file_name, "w" +
+                          self.file_flags, **self._open_args)
+      shutil.copyfile(curr_file_name, temp_file_name)
+    except (IOError, ValueError) as e:
+      logging.warning('Got exception in CSVLogger callback,'
+                      'in adjust_csv_file_columns (1): %s',
+                      str(e))
+      return
+
+    # Assign writer to temp file, we will rename to curr file after.
+    self.keys = sorted(columns)
+    self.writer = self.create_csv_dict(file=temp_file, dict_type="writer")
+
+    # Make a reader for the current file.
+    reader = self.create_csv_dict(file=self.csv_file, dict_type="reader")
+
+    # Read from current file, adjust lines, and then write to temp file.
+    self.csv_file.seek(self.starting_pos)
+    if self.append_header:
+      temp_file.seek(self.header_pos)
+      self.writer.writeheader()
+      temp_file.flush()
+      self.starting_pos = temp_file.tell()
+    temp_file.seek(self.starting_pos)
+
+    for line in reader:
+      row_dict = collections.OrderedDict({'epoch': line['epoch']})
+      row_dict.update((key, line.get(key, '')) for key in columns)
+      self.writer.writerow(row_dict)
+      temp_file.flush()
+
+    # 1. Close temp file.
+    # 2. Rename temp file to current csv file name.
+    # 3. Delete backup csv file.
+    # 4. Close current csv file.
+    try:
+      temp_file.close()
+      shutil.move(temp_file_name, curr_file_name)
+      os.remove(self.backup_file_name)
+      self.csv_file.close()
+    except (IOError, ValueError) as e:
+      logging.warning('Got exception in CSVLogger callback,'
+                      'in adjust_csv_file_columns (2): %s',
+                      str(e))
+      return
+
+    # Open current csv file again with append only now since we've written
+    # data into the file already.
+    self.csv_file = io.open(self.filename,
+                            "a+" + self.file_flags,
+                            **self._open_args)
+    self.writer = self.create_csv_dict(file=self.csv_file, dict_type="writer")
 
 
 @keras_export('keras.callbacks.LambdaCallback')
