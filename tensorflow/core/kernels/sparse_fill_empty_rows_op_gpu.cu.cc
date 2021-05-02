@@ -184,9 +184,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       Tindex* output_indices;
       T* output_values;
       Tindex* reverse_index_map;
-      TF_RETURN_IF_ERROR(AllocateOutputs(context, N, rank, /*num_empty_rows=*/0,
-                                         &output_indices, &output_values,
-                                         &reverse_index_map));
+      TF_RETURN_IF_ERROR(AllocateOutputsExceptEmptyRowIndicator(
+          context, N, rank, /*num_empty_rows=*/0, &output_indices,
+          &output_values, &reverse_index_map));
       if (context->output_required(kEmptyRowIndicatorOutput)) {
         Tensor* unused = nullptr;
         TF_RETURN_IF_ERROR(context->allocate_output(kEmptyRowIndicatorOutput,
@@ -369,8 +369,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       Tindex* reverse_index_map;
       OP_REQUIRES_OK_ASYNC(
           context,
-          AllocateOutputs(context, N, rank, num_empty_rows, &output_indices,
-                          &output_values, &reverse_index_map),
+          AllocateOutputsExceptEmptyRowIndicator(
+              context, N, rank, num_empty_rows, &output_indices, &output_values,
+              &reverse_index_map),
           done);
 
       const GPUDevice& device = context->eigen_device<GPUDevice>();
@@ -415,9 +416,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
   }
 
  private:
-  Status AllocateOutputs(OpKernelContext* context, Tindex N, int rank,
-                         Tindex num_empty_rows, Tindex** output_indices,
-                         T** output_values, Tindex** reverse_index_map) {
+  Status AllocateOutputsExceptEmptyRowIndicator(
+      OpKernelContext* context, Tindex N, int rank, Tindex num_empty_rows,
+      Tindex** output_indices, T** output_values, Tindex** reverse_index_map) {
     Tensor* output_indices_t;
     const Tindex N_full = N + num_empty_rows;
     TensorShape output_indices_shape({N_full, rank});
