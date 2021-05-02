@@ -26,6 +26,7 @@ import sys
 import time
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
@@ -883,6 +884,24 @@ class Callback:
           but that may change in the future.
     """
 
+  @classmethod
+  def from_config(cls, config):
+    """Instantiates a `Callback` from its config (output of `get_config()`).
+
+    Args:
+        config: Output of `get_config()`.
+
+    Returns:
+        A `Callback` instance.
+    """
+    return cls(**config)
+
+  def get_config(self):
+    """Returns the serializable config of the callback."""
+    return {'validation_data': self.validation_data,
+            'model': self.model,
+            'chief_worker_only': self._chief_worker_only}
+
   def _implements_train_batch_hooks(self):
     """Determines if this Callback should be called for each train batch."""
     return (not generic_utils.is_default(self.on_batch_begin) or
@@ -949,6 +968,9 @@ class BaseLogger(Callback):
           else:
             logs[k] = self.totals[k] / self.seen
 
+  def get_config(self):
+    return {'stateful_metrics': self.stateful_metrics}
+
 
 @keras_export('keras.callbacks.TerminateOnNaN')
 class TerminateOnNaN(Callback):
@@ -967,6 +989,9 @@ class TerminateOnNaN(Callback):
       if np.isnan(loss) or np.isinf(loss):
         print('Batch %d: Invalid loss, terminating training' % (batch))
         self.model.stop_training = True
+
+  def get_config(self):
+    return {}
 
 
 @keras_export('keras.callbacks.ProgbarLogger')
@@ -1135,6 +1160,10 @@ class ProgbarLogger(Callback):
       self.progbar.target = self.target
     self.progbar.update(self.target, list(logs.items()), finalize=True)
 
+  def get_config(self):
+    return {'count_mode': self.count_mode,
+            'stateful_metrics': self.stateful_metrics}
+
 
 @keras_export('keras.callbacks.History')
 class History(Callback):
@@ -1174,6 +1203,9 @@ class History(Callback):
     # Set the history attribute on the model after the epoch ends. This will
     # make sure that the state which is set is the latest one.
     self.model.history = self
+
+  def get_config(self):
+    return {}
 
 
 @keras_export('keras.callbacks.ModelCheckpoint')
@@ -1298,6 +1330,7 @@ class ModelCheckpoint(Callback):
     self.epochs_since_last_save = 0
     self._batches_seen_since_last_saving = 0
     self._last_batch_seen = 0
+    self._fn_kwargs = kwargs
 
     if save_weights_only:
       if options is None or isinstance(
@@ -1390,6 +1423,19 @@ class ModelCheckpoint(Callback):
     # pylint: disable=protected-access
     if self.save_freq == 'epoch':
       self._save_model(epoch=epoch, logs=logs)
+
+  def get_config(self):
+    config = {'filepath': self.filepath,
+              'monitor': self.monitor,
+              'verbose': self.verbose,
+              'save_best_only': self.save_best_only,
+              'save_weights_only': self.save_weights_only,
+              'mode': self.mode,
+              'save_freq': self.save_freq}
+
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = v
+    return config
 
   def _should_save_on_batch(self, batch):
     """Handles batch-level saving logic, supports steps_per_execution."""
@@ -1702,6 +1748,10 @@ class BackupAndRestore(Callback):
     # Back up the model and current epoch for possible future recovery.
     self._training_state.back_up(epoch)
 
+  def get_config(self):
+    config = {'backup_dir': self.backup_dir}
+    return config
+
 
 @keras_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
@@ -1843,6 +1893,16 @@ class EarlyStopping(Callback):
                       self.monitor, ','.join(list(logs.keys())))
     return monitor_value
 
+  def get_config(self):
+    config = {'monitor': self.monitor,
+              'min_delta': self.min_delta,
+              'patience': self.patience,
+              'verbose': self.verbose,
+              'mode': self.mode,
+              'baseline': self.baseline,
+              'restore_best_weights': self.restore_best_weights}
+    return config
+
   def _is_improvement(self, monitor_value, reference_value):
     return self.monitor_op(monitor_value - self.min_delta, reference_value)
 
@@ -1909,6 +1969,14 @@ class RemoteMonitor(Callback):
       logging.warning('Warning: could not reach RemoteMonitor '
                       'root server at ' + str(self.root))
 
+  def get_config(self):
+    config = {'root': self.root,
+              'path': self.path,
+              'field': self.field,
+              'headers': self.headers,
+              'send_as_json': self.send_as_json}
+    return config
+
 
 @keras_export('keras.callbacks.LearningRateScheduler')
 class LearningRateScheduler(Callback):
@@ -1974,6 +2042,9 @@ class LearningRateScheduler(Callback):
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
     logs['lr'] = backend.get_value(self.model.optimizer.lr)
+
+  def get_config(self):
+    return {'schedule': self.schedule, 'verbose': self.schedule}
 
 
 def keras_model_summary(name, data, step=None):
@@ -2180,6 +2251,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._previous_epoch_iterations = 0
     self._train_accumulated_time = 0
     self._batch_start_time = 0
+    self._fn_kwargs = kwargs
 
     # Lazily initialized in order to avoid creating event files when
     # not needed.
@@ -2464,6 +2536,20 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.embeddings_freq and epoch % self.embeddings_freq == 0:
       self._log_embeddings(epoch)
 
+  def get_config(self):
+    config = {'log_dir': self.log_dir,
+              'histogram_freq': self.histogram_freq,
+              'write_graph': self.write_graph,
+              'write_images': self.write_images,
+              'write_steps_per_second': self.write_steps_per_second,
+              'update_freq': self.update_freq,
+              'profile_batch': self._profile_batch,
+              'embeddings_freq': self.embeddings_freq,
+              'embeddings_metadata': self.embeddings_metadata}
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = v
+    return config
+
   def _start_trace(self):
     summary_ops_v2.trace_on(graph=True, profiler=False)
     self._start_profiler(logdir=self._train_dir)
@@ -2659,6 +2745,7 @@ class ReduceLROnPlateau(Callback):
     self.best = 0
     self.mode = mode
     self.monitor_op = None
+    self._fn_kwargs = kwargs
     self._reset()
 
   def _reset(self):
@@ -2714,6 +2801,19 @@ class ReduceLROnPlateau(Callback):
 
   def in_cooldown(self):
     return self.cooldown_counter > 0
+
+  def get_config(self):
+    config = {'monitor': self.monitor,
+              'factor': self.factor,
+              'patience': self.patience,
+              'verbose': self.verbose,
+              'mode': self.mode,
+              'min_delta': self.min_delta,
+              'cooldown': self.cooldown,
+              'min_lr': self.min_lr}
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = v
+    return config
 
 
 @keras_export('keras.callbacks.CSVLogger')
@@ -2797,6 +2897,12 @@ class CSVLogger(Callback):
   def on_train_end(self, logs=None):
     self.csv_file.close()
     self.writer = None
+
+  def get_config(self):
+    config = {'filename': self.filename,
+              'separator': self.sep,
+              'append': self.append}
+    return config
 
 
 @keras_export('keras.callbacks.LambdaCallback')
