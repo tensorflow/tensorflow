@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,7 +42,7 @@ struct MemcpyDetails {
 
 struct MemsetDetails {
   // The number of memory elements getting set
-  size_t num_elements;
+  size_t num_bytes;
   // Whether or not the memset is asynchronous.
   bool async;
 };
@@ -70,6 +71,15 @@ struct KernelDetails {
   uint64 grid_y;
   // Z-dimension of a grid.
   uint64 grid_z;
+
+  //kernel address. Used for calculating core occuoancy
+  void* func_ptr;
+};
+
+// RocmTracerSyncTypes forward decleration
+enum class RocmTracerSyncTypes;
+struct SynchronizationDetails{
+  RocmTracerSyncTypes sync_type;
 };
 
 //TODO(rocm-profiler): do we support other event types such as memfree in CUPTI? 
@@ -82,23 +92,32 @@ enum class RocmTracerEventType {
   MemcpyP2P,
   MemcpyOther,
   MemoryAlloc,
+  MemoryFree,
   Memset,
-  StreamSynchronize,
+  Synchronization,
   Generic,
 };
 
 const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type);
 
 enum class RocmTracerEventSource {
-  ApiCallback = 0,
+  Invalid = 0,
+  ApiCallback,
   Activity,
 };
 
 const char* GetRocmTracerEventSourceName(const RocmTracerEventSource& source);
 
 enum class RocmTracerEventDomain {
-  HIP_API = 0,
-  HCC_OPS,
+  InvalidDomain = 0,
+  HIP_API,
+  HCC_OPS, //TODO(reza): renme this to HIP_OPS
+};
+enum class RocmTracerSyncTypes{
+  InvalidSync = 0,
+  StreamSynchronize,  // caller thread wait stream to become empty
+  EventSynchronize,  // caller thread will block until event happens
+  StreamWait  // compute stream will wait for event to happen
 };
 
 const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain);
@@ -113,15 +132,15 @@ struct RocmTracerEvent {
   static constexpr uint64 kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
   RocmTracerEventType type;
-  RocmTracerEventSource source;
+  RocmTracerEventSource source = RocmTracerEventSource::Invalid;
   RocmTracerEventDomain domain;
   std::string name;
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
   absl::string_view roctx_range;
-  uint64 start_time_ns;
-  uint64 end_time_ns;
+  uint64 start_time_ns = 0;
+  uint64 end_time_ns = 0;
   uint32 device_id = kInvalidDeviceId;
   uint32 correlation_id = kInvalidCorrelationId;
   uint32 thread_id = kInvalidThreadId;
@@ -131,13 +150,18 @@ struct RocmTracerEvent {
     MemsetDetails memset_info;      // If type == Memset*
     MemAllocDetails memalloc_info;  // If type == MemoryAlloc
     KernelDetails kernel_info;      // If type == Kernel
+    SynchronizationDetails synchronization_info;      // If type == Synchronization
   };
 };
 
 void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
-                         uint64 start_gputime_ns);
+                         uint64 start_gputime_ns, const string& message);
 
 struct RocmTracerOptions {
+  //TODO(reza): write comment here. (this is for tracing the api we actually track)
+  //TODO(reza): can you use an array instead?
+  std::set<uint32_t> api_tracking_set;
+
   // map of domain --> ops for which we need to enable the API callbacks
   // If the ops vector is empty, then enable API callbacks for entire domain
   std::map<activity_domain_t, std::vector<uint32_t> > api_callbacks;
@@ -188,7 +212,7 @@ class RocmTraceCollector {
       : options_(options), annotation_map_(options.max_annotation_strings) {}
   virtual ~RocmTraceCollector() {}
 
-  virtual void AddEvent(RocmTracerEvent&& event) = 0;
+  virtual void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) = 0;
   virtual void OnEventsDropped(const std::string& reason,
                                uint32 num_events) = 0;
   virtual void Flush() = 0;

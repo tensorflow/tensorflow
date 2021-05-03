@@ -79,7 +79,8 @@ namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
   __macro(roctracer_get_timestamp)			\
   __macro(roctracer_op_string)				\
   __macro(roctracer_open_pool_expl)			\
-  __macro(roctracer_set_properties)
+  __macro(roctracer_set_properties)     \
+  __macro(roctracer_flush_buf)     \         
 
 // clang-format on
 
