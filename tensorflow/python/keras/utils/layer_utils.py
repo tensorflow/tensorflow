@@ -249,19 +249,11 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
 
     name = layer.name
     cls_name = layer.__class__.__name__
-    if not connections:
-      first_connection = ''
-    else:
-      first_connection = connections[0]
     fields = [
         name + ' (' + cls_name + ')', output_shape,
-        layer.count_params(), first_connection
+        layer.count_params(), connections
     ]
     print_row(fields, positions)
-    if len(connections) > 1:
-      for i in range(1, len(connections)):
-        fields = ['', '', '', connections[i]]
-        print_row(fields, positions)
 
   layers = model.layers
   for i in range(len(layers)):
