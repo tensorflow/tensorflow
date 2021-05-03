@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -1364,7 +1365,7 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(std::is_same<NativeSrcT, Eigen::half>::value) &&
+typename std::enable_if<std::is_same<NativeSrcT, Eigen::half>::value &&
                             (std::is_same<NativeDestT, complex64>::value ||
                              std::is_same<NativeDestT, complex128>::value),
                         Literal>::type
@@ -1377,9 +1378,46 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(!std::is_same<NativeSrcT, Eigen::half>::value) ||
-                            (!std::is_same<NativeDestT, complex64>::value &&
-                             !std::is_same<NativeDestT, complex128>::value),
+typename std::enable_if<std::is_floating_point<NativeSrcT>::value &&
+                            std::is_integral<NativeDestT>::value,
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    // C++ [conv.bool]p1:
+    //   A prvalue of arithmetic [...] type can be converted to a prvalue of
+    //   type bool. A zero value [...] is converted to false; any other value is
+    //   converted to true.
+    // C++ [conv.fpint]p1:
+    //   [...] The behavior is undefined if the truncated value cannot be
+    //   represented in the destination type.
+    //
+    // Using static_cast to convert a float to an integral type other than bool
+    // may be undefined if the value's magnitude is too large or it is a NaN.
+    // Let's choose saturating arithmetic as it captures the spirit of infinity
+    // and arbitrarily map NaN to zero.
+    if (!std::is_same<NativeDestT, bool>::value) {
+      if (src != src) {
+        return NativeDestT{0};
+      }
+      if (src >= std::numeric_limits<NativeDestT>::max()) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <= std::numeric_limits<NativeDestT>::lowest()) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
+    }
+    return static_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<!(std::is_floating_point<NativeSrcT>::value &&
+                          std::is_integral<NativeDestT>::value) &&
+                            !(std::is_same<NativeSrcT, Eigen::half>::value &&
+                              (std::is_same<NativeDestT, complex64>::value ||
+                               std::is_same<NativeDestT, complex128>::value)),
                         Literal>::type
 ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
