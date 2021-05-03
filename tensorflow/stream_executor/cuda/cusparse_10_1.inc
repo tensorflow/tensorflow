@@ -120,7 +120,7 @@ cusparseMatrixType_t CUSPARSEAPI
 cusparseGetMatType(const cusparseMatDescr_t descrA) {
   using FuncPtr = cusparseMatrixType_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatType");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) return cusparseMatrixType_t(-1);
   return func_ptr(descrA);
 }
 
@@ -137,7 +137,7 @@ cusparseFillMode_t CUSPARSEAPI
 cusparseGetMatFillMode(const cusparseMatDescr_t descrA) {
   using FuncPtr = cusparseFillMode_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatFillMode");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) return cusparseFillMode_t(-1);
   return func_ptr(descrA);
 }
 
@@ -154,7 +154,7 @@ cusparseDiagType_t CUSPARSEAPI
 cusparseGetMatDiagType(const cusparseMatDescr_t descrA) {
   using FuncPtr = cusparseDiagType_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatDiagType");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) return cusparseDiagType_t(-1);
   return func_ptr(descrA);
 }
 
@@ -171,7 +171,7 @@ cusparseIndexBase_t CUSPARSEAPI
 cusparseGetMatIndexBase(const cusparseMatDescr_t descrA) {
   using FuncPtr = cusparseIndexBase_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatIndexBase");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) return cusparseIndexBase_t(-1);
   return func_ptr(descrA);
 }
 
@@ -7812,6 +7812,8 @@ cusparseStatus_t CUSPARSEAPI cusparseCsr2cscEx2_bufferSize(
                   bufferSize);
 }
 
+#if !defined(_WIN32)
+
 cusparseStatus_t CUSPARSEAPI
 cusparseCreateSpVec(cusparseSpVecDescr_t *spVecDescr, int64_t size, int64_t nnz,
                     void *indices, void *values, cusparseIndexType_t idxType,
@@ -8254,5 +8256,7 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
   return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
                   bufferSize);
 }
+
+#endif  // _WIN32
 
 }  // extern "C"
