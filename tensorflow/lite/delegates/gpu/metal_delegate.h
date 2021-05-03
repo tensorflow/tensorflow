@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 
 #include "tensorflow/lite/c/common.h"
+#import <Metal/Metal.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +67,17 @@ TFL_CAPI_EXPORT extern TfLiteDelegate* TFLGpuDelegateCreate(
 
 // Destroys a delegate created with `TFLGpuDelegateCreate` call.
 TFL_CAPI_EXPORT extern void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
+
+// Binds Metal buffer to an input or an output tensor in the initialized
+// delegate. Bound buffer should have sufficient storage to accommodate all
+// elements of a tensor. For quantized model, the buffer is bound to internal
+// dequantized float32 tensor.
+// Returns non-zero on success, or zero otherwise.
+//
+// *** Must be called *after* `Interpreter::ModifyGraphWithDelegate`. ***
+TFL_CAPI_EXPORT extern bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
+                                                                  int tensor_index,
+                                                                  id<MTLBuffer> metal_buffer);
 
 #ifdef __cplusplus
 }  // extern "C"
