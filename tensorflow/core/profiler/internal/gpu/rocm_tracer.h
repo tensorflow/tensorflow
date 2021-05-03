@@ -70,8 +70,7 @@ struct KernelDetails {
   // Y-dimension of a grid.
   uint32_t grid_y;
   // Z-dimension of a grid.
-<<<<<<< HEAD
-  uint64 grid_z;
+  uint32_t grid_z;
 
   //kernel address. Used for calculating core occuoancy
   void* func_ptr;
@@ -81,9 +80,6 @@ struct KernelDetails {
 enum class RocmTracerSyncTypes;
 struct SynchronizationDetails{
   RocmTracerSyncTypes sync_type;
-=======
-  uint32_t grid_z;
->>>>>>> origin/develop-upstream
 };
 
 enum class RocmTracerEventType {
@@ -142,21 +138,12 @@ struct RocmTracerEvent {
   // where serialization happens.
   absl::string_view annotation;
   absl::string_view roctx_range;
-<<<<<<< HEAD
-  uint64 start_time_ns = 0;
-  uint64 end_time_ns = 0;
-  uint32 device_id = kInvalidDeviceId;
-  uint32 correlation_id = kInvalidCorrelationId;
-  uint32 thread_id = kInvalidThreadId;
-  int64 stream_id = kInvalidStreamId;
-=======
-  uint64_t start_time_ns;
-  uint64_t end_time_ns;
+  uint64_t start_time_ns = 0;
+  uint64_t end_time_ns = 0;
   uint32_t device_id = kInvalidDeviceId;
   uint32_t correlation_id = kInvalidCorrelationId;
   uint32_t thread_id = kInvalidThreadId;
   int64_t stream_id = kInvalidStreamId;
->>>>>>> origin/develop-upstream
   union {
     MemcpyDetails memcpy_info;      // If type == Memcpy*
     MemsetDetails memset_info;      // If type == Memset*
@@ -166,13 +153,8 @@ struct RocmTracerEvent {
   };
 };
 
-<<<<<<< HEAD
-void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
-                         uint64 start_gputime_ns, const string& message);
-=======
-void DumpRocmTracerEvent(const RocmTracerEvent& event,
-                         uint64_t start_walltime_ns, uint64_t start_gputime_ns);
->>>>>>> origin/develop-upstream
+void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64_t start_walltime_ns,
+                         uint64_t start_gputime_ns, const string& message);
 
 struct RocmTracerOptions {
   //TODO(reza): write comment here. (this is for tracing the api we actually track)
