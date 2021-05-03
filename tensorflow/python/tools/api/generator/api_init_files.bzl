@@ -26,6 +26,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/train/__init__.py",
     "__internal__/types/__init__.py",
     "__internal__/saved_model/__init__.py",
+    "__internal__/saved_model/load/__init__.py",
     "__internal__/tracking/__init__.py",
     "__operators__/__init__.py",
     "audio/__init__.py",
@@ -113,6 +114,11 @@ TENSORFLOW_API_INIT_FILES = [
 KERAS_API_INIT_FILES = [
     "__init__.py",
     "keras/__init__.py",
+    "keras/__internal__/__init__.py",
+    "keras/__internal__/backend/__init__.py",
+    "keras/__internal__/models/__init__.py",
+    "keras/__internal__/losses/__init__.py",
+    "keras/__internal__/utils/__init__.py",
     "keras/activations/__init__.py",
     "keras/applications/__init__.py",
     "keras/applications/densenet/__init__.py",
@@ -144,6 +150,7 @@ KERAS_API_INIT_FILES = [
     "keras/datasets/reuters/__init__.py",
     "keras/estimator/__init__.py",
     "keras/experimental/__init__.py",
+    # Placeholder for internal API
     "keras/initializers/__init__.py",
     "keras/layers/__init__.py",
     "keras/layers/experimental/__init__.py",

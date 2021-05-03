@@ -267,6 +267,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "cumsum.cc",
+        "depth_to_space.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
@@ -278,11 +279,13 @@ cc_library(
         "floor_div.cc",
         "floor_mod.cc",
         "gather.cc",
+        "gather_nd.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
+        "log_softmax.cc",
         "maximum_minimum.cc",
         "mul.cc",
         "neg.cc",
@@ -293,6 +296,7 @@ cc_library(
         "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
@@ -557,6 +561,21 @@ cc_test(
 )
 
 cc_test(
+    name = "depth_to_space_test",
+    srcs = [
+        "depth_to_space_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "depthwise_conv_test",
     srcs = [
         "depthwise_conv_test.cc",
@@ -738,6 +757,21 @@ cc_test(
 )
 
 cc_test(
+    name = "gather_nd_test",
+    srcs = [
+        "gather_nd_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "hard_swish_test",
     srcs = ["hard_swish_test.cc"],
     deps = [
@@ -815,6 +849,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "log_softmax_test",
+    srcs = [
+        "log_softmax_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -969,6 +1018,20 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_test",
+    srcs = [
+        "resize_bilinear_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

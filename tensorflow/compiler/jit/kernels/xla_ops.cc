@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -66,6 +68,9 @@ namespace tensorflow {
 
 namespace {
 
+auto* xla_launch_counter = monitoring::Counter<1>::New(
+    "/tensorflow/core/xla_launch_counter",
+    "The number of times a XlaLaunch is called.", "device");
 
 // A closure describing how to run a compiled version of a TensorFlow function.
 //
@@ -217,7 +222,8 @@ static Status CompileToLocalExecutable(
 
 // Resolve the device assignment for the TF single-host MirroredStrategy by
 // calling into TF runtime which in turn would start a rendezvous.
-static xla::StatusOr<xla::DeviceAssignment> ResolveDeviceAssignment(
+static xla::StatusOr<absl::optional<xla::DeviceAssignment>>
+ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const absl::optional<
         XlaCompiler::CompilationResult::CollectiveReduceV2OpInfo>&
@@ -226,7 +232,7 @@ static xla::StatusOr<xla::DeviceAssignment> ResolveDeviceAssignment(
   if (!collective_reduce_info) {
     // An empty device assignment is sufficient for the case where no
     // collectives are present.
-    return xla::DeviceAssignment{};
+    return {{absl::nullopt}};
   }
 
   CollectiveParams params;
@@ -275,12 +281,14 @@ static xla::StatusOr<xla::DeviceAssignment> ResolveDeviceAssignment(
     out(device_idx, 0) = gpu_device_info->stream->parent()->device_ordinal();
   }
 
-  return out;
+  return {{out}};
 }
 
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
+  xla_launch_counter->GetCell(platform_info_.device_type().type_string())
+      ->IncrementBy(1);
 
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   xla::LocalClient* client;
@@ -327,12 +335,14 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
-  xla::StatusOr<xla::DeviceAssignment> device_assignment =
+  xla::StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
       ResolveDeviceAssignment(ctx, compilation_result->collective_reduce_info);
   OP_REQUIRES_OK(ctx, device_assignment.status());
 
   xla::ExecutableRunOptions run_options;
-  run_options.set_device_assignment(&*device_assignment);
+  if (*device_assignment) {
+    run_options.set_device_assignment(&**device_assignment);
+  }
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

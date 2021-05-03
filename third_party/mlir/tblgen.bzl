@@ -287,6 +287,97 @@ gentbl_test = rule(
     },
 )
 
+def gentbl_filegroup(
+        name,
+        tblgen,
+        td_file,
+        tbl_outs,
+        td_srcs = [],
+        td_includes = [],
+        includes = [],
+        deps = [],
+        test = False,
+        skip_opts = [],
+        **kwargs):
+    """Create multiple tablegen generated files using the same tool and input.
+
+    All generated outputs are bundled in a file group with the given name.
+
+    Args:
+      name: The name of the generated filegroup rule for use in dependencies.
+      tblgen: The binary used to produce the output.
+      td_file: The primary table definitions file.
+      tbl_outs: A list of tuples (opts, out), where each opts is a string of
+        options passed to tblgen, and the out is the corresponding output file
+        produced.
+      td_srcs: See gentbl_rule.td_srcs
+      includes: See gentbl_rule.includes
+      td_includes: See gentbl_rule.td_includes
+      deps: See gentbl_rule.deps
+      test: Whether to create a shell test that invokes the tool too.
+      skip_opts: Files generated using these opts in tbl_outs will be excluded
+        from the generated filegroup.
+      **kwargs: Extra keyword arguments to pass to all generated rules.
+    """
+
+    # TODO(gcmn): Update callers to td_library and explicit includes and
+    # drop this hardcoded include.
+    hardcoded_includes = [
+        "external/llvm-project/mlir/include",
+    ]
+
+    for (opts_string, out) in tbl_outs:
+        # TODO(gcmn): The API of opts as single string is preserved for backward
+        # compatibility. Change to taking a sequence.
+        opts = opts_string.split(" ") if opts_string else []
+
+        # Filter out empty options
+        opts = [opt for opt in opts if opt]
+
+        first_opt = opts[0] if opts else ""
+        rule_suffix = "_{}_{}".format(
+            first_opt.replace("-", "_").replace("=", "_"),
+            str(hash(opts_string)),
+        )
+        gentbl_name = "%s_%s_genrule" % (name, rule_suffix)
+        gentbl_rule(
+            name = gentbl_name,
+            td_file = td_file,
+            tblgen = tblgen,
+            opts = opts,
+            td_srcs = td_srcs,
+            deps = deps,
+            includes = includes,
+            td_includes = td_includes + hardcoded_includes,
+            out = out,
+            **kwargs
+        )
+        if test:
+            # Also run the generator in the target configuration as a test. This
+            # means it gets run with asserts and sanitizers and such when they
+            # are enabled and is counted in coverage.
+            gentbl_test(
+                name = "%s_test" % (gentbl_name,),
+                td_file = td_file,
+                tblgen = tblgen,
+                opts = opts,
+                td_srcs = td_srcs,
+                deps = deps,
+                includes = includes,
+                td_includes = td_includes + hardcoded_includes,
+                # Shell files not executable on Windows.
+                # TODO(gcmn): Support windows.
+                tags = ["no_windows"],
+                **kwargs
+            )
+
+    included_srcs = [f for (opts, f) in tbl_outs if opts not in skip_opts]
+    native.filegroup(
+        name = name,
+        srcs = included_srcs,
+        **kwargs
+    )
+
 def gentbl(
         name,
         tblgen,
@@ -322,66 +413,26 @@ def gentbl(
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
 
-    # TODO(gcmn): Update callers to td_library and explicit includes and
-    # drop this hardcoded include.
-    hardcoded_includes = [
-        "external/llvm-project/mlir/include",
-    ]
-
-    for (opts_string, out) in tbl_outs:
-        # TODO(gcmn): The API of opts as single string is preserved for backward
-        # compatibility. Change to taking a sequence.
-        opts = opts_string.split(" ") if opts_string else []
-
-        # Filter out empty options
-        opts = [opt for opt in opts if opt]
-
-        first_opt = opts[0] if opts else ""
-        rule_suffix = "_{}_{}".format(
-            first_opt.replace("-", "_").replace("=", "_"),
-            str(hash(opts_string)),
-        )
-        gentbl_name = "%s_%s_genrule" % (name, rule_suffix)
-        gentbl_rule(
-            name = gentbl_name,
-            td_file = td_file,
-            tblgen = tblgen,
-            opts = opts,
-            td_srcs = td_srcs,
-            deps = deps,
-            includes = includes + td_relative_includes,
-            td_includes = td_includes + hardcoded_includes,
-            out = out,
-            **kwargs
-        )
-        if test:
-            # Also run the generator in the target configuration as a test. This
-            # means it gets run with asserts and sanitizers and such when they
-            # are enabled and is counted in coverage.
-            gentbl_test(
-                name = "%s_test" % (gentbl_name,),
-                td_file = td_file,
-                tblgen = tblgen,
-                opts = opts,
-                td_srcs = td_srcs,
-                deps = deps,
-                includes = includes + td_relative_includes,
-                td_includes = td_includes + hardcoded_includes,
-                # Shell files not executable on Windows.
-                # TODO(gcmn): Support windows.
-                tags = ["no_windows"],
-                **kwargs
-            )
-
-    # List of opts that do not generate cc files.
-    skip_opts = ["-gen-op-doc"]
-    hdrs = [f for (opts, f) in tbl_outs if opts not in skip_opts]
+    filegroup_name = name + "_filegroup"
+    gentbl_filegroup(
+        name = filegroup_name,
+        tblgen = tblgen,
+        td_file = td_file,
+        tbl_outs = tbl_outs,
+        td_srcs = td_srcs,
+        td_includes = td_includes,
+        includes = includes + td_relative_includes,
+        deps = deps,
+        test = test,
+        skip_opts = ["-gen-op-doc"],
+        **kwargs
+    )
     native.cc_library(
         name = name,
         # strip_include_prefix does not apply to textual_hdrs.
         # https://github.com/bazelbuild/bazel/issues/12424
-        hdrs = hdrs if strip_include_prefix else [],
+        hdrs = [":" + filegroup_name] if strip_include_prefix else [],
         strip_include_prefix = strip_include_prefix,
-        textual_hdrs = hdrs,
+        textual_hdrs = [":" + filegroup_name],
         **kwargs
     )

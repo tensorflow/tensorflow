@@ -78,8 +78,8 @@ cp tensorflow/c/eager/c_api.h \
   tensorflow/c/eager/c_api_experimental.h \
   tensorflow/c/eager/dlpack.h \
   ${DIR}/include/tensorflow/c/eager
-cp tensorflow/core/platform/cstring.h \
-  tensorflow/core/platform/cstring_internal.h \
+cp tensorflow/core/platform/ctstring.h \
+  tensorflow/core/platform/ctstring_internal.h \
   ${DIR}/include/tensorflow/core/platform
 cp LICENSE ${DIR}/LICENSE
 cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
@@ -100,8 +100,8 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/tensor_interface.h \
   include/tensorflow/c/c_api_macros.h \
   include/tensorflow/c/c_api_experimental.h \
-  include/tensorflow/core/platform/cstring.h \
-  include/tensorflow/core/platform/cstring_internal.h \
+  include/tensorflow/core/platform/ctstring.h \
+  include/tensorflow/core/platform/ctstring_internal.h \
   LICENSE \
   THIRD_PARTY_TF_C_LICENSES
 rm -rf lib include

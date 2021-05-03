@@ -34,6 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+ABSL_CONST_INIT extern const char kImportModelDefaultGraphFuncName[];
+
 // Given a GraphDef, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(

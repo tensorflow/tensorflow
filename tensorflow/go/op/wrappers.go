@@ -470,7 +470,7 @@ func TensorScatterSub(scope *Scope, tensor tf.Output, indices tf.Output, updates
 //
 // This operation creates a new tensor by adding sparse `updates` to the passed
 // in `tensor`.
-// This operation is very similar to `tf.scatter_nd_add`, except that the updates
+// This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
 // are added onto an existing tensor (as opposed to a variable). If the memory
 // for the existing tensor cannot be re-used, a copy is made and updated.
 //
@@ -8072,6 +8072,9 @@ func MultiDeviceIteratorToStringHandle(scope *Scope, multi_device_iterator tf.Ou
 type QuantizeAndDequantizeV4Attr func(optionalAttr)
 
 // QuantizeAndDequantizeV4SignedInput sets the optional signed_input attribute to value.
+//
+// value: Whether the quantization is signed or unsigned. (actually this parameter should
+// have been called <b>`signed_output`</b>)
 // If not specified, defaults to true
 func QuantizeAndDequantizeV4SignedInput(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8080,6 +8083,8 @@ func QuantizeAndDequantizeV4SignedInput(value bool) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4NumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization.
 // If not specified, defaults to 8
 func QuantizeAndDequantizeV4NumBits(value int64) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8088,6 +8093,8 @@ func QuantizeAndDequantizeV4NumBits(value int64) QuantizeAndDequantizeV4Attr {
 }
 
 // QuantizeAndDequantizeV4RangeGiven sets the optional range_given attribute to value.
+//
+// value: Whether the range is given or should be determined from the `input` tensor.
 // If not specified, defaults to false
 func QuantizeAndDequantizeV4RangeGiven(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8096,6 +8103,15 @@ func QuantizeAndDequantizeV4RangeGiven(value bool) QuantizeAndDequantizeV4Attr {
 }
 
 // QuantizeAndDequantizeV4RoundMode sets the optional round_mode attribute to value.
+//
+// value: The 'round_mode' attribute controls which rounding tie-breaking algorithm is
+// used when rounding float values to their quantized equivalents. The following
+// rounding modes are currently supported:
+//
+// *   HALF_TO_EVEN: this is the default round_mode.
+// *   HALF_UP: round towards positive. In this mode 7.5 rounds up to 8 and -7.5
+//     rounds up to -7.
+//
 // If not specified, defaults to "HALF_TO_EVEN"
 func QuantizeAndDequantizeV4RoundMode(value string) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8104,6 +8120,10 @@ func QuantizeAndDequantizeV4RoundMode(value string) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4NarrowRange sets the optional narrow_range attribute to value.
+//
+// value: If True, then the absolute value of the quantized minimum value is the same as
+// the quantized maximum value, instead of 1 greater.
+// i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
 // If not specified, defaults to false
 func QuantizeAndDequantizeV4NarrowRange(value bool) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8112,6 +8132,9 @@ func QuantizeAndDequantizeV4NarrowRange(value bool) QuantizeAndDequantizeV4Attr 
 }
 
 // QuantizeAndDequantizeV4Axis sets the optional axis attribute to value.
+//
+// value: If specified, this axis is treated as a channel or slice axis, and a separate
+// quantization range is used for each channel or slice along this axis.
 // If not specified, defaults to -1
 func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 	return func(m optionalAttr) {
@@ -8119,10 +8142,19 @@ func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
 	}
 }
 
-// Returns the gradient of `QuantizeAndDequantizeV4`.
+// Quantizes then dequantizes a tensor.
 //
 // This is almost identical to QuantizeAndDequantizeV2, except that it returns a
 // gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+//
+// Arguments:
+//	input: Tensor to quantize and then dequantize.
+//	input_min: If `range_given == True`, this specifies the minimum input value that needs to
+// be represented, otherwise it is determined from the min value of the `input`
+// tensor.
+//	input_max: If `range_given == True`, this specifies the maximum input value that needs to
+// be represented, otherwise it is determined from the max value of the `input`
+// tensor.
 func QuantizeAndDequantizeV4(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4Attr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11176,6 +11208,17 @@ func CudnnRNNBackpropV2(scope *Scope, input tf.Output, input_h tf.Output, input_
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
+// DirectedInterleaveDatasetAttr is an optional argument to DirectedInterleaveDataset.
+type DirectedInterleaveDatasetAttr func(optionalAttr)
+
+// DirectedInterleaveDatasetStopOnEmptyDataset sets the optional stop_on_empty_dataset attribute to value.
+// If not specified, defaults to false
+func DirectedInterleaveDatasetStopOnEmptyDataset(value bool) DirectedInterleaveDatasetAttr {
+	return func(m optionalAttr) {
+		m["stop_on_empty_dataset"] = value
+	}
+}
+
 // A substitute for `InterleaveDataset` on a fixed list of `N` datasets.
 //
 // Arguments:
@@ -11185,11 +11228,14 @@ func CudnnRNNBackpropV2(scope *Scope, input tf.Output, input_h tf.Output, input_
 // the values of `selector_input_dataset`.
 //
 //
-func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, data_input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, data_input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DirectedInterleaveDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DirectedInterleaveDataset",
 		Input: []tf.Input{
@@ -15956,29 +16002,6 @@ func TensorListFromTensor(scope *Scope, tensor tf.Output, element_shape tf.Outpu
 	return op.Output(0)
 }
 
-// Splits a tensor into a list.
-//
-// list[i] corresponds to lengths[i] tensors from the input tensor.
-// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
-//
-// tensor: The input tensor.
-// element_shape: A shape compatible with that of elements in the tensor.
-// lengths: Vector of sizes of the 0th dimension of tensors in the list.
-// output_handle: The list.
-func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSplit",
-		Input: []tf.Input{
-			tensor, element_shape, lengths,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17158,6 +17181,29 @@ func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Splits a tensor into a list.
+//
+// list[i] corresponds to lengths[i] tensors from the input tensor.
+// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
+//
+// tensor: The input tensor.
+// element_shape: A shape compatible with that of elements in the tensor.
+// lengths: Vector of sizes of the 0th dimension of tensors in the list.
+// output_handle: The list.
+func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSplit",
+		Input: []tf.Input{
+			tensor, element_shape, lengths,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ParseSingleSequenceExampleAttr is an optional argument to ParseSingleSequenceExample.
@@ -19062,6 +19108,14 @@ func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
 	}
 }
 
+// CollectiveReduceV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
+// If not specified, defaults to -1
+func CollectiveReduceV2MaxSubdivsPerDevice(value int64) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["max_subdivs_per_device"] = value
+	}
+}
+
 // Mutually reduces multiple tensors of identical type and shape.
 func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -19310,11 +19364,20 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 
 // Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
 //
-// This is the angle \( \theta \in [-\pi, \pi] \) such that
-// \[ x = r \cos(\theta) \]
+// This is the angle \\( \theta \in [-\pi, \pi] \\) such that
+// \\[ x = r \cos(\theta) \\]
 // and
-// \[ y = r \sin(\theta) \]
-// where \(r = \sqrt(x^2 + y^2) \).
+// \\[ y = r \sin(\theta) \\]
+// where \\(r = \sqrt{x^2 + y^2} \\).
+//
+// For example:
+//
+// >>> x = [1., 1.]
+// >>> y = [1., -1.]
+// >>> print((tf.math.atan2(y,x) * (180 / np.pi)).numpy())
+// [ 45. -45.]
+//
+//
 func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return

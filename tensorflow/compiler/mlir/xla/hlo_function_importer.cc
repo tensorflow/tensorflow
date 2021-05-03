@@ -794,11 +794,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                          &fusion.fused_computation()));
       return fusion.getOperation();
     }
-    case HloOpcode::kBitcast:
-      return func_builder
-          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
-                                          attributes)
-          .getOperation();
+    case HloOpcode::kBitcast: {
+      auto bitcast = func_builder->create<mlir::mhlo::BitcastOp>(
+          loc, result_type, operands, attributes);
+      // Store the source and result layout as attributes. Although the MHLO
+      // Bitcast operates on tensors, these layouts are relevant as they define
+      // the mapping between the elements of the source and result.
+      SetLayoutForMlir(bitcast, instruction->shape(), "result_layout");
+      SetLayoutForMlir(bitcast, instruction->operand(0)->shape(),
+                       "source_layout");
+      return bitcast.getOperation();
+    }
     case HloOpcode::kReducePrecision: {
       auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
           loc, result_type, operands[0], attributes);
@@ -976,12 +982,13 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
-                                           const Shape& shape) {
+                                           const Shape& shape,
+                                           llvm::StringRef attr_name) {
   llvm::SmallVector<int64_t, 4> minor_to_major(
       shape.layout().minor_to_major().begin(),
       shape.layout().minor_to_major().end());
   op->setAttr(
-      "minor_to_major",
+      attr_name,
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
 }
 

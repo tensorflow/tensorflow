@@ -1222,8 +1222,15 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
   // of `axis + 1` rank and axis dim has size `1`.
   auto is_all_tensors = [&](int operand_idx, int axis) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
-      if (exceptions.count(arg)) return true;
-      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      mlir::Value operand;
+      if (exceptions.count(arg)) {
+        // For exceptions, since we are going to synthesize a binary op that
+        // produce the identity value, it is also required that it is a ranked
+        // tensor with rank = `axis + 1` and axis dim has size `1`.
+        operand = arg;
+      } else {
+        operand = arg.getDefiningOp()->getOperand(operand_idx);
+      }
       auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.getRank() == (axis + 1) &&
              ranked.getShape()[axis] == 1;
@@ -1429,6 +1436,11 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
 // ConstOp
 //===----------------------------------------------------------------------===//
 
+void ConstOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "cst");
+}
+
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
@@ -1613,7 +1625,7 @@ static LogicalResult inferConvReturnTypes(
                              "D tensor");
 
   if (padding == tensorflow::Padding::EXPLICIT) {
-    if (explicit_padding.size() == 0) {
+    if (explicit_padding.empty()) {
       return emitOptionalError(location,
                                "requires attribute 'explicit_paddings' with "
                                "'EXPLICIT' padding mode");

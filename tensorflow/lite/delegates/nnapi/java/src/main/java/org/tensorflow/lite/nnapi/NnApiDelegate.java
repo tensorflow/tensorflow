@@ -114,7 +114,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
      * <p>Only effective on Android 10 (API level 29) and above.
      */
     public Options setUseNnapiCpu(boolean enable) {
-      this.useNnapiCpu = !enable;
+      this.useNnapiCpu = enable;
       return this;
     }
 

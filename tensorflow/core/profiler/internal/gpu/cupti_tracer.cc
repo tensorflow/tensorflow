@@ -1634,6 +1634,7 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
+  tensorflow::profiler::AnnotationStack::Enable(true);
 }
 
 void CuptiTracer::Disable() {
@@ -1648,6 +1649,7 @@ void CuptiTracer::Disable() {
   collector_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
+  tensorflow::profiler::AnnotationStack::Enable(false);
 }
 
 Status CuptiTracer::EnableApiTracing() {

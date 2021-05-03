@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -2999,6 +3000,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
   // Set benefit of this pattern to zero to prefer the fallback pattern when
   // available and applicable. That pattern avoids broadcast on operands and is
   // therefore faster.
+  //
+  // Native legalization for BatchMatMulV3 needs to be added as well.
   explicit ConvertBatchMatMulV2Op(MLIRContext *context)
       : OpRewritePattern<TF::BatchMatMulV2Op>(context, /*benefit=*/0) {}
 
@@ -4080,6 +4083,27 @@ class ConvertArgMaxOp
   }
 
   static StringRef GetDirection() { return "GE"; }
+};
+
+// Converts tensorflow ArgMin op to mhlo operations. The actual
+// implementation is in class ConvertArgMinMaxOp:
+//
+//   %init_index = constant dense<...> : tensor<T>
+//   %init = constant dense<...> : tensor<T>
+//   %reduce = "mhlo.reduce"(%selected_input, %select_index, %init,
+//                              %init_index) ["mhlo.arg_min"]
+class ConvertArgMinOp
+    : public ConvertArgMinMaxOp<ConvertArgMinOp, TF::ArgMinOp> {
+ public:
+  using ConvertArgMinMaxOp::ConvertArgMinMaxOp;
+
+  static Value GetInitialValue(Type reduce_element_type, Location loc,
+                               PatternRewriter &rewriter) {
+    return GetScalarLimitConstOfType(reduce_element_type, loc,
+                                     hlo::kInfinityMax, &rewriter);
+  }
+
+  static StringRef GetDirection() { return "LE"; }
 };
 
 // Converts TF TensorScatterUpdate op into Scatter Op with assignment:
@@ -6435,6 +6459,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertAllOp,
     ConvertAnyOp,
     ConvertArgMaxOp,
+    ConvertArgMinOp,
     ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,

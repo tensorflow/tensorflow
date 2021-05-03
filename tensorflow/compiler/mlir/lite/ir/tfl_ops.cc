@@ -189,9 +189,10 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
-  // which are broadcastable shapes up to five dimension or have same shapes.
+  // which are broadcastable shapes up to four dimensions or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type) || IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type) ||
+      IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -1078,6 +1079,9 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;
 }
+
+// TODO(b/186119062): Implement this.
+int64_t Conv2DOp::GetArithmeticCount(Operation *op) { return -1; }
 
 //===----------------------------------------------------------------------===//
 // DepthwiseConv2DO
@@ -2531,10 +2535,8 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   return value();
 }
 
-
 namespace {
-struct FoldPseudoConstOp
-    : public OpRewritePattern<ConstOp> {
+struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
   using OpRewritePattern<ConstOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ConstOp const_op,
@@ -2552,8 +2554,6 @@ void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<FoldPseudoConstOp>(context);
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // CastOp
@@ -2917,6 +2917,44 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+/// Given the region at `index`, or the parent operation if `index` is None,
+/// return the successor regions. These are the regions that may be selected
+/// during the flow of control. `operands` is a set of optional attributes that
+/// correspond to a constant value for each operand, or null if that operand is
+/// not a constant.
+void IfOp::getSuccessorRegions(Optional<unsigned> index,
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<RegionSuccessor> &regions) {
+  // The `then` and the `else` region branch back to the parent operation.
+  if (index.hasValue()) {
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+
+  // Don't consider the else region if it is empty.
+  Region *else_reg = &else_region();
+  if (else_reg->empty()) else_reg = nullptr;
+
+  // Otherwise, the successor is dependent on the condition.
+  bool condition;
+  if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
+    condition = cond_attr.getValue().isOneValue();
+  } else {
+    // If the condition isn't constant, both regions may be executed.
+    regions.push_back(RegionSuccessor(&then_region()));
+    // If the else region does not exist, it is not a viable successor.
+    if (else_reg) regions.push_back(RegionSuccessor(else_reg));
+    return;
+  }
+
+  // Add the successor regions using the condition.
+  regions.push_back(RegionSuccessor(condition ? &then_region() : else_reg));
 }
 
 //===----------------------------------------------------------------------===//

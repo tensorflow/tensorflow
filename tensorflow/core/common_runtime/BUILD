@@ -49,6 +49,7 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -600,6 +601,49 @@ cc_library(
 )
 
 cc_library(
+    name = "single_threaded_executor",
+    srcs = ["single_threaded_executor.cc"],
+    hdrs = ["single_threaded_executor.h"],
+    copts = tf_copts(),
+    deps = [
+        ":entry",
+        ":executor",
+        ":local_executor_params",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "single_threaded_executor_test",
+    size = "small",
+    srcs = ["single_threaded_executor_test.cc"],
+    deps = [
+        "//tensorflow/core:bitwise_ops_op_lib",
+        "//tensorflow/core:control_flow_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:spectral_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:state",
+    ],
+)
+
+cc_library(
     name = "device_set",
     srcs = ["device_set.cc"],
     hdrs = ["device_set.h"],
@@ -653,6 +697,7 @@ cc_library(
         ":rendezvous_mgr",
         ":rendezvous_util",
         ":replicate_per_replica_nodes",
+        ":single_threaded_executor",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1082,11 +1127,13 @@ cc_library(
     hdrs = ["optimization_registry.h"],
     copts = tf_copts(),
     deps = [
+        ":composite_device",
         ":device_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1579,6 +1626,7 @@ tf_cuda_library(
         ":collective_param_resolver_local",
         ":collective_rma_local",
         ":collective_util",
+        ":composite_device",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
@@ -2216,7 +2264,7 @@ tf_cuda_cc_test(
     name = "direct_session_test",
     size = "medium",
     srcs = ["direct_session_test.cc"],
-    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
+    args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu",
@@ -2248,7 +2296,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ] + if_cuda(["//tensorflow/core/common_runtime/gpu:cuda"]),
 )
 
@@ -2299,7 +2346,7 @@ tf_cc_test(
     name = "direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [
@@ -2423,7 +2470,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2475,6 +2521,17 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "inline_function_utils_test",
+    size = "small",
+    srcs = ["inline_function_utils_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -2645,6 +2702,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
+        "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_identity_op",
         "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",

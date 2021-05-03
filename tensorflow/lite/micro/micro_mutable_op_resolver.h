@@ -182,6 +182,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseCumsum);
   }
 
+  TfLiteStatus AddDepthToSpace() {
+    return AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE,
+                      tflite::Register_DEPTH_TO_SPACE(), ParseDepthToSpace);
+  }
+
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
                       Register_DEPTHWISE_CONV_2D(), ParseDepthwiseConv2D);
@@ -251,6 +256,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   TfLiteStatus AddGather() {
     return AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(), ParseGather);
+  }
+
+  TfLiteStatus AddGatherNd() {
+    return AddBuiltin(BuiltinOperator_GATHER_ND, tflite::Register_GATHER_ND(),
+                      ParseGatherNd);
   }
 
   TfLiteStatus AddGreater() {
@@ -403,6 +413,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddReshape() {
     return AddBuiltin(BuiltinOperator_RESHAPE,
                       tflite::ops::micro::Register_RESHAPE(), ParseReshape);
+  }
+
+  TfLiteStatus AddResizeBilinear() {
+    return AddBuiltin(BuiltinOperator_RESIZE_BILINEAR,
+                      Register_RESIZE_BILINEAR(), ParseResizeBilinear);
   }
 
   TfLiteStatus AddResizeNearestNeighbor() {

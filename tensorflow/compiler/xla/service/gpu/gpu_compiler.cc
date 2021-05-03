@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -113,13 +114,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
-#include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -171,6 +172,7 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RealImagExpander>();
 
     pipeline.AddPass<OperandUpcaster>();
+    pipeline.AddPass<ResultCaster>();
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
@@ -294,11 +296,9 @@ Status GpuCompiler::OptimizeHloModule(
 
   if (use_spmd) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    spmd_pipeline.AddPass<ShardingPropagation>(true);
-    spmd::SpmdPartitionerOptions default_options;
-    default_options.allow_module_signature_change = true;
-    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count(), default_options);
+    spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+    spmd_pipeline.AddPass<GpuSpmdPartitioner>(
+        num_partitions, hlo_module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
 
@@ -350,7 +350,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassPipeline horizontal_fusion("horizontal_fusion");
+    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -577,7 +577,7 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
-          /*must_not_live_out=*/{}, DummyCanShareBufferFunction));
+          /*must_not_live_out=*/{}, GetCanShareBuffer()));
 
   return std::make_tuple(std::move(hlo_module), std::move(assignment));
 }
@@ -859,6 +859,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
             }
             llvm::SMDiagnostic err;
             new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+            if (!new_llvm_module) {
+              std::string err_string;
+              llvm::raw_string_ostream os(err_string);
+              err.print(/*ProgName=*/nullptr, os, /*ShowColors=*/false);
+              LOG(FATAL) << "Failed to parse IR: " << err_string;
+            }
           }
 
           compile_results[i] = compile_single_module(

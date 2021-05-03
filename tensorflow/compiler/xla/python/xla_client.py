@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 13
+_version = 19
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -62,8 +62,13 @@ def _interpreter_backend_factory():
   return _xla.get_interpreter_client()
 
 
+# Deprecated.
 def _cpu_backend_factory():
   return _xla.get_cpu_client(asynchronous=True)
+
+
+def _tfrt_cpu_backend_factory():
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def _gpu_backend_factory(distributed_client=None, node_id=0):
@@ -96,7 +101,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 
 def _tpu_backend_factory():
-  return _xla.get_tpu_client(asynchronous=True)
+  return _xla.get_tpu_client(max_inflight_computations=32)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -277,6 +282,28 @@ class ProgramShape(object):
   def __init__(self, parameter_shapes, result_shape):
   def parameter_shapes(self) -> [Shape]:
   def result_shape(self) -> Shape:
+  def __repr__(self):
+"""
+
+
+ShapeIndex = _xla.ShapeIndex
+ShapeIndex.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class ShapeIndex(object):
+  '''Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.
+  '''
+
+  def __init__(self, List[int]) -> ShapeIndex:
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
   def __repr__(self):
 """
 

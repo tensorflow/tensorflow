@@ -144,6 +144,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
+    DCHECK(profiler != nullptr);
     auto start_status = profiler->Start();
     if (!start_status.ok()) {
       LOG(WARNING) << "Encountered error while starting profiler: "

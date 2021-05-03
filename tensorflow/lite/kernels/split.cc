@@ -60,6 +60,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
 
   const int input_size = SizeOfDimension(input, axis_value);
+  TF_LITE_ENSURE(context, num_splits != 0);
   TF_LITE_ENSURE_MSG(context, input_size % num_splits == 0,
                      "Not an even split");
   const int slice_size = input_size / num_splits;

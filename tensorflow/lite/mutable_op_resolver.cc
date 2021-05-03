@@ -57,6 +57,12 @@ const TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
                                    const TfLiteRegistration* registration,
                                    int version) {
+  if (registration == nullptr) {
+    // Under certain conditions, builtin TfLiteRegistration factory methods may
+    // return null in the client library. This is generally benign, and we
+    // silently suppress resulting AddBuiltin calls here.
+    return;
+  }
   TfLiteRegistration new_registration = *registration;
   new_registration.custom_name = nullptr;
   new_registration.builtin_code = op;

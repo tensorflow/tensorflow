@@ -4,6 +4,13 @@
 
 ## Breaking Changes
 
+* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+  the API only works in graph mode and is not customizable. The function is
+  still accessible under
+  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
+  recommended to use the
+  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+  instead.
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -17,11 +24,15 @@
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-  
+
 * `tf.keras`:
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+
+* `tf.lite`:
+    *   The recommended Android NDK version for building TensorFlow Lite has
+        been changed from r18b to r19c.
 
 ## Bug Fixes and Other Changes
 
@@ -31,6 +42,44 @@
 *   TF Core:
     *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
         creation of custom wrapper objects for resource tensors.
+    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
+        generic mutable hash table implementation.
+        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
+        lower overall memory usage, and a cleaner API. It does not require
+        specifying a `delete_key` and `empty_key` that cannot be inserted into
+        the table.
+   *    Added support for specifying number of subdivisions in all reduce host
+        collective. This parallelizes work on CPU and speeds up the collective
+        performance. Default behavior is unchanged.
+*   `tf.data`:
+    *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
+        `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
+        experimental endpoint.
+    *   Promoting `tf.data.experimental.get_single_element` API to
+        `tf.data.Dataset.get_single_element` and deprecating the experimental
+        endpoint.
+    *   Promoting `tf.data.experimental.group_by_window` API to
+        `tf.data.Dataset.group_by_window` and deprecating the experimental
+        endpoint.
+    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
+        `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
+        sampling if it encounters an empty dataset. This preserves the sampling
+        ratio throughout training. The prior behavior was to continue sampling,
+        skipping over exhausted datasets, until all datasets are exhausted. By
+        default, the original behavior (`stop_on_empty_dataset=False`) is
+        preserved.
+    *   Removed previously deprecated tf.data statistics related APIs:
+        *   `tf.data.Options.experimental_stats`
+        *   `tf.data.experimental.StatsAggregator`
+        *   `tf.data.experimental.StatsOptions.*`
+        *   `tf.data.experimental.bytes_produced_stats`
+        *   `tf.data.experimental.latency_stats`
+*   `tf.keras`:
+    *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
+        inputs are `RaggedTensor` objects.
+    *   Add `keepdims` argument to all `GlobalPooling` layers.
+*   `tf.lite`:
+    *   Fix mean op reference quantization rounding issue.
 
 ## Thanks to our Contributors
 
@@ -107,11 +156,11 @@ This release contains contributions from many people at Google, as well as:
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
       * Register custom graph optimization passes with
-        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
-* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md).
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN)
   CPU performance optimizations from
   [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
-  are now available in the official x86-64 Linux and Windows builds. 
+  are now available in the official x86-64 Linux and Windows builds.
     * They are off by default. Enable them by setting the environment variable
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been

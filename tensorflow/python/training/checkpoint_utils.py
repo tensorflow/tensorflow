@@ -319,7 +319,12 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   variable_map = reader.get_variable_to_shape_map()
   if isinstance(assignment_map, abc.Mapping):
     assignment_map = six.iteritems(assignment_map)
-  for tensor_name_in_ckpt, current_var_or_name in sorted(assignment_map):
+
+  # We only want to sort by tensor names.
+  sort_key = lambda pair: pair[0]
+
+  for tensor_name_in_ckpt, current_var_or_name in sorted(
+      assignment_map, key=sort_key):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).

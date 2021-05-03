@@ -99,6 +99,7 @@ uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
       nnapi.ANeuralNetworksModel_relaxComputationFloat32toFloat16 != nullptr;
   bool has_12 = nnapi.ANeuralNetworks_getDeviceCount != nullptr;
   bool has_13 = nnapi.ANeuralNetworksCompilation_setTimeout != nullptr;
+  bool has_14 = nnapi.ANeuralNetworks_getRuntimeFeatureLevel != nullptr;
 
   uint32_t sdk_version = 0;
   if (has_10) {
@@ -112,6 +113,9 @@ uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
   }
   if (sdk_version == 29 && has_13) {
     sdk_version = 30;
+  }
+  if (sdk_version == 30 && has_14) {
+    sdk_version = 31;
   }
   return sdk_version;
 }
@@ -295,6 +299,13 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_startComputeWithDependencies);
 
+  // API 31 methods
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworks_getRuntimeFeatureLevel);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_enableInputAndOutputPadding);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setReusable);
 #ifndef __ANDROID__
   // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
   // then determine android_sdk_version by testing which functions are
@@ -303,6 +314,13 @@ const NnApi LoadNnApi() {
     nnapi.android_sdk_version = CalculateAndroidSdkVersion(nnapi);
   }
 #endif  // __ANDROID__
+  // Determin NNAPI Runtime feature level.
+  if (nnapi.ANeuralNetworks_getRuntimeFeatureLevel) {
+    nnapi.nnapi_runtime_feature_level =
+        nnapi.ANeuralNetworks_getRuntimeFeatureLevel();
+  } else {
+    nnapi.nnapi_runtime_feature_level = nnapi.android_sdk_version;
+  }
 
   return nnapi;
 }

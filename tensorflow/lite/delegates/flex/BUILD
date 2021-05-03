@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
-load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
@@ -18,6 +18,8 @@ package(
 
 exports_files([
     "delegate.h",
+    "exported_symbols.lds",
+    "version_script.lds",
 ])
 
 cc_library(
@@ -73,6 +75,15 @@ tf_cc_test(
 tflite_flex_cc_library(
     name = "delegate",
     visibility = ["//visibility:public"],
+)
+
+# Shared lib target for convenience, pulls in the standard set of TensorFlow
+# ops and kernels. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite_flex.so`
+#   - Mac: `libtensorflowlite_flex.dylib`
+#   - Windows: `libtensorflowlite_flex.dll`
+tflite_flex_shared_library(
+    name = "tensorflowlite_flex",
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow
@@ -151,7 +162,10 @@ cc_library(
         ":util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -165,6 +179,7 @@ cc_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -175,8 +190,10 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core:test",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",

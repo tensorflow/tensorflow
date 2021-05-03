@@ -37,11 +37,11 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -191,7 +191,7 @@ REGISTER_KERNELS_ALL(tstring);
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T, typename Index>
 class SparseToDenseGPU : public AsyncOpKernel {
  public:
@@ -277,6 +277,6 @@ REGISTER_GPU_KERNELS_ALL(bool)
 #undef REGISTER_GPU_KERNELS_ALL
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

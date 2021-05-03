@@ -143,6 +143,84 @@ class GlobalPoolingTest(test.TestCase, parameterized.TestCase):
         kwargs={'data_format': 'channels_last'},
         input_shape=(3, 4, 3, 4, 3))
 
+  def test_globalpooling_1d_keepdims(self):
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling1D,
+        kwargs={'keepdims': True},
+        input_shape=(3, 4, 5),
+        expected_output_shape=(None, 1, 5))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling1D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 5),
+        expected_output_shape=(None, 4, 1))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling1D,
+        kwargs={'keepdims': True},
+        input_shape=(3, 4, 5),
+        expected_output_shape=(None, 1, 5))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling1D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 5),
+        expected_output_shape=(None, 4, 1))
+
+  def test_globalpooling_2d_keepdims(self):
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling2D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 5, 6),
+        expected_output_shape=(None, 4, 1, 1))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling2D,
+        kwargs={'data_format': 'channels_last', 'keepdims': True},
+        input_shape=(3, 4, 5, 6),
+        expected_output_shape=(None, 1, 1, 6))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling2D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 5, 6),
+        expected_output_shape=(None, 4, 1, 1))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling2D,
+        kwargs={'data_format': 'channels_last', 'keepdims': True},
+        input_shape=(3, 4, 5, 6),
+        expected_output_shape=(None, 1, 1, 6))
+
+  def test_globalpooling_3d_keepdims(self):
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling3D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 3, 4, 3),
+        expected_output_shape=(None, 4, 1, 1, 1))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalMaxPooling3D,
+        kwargs={'data_format': 'channels_last', 'keepdims': True},
+        input_shape=(3, 4, 3, 4, 3),
+        expected_output_shape=(None, 1, 1, 1, 3))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling3D,
+        kwargs={'data_format': 'channels_first', 'keepdims': True},
+        input_shape=(3, 4, 3, 4, 3),
+        expected_output_shape=(None, 4, 1, 1, 1))
+    testing_utils.layer_test(
+        keras.layers.pooling.GlobalAveragePooling3D,
+        kwargs={'data_format': 'channels_last', 'keepdims': True},
+        input_shape=(3, 4, 3, 4, 3),
+        expected_output_shape=(None, 1, 1, 1, 3))
+
+  def test_globalpooling_1d_keepdims_masking_support(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Masking(mask_value=0., input_shape=(None, 4)))
+    model.add(keras.layers.GlobalAveragePooling1D(keepdims=True))
+    model.compile(loss='mae', optimizer='rmsprop')
+
+    model_input = np.random.random((2, 3, 4))
+    model_input[0, 1:, :] = 0
+    output = model.predict(model_input)
+    self.assertAllEqual((2, 1, 4), output.shape)
+    self.assertAllClose(output[0, 0], model_input[0, 0, :])
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class Pooling2DTest(test.TestCase, parameterized.TestCase):

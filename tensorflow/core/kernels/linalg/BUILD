@@ -23,6 +23,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -362,7 +363,7 @@ tf_cuda_cc_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",

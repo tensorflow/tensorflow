@@ -35,6 +35,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -1361,6 +1362,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
             ops.convert_to_tensor(updates, self.dtype),
             name=name))
 
+  def _write_object_proto(self, proto, options):
+    """Writes additional information of the variable into the SavedObject proto.
+
+    Subclasses of ResourceVariables could choose to override this method to
+    customize extra information to provide when saving a SavedModel.
+
+    Ideally, this should contain the logic in
+    write_object_proto_for_resource_variable but `DistributedValue` is an
+    outlier at the momemnt. Once `DistributedValue` becomes a proper
+    ResourceVariable, we should remove the helper method below.
+
+    Args:
+      proto: `SavedObject` proto to update.
+      options: A `SaveOption` instance that configures save behavior.
+    """
+    write_object_proto_for_resource_variable(self, proto, options)
+
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
@@ -2279,3 +2297,35 @@ class VariableSpec(tensor_spec.DenseSpec):
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
+
+
+def write_object_proto_for_resource_variable(resource_variable, proto, options):
+  """Writes additional information of the variable into the SavedObject proto.
+
+  This allows users to define a `hook` to provide extra information of the
+  variable to the SavedObject.
+
+  For example, DistritubtedVariable class would fill in components in the
+  distributed context.
+
+  Args:
+    resource_variable: A `ResourceVariable` or `DistributedValue` that has the
+      information to be saved into the proto.
+    proto: `SavedObject` proto to update.
+    options: A `SaveOption` instance that configures save behavior.
+  """
+  proto.variable.SetInParent()
+  if not resource_variable.name.endswith(":0"):
+    raise ValueError("Cowardly refusing to save variable {} because of"
+                     " unexpected suffix which won't be restored.".format(
+                         resource_variable.name))
+  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.trainable = resource_variable.trainable
+  proto.variable.dtype = resource_variable.dtype.as_datatype_enum
+  proto.variable.synchronization = resource_variable.synchronization.value
+  proto.variable.aggregation = resource_variable.aggregation.value
+  proto.variable.shape.CopyFrom(resource_variable.shape.as_proto())
+  if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
+  ):
+    if hasattr(resource_variable, "device"):
+      proto.variable.device = resource_variable.device

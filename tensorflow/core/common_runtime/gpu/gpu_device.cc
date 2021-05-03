@@ -1255,13 +1255,13 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
   // Print each interconnect map to the log.
   for (const InterconnectMap& im : interconnect_maps) {
-    LOG(INFO) << "Device interconnect " << im.name << " with strength "
-              << im.strength << " edge matrix:";
+    VLOG(1) << "Device interconnect " << im.name << " with strength "
+            << im.strength << " edge matrix:";
     string line_buf = "     ";
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
       strings::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
     }
-    LOG(INFO) << line_buf;
+    VLOG(1) << line_buf;
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
       line_buf = strings::StrCat(visible_gpu_order[i].value(), ":   ");
       PlatformDeviceId gpu_id_i = visible_gpu_order[i];
@@ -1274,7 +1274,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
           line_buf.append("N ");
         }
       }
-      LOG(INFO) << line_buf;
+      VLOG(1) << line_buf;
     }
   }
 
@@ -1415,9 +1415,9 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
       tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
-  LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
-            << (bytes_limit >> 20) << " MB memory) -> physical GPU ("
-            << GetShortDeviceDescription(platform_device_id, *desc) << ")";
+  LOG(INFO) << "Created device " << device_name << " with "
+            << (bytes_limit >> 20) << " MB memory: "
+            << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   gpu_allocator->SetStream(gpu_device->GetStream());
   devices->push_back(std::move(gpu_device));
@@ -1731,32 +1731,30 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_major = 0;
       cc_minor = 0;
     }
-    LOG(INFO) << "Found device " << i << " with properties: "
-              << "\npciBusID: " << description->pci_bus_id()
-              << " name: " << description->name()
-              << " computeCapability: " << cc_major << "." << cc_minor
-              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
-              << " coreCount: " << description->core_count()
-              << " deviceMemorySize: "
-              << strings::HumanReadableNumBytes(
-                     description->device_memory_size())
-              << " deviceMemoryBandwidth: "
-              << strings::HumanReadableNumBytes(description->memory_bandwidth())
-              << "/s";
+    VLOG(1) << "Found device " << i << " with properties: "
+            << "\npciBusID: " << description->pci_bus_id()
+            << " name: " << description->name()
+            << " computeCapability: " << cc_major << "." << cc_minor
+            << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+            << " coreCount: " << description->core_count()
+            << " deviceMemorySize: "
+            << strings::HumanReadableNumBytes(description->device_memory_size())
+            << " deviceMemoryBandwidth: "
+            << strings::HumanReadableNumBytes(description->memory_bandwidth())
+            << "/s";
 #elif TENSORFLOW_USE_ROCM
     std::string gcn_arch_name = description->rocm_amdgpu_gcn_arch_name();
-    LOG(INFO) << "Found device " << i << " with properties: "
-              << "\npciBusID: " << description->pci_bus_id()
-              << " name: " << description->name()
-              << "     ROCm AMDGPU Arch: " << gcn_arch_name
-              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
-              << " coreCount: " << description->core_count()
-              << " deviceMemorySize: "
-              << strings::HumanReadableNumBytes(
-                     description->device_memory_size())
-              << " deviceMemoryBandwidth: "
-              << strings::HumanReadableNumBytes(description->memory_bandwidth())
-              << "/s";
+    VLOG(1) << "Found device " << i << " with properties: "
+            << "\npciBusID: " << description->pci_bus_id()
+            << " name: " << description->name()
+            << "     ROCm AMDGPU Arch: " << gcn_arch_name
+            << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+            << " coreCount: " << description->core_count()
+            << " deviceMemorySize: "
+            << strings::HumanReadableNumBytes(description->device_memory_size())
+            << " deviceMemoryBandwidth: "
+            << strings::HumanReadableNumBytes(description->memory_bandwidth())
+            << "/s";
 #endif
   }
 
@@ -1869,7 +1867,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     std::vector<int> raw_ids(ids->size());
     std::transform(ids->begin(), ids->end(), raw_ids.begin(),
                    [](PlatformDeviceId id) -> int { return id.value(); });
-    LOG(INFO) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
+    VLOG(1) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
   }
 
   return Status::OK();

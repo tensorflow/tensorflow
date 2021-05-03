@@ -7,6 +7,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -204,6 +205,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
     ],
@@ -3930,6 +3932,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":memory_space_assignment",
+        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -5068,6 +5071,7 @@ cc_library(
     hdrs = ["while_loop_invariant_code_motion.h"],
     deps = [
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
         ":tuple_util",
         ":while_loop_analysis",
@@ -5681,6 +5685,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "result_caster",
+    srcs = ["result_caster.cc"],
+    hdrs = ["result_caster.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+        ":shape_inference",
+    ],
+)
+
+tf_cc_test(
+    name = "result_caster_test",
+    srcs = ["result_caster_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":result_caster",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "global_device_id",
     srcs = ["global_device_id.cc"],
     hdrs = ["global_device_id.h"],
@@ -5743,10 +5771,9 @@ tf_cc_test(
     ],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "hlo_pb2",
-#     api_version = 2,
-#     deps = [":hlo_proto"],
-# )
-# copybara:uncomment_end
+xla_py_proto_library(
+    name = "hlo_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":hlo_proto"],
+)

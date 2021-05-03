@@ -634,6 +634,7 @@ table MulOptions {
 }
 
 table L2NormOptions {
+  // This field is currently ignored in the L2 Norm Op.
   fused_activation_function:ActivationFunctionType;
 }
 
