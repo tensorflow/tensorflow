@@ -59,34 +59,9 @@ namespace wrap {
     return loaded(args...);                                                   \
   }
 
-<<<<<<< HEAD
-#endif
-
-//BUG(rocm-profiler): roctracer_enable_op_activity does not exist in rocm-4.0.1
-// clang-format off
-#define FOREACH_ROCTRACER_API(__macro)			\
-  __macro(roctracer_default_pool_expl)			\
-  __macro(roctracer_disable_domain_activity)		\
-  __macro(roctracer_disable_domain_callback)		\
-  __macro(roctracer_disable_op_activity)		\
-  __macro(roctracer_disable_op_callback)		\
-  __macro(roctracer_enable_domain_activity_expl)	\
-  __macro(roctracer_enable_domain_callback)		\
-  __macro(roctracer_enable_op_activity)			\
-  __macro(roctracer_enable_op_activity_expl)			\
-  __macro(roctracer_enable_op_callback)			\
-  __macro(roctracer_error_string)			\
-  __macro(roctracer_flush_activity_expl)		\
-  __macro(roctracer_get_timestamp)			\
-  __macro(roctracer_op_string)				\
-  __macro(roctracer_open_pool_expl)			\
-  __macro(roctracer_set_properties)     \
-  __macro(roctracer_flush_buf)     \         
-
-// clang-format on
-=======
 #endif  // PLATFORM_GOOGLE
 
+//BUG(rocm-profiler): roctracer_enable_op_activity does not exist in rocm-4.0.1
 #define FOREACH_ROCTRACER_API(DO_FUNC)           \
   DO_FUNC(roctracer_default_pool_expl)           \
   DO_FUNC(roctracer_disable_domain_activity)     \
@@ -104,7 +79,6 @@ namespace wrap {
   DO_FUNC(roctracer_op_string)                   \
   DO_FUNC(roctracer_open_pool_expl)              \
   DO_FUNC(roctracer_set_properties)
->>>>>>> origin/develop-upstream
 
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 
