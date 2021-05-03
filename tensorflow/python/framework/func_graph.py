@@ -811,6 +811,7 @@ class FuncGraph(ops.Graph):
     self._scope_exit_callbacks.append(fn)
 
 
+# TODO(mdan): Too many threaded arguments. Accept an ACD ctx manager instead.
 def func_graph_from_py_func(name,
                             python_func,
                             args,
@@ -824,7 +825,8 @@ def func_graph_from_py_func(name,
                             op_return_value=None,
                             collections=None,
                             capture_by_value=None,
-                            override_flat_arg_shapes=None):
+                            override_flat_arg_shapes=None,
+                            acd_record_initial_resource_uses=False):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -869,6 +871,11 @@ def func_graph_from_py_func(name,
       containing value `None` must match entries in flattened arguments
       containing non-tensors, while entries containing a `TensorShape` must
       match entries in the flattened arguments containing tensors.
+    acd_record_initial_resource_uses: If `True` and `add_control_dependencies`
+      is enabled, the results (those marked with
+      AutomaticControlDependencies.mark_result) will be annotated with a private
+      attribute, "_res_first_used_by", which points to the first nodes which
+      used the any of the resources that the result op is using.
 
   Returns:
     A FuncGraph.
@@ -886,7 +893,8 @@ def func_graph_from_py_func(name,
                            capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    deps_control_manager = auto_control_deps.AutomaticControlDependencies()
+    deps_control_manager = auto_control_deps.AutomaticControlDependencies(
+        record_initial_resource_uses=acd_record_initial_resource_uses)
   else:
     deps_control_manager = ops.NullContextmanager()
 
