@@ -1585,9 +1585,10 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
   auto operand = GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);
 
+  const int64 rank = hlo->shape().rank();
   // Create a window config to represent the slice.
   Window window;
-  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+  for (int64 i = 0; i < rank; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_stride(hlo->slice_strides(i));
@@ -1609,11 +1610,11 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
   TF_RET_CHECK(!reshard_operand->dynamic_slice_index_on_output.has_value());
   const Shape& operand_shape = reshard_operand->sharded_input->shape();
 
-  std::vector<int64> start_indices = hlo->slice_starts();
-  std::vector<int64> limit_indices = hlo->slice_limits();
-  std::vector<int64> strides = hlo->slice_strides();
+  std::vector<int64> start_indices(rank);
+  std::vector<int64> limit_indices(rank);
+  const std::vector<int64>& strides = hlo->slice_strides();
   bool need_slice = false;
-  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+  for (int64 i = 0; i < rank; ++i) {
     auto dim = reshard_operand->shard_window.dimensions(i);
     start_indices[i] = -dim.padding_low();
     limit_indices[i] = operand_shape.dimensions(i) + dim.padding_high();
