@@ -145,12 +145,11 @@ class TPUVariableMixin(object):
         return var.handle
     else:
       is_packed = self._packed_var is not None
+      val = self._values
       if is_packed:
-        handles = [self._packed_var.handle]
-      else:
-        handles = [v.handle for v in self._values]
+        val = [self._packed_var]
 
-      return tpu_context.get_replicated_var_handle(self._handle_id, handles,
+      return tpu_context.get_replicated_var_handle(self._handle_id, val,
                                                    self._is_mirrored(),
                                                    is_packed)
 

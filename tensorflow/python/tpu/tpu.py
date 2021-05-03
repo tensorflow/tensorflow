@@ -51,6 +51,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
@@ -306,12 +307,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
     self._unsupported_ops = []
     self._pivot = pivot
-    self._replicated_handles = {}
+    self._replicated_vars = {}
 
   def get_replicated_var_handle(
       self,
       name: Text,
-      handles: List[core_types.Tensor],
+      vars_: List[variables.Variable],
       is_mirrored: bool = False,
       is_packed: bool = False) -> core_types.Tensor:
     """Returns a variable handle for replicated TPU variable 'var'.
@@ -321,7 +322,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     Args:
       name: The common name of the variable.
-      handles: The replicated TPU handles.
+      vars_: The replicated TPU variables.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
       is_packed: Whether the replicated variables are packed into one variable.
@@ -330,9 +331,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       The handle of the TPU replicated input node.
     """
     device_assignment = _enclosing_tpu_device_assignment()
-    # We don't need to put device assignment as part of the replicated_handles
-    # key because each TPUReplicateContext will only have one device assignment.
-    handle = self._replicated_handles.get(name)
+    # We don't need to put device assignment as part of the replicated_vars key
+    # because each TPUReplicateContext will only have one device assignment.
+    handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
 
@@ -340,25 +341,23 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Find a variable copy for each replica in the device assignment.
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
-      job_name = pydev.DeviceSpec.from_string(handles[0].device).job
-      devices_to_handles = {
-          device_util.canonicalize(h.device): h for h in handles
-      }
-      replicated_handles = []
+      job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
+      devices_to_vars = {device_util.canonicalize(v.device): v for v in vars_}
+      replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):
           device = device_util.canonicalize(
               device_assignment.tpu_device(
                   replica=replica_id, logical_core=logical_core, job=job_name))
-          if device in devices_to_handles:
-            replicated_handles.append(devices_to_handles[device])
+          if device in devices_to_vars:
+            replicated_vars.append(devices_to_vars[device])
             break
         else:
           raise ValueError(
               "Failed to find a variable on any device in replica {} for "
               "current device assignment".format(replica_id))
     else:
-      replicated_handles = handles
+      replicated_vars = vars_
 
     # Builds a TPUReplicatedInput node for the variable, if one does not already
     # exist. The TPUReplicatedInput node must belong to the enclosing
@@ -372,14 +371,13 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # pylint: disable=protected-access
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
-      handle = tpu_ops.tpu_replicated_input(
-          replicated_handles,
-          name=name + "/handle",
-          is_mirrored_variable=is_mirrored,
-          is_packed=is_packed)
+      handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
+                                            name=name + "/handle",
+                                            is_mirrored_variable=is_mirrored,
+                                            is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
-    self._replicated_handles[name] = handle
+    self._replicated_vars[name] = handle
     return handle
 
   def report_unsupported_operations(self) -> None:
