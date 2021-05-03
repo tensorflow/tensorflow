@@ -244,17 +244,30 @@ class RocmApiCallbackImpl {
   Status operator()(uint32_t domain, uint32_t cbid, const void* cbdata);
 
  private:
-  void AddKernelEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
-  void AddMemcpyEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
-  void AddMemsetEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
-  void AddMallocEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+  void AddKernelEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                 uint64_t enter_time, uint64_t exit_time);
+  void AddNormalMemcpyEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                 uint64_t enter_time, uint64_t exit_time);
+  void AddMemcpyPeerEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                 uint64_t enter_time, uint64_t exit_time);                                 
+  void AddMemsetEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                 uint64_t enter_time, uint64_t exit_time);
+  void AddMallocFreeEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                     uint32_t device_id, uint64_t enter_time,
+                                     uint64_t exit_time);
   void AddStreamSynchronizeEventUponApiExit(uint32_t cbid,
-                                            const hip_api_data_t* data);
-  void AddGenericEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+                                            const hip_api_data_t* data,
+                                            uint64_t enter_time,
+                                            uint64_t exit_time);
+  void AddSynchronizeEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
+                                      uint64_t enter_time, uint64_t exit_time);
 
   RocmTracerOptions options_;
   RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
+  mutex api_call_start_mutex_;
+  // TODO(rocm-profiler): replace this with absl hashmap
+  std::map<uint32_t, uint64_t> api_call_start_time_ TF_GUARDED_BY(api_call_start_mutex_);  // keep a map from the corr. id to start time
 };
 
 class RocmActivityCallbackImpl {
@@ -267,13 +280,13 @@ class RocmActivityCallbackImpl {
 
  private:
   void AddHipKernelActivityEvent(const roctracer_record_t* record);
-  void AddHipMemcpyActivityEvent(const roctracer_record_t* record);
+  void AddNormalHipMemcpyActivityEvent(const roctracer_record_t* record);
   void AddHipMemsetActivityEvent(const roctracer_record_t* record);
-  void AddHipMallocEvent(const roctracer_record_t* record);
-  void AddHipStreamSynchronizeEvent(const roctracer_record_t* record);
+  void AddHipMallocActivityEvent(const roctracer_record_t* record);
+  void AddHipStreamSynchronizeActivityEvent(const roctracer_record_t* record);
   void AddHccKernelActivityEvent(const roctracer_record_t* record);
-  void AddHccMemcpyActivityEvent(const roctracer_record_t* record);
-
+  void AddNormalHipOpsMemcpyActivityEvent(const roctracer_record_t* record);
+  void AddHipOpsMemsetActivityEvent(const roctracer_record_t* record);
   RocmTracerOptions options_;
   RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
