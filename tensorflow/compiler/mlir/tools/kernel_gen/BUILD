@@ -89,7 +89,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorToLLVM",
     ],
 )
 

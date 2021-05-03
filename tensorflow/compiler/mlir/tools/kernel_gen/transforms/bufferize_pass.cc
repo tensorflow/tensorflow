@@ -170,8 +170,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
         scf::SCFDialect, tensor::TensorDialect,
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
-        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
-        vector::VectorDialect>();
+        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
