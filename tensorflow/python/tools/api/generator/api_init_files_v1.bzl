@@ -108,6 +108,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/__internal__/legacy/__init__.py",
     "keras/__internal__/legacy/layers/__init__.py",
     "keras/__internal__/legacy/layers/experimental/__init__.py",
+    "keras/__internal__/legacy/rnn_cell/__init__.py",
     "keras/activations/__init__.py",
     "keras/applications/__init__.py",
     "keras/applications/densenet/__init__.py",
