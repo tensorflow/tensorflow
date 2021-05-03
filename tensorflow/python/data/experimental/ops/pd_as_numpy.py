@@ -13,12 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copied over from https://github.com/tensorflow/datasets/blob/1a22a94e475e7371d8b394d7d8fd77ae3ec18de4/tensorflow_datasets/core/dataset_utils.py#L103 - all code belongs to original authors
+"""Utilities for dealing with tf.data.Dataset."""
 
 import collections.abc
 import functools
 from typing import Any, Callable, Iterable, Iterator, Union
 
+import pandas as pd
 import numpy as np
 
 import tensorflow.compat.v2 as tf
@@ -130,17 +131,14 @@ def _nested_to_numpy_graph(ds_nested: Tree[TensorflowElem]) -> Tree[NumpyElem]:
   ])
 
 
-def as_numpy(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
-  """Converts a `tf.data.Dataset` to an iterable of NumPy arrays.
-  `as_numpy` converts a possibly nested structure of `tf.data.Dataset`s
-  and `tf.Tensor`s to iterables of NumPy arrays and NumPy arrays, respectively.
-  Note that because TensorFlow has support for ragged tensors and NumPy has
-  no equivalent representation,
-  [`tf.RaggedTensor`s](https://www.tensorflow.org/api_docs/python/tf/RaggedTensor)
-  are left as-is for the user to deal with them (e.g. using `to_list()`).
-  In TF 1 (i.e. graph mode), `tf.RaggedTensor`s are returned as
-  `tf.ragged.RaggedTensorValue`s.
+def pd_as_numpy(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
+  """Converts a `tf.data.Dataset` to an iterable of Pandas dataFrame.
+
+  `pd_as_numpy` converts a possibly nested structure of `tf.data.Dataset`s
+  and `tf.Tensor`s to pandas dataFrame.
+
   Example:
+
   ```
   ds = tfds.load(name="mnist", split="train")
   ds_numpy = tfds.as_numpy(ds)  # Convert `tf.data.Dataset` to Python generator
@@ -148,15 +146,30 @@ def as_numpy(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
     # `{'image': np.array(shape=(28, 28, 1)), 'labels': np.array(shape=())}`
     print(ex)
   ```
+
   Args:
     dataset: a possibly nested structure of `tf.data.Dataset`s and/or
       `tf.Tensor`s.
+
   Returns:
-    A structure matching `dataset` where `tf.data.Dataset`s are converted to
-    generators of NumPy arrays and `tf.Tensor`s are converted to NumPy arrays.
+    pandas DataFrame
   """
   _assert_ds_types(dataset)
   if tf.executing_eagerly():
-    return tf.nest.map_structure(_elem_to_numpy_eager, dataset)
+    local_np = tf.nest.map_structure(_elem_to_numpy_eager, dataset)
+    local_dataframe = pd.DataFrame(local_np)
+    return local_dataframe
   else:
-    return _nested_to_numpy_graph(dataset)
+    local_np = _nested_to_numpy_graph(dataset)
+    local_dataframe = pd.DataFrame(local_np)
+    return local_dataframe
+
+
+def dataset_shape_is_fully_defined(ds):
+  output_shapes = tf.compat.v1.data.get_output_shapes(ds)
+  return all([ts.is_fully_defined() for ts in tf.nest.flatten(output_shapes)])
+
+
+def features_shape_is_fully_defined(features):
+  return all([tf.TensorShape(info.shape).is_fully_defined() for info in
+              tf.nest.flatten(features.get_tensor_info())])

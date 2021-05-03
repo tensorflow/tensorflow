@@ -6,6 +6,24 @@ package(
 exports_files(["LICENSE"])
 
 py_library(
+    name = "pd_as_numpy",
+    srcs = ["pd_as_numpy.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "batching",
     srcs = ["batching.py"],
     srcs_version = "PY2AND3",
@@ -494,6 +512,7 @@ py_library(
 py_library(
     name = "dataset_ops",
     deps = [
+        ":pd_as_numpy",
         ":batching",
         ":cardinality",
         ":compression_ops",
