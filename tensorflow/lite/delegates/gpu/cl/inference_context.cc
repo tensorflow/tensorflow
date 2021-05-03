@@ -101,8 +101,7 @@ bool IsBufferBased(const GpuInfo& gpu_info, const TensorStorageType& type) {
   const bool image2d_based_buffer =
       (type == TensorStorageType::TEXTURE_2D ||
        type == TensorStorageType::SINGLE_TEXTURE_2D) &&
-      gpu_info.opencl_info.IsImage2dFromBufferSupported() &&
-      gpu_info.IsAdreno();
+      gpu_info.opencl_info.IsImage2dFromBufferSupported();
   return type == TensorStorageType::BUFFER ||
          type == TensorStorageType::IMAGE_BUFFER || image2d_based_buffer;
 }
@@ -558,18 +557,26 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
         descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
     size_t buffer_size;
     if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
-      const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
+      const size_t bytes_per_pixel = element_size * 4;
+      const size_t width = shape.b * shape.w;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
+      const int row_bytes_alignment =
+          gpu_info.IsAdreno()
+              ? gpu_info.opencl_info.image_pitch_alignment
+              : gpu_info.opencl_info.image_pitch_alignment * bytes_per_pixel;
       buffer_size =
-          AlignByN(bytes_per_row, gpu_info.opencl_info.image_pitch_alignment) *
-          height;
+          AlignByN(width * bytes_per_pixel, row_bytes_alignment) * height;
     } else if (descriptor.storage_type ==
                TensorStorageType::SINGLE_TEXTURE_2D) {
-      const size_t bytes_per_row = element_size * shape.b * shape.w * shape.c;
+      const size_t bytes_per_pixel = element_size * shape.c;
+      const size_t width = shape.b * shape.w;
       const size_t height = shape.h;
+      const int row_bytes_alignment =
+          gpu_info.IsAdreno()
+              ? gpu_info.opencl_info.image_pitch_alignment
+              : gpu_info.opencl_info.image_pitch_alignment * bytes_per_pixel;
       buffer_size =
-          AlignByN(bytes_per_row, gpu_info.opencl_info.image_pitch_alignment) *
-          height;
+          AlignByN(width * bytes_per_pixel, row_bytes_alignment) * height;
     } else {
       buffer_size =
           shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
@@ -604,9 +611,12 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
       if (t.second.storage_type == TensorStorageType::TEXTURE_2D ||
           t.second.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+        const int row_bytes_alignment =
+            gpu_info.IsAdreno() ? gpu_info.opencl_info.image_pitch_alignment
+                                : 0;
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
             *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
-            t.second, gpu_info.opencl_info.image_pitch_alignment,
+            t.second, row_bytes_alignment,
             &shared_buffer_tensors_[tensor_index]));
       } else {
         RETURN_IF_ERROR(CreateSharedTensor(

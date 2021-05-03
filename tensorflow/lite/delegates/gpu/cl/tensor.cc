@@ -231,8 +231,12 @@ absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
   desc.image_width = width;
   desc.image_height = height;
   desc.image_depth = 0;
-  const size_t bytes_per_row = width * channels * SizeOf(data_type);
-  desc.image_row_pitch = AlignByN(bytes_per_row, row_bytes_alignment);
+  if (row_bytes_alignment == 0) {
+    desc.image_row_pitch = 0;
+  } else {
+    const size_t bytes_per_row = width * channels * SizeOf(data_type);
+    desc.image_row_pitch = AlignByN(bytes_per_row, row_bytes_alignment);
+  }
   desc.image_slice_pitch = 0;
   desc.num_mip_levels = 0;
   desc.num_samples = 0;

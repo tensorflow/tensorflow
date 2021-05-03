@@ -230,7 +230,17 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
   } else if (gpu_info.IsPowerVR()) {
     return TensorStorageType::BUFFER;
   } else if (gpu_info.IsMali()) {
-    return TensorStorageType::BUFFER;
+    const MaliInfo mali_info = gpu_info.mali_info;
+    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
+        mali_info.IsValhall()) {
+      if (gpu_info.opencl_info.IsImage2dFromBufferSupported()) {
+        return TensorStorageType::TEXTURE_2D;
+      } else {
+        return TensorStorageType::BUFFER;
+      }
+    } else {
+      return TensorStorageType::BUFFER;
+    }
   } else if (gpu_info.IsNvidia()) {
     return gpu_info.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                           : TensorStorageType::BUFFER;
