@@ -2152,10 +2152,10 @@ def _ReadGrad(_, grad):
 
 
 def variable_shape(handle, out_type=dtypes.int32):
-  if getattr(handle, "_handle_data",
-             None) is None or not handle._handle_data.is_set:  # pylint: disable=protected-access
+  handle_data = get_eager_safe_handle_data(handle)
+  if handle_data is None or not handle_data.is_set:
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
-  shape_proto = handle._handle_data.shape_and_type[0].shape  # pylint: disable=protected-access
+  shape_proto = handle_data.shape_and_type[0].shape
   if shape_proto.unknown_rank or any(x.size == -1 for x in shape_proto.dim):
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
   return constant_op.constant([x.size for x in shape_proto.dim], dtype=out_type)

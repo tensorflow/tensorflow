@@ -105,5 +105,32 @@ class GradientsTest(tf.test.TestCase):
     self.assertAllClose(tf.reshape(numeric_result, [-1]),
                         tf.reshape(eager_result, [-1]), rtol=1e-2)
 
+  def testEmbeddingLookupGradientsHaveKnownShape(self):
+
+    class MyLayer(tf.keras.layers.Layer):
+
+      def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.embedding = None
+
+      def build(self, input_shape):
+        self.embedding = tf.Variable(tf.random.uniform([50, 16]))
+
+      def call(self, x):
+        return tf.nn.embedding_lookup(self.embedding, x)
+
+    layer = MyLayer()
+
+    @tf.function
+    def _run(x):
+      with tf.GradientTape() as tape:
+        y = layer(x)
+        loss = tf.math.reduce_sum(y)
+      gradients = tape.gradient(loss, layer.weights)
+      self.assertListEqual(gradients[0].shape.as_list(), [50, 16])
+
+    _run(tf.random.uniform([4, 16], minval=0, maxval=50, dtype=tf.int64))
+
+
 if __name__ == "__main__":
   tf.test.main()
