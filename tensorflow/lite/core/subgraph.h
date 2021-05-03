@@ -753,6 +753,10 @@ class Subgraph {
   // Whether memory planner should be instantiated to retain intermediates for
   // debugging.
   bool preserve_all_tensors_ = false;
+
+  // Whether the subgraph is currently in use (e.g. running the `Invoke`
+  // or `AllocateTensors` functions).
+  bool is_subgraph_in_use_ = false;
 };
 
 }  // namespace tflite

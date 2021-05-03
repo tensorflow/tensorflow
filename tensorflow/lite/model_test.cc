@@ -532,6 +532,25 @@ TEST(BasicFlatBufferModel, TestHandleMalformedModelReuseTensor) {
   ASSERT_NE(interpreter->AllocateTensors(), kTfLiteOk);
 }
 
+// Recursion & reentrant are not supported in TFLite.
+// The test ensures it fails gracefullly instead of crashing with
+// a stack overflow.
+TEST(BasicFlatBufferModel, TestUnsupportedRecursion) {
+  const auto model_path =
+      "tensorflow/lite/testdata/unsupported_recursion.bin";
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(model_path);
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_NE(interpreter->AllocateTensors(), kTfLiteOk);
+}
+
 // The models here have a buffer index for a tensor pointing to a null buffer.
 // This results in the tensor being interpreted as read-write, but the model
 // assumes the tensor is read-only. As such, `interpreter->Invoke()` would
