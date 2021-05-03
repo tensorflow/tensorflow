@@ -55,9 +55,10 @@ class DispatcherConfig(
       dispatcher, while a lower value will reduce the time it takes for the
       dispatcher to garbage collect expired jobs.
     job_gc_timeout_ms: How long a job needs to be unused before it becomes a
-      candidate for garbage collection, in milliseconds. If not set, the runtime
-      will select a reasonable default. A higher value will cause jobs to stay
-      around longer with no consumers. This is useful if there is a large gap in
+      candidate for garbage collection, in milliseconds. A value of -1 indicates
+      that jobs should never be garbage collected. If not set, the runtime will
+      select a reasonable default. A higher value will cause jobs to stay around
+      longer with no consumers. This is useful if there is a large gap in
       time between when consumers read from the job. A lower value will reduce
       the time it takes to reclaim the resources from expired jobs.
   """

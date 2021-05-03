@@ -136,8 +136,10 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
-  job_gc_thread_ = absl::WrapUnique(
-      env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  if (config_.job_gc_timeout_ms() >= 0) {
+    job_gc_thread_ = absl::WrapUnique(
+        env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
