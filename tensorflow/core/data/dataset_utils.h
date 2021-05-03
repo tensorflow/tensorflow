@@ -286,17 +286,6 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
 bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 
-// Based on `job_name`, `optimizations_enabled`, `optimizations_disabled` and
-// `optimizations_default`, returns the list of optimizations that will be
-// applied.
-std::vector<tstring> SelectOptimizations(
-    const string& job_name,
-    const absl::flat_hash_map<string, uint64>& live_experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    std::function<uint64(const string&)> hash_func);
-
 // Removes device placements from the ops of all functions in `library`.
 void StripDevicePlacement(FunctionDefLibrary* library);
 
@@ -333,6 +322,47 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                  std::vector<Tensor>* out_tensors,
                  std::vector<std::vector<Tensor>>* batch_elements);
+
+// Configures tf.data experiments and determines which optimizations should be
+// applied.
+std::vector<tstring> ConfigureExperimentsAndSelectOptimizations(
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default);
+
+// Determines which optimizations should be applied.
+std::vector<tstring> SelectOptimizations(
+    const string& job_name,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func);
+
+// Computes the set of enabled, disabled, and default optimizations based on the
+// given options.
+void GetOptimizations(const Options& options,
+                      std::vector<tstring>* optimizations_enabled,
+                      std::vector<tstring>* optimizations_disabled,
+                      std::vector<tstring>* optimizations_default);
+
+// Creates graph rewrite configs based on the given options.
+void CreateGraphRewriteConfigs(const Options& options,
+                               std::vector<std::string>* configs);
+
+// Determines whether max intra-op parallelism should be configured.
+bool ShouldConfigureMaxIntraOpParallelism(const Options& options);
+
+// Determines whether private threadpool should be used.
+bool ShouldUsePrivateThreadPool(const Options& options);
+
+// Determines whether autotuning should be used.
+bool ShouldUseAutotuning(const Options& options);
+
+// Determines whether optimizations should be applied.
+bool ShouldApplyOptimizations(
+    const Options& options, const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_default);
 
 }  // namespace data
 }  // namespace tensorflow

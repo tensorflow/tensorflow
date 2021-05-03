@@ -225,6 +225,22 @@ cc_library(
 )
 
 cc_library(
+    name = "root_dataset",
+    srcs = ["root_dataset.cc"],
+    hdrs = ["root_dataset.h"],
+    deps = [
+        ":dataset_utils",
+        ":name_utils",
+        ":rewrite_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:stringprintf",
+    ],
+)
+
+cc_library(
     name = "serialization_utils",
     srcs = ["serialization_utils.cc"],
     hdrs = ["serialization_utils.h"],

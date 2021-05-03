@@ -351,8 +351,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args),
-                                       /*ratio=*/1);
+      return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
     Status SaveInternal(SerializationContext* ctx,
