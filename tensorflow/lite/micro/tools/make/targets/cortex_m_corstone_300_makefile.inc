@@ -23,6 +23,12 @@ ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
   endif
 endif
 
+# Convert downloaded person detect int8 model.
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/person_detection_int8_vela_convert.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the person detection int8 model conversion: $(DOWNLOAD_RESULT))
+endif
+
 FLOAT := soft
 GCC_TARGET_ARCH := $(TARGET_ARCH)
 

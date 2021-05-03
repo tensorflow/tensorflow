@@ -4,7 +4,7 @@
 Arm(R) Ethos(TM)-U is a new class of machine learning processors, called a
 microNPU, specifically designed to accelerate ML inference in area-constrained
 embedded and IoT devices. This readme briefly describes how to integrate Ethos-U
-related hardware and software into TFLM.
+related hardware and software into TFLM. See also [Ethos-U ML Evaluation kit examples](https://review.mlplatform.org/plugins/gitiles/ml/ethos-u/ml-embedded-evaluation-kit).
 
 To enable the Ethos-U software stack, add `CO_PROCESSOR=ethos_u` to the make
 command line. See example below.
