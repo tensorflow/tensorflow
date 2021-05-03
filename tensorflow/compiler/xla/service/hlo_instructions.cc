@@ -2420,7 +2420,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
