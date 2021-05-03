@@ -1040,9 +1040,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
-   TFL_OperandHasAtleastRank<1, 2>,
-   PredOpTrait<"x and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+   TFL_OperandHasAtleastRank<1, 2>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1059,14 +1057,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QI16]>:$x,
-    TFL_TensorOf<[F32, QI8, QI16]>:$y,
+    TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
+    TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8, QI16]>:$output
+    TFL_TensorOf<[F32, QI8, QI16, I32]>:$output
   );
 
   let hasOptions = 1;
