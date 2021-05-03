@@ -547,6 +547,47 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
   @combinations.generate(
       combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+          ]))
+  def testIterableIteratorError(self, distribution):
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    iterator = iter(dist_dataset)
+    # Raises error when next(iterator) is called without strategy scope
+    with self.assertRaises(ValueError):
+
+      def replica_fn1(iterator):
+        return next(iterator)
+
+      distribution.run(replica_fn1, args=(iterator,))
+
+    if distribution.num_replicas_in_sync == 1:
+      expected_result = [[[0, 1]], [[2, 3]], [[4, 5]], [[6, 7]], [[8, 9]]]
+    elif distribution.num_replicas_in_sync == 2:
+      expected_result = [[[0], [1]], [[2], [3]], [[4], [5]], [[6], [7]],
+                         [[8], [9]]]
+
+    with distribution.scope():
+
+      def replica_fn2(iterator):
+        return iterator
+
+      result = distribution.run(replica_fn2, args=(next(iterator),))
+      self.assertAllEqual(
+          distribution.experimental_local_results(result), expected_result[0])
+
+    # Confirm default ReplicaContext also works
+    iterator = iter(dist_dataset)
+    for i, element in enumerate(iterator):
+      self.assertAllEqual(
+          distribution.experimental_local_results(element), expected_result[i])
+
+  @combinations.generate(
+      combinations.combine(
           mode=["graph", "eager"],
           input_type=["input_fn", "dataset"],
           api_type=["wrap_into_iterator", "wrap_into_dataset"],
