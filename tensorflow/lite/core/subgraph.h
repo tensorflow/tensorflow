@@ -721,5 +721,10 @@ using Subgraph = tflrt::Subgraph;
 using Subgraph = impl::Subgraph;
 #endif
 
+  // Whether the subgraph is currently in use (e.g. running the `Invoke`
+  // or `AllocateTensors` functions).
+  bool is_subgraph_in_use_ = false;
+};
+
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

@@ -438,6 +438,24 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
 }
 
 // TODO(b/150072943): Add malformed model with sparse tensor tests.
+// Recursion & reentrant are not supported in TFLite.
+// The test ensures it fails gracefullly instead of crashing with
+// a stack overflow.
+TEST(BasicFlatBufferModel, TestUnsupportedRecursion) {
+  const auto model_path =
+      "tensorflow/lite/testdata/unsupported_recursion.bin";
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(model_path);
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_NE(interpreter->AllocateTensors(), kTfLiteOk);
+}
 
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
