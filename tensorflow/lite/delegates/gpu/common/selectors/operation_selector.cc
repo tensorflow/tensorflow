@@ -459,6 +459,12 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       }
       return absl::OkStatus();
     }
+    case OperationType::DEPTH_TO_SPACE: {
+      auto attr =
+          absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
+      SelectDepthToSpace(attr, op_def, gpu_op);
+      return absl::OkStatus();
+    }
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
@@ -470,6 +476,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       auto attr = absl::any_cast<FullyConnectedInt8Attributes>(
           node.operation.attributes);
       *gpu_op = SelectFullyConnected(attr, gpu_info, op_def);
+      return absl::OkStatus();
+    }
+    case OperationType::GATHER: {
+      auto attr = absl::any_cast<GatherAttributes>(node.operation.attributes);
+      RETURN_IF_ERROR(SelectGather(attr, op_def, gpu_op));
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
@@ -522,6 +533,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       *gpu_op = SelectReLU(attr, op_def);
       return absl::OkStatus();
     }
+    case OperationType::RESAMPLER: {
+      *gpu_op = SelectResampler(op_def);
+      return absl::OkStatus();
+    }
     case OperationType::RESHAPE: {
       const int src_channels = inputs[0]->tensor.shape.c;
       auto attr = absl::any_cast<ReshapeAttributes>(node.operation.attributes);
@@ -550,6 +565,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SPLIT: {
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
       SelectSplit(attr, op_def, gpu_op);
+      return absl::OkStatus();
+    }
+    case OperationType::TILE: {
+      *gpu_op = SelectTile(op_def, inputs[0]->tensor.shape);
       return absl::OkStatus();
     }
     case OperationType::TRANSPOSE: {

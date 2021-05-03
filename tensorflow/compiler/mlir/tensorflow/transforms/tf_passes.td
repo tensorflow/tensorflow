@@ -289,6 +289,19 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
+  let summary = "Marks device cluster inputs-output pairs that read/write to the same variable as aliases";
+
+  let description = [{
+This pass analyzes the inputs and outputs to device cluster and marks those
+input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
+and write to the same resource. This aliasing information can then be propagated
+to XLA compiler for input/output buffer space optimizations.
+  }];
+
+  let constructor = "TFDevice::CreateMarkInputOutputAliasesPass()";
+}
+
 def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
   let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
 
@@ -856,4 +869,41 @@ func @single_op_launch() {
   }];
 
   let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
+}
+
+def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
+  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
+
+  let description = [{
+This pass takes ops wrapped in a tf_device.launch op with host device
+assignment extracts them from launch and adds an `_xla_outside_compilation`
+attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
+
+A simple example:
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf_device.launch"() {
+      "tf.B"()
+      tf_device.return
+    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+
+Would become the following ops (unimportant attribute, type are omitted):
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf.B"() {_xla_outside_compilation = "cluster1"}
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+  }];
+
+  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }

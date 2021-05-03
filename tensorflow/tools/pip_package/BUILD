@@ -2,7 +2,7 @@
 #  Tools for building the TensorFlow pip package.
 
 load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
@@ -58,7 +58,7 @@ transitive_hdrs(
         "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
-        "//tensorflow/python:python_op_gen",
+        "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python:tf_session_helper",
         "//third_party/eigen3",
     ] + if_cuda([
@@ -114,8 +114,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python/training/experimental:loss_scale",
     "//tensorflow/python/training/experimental:loss_scale_optimizer",
-    "//tensorflow/python:memory_checker",
-    "//tensorflow/python:meta_graph_testdata",
+    "//tensorflow/python/framework:meta_graph_testdata",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
@@ -150,6 +149,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:example_parser_configuration",
     "//tensorflow/python:image_grad_test_base",
+    "//tensorflow/python:memory_checker",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
@@ -262,9 +262,8 @@ filegroup(
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_not_system_lib(
+    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
             "@absl_py//absl:LICENSE",

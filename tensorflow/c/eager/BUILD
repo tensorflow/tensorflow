@@ -27,7 +27,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cuda_library(
@@ -137,7 +137,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -263,7 +263,7 @@ tf_cuda_cc_test(
     srcs = [
         "gradients_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -300,7 +300,7 @@ tf_cuda_cc_test(
     srcs = [
         "unified_api_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
     deps = [
@@ -344,7 +344,7 @@ tf_cuda_cc_test(
     srcs = [
         "gradient_checker_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/175330074
@@ -672,6 +672,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
+        "@com_google_absl//absl/strings",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -680,7 +681,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "@com_google_absl//absl/strings",
+        # copybara:uncomment_begin
+        # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+        # copybara:uncomment_end
     ],
 )
 
@@ -712,7 +715,7 @@ tf_cuda_cc_test(
         "c_api_remote_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -744,7 +747,7 @@ tf_cuda_cc_test(
         "c_api_remote_function_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -762,7 +765,7 @@ tf_cuda_cc_test(
         "c_api_distributed_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
         "noasan",  # leaks gRPC server instances
@@ -795,7 +798,7 @@ tf_cuda_cc_test(
         "c_api_cluster_test.cc",
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     tags = [
         "no_windows",
     ],
@@ -814,6 +817,28 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_multi_client_test",
+    size = "small",
+    srcs = [
+        "c_api_multi_client_test.cc",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
     ],
 )
 
@@ -901,7 +926,7 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -924,7 +949,7 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_unified_experimental_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [

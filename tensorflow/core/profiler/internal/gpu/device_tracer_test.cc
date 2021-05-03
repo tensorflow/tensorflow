@@ -244,6 +244,55 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
+#if TENSORFLOW_USE_ROCM
+TEST_F(DeviceTracerTest, TraceToXSpace) {
+  auto tracer = CreateGpuTracer();
+  if (!tracer) return;
+
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(tracer->Start());
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  TF_ASSERT_OK(tracer->Stop());
+  XSpace space;
+  TF_ASSERT_OK(tracer->CollectData(&space));
+  // At least one gpu plane and one host plane for launching events.
+  const XPlane* host_plane = FindPlaneWithName(space, kRoctracerApiPlaneName);
+  ASSERT_NE(host_plane, nullptr);
+
+  const XPlane* device_plane =
+      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
+  ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  // The device plane should have at least five events: one for MemcpyH2D, one
+  // for MemcpyD2H, two for Matmul (one from Eigen, one from cudnn), one for
+  // memset.
+  EXPECT_GE(device_plane->event_metadata_size(), 5);
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+
+  // Check if the device events timestamps are set.
+  int total_events = 0;
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      EXPECT_GT(event.TimestampNs(), 0);
+      EXPECT_GT(event.DurationNs(), 0);
+      ++total_events;
+    });
+  });
+  EXPECT_GE(total_events, 5);
+}
+#else   // TENSORFLOW_USE_ROCM
 TEST_F(DeviceTracerTest, TraceToXSpace) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
@@ -278,9 +327,10 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
-  // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
-  // from cudnn), one for memset.
-  EXPECT_EQ(device_plane->event_metadata_size(), 5);
+  // The device plane should have at least five events: one for MemcpyH2D, one
+  // for MemcpyD2H, two for Matmul (one from Eigen, one from cudnn), one for
+  // memset.
+  EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
 #if GOOGLE_CUDA
@@ -303,6 +353,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   });
   EXPECT_GE(total_events, 5);
 }
+#endif  // TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
 TEST_F(DeviceTracerTest, CudaRuntimeResource) {

@@ -317,8 +317,16 @@ class Runner {
   static Runner* get();
 };
 
-// A class which provides a sequence of splits. Iterators created with a split
-// provider will iterate over only the splits provided by the split provider.
+// A class which provides a sequence of splits. Splits represent subdivisions of
+// a dataset, e.g. filenames or ranges within files. We use splitting to
+// partition input data into smaller pieces for distributed processing (see
+// go/tf-data-splitting-design).
+//
+// Datasets provide a `MakeSplitProvider` method to expose a listing of their
+// splits.
+//
+// Iterators created with a split provider will only iterate over the splits
+// provided by the split provider.
 class SplitProvider {
  public:
   virtual ~SplitProvider() {}
@@ -639,6 +647,10 @@ class IteratorBase {
   // should be converted to a different error type before being propagated to
   // the caller.
   //
+  // Implementations must explicitly set `*end_of_sequence = false` if an
+  // `Status::OK()` status is returned and the iterator is not at the end of the
+  // sequence.
+  //
   // This method is thread-safe.
   //
   // TODO(mrry): Define `GetNextAsync()` or `GetNextManyAsync()`, and
@@ -929,13 +941,8 @@ class DatasetBase : public core::RefCounted {
   // state. Otherwise, the method returns `Status::OK()`.
   virtual Status CheckExternalState() const = 0;
 
- protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
-  friend class CapturedFunction;
-
+  // Wrapper around a GraphDefBuilder which provides support for serializing
+  // Datasets as GraphDefs.
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     explicit DatasetGraphDefBuilder(GraphDefBuilder* b)
@@ -951,6 +958,13 @@ class DatasetBase : public core::RefCounted {
     Status AddResourceHelper(SerializationContext* ctx, const Tensor& val,
                              Node** output);
   };
+
+ protected:
+  friend Status AsGraphDef(
+      OpKernelContext* ctx, const DatasetBase* dataset,
+      SerializationContext&& serialization_ctx,
+      GraphDef* graph_def);  // For access to graph related members.
+  friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
   //
@@ -1035,6 +1049,9 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   // Internal implementation of GetNext that is wrapped in tracing logic.
+  //
+  // See the docstring of `GetNext` method regaring the contract for
+  // `out_tensors` and `end_of_sequence`.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;

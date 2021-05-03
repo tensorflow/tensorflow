@@ -334,7 +334,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 }
 
 void ConvertUint8ToInt8::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto &ctx = getContext();
   auto func = getFunction();
 

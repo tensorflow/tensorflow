@@ -32,6 +32,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
@@ -1788,6 +1789,17 @@ def _dummy_tensor_fn(value_structure):
 
   def create_dummy_tensor(spec):
     """Create a dummy tensor with possible batch dimensions set to 0."""
+    if hasattr(spec, "_create_empty_value"):
+      # Type spec may overwrite default dummy values behavior by declaring the
+      # `_create_empty_value(self)` method. This method must return a value
+      # compatible with the type spec with batch dimensions set to 0 or fail if
+      # such a value does not exist. This allows a composite tensor to customize
+      # dummy values creation as, in general, its dummy value is not composed
+      # from dummy components (e.g. `row_splits` tensor of a RaggedTensor is
+      # never allowed to be empty). See b/183969859 for more discussions.
+      # TODO(b/186079336): reconsider CompositeTensor support.
+      return spec._create_empty_value()  # pylint: disable=protected-access
+
     if isinstance(spec, ragged_tensor.RaggedTensorSpec):
       # Splice out the ragged dimensions.
       # pylint: disable=protected-access
@@ -1996,7 +2008,9 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
       self._devices = tuple(
           device_util.canonicalize_without_job_and_task(d) for d in devices)
     self._element_spec = element_spec
-    self._options = options
+    # `self._options` intentionally made not `None` for proper serialization.
+    self._options = (options if options is not None else
+                     distribute_lib.InputOptions())
     self._canonicalize_devices = canonicalize_devices
 
   @property
@@ -2007,13 +2021,21 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
     return (self._worker, self._devices, self._element_spec, self._options,
             self._canonicalize_devices)
 
+  def _get_multi_device_iterator_spec(self, specs):
+    device_scope = device_util.canonicalize(self._worker, device_util.current())
+    host_device = device_util.get_host_for_device(device_scope)
+    # source_device while creating iterator governs the worker device in
+    # iterator spec.
+    worker = host_device
+    specs.append(
+        multi_device_iterator_ops.MultiDeviceIteratorSpec(
+            self._devices, worker, element_spec=self._element_spec))
+
   @property
   def _component_specs(self):
     specs = []
     if _should_use_multi_device_iterator(self._options):
-      specs.append(
-          multi_device_iterator_ops.MultiDeviceIteratorSpec(
-              self._devices, self._worker, element_spec=self._element_spec))
+      self._get_multi_device_iterator_spec(specs)
     else:
       specs.append(iterator_ops.IteratorSpec(element_spec=self._element_spec))
     return specs
@@ -2079,6 +2101,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
                      "need to be provided.")
 
     self._options = options
+    self._canonicalize_devices = canonicalize_devices
     if dataset is None:
       if (components is None or element_spec is None):
         raise ValueError(error_message)
@@ -2091,28 +2114,36 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         raise ValueError(error_message)
       super(_SingleWorkerOwnedDatasetIterator,
             self).__init__(dataset, worker, devices, self._options)
-    self._canonicalize_devices = canonicalize_devices
+
+  def _create_owned_multi_device_iterator(self):
+    # If the worker devices are already canonicalized, canonicalizing again
+    # would have no impact.
+    # For strategies running on remote workers such as PS Strategy, the device
+    # scope will be derived from current worker, if used under init_scope().
+    device_scope = device_util.canonicalize(self._worker,
+                                            device_util.current())
+    host_device = device_util.get_host_for_device(device_scope)
+    with ops.device(device_scope):
+      if self._options is not None:
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset,
+            self._devices,
+            source_device=host_device,
+            max_buffer_size=self._options
+            .experimental_per_replica_buffer_size,
+            prefetch_buffer_size=self._options
+            .experimental_per_replica_buffer_size)
+      else:
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset, self._devices, source_device=host_device)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
     if not self._worker:
-      raise ValueError("Worked device must be specified when creating an "
+      raise ValueError("Worker device must be specified when creating an "
                        "owned iterator.")
     if _should_use_multi_device_iterator(self._options):
-      host_device = device_util.get_host_for_device(self._worker)
-      with ops.device(self._worker):
-        if self._options is not None:
-          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              self._dataset,
-              self._devices,
-              source_device=host_device,
-              max_buffer_size=self._options
-              .experimental_per_replica_buffer_size,
-              prefetch_buffer_size=self._options
-              .experimental_per_replica_buffer_size)
-        else:
-          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              self._dataset, self._devices, source_device=host_device)
+      self._create_owned_multi_device_iterator()
     else:
       with ops.device(self._worker):
         self._iterator = iter(self._dataset)

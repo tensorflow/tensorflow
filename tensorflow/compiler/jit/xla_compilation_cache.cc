@@ -175,13 +175,16 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
+  if (result.collective_reduce_info) {
+    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  }
   build_options.set_device_ordinal(options.device_ordinal != -1
                                        ? options.device_ordinal
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator.get());
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging(
+  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
       options.detailed_logging);
   TF_ASSIGN_OR_RETURN(
       auto executables,
@@ -223,9 +226,7 @@ static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
-// Creates a simple graph using the specified op as the only op apart from the
-// arg and retval nodes.
-static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
     const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const DataType> result_types) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including

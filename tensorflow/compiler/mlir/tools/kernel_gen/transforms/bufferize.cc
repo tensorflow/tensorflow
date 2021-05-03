@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -107,26 +108,19 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     size_t k = shapes.size();
     SmallVector<Value> ranks;
     ranks.reserve(k);
-    SmallVector<Value> real_ranks;
-    real_ranks.reserve(k);
-    SmallVector<Value> leading_ones;
-    leading_ones.reserve(k);
 
-    // Determine the "real" rank of each operand shape by counting leading 1's.
+    // Determine the maximum rank of the operands.
+    Value max_rank;
     for (size_t i = 0; i < k; ++i) {
       Value rank = lb.create<memref::DimOp>(loc, shapes[i], zero);
       ranks.push_back(rank);
-      leading_ones.push_back(CountLeadingOnes(lb, shapes[i], rank));
-      Value real_rank = lb.create<SubIOp>(rank, leading_ones[i]);
-      real_ranks.push_back(real_rank);
-    }
-
-    // Determine the maximum real rank of the operands.
-    Value max_rank = real_ranks[0];
-    for (size_t i = 1; i < k; ++i) {
-      Value rank_is_greater =
-          lb.create<CmpIOp>(CmpIPredicate::ugt, real_ranks[i], max_rank);
-      max_rank = lb.create<SelectOp>(rank_is_greater, real_ranks[i], max_rank);
+      if (i) {
+        Value rank_is_greater =
+            lb.create<CmpIOp>(CmpIPredicate::ugt, ranks[i], max_rank);
+        max_rank = lb.create<SelectOp>(rank_is_greater, ranks[i], max_rank);
+      } else {
+        max_rank = ranks[0];
+      }
     }
 
     // Allocate buffers for the return values and initialize them with 1's.
@@ -138,8 +132,8 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     for (size_t i = 0; i < k; ++i) {
       // We assume the buffer will be small, so we allocate it on the stack.
       // TODO(b/181654096): Replace AllocaOp with AllocOp.
-      auto result = lb.create<memref::AllocaOp>(result_type, real_ranks[i]);
-      lb.create<scf::ForOp>(zero, real_ranks[i], one, llvm::None,
+      auto result = lb.create<memref::AllocaOp>(result_type, ranks[i]);
+      lb.create<scf::ForOp>(zero, ranks[i], one, llvm::None,
                             [&one, &result](OpBuilder &b, Location l, Value idx,
                                             ValueRange /*vr*/) {
                               b.create<memref::StoreOp>(l, one, result, idx);
@@ -205,11 +199,9 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
             // Determine the size of the current dimension. If the dimension is
             // out of bounds, we choose the value 'one'.
             Value is_out_of_bounds =
-                b.create<CmpIOp>(l, CmpIPredicate::ult, real_ranks[i], v);
+                b.create<CmpIOp>(l, CmpIPredicate::ult, ranks[i], v);
             Value dimension = b.create<SubIOp>(l, ranks[i], v);
-            Value result_dimension =
-                b.create<SubIOp>(l, dimension, leading_ones[i]);
-            result_dimensions.push_back(result_dimension);
+            result_dimensions.push_back(dimension);
             Value current_size =
                 b.create<scf::IfOp>(
                      l, TypeRange{b.getIndexType()}, is_out_of_bounds,
@@ -304,7 +296,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                                  l, should_store_dimension,
                                  [&](OpBuilder &b, Location l) {
                                    Value output_dimension = b.create<SubIOp>(
-                                       l, real_ranks[i], new_dimension_offset);
+                                       l, ranks[i], new_dimension_offset);
                                    // If the shape needed broadcasting at the
                                    // previous dimension, we set the output size
                                    // to 1, otherwise to 'running_product'.
@@ -344,7 +336,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     Value is_invalid = main_loop.getResults().back();
     for (size_t i = 0; i < k; ++i) {
       result_shapes[i] =
-          RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], real_ranks[i]);
+          RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], ranks[i]);
       result_shapes[i] =
           lb.create<SelectOp>(is_invalid, shapes[i], result_shapes[i]);
     }
@@ -417,15 +409,36 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
     return success();
   }
 };
+
+// Bufferize linalg.tensor_reshape to linalg.reshape. This changes the semantics
+// from value based to metadata-only, so it's only safe to use within
+// kernelgen's environment.
+// TODO(pifon): Revisit this when tensor.reshape lands.
+class BufferizeTensorReshapeOp
+    : public OpConversionPattern<linalg::TensorReshapeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      linalg::TensorReshapeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    linalg::TensorReshapeOp::Adaptor adaptor(operands);
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
+    auto memref_type =
+        MemRefType::get(result_type.getShape(), result_type.getElementType());
+    rewriter.replaceOpWithNewOp<linalg::ReshapeOp>(
+        op, memref_type, adaptor.src(), op.getReassociationExprs());
+    return success();
+  }
+};
 }  // namespace
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
-                                      OwningRewritePatternList *patterns) {
-  patterns
-      ->insert<BufferizeConstantOp, BufferizeDimOp,
-               BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(
-          *converter, context);
+                                      RewritePatternSet *patterns) {
+  patterns->insert<BufferizeConstantOp, BufferizeDimOp,
+                   BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp,
+                   BufferizeTensorReshapeOp>(*converter, context);
 }
 
 }  // namespace transforms

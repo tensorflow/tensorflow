@@ -7,7 +7,7 @@ package(
         # Restricting visibility for now
         "//tensorflow/c/experimental/saved_model/core:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

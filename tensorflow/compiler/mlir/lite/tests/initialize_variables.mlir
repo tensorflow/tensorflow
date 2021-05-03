@@ -25,6 +25,20 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
+// Unsupported type.
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() {is_mutable, sym_name = "Variable", type = tensor<1x10xui64>, value = dense<0> : tensor<1x10xui64>} : () -> ()
+  func @serving_default(%arg0: tensor<!tf.resource<tensor<1x10xui64>>> {tf_saved_model.bound_input = @Variable}) ->
+    (tensor<1x10xui64> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf.resource<tensor<1x10xui64>>>) -> tensor<1x10xui64>
+    return %0 : tensor<1x10xui64>
+  }
+
+  // CHECK-NOT: SessionInitializerFunction
+}
+
+// -----
+
 // Test for case with existing session initialize op.
 module attributes {tf_saved_model.semantics} {
   func @init_all_tables()

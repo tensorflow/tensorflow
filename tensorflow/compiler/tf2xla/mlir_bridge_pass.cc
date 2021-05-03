@@ -102,7 +102,7 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
-      return MlirOptimizationPassState::ShadowEnabled;
+      return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
@@ -181,6 +181,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       return MlirOptimizationPassState::Disabled;

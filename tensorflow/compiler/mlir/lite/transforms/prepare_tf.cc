@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -59,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -106,165 +109,6 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       *this, "tfl-allow-bf16-and-f16-type-legalization",
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
-
-template <class TFFakeQuantOp>
-struct FetchConstantMinMaxInputs {
-  using AttrType = DenseFPElementsAttr;
-  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
-                  AttrType &max_value) const {
-    Value min = tf_op.min(), max = tf_op.max();
-
-    // TODO: incomplete  neither IdentityN ops
-    // nor chains of Identity* (not rare) are handled
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
-      min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
-      max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) {
-      return false;
-    }
-    if (!matchPattern(max, m_Constant(&max_value))) {
-      return false;
-    }
-    return true;  // Succesfully matched and fetched.
-  }
-};
-
-template <class TFFakeQuantOp>
-struct FetchMinMaxAttrs {
-  using AttrType = FloatAttr;
-  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
-                  AttrType &max_value) const {
-    min_value = tf_op.minAttr();
-    max_value = tf_op.maxAttr();
-    return true;  // Succesfully matched and fetched.
-  }
-};
-
-// TODO(fengliuai): move this rule to PreparePatterns.td
-// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
-// TODO(b/140968741): propagate the sign from the command line. Currently all
-// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
-// actually INT8.
-// Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
-// tf.FakeQyantWithMinMax{Vars|VarsPerChannel|Args}Op
-// to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
-// "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
-// the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
-// convert the output type to the next op. Here are the transformations:
-//
-// input   min cst       max cst          input   min cst       max cst
-//  \       |             |                \       |             |
-//   \  (tf.Identity) (tf.Identity)   =>    \  (tf.Identity) (tf.Identity)
-//    \     |             |                  \     |             |
-//       tf.FakeQuantWithMinMaxVars       tf.FakeQuantWithMinMaxVars
-//                   |                                 |
-//                                                tf.quantize
-//                                                     |
-//                                                tf.dequantize
-//                                                     |
-// If the input is a constant, the result pattern will eventually converted to
-//
-//            quant-emulated input
-//                   |
-//               tf.quantize
-//                   |
-//              tf.dequantize
-//                   |
-//
-//
-// Warns if the (most likely unwanted, currently not quite correctly handled)
-// case of back-to-back tf.FakeQuant occurs
-//
-//             tf.FakeQuant*
-//                   |
-//             tf.FakeQuant*
-//
-// tf.identity / tf.IdentityN between the tf.FakeQuant* ops
-// need no special treatment are already eliminated before the rewrites / check
-// is applied.
-//
-
-template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
-struct InsertTFLQuantOpsAfterTFFakeQuantOp
-    : public OpRewritePattern<TFFakeQuantOp> {
-  using BaseType =
-      InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>;
-
-  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis,
-                                               FetchMinMax>(MLIRContext *ctx)
-      : OpRewritePattern<TFFakeQuantOp>(ctx) {}
-
-  FetchMinMax fetchMinMax;
-
-  using FetchAttrType = typename FetchMinMax::AttrType;
-  LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                PatternRewriter &rewriter) const override {
-    // We don't want to insert quantize/dequantize if the quantize op exists.
-    auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
-      return failure();
-    }
-
-    // Extract the min/max constant values from the operands. We also consider
-    // a special case that there are tf.Identity ops between the min/max
-    // constants and the tf.FakeQuantWithMinMaxVarsOp.
-
-    FetchAttrType min_value, max_value;
-    if (!fetchMinMax(tf_op, min_value, max_value)) {
-      return failure();
-    }
-
-    int quant_dim = -1;
-    if (PerAxis) {
-      // This is a special case that the quant_dim is the last dimensions.
-      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
-    }
-    // Use the min/max from the operands and the num_bits and narrow_range
-    // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op.getOperation());
-    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
-    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
-    Type res_type = tf_op.getType();
-    TypeAttr qtype = quant::GetQuantizedTypeAttr(
-        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
-        narrow_range, /*is_signed=*/false);
-    if (!qtype) {
-      return failure();
-    }
-
-    // Finally, use the quantization parameter to create the quantize and
-    // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
-    // and its users.
-    Value value = tf_op.outputs();
-    auto quantize = rewriter.create<TFL::QuantizeOp>(
-        tf_op.getLoc(), qtype.getValue(), value, qtype);
-    auto dequantize = rewriter.create<TFL::DequantizeOp>(
-        tf_op.getLoc(), res_type, quantize.output());
-    value.replaceAllUsesWith(dequantize);
-    quantize.getOperation()->replaceUsesOfWith(dequantize, value);
-
-    return success();
-  }
-};
-
-//
-// Three instances of the rule to cover the three different types of
-// TF::FakeQuant operators
-//
-using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
-
-using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsPerChannelOp, /*PerAxis=*/true,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
-
-using PreparePerTensorFakeQuantWithMinMaxArgs =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<
-        TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
-        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
 // Transient state for preserving data from match to rewrite
 struct ConvertTFConvOpMatchState {
@@ -527,6 +371,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      // Ellipsis mask should have been lowered-away prior to invoking this
+      // function.
+      op->emitError() << "encountered a logical error";
+      return failure();
+    }
+
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
@@ -576,6 +427,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
     revised_begin_mask |= strided_slice_op.new_axis_mask();
     revised_end_mask |= strided_slice_op.new_axis_mask();
 
+    // Enforce operator precedence.
+    uint64_t revised_shrink_axis_mask =
+        strided_slice_op.shrink_axis_mask() & ~strided_slice_op.new_axis_mask();
+
     auto attribute_type = rewriter.getIntegerType(64);
     rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         op, strided_slice_op.getType(), reshape, strided_slice_op.begin(),
@@ -585,8 +440,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.ellipsis_mask()),
         rewriter.getI64IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.shrink_axis_mask()));
+        rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
     return success();
   }
 
@@ -596,9 +450,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     uint64_t shrink_axis_mask = strided_slice_op.shrink_axis_mask();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
     // Enforce operator precedence.
     shrink_axis_mask &= ~ellipsis_mask;
+    new_axis_mask &= ~ellipsis_mask;
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.begin();
@@ -640,13 +496,17 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     if (begin_dim != 1) return failure();
 
-    const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
+    // The ellipsis fill might exceed the current output shape because we are
+    // also taking account of any to-be-inserted new axes.
+    const int ellipsis_filled_dim_size =
+        input_size - begin_shape[0] + 1 + absl::popcount(new_axis_mask);
 
     int64_t begin_mask = strided_slice_op.begin_mask();
     int64_t end_mask = strided_slice_op.end_mask();
     int64_t revised_begin_mask = 0;
     int64_t revised_end_mask = 0;
     int64_t revised_shrink_axis_mask = 0;
+    int64_t revised_new_axis_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
@@ -663,6 +523,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
+
       ++index;
       ++new_index;
     }
@@ -691,6 +555,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
+      if ((new_axis_mask >> index) & 1)
+        revised_new_axis_mask |= (1 << new_index);
 
       ++index;
       ++new_index;
@@ -716,9 +582,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type, revised_begin_mask),
         rewriter.getIntegerAttr(attribute_type, revised_end_mask),
         /*ellipsis_mask=*/rewriter.getI64IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.new_axis_mask()),
+        rewriter.getIntegerAttr(attribute_type, revised_new_axis_mask),
         rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
+
     return success();
   }
 
@@ -743,17 +609,14 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
-    // Handle new axis mask.
-    if (strided_slice_op.new_axis_mask() != 0) {
-      // We currently don't handle simultaneous shrink_ and new_axis masks.
-      if (!strided_slice_op.shrink_axis_mask()) {
-        return RewriteNewAxisMask(strided_slice_op, rewriter);
-      }
-    }
-
     // Handle ellipsis mask.
     if (strided_slice_op.ellipsis_mask() != 0) {
       return RewriteEllipsisMask(strided_slice_op, rewriter);
+    }
+
+    // Handle new axis mask.
+    if (strided_slice_op.new_axis_mask() != 0) {
+      return RewriteNewAxisMask(strided_slice_op, rewriter);
     }
 
     auto ranked_input_type =
@@ -979,9 +842,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
   explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
       : ::mlir::RewritePattern(
-            "tf.FusedBatchNormV3",
-            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}, 1,
-            context) {}
+            "tf.FusedBatchNormV3", 1, context,
+            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}) {}
 
   ::mlir::LogicalResult matchAndRewrite(
       ::mlir::Operation *fused_batch_norm,
@@ -1326,8 +1188,8 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns;
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  OwningRewritePatternList patterns(context);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
@@ -1432,9 +1294,10 @@ struct ConvertRfftToRfft2d : public RewritePattern {
 };
 
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns, phase_2_patterns;
-  auto func = getFunction();
   MLIRContext *ctx = &getContext();
+  OwningRewritePatternList patterns(ctx);
+  OwningRewritePatternList phase_2_patterns(ctx);
+  auto func = getFunction();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
@@ -1451,20 +1314,13 @@ void PrepareTFPass::runOnFunction() {
     return;
   }
 
-  // This pattern was intented to uses TFL QDQs to preserve the quantization
-  // parameters from the TF Quant ops, thus this pattern should run with the
-  // first `applyPatternsGreedily` method, which would otherwise removes the
-  // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant,
-                  PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
-
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1472,9 +1328,20 @@ void PrepareTFPass::runOnFunction() {
   // before converting TF_Conv to TFL_Conv
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
+  // Remove the wrapper of the tf.FakeQuant* ops and also insert the
+  // tfl.quantize and tfl.dequantize to preserve the quantization parameters.
+  // This is done after the first round of optimization to make sure all the
+  // min/max operands of the tf.FakeQuant* are constants to be matched. The
+  // following round of optimization will folding the unwrapped
+  // tf.FakeQuant* ops with the weight constants.
+  if (failed(ConvertFakeQuantOps(func, ctx))) {
+    signalPassFailure();
+    return;
+  }
+
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
     phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                             TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(

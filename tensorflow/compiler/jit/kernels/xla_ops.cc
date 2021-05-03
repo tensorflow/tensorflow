@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -213,6 +215,69 @@ static Status CompileToLocalExecutable(
                         compilation_result, executable);
 }
 
+// Resolve the device assignment for the TF single-host MirroredStrategy by
+// calling into TF runtime which in turn would start a rendezvous.
+static xla::StatusOr<xla::DeviceAssignment> ResolveDeviceAssignment(
+    OpKernelContext* ctx,
+    const absl::optional<
+        XlaCompiler::CompilationResult::CollectiveReduceV2OpInfo>&
+        collective_reduce_info) {
+  static const int kTimeoutSeconds = 30;
+  if (!collective_reduce_info) {
+    // An empty device assignment is sufficient for the case where no
+    // collectives are present.
+    return xla::DeviceAssignment{};
+  }
+
+  CollectiveParams params;
+  params.name = "xla-reduction-compilation";
+  params.group.device_type =
+      DeviceType{static_cast<Device*>(ctx->device())->device_type()};
+  params.group.group_size = collective_reduce_info->group_size;
+  params.group.group_key = collective_reduce_info->group_key;
+  params.instance.type = REDUCTION_COLLECTIVE;
+  params.instance.impl_details.communication_hint = "nccl";
+  params.instance.impl_details.timeout_seconds = kTimeoutSeconds;
+  params.instance.impl_details.collective_name = "NcclReduce";
+  // TODO(cheshire): Avoid passing a dummy shape, TF runtime does not resolve
+  // devices otherwise.
+  params.instance.shape = TensorShape({1});
+
+  Status st;
+  absl::Notification n;
+  ctx->collective_executor()->CompleteParamsAsync(
+      ctx->device()->attributes(), &params, ctx->cancellation_manager(),
+      [&](const Status& s) {
+        st = s;
+        n.Notify();
+      });
+  if (!n.WaitForNotificationWithTimeout(absl::Seconds(kTimeoutSeconds))) {
+    return errors::InvalidArgument("Timeout reached");
+  }
+  TF_RETURN_IF_ERROR(st);
+  const std::vector<std::string>& devices = params.group.device_names;
+
+  xla::DeviceAssignment out(devices.size(), 1);
+  for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+    const std::string& device_name = devices[device_idx];
+    Device* resolved_device = nullptr;
+    TF_RETURN_IF_ERROR(ctx->function_library()->device_mgr()->LookupDevice(
+        device_name, &resolved_device));
+
+    // TODO(cheshire): CPU support.
+    const DeviceBase::GpuDeviceInfo* gpu_device_info =
+        resolved_device->tensorflow_gpu_device_info();
+    if (!gpu_device_info || !gpu_device_info->stream) {
+      return errors::Internal(
+          "CollectiveReduceV2Op compilation is only supported on GPUs");
+    }
+
+    out(device_idx, 0) = gpu_device_info->stream->parent()->device_ordinal();
+  }
+
+  return out;
+}
+
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
@@ -262,11 +327,23 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
+  xla::StatusOr<xla::DeviceAssignment> device_assignment =
+      ResolveDeviceAssignment(ctx, compilation_result->collective_reduce_info);
+  OP_REQUIRES_OK(ctx, device_assignment.status());
+
   xla::ExecutableRunOptions run_options;
+  run_options.set_device_assignment(&*device_assignment);
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+
+  // Hardcode run id to always be zero: TF distributed strategy differentiates
+  // between subsequent runs using dependency edges.
+  // This is safe, as only TF dist-strat can produce distributed ops, and we can
+  // rely on TF dist-strat invariants.
+  xla::RunId run_id(0);
+  run_options.set_run_id(run_id);
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 

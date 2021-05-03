@@ -123,3 +123,119 @@ func @fuse_in_replicated_output_op() {
   }
   return
 }
+
+// Check that we bring in TPUPartitionedInput operand producers.
+// CHECK-LABEL: func @fuse_in_partitioned_input_op
+func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.TPUPartitionedInput"
+// CHECK-NEXT: = "tf.AddV2"
+    %outputs, %control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in TPUPartitionedOutput users.
+// CHECK-LABEL: func @fuse_in_partitioned_output_op
+func @fuse_in_partitioned_output_op() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs_0, %outputs_0) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_3) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in special TPU producer ops of first island.
+// CHECK-LABEL: func @fuse_in_special_tpu_operand_producer_of_first_island
+func @fuse_in_special_tpu_operand_producer_of_first_island() {
+  tf_executor.graph {
+// CHECK: island wraps "tf.Const"
+// CHECK-NEXT: island
+// CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.AddV2"
+    %outputs_0, %control_0 = tf_executor.island wraps "tf.Const"() {value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%outputs_0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%replicated_out, %replicated_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in special TPU consumer ops of first island.
+// CHECK-LABEL: func @fuse_in_special_tpu_consumer_of_first_island
+func @fuse_in_special_tpu_consumer_of_first_island() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_0) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in chain of TPUReplicatedInput, TPUPartitionedInput operand producers.
+// CHECK-LABEL: func @fuse_in_chain_special_ops_producers
+func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.TPUPartitionedInput"
+// CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.AddV2"
+    %partitioned_out, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%partitioned_out) {N = 1 : i64, T = i32, device = "", index = 0 : i64, is_mirrored_variable = false} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%replicated_out, %const_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we bring in chain of TPUReplicatedOutput, TPUPartitionedOutput users.
+// CHECK-LABEL: func @fuse_in_chain_special_ops_consumers
+func @fuse_in_chain_special_ops_consumers() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %const_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%replicated_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}
+
+// Check that we can bring in special TPU output ops out of order.
+// CHECK-LABEL: func @fuse_in_special_ops_out_of_order
+func @fuse_in_special_ops_out_of_order() {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.SomeOp"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %some_out:2, %some_control = tf_executor.island wraps "tf.SomeOp"(%const_out) {_tpu_replicate = "cluster"} : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
+    %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%some_out#1) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    %replicated_out:2, %ireplicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%some_out#0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
+    tf_executor.fetch
+  }
+  return
+}

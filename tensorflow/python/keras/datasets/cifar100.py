@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""CIFAR100 small images classification dataset.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""CIFAR100 small images classification dataset."""
 
 import os
 
 import numpy as np
 
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.datasets.cifar import load_batch
 from tensorflow.python.keras.utils.data_utils import get_file
 from tensorflow.python.util.tf_export import keras_export
@@ -90,7 +86,7 @@ def load_data(label_mode='fine'):
   y_train = np.reshape(y_train, (len(y_train), 1))
   y_test = np.reshape(y_test, (len(y_test), 1))
 
-  if K.image_data_format() == 'channels_last':
+  if backend.image_data_format() == 'channels_last':
     x_train = x_train.transpose(0, 2, 3, 1)
     x_test = x_test.transpose(0, 2, 3, 1)
 

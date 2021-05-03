@@ -4,6 +4,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
+    "rocm_version_number",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
@@ -11,12 +12,6 @@ load(
     "if_gpu_is_configured",
 )
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
-
-def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
-    return select({
-        "//tensorflow/core/kernels/mlir_generated:is_gpu_enabled": if_true,
-        "//conditions:default": if_false,
-    })
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -113,7 +108,19 @@ def _gen_mlir_op(op, type, platform, output_type):
 # Kernels build rules.
 ################################################################################
 
-def if_mlir_experimental_kernels_enabled(if_true, if_false = []):
+def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
+    return select({
+        "//tensorflow/core/kernels/mlir_generated:is_gpu_enabled": if_true,
+        "//conditions:default": if_false,
+    })
+
+def if_mlir_generated_cpu_kernels_enabled(if_true, if_false = []):
+    return select({
+        "//tensorflow/core/kernels/mlir_generated:is_cpu_enabled": if_true,
+        "//conditions:default": if_false,
+    })
+
+def if_mlir_generated_experimental_kernels_enabled(if_true, if_false = []):
     return select({
         "//tensorflow/core/kernels/mlir_generated:is_experimental_enabled": if_true,
         "//conditions:default": if_false,
@@ -230,6 +237,11 @@ def _gen_kernel_library(
         output_types = types
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
+        amdhsa_obj = []
+        if rocm_gpu_architectures():
+            if int(rocm_version_number()) < 40100:
+                amdhsa_obj = ["--amdhsa-code-object-version=3"]
+                extra_args = extra_args + ["--amdhsa-code-object-version=3"]
         for (type, output_type) in zip(types, output_types):
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
@@ -242,6 +254,7 @@ def _gen_kernel_library(
                 type = type,
                 output_type = output_type,
             )
+
             _gen_kernel_bin_rule(
                 name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
@@ -265,6 +278,7 @@ def _gen_kernel_library(
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
+            gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             native.sh_test(
                 name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
@@ -273,7 +287,6 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 srcs = ["build_test.sh"],
-                tags = ["no_rocm"],
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
@@ -282,8 +295,8 @@ def _gen_kernel_library(
                         type = type,
                         output_type = output_type,
                     ),
-                    "--cpu_codegen=true" if enable_cpu else "--arch=sm_70,compute_75",
-                ],
+                    "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
+                ] + amdhsa_obj,
                 size = "medium",
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(
@@ -307,7 +320,7 @@ def _gen_kernel_library(
     ] + ["//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface"]
 
     native.cc_library(
-        name = platform + "_" + op + "_kernels",
+        name = name,
         deps = kernel_deps if enable_cpu else if_gpu_is_configured(kernel_deps + [
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_gpu_runtime_wrappers",
         ]),
@@ -316,17 +329,19 @@ def _gen_kernel_library(
         compatible_with = get_compatible_with_cloud(),
     )
 
-def gpu_kernel_library(**kwargs):
+def gpu_kernel_library(name, **kwargs):
     """ Generate a library with GPU kernels for a specific tensorflow op. """
     _gen_kernel_library(
+        name = name,
         platform = "gpu",
         gpu_archs = cuda_gpu_architectures() or rocm_gpu_architectures(),
         **kwargs
     )
 
-def cpu_kernel_library(**kwargs):
+def cpu_kernel_library(name, **kwargs):
     """ Generate a library with CPU kernels for a specific tensorflow op. """
     _gen_kernel_library(
+        name = name,
         platform = "cpu",
         gpu_archs = [],
         **kwargs

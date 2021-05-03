@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
@@ -136,7 +137,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
         "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
-        "no_rocm",
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
     ],
     xla_enabled = True,

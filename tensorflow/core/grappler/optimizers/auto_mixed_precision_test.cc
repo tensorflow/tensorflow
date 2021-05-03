@@ -85,10 +85,10 @@ void VerifyGraphsEquivalent(const GraphDef& original_graph,
   }
 }
 
-// Currently, this test suite only passes when TensorFlow passes with CUDA or HIP,
+// Currently, this test suite only passes when TensorFlow passes with CUDA/HIP,
 // because otherwise the optimizer will not turn clearlist nodes to float16.
 // When looking at clearlist nodes, this optimizer checks if the nodes have a
-// float16 GPU OpKernel, but without CUDA or HIP there are no GPU OpKernels at all.
+// float16 GPU OpKernel, but without CUDA/HIP there are no GPU OpKernels at all.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
@@ -104,8 +104,8 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA 
     gpu_available_ =
         gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
-#elif TENSORFLOW_USE_ROCM //Here we force Tensorflow to use the virtual GFX906 always
-    gpu_available_ = false; 
+#else  // Here we force Tensorflow to use the virtual GFX906
+    gpu_available_ = false;
 #endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
@@ -115,8 +115,9 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA
       device_properties.mutable_environment()->insert({"architecture", "7"});
       device_properties.mutable_environment()->insert({"cuda", "9010"});
-#elif TENSORFLOW_USE_ROCM
-      device_properties.mutable_environment()->insert({"architecture", "gfx906"});
+#else
+      device_properties.mutable_environment()->insert(
+          {"architecture", "gfx906"});
 #endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
@@ -1041,6 +1042,14 @@ int GetCudaVersion(const Cluster& cluster) {
   return 0;
 }
 
+bool IsSupportedGPU(const Cluster& cluster) {
+#ifdef GOOGLE_CUDA
+  return GetCudaVersion(cluster) >= 9010;
+#else
+  return true;
+#endif
+}
+
 TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 33, {64, 32, 32});
@@ -1060,11 +1069,7 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-#if GOOGLE_CUDA
-  if (GetCudaVersion(*virtual_cluster_.get()) >= 9010) {
-#else //TENSORFLOW_USE_ROCM always uses virtual gfx906 
-  if (true) {
-#endif
+  if (IsSupportedGPU(*virtual_cluster_.get())) {
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
     EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   } else {
@@ -1200,7 +1205,8 @@ class AutoMixedPrecisionMklTest : public GrapplerTest {
 };
 
 TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_BFLOAT16);
   Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
@@ -1238,7 +1244,8 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, Simple) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output deny1 = ops::Exp(s.WithOpName("deny1"), input);
   Output clr1 = ops::Relu(s.WithOpName("clr1"), deny1);
@@ -1287,7 +1294,8 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   tensorflow::Input shape = {32, 32};
   auto tl1 = ops::TensorListReserve(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});

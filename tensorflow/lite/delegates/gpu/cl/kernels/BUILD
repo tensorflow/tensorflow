@@ -5,7 +5,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_test(
@@ -309,6 +309,23 @@ cc_test(
 )
 
 cc_test(
+    name = "gather_test",
+    srcs = ["gather_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "lstm_test",
     srcs = ["lstm_test.cc"],
     linkstatic = True,
@@ -482,6 +499,23 @@ cc_test(
 )
 
 cc_test(
+    name = "resampler_test",
+    srcs = ["resampler_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
     linkstatic = True,
@@ -601,6 +635,23 @@ cc_test(
 )
 
 cc_test(
+    name = "tile_test",
+    srcs = ["tile_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
     linkstatic = True,
@@ -669,6 +720,7 @@ test_suite(
         "depthwise_conv_test",
         "elementwise_test",
         "fully_connected_test",
+        "gather_test",
         "lstm_test",
         "max_unpooling_test",
         "mean_stddev_normalization_test",
@@ -684,6 +736,7 @@ test_suite(
         "softmax_test",
         "split_test",
         "strided_slice_test",
+        "tile_test",
         "transpose_test",
         "winograd_test",
     ],

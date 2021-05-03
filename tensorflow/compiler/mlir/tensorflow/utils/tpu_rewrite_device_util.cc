@@ -486,6 +486,22 @@ std::string GetDeviceAliasForLogicalCore(int core_index) {
   return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index).str();
 }
 
+mlir::LogicalResult CheckNoModelParallelism(
+    mlir::tf_device::ClusterOp cluster) {
+  mlir::IntegerAttr num_cores_per_replica_attr =
+      cluster->getAttrOfType<mlir::IntegerAttr>(
+          tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        "cluster op missing `num_cores_per_replica` attribute");
+
+  if (num_cores_per_replica_attr.getInt() != 1)
+    return cluster.emitOpError(
+        "outside compilation is not supported with model parallelism.");
+
+  return mlir::success();
+}
+
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device) {
@@ -494,16 +510,6 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
     *host_device = tensorflow::kTPUReplicatedHost;
     return mlir::success();
   }
-
-  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
-      tensorflow::kNumCoresPerReplicaAttr);
-  if (!num_cores_per_replica_attr)
-    return cluster.emitOpError(
-        "cluster op missing `num_cores_per_replica` attribute");
-
-  if (num_cores_per_replica_attr.getInt() != 1)
-    return cluster.emitOpError(
-        "outside compilation is not supported with model parallelism.");
 
   auto topology_attr =
       cluster->getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
@@ -549,4 +555,11 @@ bool IsTPUDevice(llvm::StringRef device) {
   return parsed_device.has_type && parsed_device.type == kDeviceTPU;
 }
 
+bool IsTPUReplicatedCore(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kTPUReplicatedCore;
+}
 }  // namespace tensorflow

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -342,9 +343,9 @@ string BufferAllocation::ToString() const {
   }
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
-    CHECK(param);
     StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
-              param->shape().ToString(/*print_layout=*/false),
+              param ? param->shape().ToString(/*print_layout=*/false)
+                    : "<unknown shape>",
               "| at ShapeIndex ", param_shape_index().ToString());
   }
   if (const HloInstruction* instr = GetOutputInstruction(*this)) {
@@ -584,7 +585,7 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   }
 
   if (alias_analysis().BufferLivesOut(buffer)) {
-    VLOG(3) << "HloBuffer lives out" << buffer.ToString();
+    VLOG(3) << "HloBuffer lives out: " << buffer.ToString();
     VLOG(3) << "Set maybe live out: " << allocation->ToString();
     allocation->set_maybe_live_out(true);
   }
@@ -936,11 +937,18 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
       << "Buffer doesn't have a proper live range:" << buffer2;
 
   // Check if a user value can share the same buffer as its operand.
-  auto can_share_as_operand = [&assignment](const HloValue* user_value,
-                                            const HloValue* operand_value) {
-    return user_value->instruction()->IsUserOf(operand_value->instruction()) &&
+  auto can_share_as_operand = [&assignment, &buffer_live_ranges](
+                                  const HloValue* user_value,
+                                  const HloValue* operand_value) {
+    // An hlo value can hold multiple instructions during its life time. We only
+    // look at the last instruction and check if it can be shared with the
+    // operand.
+    HloPosition operand_end_position =
+        buffer_live_ranges.at(operand_value).end_position;
+    return user_value->instruction()->IsUserOf(
+               operand_end_position.instruction) &&
            assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-               operand_value->instruction(), operand_value->index(),
+               operand_end_position.instruction, operand_end_position.index,
                user_value->instruction(), user_value->index()) &&
            user_value->instruction()->opcode() != HloOpcode::kCopy;
   };

@@ -39,9 +39,9 @@ limitations under the License.
 // variable, which causes strange crashes when the pointers are used across
 // translation unit boundaries.
 //
-// For mone info see https://sourceforge.net/p/numpy/mailman/message/5700519
+// For more info see https://sourceforge.net/p/numpy/mailman/message/5700519
 // See also tensorflow/python/lib/core/numpy.h for a similar approach.
-#define PY_ARRAY_UNIQUE_SYMBOL _tensorflow_numpy_api
+#define PY_ARRAY_UNIQUE_SYMBOL _tflite_numpy_api
 #ifndef TFLITE_IMPORT_NUMPY
 #define NO_IMPORT_ARRAY
 #endif

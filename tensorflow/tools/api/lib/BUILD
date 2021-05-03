@@ -10,7 +10,7 @@ package(
         "//tensorflow/tools/api:__subpackages__",
         "//third_party/py/keras/api:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(

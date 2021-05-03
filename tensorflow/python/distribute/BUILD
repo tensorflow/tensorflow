@@ -8,10 +8,8 @@ package(
         "//tensorflow:internal",
         "//third_party/py/keras:__subpackages__",  # TODO(scottzhu): remove this once keras is relying on tf.__internal__.
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "distribute_test_lib_pip",
@@ -1008,6 +1006,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # b/177098062
+        "no_rocm", # broken in 4.1
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1093,6 +1092,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # b/173031470
+        "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [
         ":collective_util",
@@ -1766,6 +1766,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "notsan",  # TODO(b/160006974)
+        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -1798,6 +1799,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # TODO(b/160006974)
+        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -1870,6 +1872,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [
         ":combinations",
@@ -1916,13 +1919,16 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

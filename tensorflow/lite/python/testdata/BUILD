@@ -9,7 +9,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0,
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -149,6 +149,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
     ],
     alwayslink = 1,
 )

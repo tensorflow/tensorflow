@@ -1,16 +1,12 @@
 <!-- mdformat off(b/169948621#comment2) -->
 
 # Info
+CMSIS-NN is a library containing kernel optimizations for Arm(R) Cortex(TM)-M
+processors. To use CMSIS-NN optimized kernels instead of reference kernels, add
+`OPTIMIZED_KERNEL_DIR=cmsis_nn` to the make command line. See examples below.
 
-To use CMSIS-NN optimized kernels instead of reference kernel add
-OPTIMIZED_KERNEL_DIR=cmsis_nn to the make line. Some micro architectures have
-optimizations (M4 or higher), others don't. The kernels that doesn't have
-optimization for a certain micro architecture fallback to use TFLu reference
-kernels.
-
-The optimizations are almost exclusively made for int8 (symmetric) model. For
-more details, please read
-[CMSIS-NN doc](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md)
+For more information about the optimizations, check out
+[CMSIS-NN documentation](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md)
 
 # Example 1
 
@@ -28,13 +24,13 @@ mbed. Here's an example on how to do that. Start by generating an mbed project.
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn \
-generate_person_detection_mbed_project
+generate_person_detection_int8_mbed_project
 ```
 
 Go into the generated mbed project folder, currently:
 
 ```
-tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/person_detection_int8/mbed
+tensorflow/lite/micro/tools/make/gen/linux_x86_64_default/prj/person_detection_int8/mbed
 ```
 
 and setup mbed.
@@ -55,7 +51,7 @@ There's also a dependency to an old cmsis_gcc.h, which you can fix with the
 following:
 
 ```
-tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
 cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
 ```
 

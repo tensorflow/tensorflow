@@ -1242,7 +1242,9 @@ class StridedSlice
         static_cast<const StridedSliceOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.single_input_op.num_dims = ss_op.start_indices.size();
+    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
+    op_sig.options.strided_slice.ellipsis_mask = ss_op.ellipsis_mask;
+    op_sig.options.strided_slice.new_axis_mask = ss_op.new_axis_mask;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

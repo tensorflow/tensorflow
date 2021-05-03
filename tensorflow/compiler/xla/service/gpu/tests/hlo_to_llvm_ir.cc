@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm_rocdl_path.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -66,14 +68,21 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   xla::gpu::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.cc_major = sm / 10;
   cuda_compute_capability.cc_minor = sm % 10;
+#if GOOGLE_CUDA
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
+  std::string platform_name = "CUDA";
+#else
+  std::string target_triple = "amdgcn--amdhsa-amdgiz";
+  std::string datalayout = ""; // TODO: correct value?
+  std::string platform_name = "ROCm"; // ditto
+#endif
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
                           hlo_module.get(), &llvm_context,
                           /*target_triple=*/xla::gpu::nvptx::kTargetTriple,
                           /*data_layout=*/xla::gpu::nvptx::kDataLayout,
-                          /*platform_name=*/"CUDA", gpu_device_info,
+                          /*platform_name=*/platform_name, gpu_device_info,
                           cuda_compute_capability, /*pointer_size=*/8));
 
   if (!generate_ptx) {
@@ -89,8 +98,14 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                       hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
-    return {tensorflow::error::UNIMPLEMENTED,
-            "Feature not yet implemented in ROCm"};
+    int isa_version = 908;
+    std::string arch_str = "gfx908";
+    std::string libdevice_dir = tensorflow::RocdlRoot();
+    xla::gpu::GpuVersion gpu_version{std::make_pair(isa_version, arch_str)};
+    TF_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> ptx,
+      xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
+                                    hlo_module->config(), libdevice_dir));
 #endif
   }
   return xla::Status::OK();

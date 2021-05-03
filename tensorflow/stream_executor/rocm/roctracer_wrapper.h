@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,34 +31,35 @@ limitations under the License.
 namespace tensorflow {
 namespace wrap {
 
-namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
-
 #ifdef PLATFORM_GOOGLE
 
-#define ROCTRACER_API_WRAPPER(__name)                        \
-  template <typename... Args>                                \
-  auto __name()(Args... args)->decltype(::__name(args...)) { \
-    return ::__name(args...);                                \
+#define ROCTRACER_API_WRAPPER(API_NAME)                          \
+  template <typename... Args>                                    \
+  auto API_NAME()(Args... args)->decltype(::API_NAME(args...)) { \
+    return ::API_NAME(args...);                                  \
   }
 
 #else
 
-#define ROCTRACER_API_WRAPPER(__name)                                        \
-  template <typename... Args>                                                \
-  auto __name(Args... args)->decltype(::__name(args...)) {                   \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;             \
-    static FuncPtrT loaded = []() -> FuncPtrT {                              \
-      static const char* kName = #__name;                                    \
-      void* f;                                                               \
-      auto s = Env::Default()->GetSymbolFromLibrary(                         \
-          CachedDsoLoader::GetRoctracerDsoHandle().ValueOrDie(), kName, &f); \
-      CHECK(s.ok()) << "could not find " << kName                            \
-                    << " in roctracer DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                                  \
-    }();                                                                     \
-    return loaded(args...);                                                  \
+#define ROCTRACER_API_WRAPPER(API_NAME)                                       \
+  template <typename... Args>                                                 \
+  auto API_NAME(Args... args)->decltype(::API_NAME(args...)) {                \
+    using FuncPtrT = std::add_pointer<decltype(::API_NAME)>::type;            \
+    static FuncPtrT loaded = []() -> FuncPtrT {                               \
+      static const char* kName = #API_NAME;                                   \
+      void* f;                                                                \
+      auto s = Env::Default()->GetSymbolFromLibrary(                          \
+          stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
+              .ValueOrDie(),                                                  \
+          kName, &f);                                                         \
+      CHECK(s.ok()) << "could not find " << kName                             \
+                    << " in roctracer DSO; dlerror: " << s.error_message();   \
+      return reinterpret_cast<FuncPtrT>(f);                                   \
+    }();                                                                      \
+    return loaded(args...);                                                   \
   }
 
+<<<<<<< HEAD
 #endif
 
 //BUG(rocm-profiler): roctracer_enable_op_activity does not exist in rocm-4.0.1
@@ -83,6 +84,27 @@ namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
   __macro(roctracer_flush_buf)     \         
 
 // clang-format on
+=======
+#endif  // PLATFORM_GOOGLE
+
+#define FOREACH_ROCTRACER_API(DO_FUNC)           \
+  DO_FUNC(roctracer_default_pool_expl)           \
+  DO_FUNC(roctracer_disable_domain_activity)     \
+  DO_FUNC(roctracer_disable_domain_callback)     \
+  DO_FUNC(roctracer_disable_op_activity)         \
+  DO_FUNC(roctracer_disable_op_callback)         \
+  DO_FUNC(roctracer_enable_domain_activity_expl) \
+  DO_FUNC(roctracer_enable_domain_callback)      \
+  DO_FUNC(roctracer_enable_op_activity)          \
+  DO_FUNC(roctracer_enable_op_activity_expl)     \
+  DO_FUNC(roctracer_enable_op_callback)          \
+  DO_FUNC(roctracer_error_string)                \
+  DO_FUNC(roctracer_flush_activity_expl)         \
+  DO_FUNC(roctracer_get_timestamp)               \
+  DO_FUNC(roctracer_op_string)                   \
+  DO_FUNC(roctracer_open_pool_expl)              \
+  DO_FUNC(roctracer_set_properties)
+>>>>>>> origin/develop-upstream
 
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 

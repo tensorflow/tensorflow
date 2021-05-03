@@ -68,7 +68,7 @@ class MLIRGenTest(MLIRGenTestBase):
     mlir_code = mlir_gen(test_fn)
     exp_mlir_code = r"""
       CHECK-LABEL: func @test_fn() -> i32
-      CHECK: %[[r0:[0-9]+]] = "tf.Const"() {value = dense<23> : tensor<i32>} : () -> tensor<i32>
+      CHECK: %[[r0:.*]] = "tf.Const"() {value = dense<23> : tensor<i32>} : () -> tensor<i32>
       CHECK: return %[[r0]] : tensor<i32>
     """
     self._check_code(mlir_code, exp_mlir_code)
@@ -105,7 +105,7 @@ class MLIRGenTest(MLIRGenTestBase):
         CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @f2} : () -> ()
       CHECK: }
       CHECK-LABEL: func @f1() {
-        CHECK: %[[r0:[0-9]+]] = "tf.Const"() {value = dense<23> : tensor<i32>} : () -> tensor<i32>
+        CHECK: %[[r0:.*]] = "tf.Const"() {value = dense<23> : tensor<i32>} : () -> tensor<i32>
         CHECK: return %[[r0]] : tensor<i32>
       CHECK: }
       CHECK-LABEL: func @f2() {
@@ -137,8 +137,8 @@ class MLIRGenTest(MLIRGenTestBase):
     mlir_code = mlir_gen(test_fn)
     exp_mlir_code = r"""
       CHECK-LABEL: func @test_fn() -> i32
-      CHECK: %[[r0:[0-9]+]] = "tf.AddV2"(%{{[0-9]+}}, %{{[0-9]+}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      CHECK: %[[r1:[0-9]+]] = "tf.Sub"(%{{[0-9]+}}, %{{[0-9]+}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      CHECK: %[[r0:[0-9]+]] = "tf.AddV2"(%{{.*}}, %{{.*}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      CHECK: %[[r1:[0-9]+]] = "tf.Sub"(%{{[0-9]+}}, %{{.*}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       CHECK: return %[[r1]] : tensor<i32>
     """
     self._check_code(mlir_code, exp_mlir_code)
@@ -159,16 +159,16 @@ class MLIRGenTest(MLIRGenTestBase):
     exp_mlir_code = r"""
       CHECK-LABEL: func @test_fn(%arg0: tensor<*xi32>) -> i32
 
-      CHECK: %[[r1:[0-9]+]] = "tf.Greater"(%arg0, %{{[0-9]+}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+      CHECK: %[[r1:[0-9]+]] = "tf.Greater"(%arg0, %{{.*}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
       CHECK-NEXT: %[[r2:[0-9]+]] = "tfp.If"(%[[r1]]) ( {
-        CHECK: return %{{[0-9]+}} : tensor<i32>
+        CHECK: return %{{.*}} : tensor<i32>
       CHECK-NEXT: },  {
-        CHECK: %[[r3:[0-9]+]] = "tf.Less"(%arg0, %{{[0-9]+}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+        CHECK: %[[r3:[0-9]+]] = "tf.Less"(%arg0, %{{.*}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
         CHECK: %[[r4:[0-9]+]] = "tfp.If"(%[[r3]]) ( {
-          CHECK: %[[r5:[0-9]+]] = "tf.Neg"(%{{[0-9]+}}) : (tensor<i32>) -> tensor<i32>
+          CHECK: %[[r5:[0-9]+]] = "tf.Neg"(%{{.*}}) : (tensor<i32>) -> tensor<i32>
           CHECK: return %[[r5]] : tensor<i32>
         CHECK-NEXT: },  {
-          CHECK: return %{{[0-9]+}} : tensor<i32>
+          CHECK: return %{{.*}} : tensor<i32>
         CHECK-NEXT: }) : (tensor<*xi1>) -> tensor<i32>
         CHECK: return %[[r4]] : tensor<i32>
       CHECK-NEXT: }) : (tensor<*xi1>) -> tensor<i32>
@@ -188,9 +188,9 @@ class MLIRGenTest(MLIRGenTestBase):
     exp_mlir_code = r"""
       CHECK-LABEL: func @test_fn(%arg0: tensor<*xi32>) -> tensor<*xi32>
 
-      CHECK: %[[r1:[0-9]+]] = "tfp.While"(%0) ( {
+      CHECK: %[[r1:[0-9]+]] = "tfp.While"(%{{.*}}) ( {
       CHECK-NEXT: ^{{[^ ]+}}(%arg1: tensor<i32>):
-        CHECK: %[[r2:[0-9]+]] = "tf.Greater"(%arg0, %{{[0-9]+}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+        CHECK: %[[r2:[0-9]+]] = "tf.Greater"(%arg0, %cst_{{[0-9]+}}) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
         CHECK-NEXT: return %[[r2]] : tensor<*xi1>
       CHECK-NEXT: },  {
       CHECK-NEXT: ^{{[^ ]+}}(%arg1: tensor<i32>):
@@ -219,8 +219,8 @@ class MLIRGenTest(MLIRGenTestBase):
     mlir_code = mlir_gen(test_fn)
     exp_mlir_code = r"""
       CHECK-LABEL: @test_fn(%arg0: tensor<*xi32>) -> tensor<*xi32>
-      CHECK: %[[r5:[0-9]+]] = "tf.Equal"(%arg0, %{{[0-9]+}}) {incompatible_shape_error = true} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-      CHECK: %[[r7:[0-9]+]] = "tf.Equal"(%arg0, %{{[0-9]+}}) {incompatible_shape_error = true} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+      CHECK: %[[r5:[0-9]+]] = "tf.Equal"(%arg0, %cst_{{[0-9]+}}) {incompatible_shape_error = true} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+      CHECK: %[[r7:[0-9]+]] = "tf.Equal"(%arg0, %cst_{{[0-9]+}}) {incompatible_shape_error = true} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
       CHECK: %[[r8:[0-9]+]] = "tfp.Or"(%[[r5]], %[[r7]]) : (tensor<*xi1>, tensor<*xi1>) -> tensor<*xi1>
 
       CHECK: %[[r9:[0-9]+]]:4 = "tfp.If"(%[[r8]]) ( {
@@ -233,7 +233,7 @@ class MLIRGenTest(MLIRGenTestBase):
         CHECK-NEXT: },  {
           CHECK-NEXT: ^{{[^ ]*}}(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>):
           CHECK-NEXT: %[[r12:[0-9]+]] = "tf.AddV2"(%arg{{[0-9]+}}, %arg{{[0-9]+}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-          CHECK: %[[r13:[0-9]+]] = "tf.AddV2"(%arg{{[0-9]+}}, %{{[0-9]+}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+          CHECK: %[[r13:[0-9]+]] = "tf.AddV2"(%arg{{[0-9]+}}, %cst_{{[0-9]+}}) : (tensor<i32>, tensor<i32>) -> tensor<i32>
           CHECK-NEXT: return %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
         CHECK-NEXT: }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
         CHECK-NEXT: return %[[r10]]#{{[0-9]+}}, %[[r10]]#{{[0-9]+}}, %[[r10]]#{{[0-9]+}}, %[[r10]]#{{[0-9]+}} : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>

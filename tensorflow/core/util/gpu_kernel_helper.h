@@ -30,7 +30,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
-#define TF_RED_WARPSIZE 64
+// We don't define TF_RED_WARPSIZE here, because it can be either 32 or 64
+// and the value is not known at compile time.
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
@@ -104,19 +105,28 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
                        Args... arguments) {
   static_assert(detail::NoneIsReference<Ts...>(),
                 "Kernels with reference arguments have undefined behaviour.");
-#if GOOGLE_CUDA
   auto func_ptr = absl::bit_cast<const void*>(function);
   // Cast arguments and forward them as an array of pointers.
   auto args_tuple = std::tuple<Ts...>(arguments...);
   auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+#if GOOGLE_CUDA
   auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
                                  shared_memory_size_bytes, stream);
   if (result != cudaSuccess) {
     return errors::Internal(cudaGetErrorString(result));
   }
 #elif TENSORFLOW_USE_ROCM
-  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
-                     stream, std::forward<Args>(arguments)...);
+  auto result = hipLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                shared_memory_size_bytes, stream);
+  if (result != hipSuccess) {
+    VLOG(3) << "Launch dimenions "
+            << "grid_dim = (" << grid_dim.x << "," << grid_dim.y << ","
+            << grid_dim.z << "), "
+            << "block_dim = (" << block_dim.x << "," << block_dim.y << ","
+            << block_dim.z << "), "
+            << "shared_memory_size_bytes = " << shared_memory_size_bytes;
+    return errors::Internal(hipGetErrorString(result));
+  }
 #endif
   return Status::OK();
 }

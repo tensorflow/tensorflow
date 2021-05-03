@@ -688,14 +688,32 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 // true.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // CHECK-LABEL: func @metadata
-  func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  // CHECK-LABEL: func @metadata_use_spmd
+  func @metadata_use_spmd(%arg0: tensor<8xi32>) -> tensor<8xi32> {
     %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = true} : (tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      metadata
     // CHECK-SAME: use_spmd_for_xla_partitioning: true
     return %0: tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
+
+// -----
+
+// Tests metadata is populated correctly for is_same_data_across_replicas.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: func @metadata_same_data_across_replicas
+  func @metadata_same_data_across_replicas(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
+    // CHECK:      metadata
+    // CHECK-SAME: is_same_data_across_replicas: true
+    // CHECK-SAME: mhlo.is_same_data_across_replicas
+    return %0: tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32> {mhlo.is_same_data_across_replicas}) -> tensor<8xi32> {
     return %arg0 : tensor<8xi32>
   }
 }
@@ -1686,7 +1704,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
       // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       //
-      // CHECK:      %[[CONST_SPLIT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_DIM]], %[[RI_0]])
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
@@ -1763,7 +1781,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
       // CHECK:        device = "TPU_REPLICATED_CORE_1"
       //
-      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#0, %[[PARALLEL_EXECUTE_OUTPUT]]#2
 
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "", padding_map = [""], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
@@ -1832,7 +1850,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
       // CHECK:        device = "TPU_REPLICATED_CORE_1"
       //
-      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#1, %[[PARALLEL_EXECUTE_OUTPUT]]#2
 
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {
@@ -2014,11 +2032,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:      "tf_device.launch"
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
       // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      %[[CONST_SPLIT_0_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
-      // CHECK:      %[[CONST_SPLIT_1_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_1_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_1_DIM]], %[[SPLIT_0_OUT]]#0)
-      // CHECK:      %[[CONST_SPLIT_2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_2_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_2_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_2_DIM]], %[[SPLIT_0_OUT]]#1)
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
@@ -2121,11 +2139,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:      "tf_device.launch"
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
       // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      %[[CONST_SPLIT_0_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
-      // CHECK:      %[[CONST_SPLIT_1_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_1_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_1_DIM]], %[[SPLIT_0_OUT]]#0)
-      // CHECK:      %[[CONST_SPLIT_2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_2_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_2_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_2_DIM]], %[[SPLIT_0_OUT]]#1)
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
@@ -2218,11 +2236,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:        %[[LAUNCH_3_OUTPUT:[0-9]*]] = "tf_device.launch"
       // CHECK-NEXT:     %[[EXECUTE_3_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
       // CHECK:          tf_device.return %[[EXECUTE_3_OUTPUT]]
-      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#0, %[[PARALLEL_EXECUTE_OUTPUT]]#2
-      // CHECK:     %[[CONST_CONCAT2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT2_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT2_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT2_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#3, %[[PARALLEL_EXECUTE_OUTPUT]]#4
-      // CHECK:     %[[CONST_CONCAT3_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT3_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT3_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT3_DIM]], %[[CONCAT_OUTPUT]], %[[CONCAT2_OUTPUT]]
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", padding_map = [""], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
@@ -2290,11 +2308,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:      "tf_device.launch"
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
       // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      %[[CONST_SPLIT_0_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
-      // CHECK:      %[[CONST_SPLIT_1_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_1_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_1_DIM]], %[[SPLIT_0_OUT]]#0)
-      // CHECK:      %[[CONST_SPLIT_2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[CONST_SPLIT_2_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_2_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_2_DIM]], %[[SPLIT_0_OUT]]#1)
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
@@ -2387,11 +2405,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:        %[[LAUNCH_3_OUTPUT:[0-9]*]] = "tf_device.launch"
       // CHECK-NEXT:     %[[EXECUTE_3_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
       // CHECK:          tf_device.return %[[EXECUTE_3_OUTPUT]]
-      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#4, %[[PARALLEL_EXECUTE_OUTPUT]]#3
-      // CHECK:     %[[CONST_CONCAT2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT2_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT2_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT2_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#2, %[[PARALLEL_EXECUTE_OUTPUT]]#0
-      // CHECK:     %[[CONST_CONCAT3_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONST_CONCAT3_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT3_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT3_DIM]], %[[CONCAT_OUTPUT]], %[[CONCAT2_OUTPUT]]
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", padding_map = [""], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\03\02\01\00", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>

@@ -16,15 +16,23 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+
+#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER8(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64,
           uint8, uint16, uint32, uint64);
-
+#else
+// TODO(b/172804967): We do not generate unsigned kernels for CPU via mlir.
+REGISTER4(UnaryOp, CPU, "Invert", functor::invert, uint8, uint16, uint32,
+          uint64);
+#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(UnaryOp, GPU, "Invert", functor::invert, int8, int16, int32, int64,
           uint8, uint16, uint32, uint64);
 #else
+// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
 REGISTER4(UnaryOp, GPU, "Invert", functor::invert, uint8, uint16, uint32,
           uint64);
 #endif

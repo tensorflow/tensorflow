@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 import warnings
 
 from absl.testing import parameterized
@@ -68,22 +67,13 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                                        .ExternalStatePolicy.FAIL))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(init_from_file=[True, False])))
-  def testLookupTableGraphSerialization(self, init_from_file):
-    if init_from_file:
-      file = os.path.join(self.get_temp_dir(), "lookup_table_graph_serialize")
-      with open(file, "w") as f:
-        f.write("10\n11\n")
-      initializer = lookup_ops.TextFileInitializer(
-          file, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
-          dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
-    else:
-      keys_tensor = constant_op.constant([0, 1], dtype=dtypes.int64)
-      vals_tensor = constant_op.constant([10, 11])
-      initializer = lookup_ops.KeyValueTensorInitializer(
-          keys_tensor, vals_tensor)
-
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              init_source=["textfile", "keyvaluetensor", "dataset"])))
+  def testLookupTableGraphSerialization(self, init_source):
+    vals = [10, 11]
+    initializer = self.lookupTableInitializer(init_source, vals)
     table = lookup_ops.StaticHashTable(initializer, -1)
     dataset = dataset_ops.Dataset.range(3)
     dataset = dataset.map(table.lookup)
@@ -598,9 +588,19 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
         "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
 
+
+class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  def setUp(self):
+    super(DebugDatasetTest, self).setUp()
+    dataset_ops.toggle_debug_mode(True)
+
+  def tearDown(self):
+    dataset_ops.toggle_debug_mode(False)
+    super(DebugDatasetTest, self).tearDown()
+
   @combinations.generate(test_base.eager_only_combinations())
   def testDebugModeEagerExecution(self):
-    dataset_ops.toggle_debug_mode(True)
     counter = []
     ds = dataset_ops.Dataset.range(10)
 
@@ -615,11 +615,9 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # traces the function to figure out what the types and shapes of its
     # outputs are.
     self.assertLen(counter, 11)
-    dataset_ops.toggle_debug_mode(False)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDebugModeSequentialExecution(self):
-    dataset_ops.toggle_debug_mode(True)
     ds = dataset_ops.Dataset.range(10)
     ds = ds.apply(
         testing.assert_next(["Interleave", "Map", "Batch", "FiniteTake"]))
@@ -632,7 +630,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = ds.prefetch(buffer_size=2)
     ds = ds.take(2)
     self.assertDatasetProduces(ds, [[0, 1, 4, 9, 16], [25, 36, 49, 64, 81]])
-    dataset_ops.toggle_debug_mode(False)
 
 
 if __name__ == "__main__":

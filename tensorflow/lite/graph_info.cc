@@ -56,6 +56,22 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     tensor_epochs_.resize(info_->num_tensors(), kEpochAlwaysReady);
     node_epochs_.clear();
     node_epochs_.resize(info_->num_execution_nodes(), kEpochNotReady);
+    control_deps_.clear();
+    control_deps_.resize(info_->num_execution_nodes());
+    // Add control dependency between stateful ops.
+    // TODO(b/149099381): Revisit better way for adding control dependency.
+    int last_op_with_side_effect = -1;
+    for (int i = 0; i < info_->num_execution_nodes(); ++i) {
+      const auto& node = info_->node(i);
+      // Set default value.
+      control_deps_[i] = -1;
+      if (node.might_have_side_effect) {
+        if (last_op_with_side_effect != -1) {
+          control_deps_[i] = last_op_with_side_effect;
+        }
+        last_op_with_side_effect = i;
+      }
+    }
     // Set computed tensors to be kEpochNotReady (initializer set everything to
     // AlwaysReady).
     for (int node_index = 0; node_index < info_->num_execution_nodes();
@@ -134,6 +150,12 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
         return false;
       }
     }
+    // If any of the nodes that current node depend on is not assigned
+    // any epochs then don't process this node.
+    if (control_deps_[node_index] != -1 &&
+        node_epochs_[control_deps_[node_index]] == kEpochNotReady) {
+      return false;
+    }
 
     int original_node_idx = info_->node_index(node_index);
     // When we are starting a new epoch, the first ready node defines
@@ -209,6 +231,10 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   // Maps from tensor index to the epoch in which it is assigned. Also special
   // negative values of kEpochNotReady if not assigned.
   std::vector<int> node_epochs_;
+  // For each node the node id that this op depends on.
+  // TODO(b/149099381): This should be a list, but we are now chaining
+  // dependency between previous ops.
+  std::vector<int> control_deps_;
 };
 // LINT.ThenChange(//tensorflow/lite/delegates/utils.h)
 

@@ -16,7 +16,9 @@ limitations under the License.
 // This file contains the patterns to simplify shape ops that were deemed not
 // suitable for shape op canonicalization in MLIR Core.
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -31,21 +33,6 @@ namespace {
 using shape::BroadcastOp;
 using shape::ConstShapeOp;
 using shape::ShapeOfOp;
-
-// Given an input shape Value, try to obtain the shape's values.
-LogicalResult getShapeVec(Value input, SmallVectorImpl<int64_t> &shape_values) {
-  if (auto input_op = input.getDefiningOp<ShapeOfOp>()) {
-    auto type = input_op.arg().getType().dyn_cast<ShapedType>();
-    if (!type.hasRank()) return failure();
-    shape_values = llvm::to_vector<6>(type.getShape());
-    return success();
-  }
-  if (auto input_op = input.getDefiningOp<ConstShapeOp>()) {
-    shape_values = llvm::to_vector<6>(input_op.shape().getValues<int64_t>());
-    return success();
-  }
-  return failure();
-}
 
 // Try to remove operands from broadcasts that don't contribute to the final
 // result.
@@ -63,7 +50,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     SmallVector<SmallVector<int64_t, 4>, 4> operand_extents;
     for (Value shape : op.shapes()) {
       auto &extents = operand_extents.emplace_back();
-      if (failed(getShapeVec(shape, extents))) return failure();
+      if (failed(shape::getShapeVec(shape, extents))) return failure();
 
       // Prepend dynamic dims if sizes don't match.
       if (extents.size() > known_extents.size()) {
@@ -148,14 +135,33 @@ struct BroadcastRemoveSubsumedOperandsPattern
   }
 };
 
+struct ExtractFromExtentTensorCanonicalizationPattern
+    : public OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp op,
+                                PatternRewriter &rewriter) const override {
+    auto shape_of_op = op.tensor().getDefiningOp<ShapeOfOp>();
+    if (!shape_of_op) return failure();
+    Value index = op.indices().front();
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, shape_of_op.arg(), index);
+    return success();
+  }
+};
+
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect>();
+    registry.insert<shape::ShapeDialect>();
+  }
+
   void runOnFunction() override {
     MLIRContext *context = &getContext();
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
 
     Dialect *shape_dialect = context->getLoadedDialect<shape::ShapeDialect>();
     Dialect *mhlo_dialect = context->getLoadedDialect<mhlo::MhloDialect>();
@@ -165,7 +171,8 @@ struct ShapeSimplification
         op->getCanonicalizationPatterns(patterns, context);
     }
 
-    patterns.insert<BroadcastRemoveSubsumedOperandsPattern>(context);
+    patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
+                    ExtractFromExtentTensorCanonicalizationPattern>(context);
 
     auto func = getFunction();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

@@ -1095,24 +1095,20 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       device)};
 }
 
-/* static */ port::Status GpuDriver::GetMFMASupport(bool& supported) {
-  supported = false;
+/* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
   hipDeviceProp_t props;
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
   result = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
-    VLOG(1)<<"GCN arch name " << gcnArchName;
+    VLOG(1) << "GCN arch name " << gcnArchName;
     auto pos = gcnArchName.find(":");
-    if(pos!=string::npos)
-       gcnArchName = gcnArchName.substr(0, pos);
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
     pos = gcnArchName.find("gfx");
-    if(pos!=string::npos)
-       gcnArchName = gcnArchName.substr(pos+3);
-    VLOG(1)<<"GCN arch name (stripped) " << gcnArchName;
-    supported = (gcnArchName=="908" || gcnArchName=="909");
-    return port::Status::OK();
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
+    VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
+    return ((gcnArchName == "908") || (gcnArchName == "909"));
   }
   return port::Status{
       port::error::INTERNAL,

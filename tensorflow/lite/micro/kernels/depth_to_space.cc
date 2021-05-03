@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,33 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/depth_to_space.h"
+
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace depth_to_space {
-
-// This file has two implementation of DepthToSpace. Note that DepthToSpace only
-// works on 4D tensors.
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
+namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+// input/output tensor shape rank associations
+constexpr int kBatchRank = 0;
+constexpr int kHeightRank = 1;
+constexpr int kWidthRank = 2;
+constexpr int kDepthRank = 3;
+
+TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteDepthToSpaceParams*>(node->builtin_data);
 
@@ -55,15 +50,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   auto data_type = output->type;
   TF_LITE_ENSURE(context,
-                 data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
-                     data_type == kTfLiteInt8 || data_type == kTfLiteInt32 ||
-                     data_type == kTfLiteInt64);
+                 data_type == kTfLiteFloat32 || data_type == kTfLiteInt8);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   const int block_size = params->block_size;
-  const int input_height = input->dims->data[1];
-  const int input_width = input->dims->data[2];
-  const int input_channels = input->dims->data[3];
+  const int input_height = input->dims->data[kHeightRank];
+  const int input_width = input->dims->data[kWidthRank];
+  const int input_channels = input->dims->data[kDepthRank];
   int output_height = input_height * block_size;
   int output_width = input_width * block_size;
   int output_channels = input_channels / block_size / block_size;
@@ -73,98 +66,77 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input_channels,
                     output_channels * block_size * block_size);
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = input->dims->data[0];
-  output_size->data[1] = output_height;
-  output_size->data[2] = output_width;
-  output_size->data[3] = output_channels;
-
-  return context->ResizeTensor(context, output, output_size);
-}
-
-template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params =
-      reinterpret_cast<TfLiteDepthToSpaceParams*>(node->builtin_data);
-
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-
-#define TF_LITE_DEPTH_TO_SPACE(type, scalar)                               \
-  tflite::DepthToSpaceParams op_params;                                    \
-  op_params.block_size = params->block_size;                               \
-  type::DepthToSpace(op_params, GetTensorShape(input),                     \
-                     GetTensorData<scalar>(input), GetTensorShape(output), \
-                     GetTensorData<scalar>(output))
-  switch (input->type) {  // Already know in/out types are same.
-    case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_DEPTH_TO_SPACE(reference_ops, float);
-      } else {
-        TF_LITE_DEPTH_TO_SPACE(optimized_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_DEPTH_TO_SPACE(reference_ops, uint8_t);
-      } else {
-        TF_LITE_DEPTH_TO_SPACE(optimized_ops, uint8_t);
-      }
-      break;
-    case kTfLiteInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_DEPTH_TO_SPACE(reference_ops, int8_t);
-      } else {
-        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int8_t);
-      }
-      break;
-    case kTfLiteInt32:
-      if (kernel_type == kReference) {
-        TF_LITE_DEPTH_TO_SPACE(reference_ops, int32_t);
-      } else {
-        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int32_t);
-      }
-      break;
-    case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_DEPTH_TO_SPACE(reference_ops, int64_t);
-      } else {
-        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int64_t);
-      }
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type '%s' not currently supported.",
-                         TfLiteTypeGetName(input->type));
-      return kTfLiteError;
-  }
-#undef TF_LITE_DEPTH_TO_SPACE
+  // We must update the output tensor dimensions.
+  // The dims storage is expected to be the same area in memory
+  // for both TfLiteTensor and TfLiteEvalTensor.  This is important
+  // because TfLiteTensor in the MicroInterpreter is a temporary
+  // allocation.  For the KernelRunner interpreter, TfLiteEvalTensor
+  // is a temporary allocation.  We must therefore relocate the dims
+  // from the FlatBuffer to the persistant storage arena.
+  TfLiteEvalTensor* output_eval =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_OK(context, tflite::micro::CreateWritableTensorDimsWithCopy(
+                                 context, output, output_eval));
+  output->dims->data[kBatchRank] = input->dims->data[kBatchRank];
+  output->dims->data[kHeightRank] = output_height;
+  output->dims->data[kWidthRank] = output_width;
+  output->dims->data[kDepthRank] = output_channels;
 
   return kTfLiteOk;
 }
 
-}  // namespace depth_to_space
-
-TfLiteRegistration* Register_DEPTH_TO_SPACE_REF() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, depth_to_space::Prepare,
-      depth_to_space::Eval<depth_to_space::kReference>};
-  return &r;
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return CalculateOpData(context, node);
 }
 
-TfLiteRegistration* Register_DEPTH_TO_SPACE_GENERIC_OPT() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, depth_to_space::Prepare,
-      depth_to_space::Eval<depth_to_space::kGenericOptimized>};
-  return &r;
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params =
+      reinterpret_cast<TfLiteDepthToSpaceParams*>(node->builtin_data);
+
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+
+  tflite::DepthToSpaceParams op_params;
+  op_params.block_size = static_cast<int32_t>(params->block_size);
+
+  switch (input->type) {  // Already know in/out types are same.
+    case kTfLiteFloat32:
+      reference_ops::DepthToSpace(op_params,
+                                  tflite::micro::GetTensorShape(input),
+                                  tflite::micro::GetTensorData<float>(input),
+                                  tflite::micro::GetTensorShape(output),
+                                  tflite::micro::GetTensorData<float>(output));
+      break;
+    case kTfLiteInt8:
+      reference_ops::DepthToSpace(op_params,
+                                  tflite::micro::GetTensorShape(input),
+                                  tflite::micro::GetTensorData<int8_t>(input),
+                                  tflite::micro::GetTensorShape(output),
+                                  tflite::micro::GetTensorData<int8_t>(output));
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(
+          context, "DEPTH_TO_SPACE only supports FLOAT32 and INT8, got %s.",
+          TfLiteTypeGetName(output->type));
+      return kTfLiteError;
+  }
+
+  return kTfLiteOk;
 }
 
-TfLiteRegistration* Register_DEPTH_TO_SPACE() {
-  return Register_DEPTH_TO_SPACE_GENERIC_OPT();
+}  // namespace
+
+TfLiteRegistration Register_DEPTH_TO_SPACE() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite

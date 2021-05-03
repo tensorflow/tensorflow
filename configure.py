@@ -39,7 +39,9 @@ _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -1458,7 +1460,9 @@ def main():
         'adding "--config=<>" to your build command. See .bazelrc for more '
         'details.')
   config_info_line('mkl', 'Build with MKL support.')
-  config_info_line('mkl_aarch64', 'Build with oneDNN support for Aarch64.')
+  config_info_line(
+      'mkl_aarch64',
+      'Build with oneDNN and Compute Library for the Arm Architecture (ACL).')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
