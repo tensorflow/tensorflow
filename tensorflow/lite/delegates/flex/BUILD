@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
@@ -104,6 +104,7 @@ cc_library(
         ":buffer_map",
         ":delegate_data",
         ":util",
+        ":tflite_subgraph_execute",
         "@flatbuffers",
         "@com_google_absl//absl/strings:strings",
         "//tensorflow/lite/core/api",
@@ -218,7 +219,8 @@ cc_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/core:framework_headers_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
         ],
     }),
 )
@@ -346,6 +348,7 @@ cc_library(
 cc_library(
     name = "tflite_subgraph_execute",
     srcs = ["tflite_subgraph_execute.cc"],
+    copts = tf_opts_nortti_if_android(),
     deps = [
         ":subgraph_resource",
         "//tensorflow/lite:cc_api",
@@ -362,8 +365,9 @@ cc_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/core:lib",
             "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
         ],
     }),
+    alwayslink = 1,
 )
