@@ -80,6 +80,11 @@
     *   Add `keepdims` argument to all `GlobalPooling` layers.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+*   `Grappler`:
+    *   Disable default Grappler optimization timeout to make the optimization
+        pipeline deterministic. This may lead to increased model loading time,
+        because time spent in graph optimizations is now unbounded (was 20
+        minutes).
 
 ## Thanks to our Contributors
 
