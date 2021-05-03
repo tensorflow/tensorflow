@@ -1063,6 +1063,16 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
   // Check that only 2 nodes consume the output of the ReluGrad node.
   if (fwd_bn_add_act_used &&
       relugrad_node_view->GetRegularFanout(0).size() == 2) {
+
+    // In a graph with the Add node having two BatchNorm nodes as the inputs, we
+    // need to make sure only the one backward BatchNorm that correponds to the
+    // to-be-fused forward BatchNorm should be fused. We use the edge for the
+    // reserve space to get the directly corresponded forward BatchNorm node.
+    const auto& fwd_batch_norm_node = node_view->GetRegularFanin(5);
+    if (fwd_matched.fused_batch_norm != fwd_batch_norm_node.node_index()) {
+      return false;
+    }
+
     const auto& fanouts_at_port_0 = relugrad_node_view->GetRegularFanouts()[0];
     const auto* fanout_0_node_view =
         ctx.graph_view.GetNode(fanouts_at_port_0[0].node_view()->GetName());
