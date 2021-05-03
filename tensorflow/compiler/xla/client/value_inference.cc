@@ -72,13 +72,8 @@ Literal CreateGarbageLiteral(const Shape& reference_shape) {
   if (element_type == TOKEN) {
     return LiteralUtil::CreateToken();
   }
-  if (primitive_util::IsFloatingPointType(element_type)) {
-    Literal literal = LiteralUtil::NanValue(element_type).ValueOrDie();
-    return literal.Broadcast(reference_shape, {}).ValueOrDie();
-  } else {
-    Literal literal = LiteralUtil::MaxValue(element_type);
-    return literal.Broadcast(reference_shape, {}).ValueOrDie();
-  }
+  Literal literal = LiteralUtil::Zero(element_type);
+  return literal.Broadcast(reference_shape, {}).ValueOrDie();
 }
 
 
