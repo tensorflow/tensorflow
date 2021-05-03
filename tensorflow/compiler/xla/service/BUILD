@@ -517,6 +517,7 @@ cc_library(
     deps = [
         ":dot_as_convolution_util",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_sharding_util",

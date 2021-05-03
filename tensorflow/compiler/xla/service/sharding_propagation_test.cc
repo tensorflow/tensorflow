@@ -1387,6 +1387,65 @@ ENTRY %reduce_window {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, VariadicReduceWindowBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+%add (a: f32[], b: s32[], c: f32[], d: s32[]) -> (f32[], s32[]) {
+  %a = f32[] parameter(0)
+  %b = s32[] parameter(1)
+  %c = f32[] parameter(2)
+  %d = s32[] parameter(3)
+  %add.0 = f32[] add(%a, %c)
+  %add.1 = s32[] add(%b, %d)
+  ROOT %t = tuple(%add.0, %add.1)
+}
+ENTRY %reduce_window {
+  %param.0 = f32[13,17]{1,0} parameter(0)
+  %param.0.copy = f32[13,17]{1,0} copy(%param.0)
+  %param.1 = s32[13,17]{1,0} parameter(1)
+  %param.1.copy = s32[13,17]{1,0} copy(%param.1)
+  %init.0 = f32[] parameter(2)
+  %init.1 = s32[] parameter(3)
+  ROOT %reduce-window = (f32[7,17]{1,0}, s32[7,17]{1,0}) reduce-window(%param.0.copy, %param.1.copy, %init.0, %init.1),
+    window={size=3x2 stride=2x1 pad=1_1x0_1}, to_apply=%add,
+    sharding={{devices=[2,1]0,1 metadata={op_name="a"}}, {devices=[2,1]0,1 metadata={op_name="b"}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* param_0_copy = FindInstruction(module.get(), "param.0.copy");
+  ASSERT_NE(param_0_copy, nullptr);
+  EXPECT_THAT(param_0_copy, op::Sharding("{devices=[2,1]0,1}"));
+  auto* param_1_copy = FindInstruction(module.get(), "param.1.copy");
+  ASSERT_NE(param_1_copy, nullptr);
+  EXPECT_THAT(param_1_copy, op::Sharding("{devices=[2,1]0,1}"));
+  auto* reduce_window = FindInstruction(module.get(), "reduce-window");
+  ASSERT_NE(reduce_window, nullptr);
+  EXPECT_THAT(reduce_window,
+              op::Sharding("{{devices=[2,1]0,1}, {devices=[2,1]0,1}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(param_0_copy->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(param_1_copy->sharding(),
+                ShardingMetadata({CreateMetadata("b")}));
+    EXPECT_THAT(reduce_window->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(reduce_window->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    EXPECT_THAT(param_0_copy->sharding(), ShardingMetadata({}));
+    EXPECT_THAT(param_1_copy->sharding(), ShardingMetadata({}));
+    EXPECT_THAT(reduce_window->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ReplicatedConvolutionLhs) {
   const char* const hlo_string = R"(
 HloModule module
