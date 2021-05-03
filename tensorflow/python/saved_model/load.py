@@ -34,12 +34,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
@@ -160,13 +162,18 @@ class Loader(object):
       self._concrete_functions[name] = _WrapperFunction(concrete_function)
 
     self._load_all()
-    self._restore_checkpoint()
 
-    for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
-        init_op = node._initialize()  # pylint: disable=protected-access
-        if not context.executing_eagerly():
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    variables_dir = saved_model_utils.get_variables_dir(self._export_dir)
+    if not file_io.file_exists(variables_dir):
+      tf_logging.warning(
+          "No checkpoint found, assuming this is a program-only SavedModel.")
+    else:
+      self._restore_checkpoint()
+      for node in self._nodes:
+        if isinstance(node, tracking.CapturableResource):
+          init_op = node._initialize()  # pylint: disable=protected-access
+          if not context.executing_eagerly():
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""
