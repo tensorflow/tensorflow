@@ -349,6 +349,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       time.sleep(0.1)
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcErrorMessage(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    num_elements = 100
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="test")
+    it = iter(ds)
+    self.assertEqual(next(it).numpy(), 0)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
+    del it
+    while cluster.workers[0].num_tasks() > 0:
+      time.sleep(0.1)
+
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="test")
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "The requested job has been garbage collected due to inactivity"):
+      list(ds)
+
   @combinations.generate(test_base.default_test_combinations())
   def testApplyDeterminismOption(self):
     elements = list(range(10))
