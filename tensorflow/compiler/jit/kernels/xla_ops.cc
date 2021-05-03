@@ -189,7 +189,8 @@ static Status CompileToLocalExecutable(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", &cache,
       [&](XlaCompilationCache** cache) {
-        return BuildXlaCompilationCache(ctx->device(), platform_info, cache);
+        return BuildXlaCompilationCache(ctx->device(), ctx->function_library(),
+                                        platform_info, cache);
       }));
   // Hold the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
