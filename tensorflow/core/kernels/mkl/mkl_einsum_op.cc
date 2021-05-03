@@ -112,7 +112,8 @@ struct MklEinsumHelper {
         *params, false /* value for do_not_cache */);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
     matmul_prim->Execute(lhs.flat<T>().data(), rhs.flat<T>().data(),
                          output->flat<T>().data(), cpu_stream);
