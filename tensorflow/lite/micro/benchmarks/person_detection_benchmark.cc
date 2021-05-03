@@ -63,13 +63,13 @@ void PersonDetectionNIerations(const int8_t* input, int iterations,
                                PersonDetectionBenchmarkRunner& benchmark_runner,
                                MicroProfiler& profiler) {
   benchmark_runner.SetInput(input);
-  int32_t ticks = 0;
+  uint32_t ticks = 0;
   for (int i = 0; i < iterations; ++i) {
     profiler.ClearEvents();
     benchmark_runner.RunSingleIteration();
     ticks += profiler.GetTotalTicks();
   }
-  MicroPrintf("%s took %d ticks (%d ms)", tag, ticks, TicksToMs(ticks));
+  MicroPrintf("%s took %u ticks (%u ms)", tag, ticks, TicksToMs(ticks));
 }
 
 }  // namespace tflite

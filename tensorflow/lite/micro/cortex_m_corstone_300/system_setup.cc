@@ -21,9 +21,59 @@ limitations under the License.
 #include CMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE
 #endif
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_time.h"
 #include "tensorflow/lite/micro/system_setup.h"
 
+// DWT (Data Watchpoint and Trace) registers, only exists on ARM Cortex with a
+// DWT unit.
+#define KIN1_DWT_CONTROL (*((volatile uint32_t*)0xE0001000))
+
+// DWT Control register.
+#define KIN1_DWT_CYCCNTENA_BIT (1UL << 0)
+
+// CYCCNTENA bit in DWT_CONTROL register.
+#define KIN1_DWT_CYCCNT (*((volatile uint32_t*)0xE0001004))
+
+// DWT Cycle Counter register.
+#define KIN1_DEMCR (*((volatile uint32_t*)0xE000EDFC))
+
+// DEMCR: Debug Exception and Monitor Control Register.
+#define KIN1_TRCENA_BIT (1UL << 24)
+
+// Trace enable bit in DEMCR register.
+#define KIN1_LAR (*((volatile uint32_t*)0xE0001FB0))
+
+// Unlock access to DWT (ITM, etc.)registers.
+#define KIN1_UnlockAccessToDWT() KIN1_LAR = 0xC5ACCE55;
+
+// TRCENA: Enable trace and debug block DEMCR (Debug Exception and Monitor
+// Control Register.
+#define KIN1_InitCycleCounter() KIN1_DEMCR |= KIN1_TRCENA_BIT
+
+#define KIN1_ResetCycleCounter() KIN1_DWT_CYCCNT = 0
+#define KIN1_EnableCycleCounter() KIN1_DWT_CONTROL |= KIN1_DWT_CYCCNTENA_BIT
+#define KIN1_DisableCycleCounter() KIN1_DWT_CONTROL &= ~KIN1_DWT_CYCCNTENA_BIT
+#define KIN1_GetCycleCounter() KIN1_DWT_CYCCNT
+
 namespace tflite {
+
+namespace {
+constexpr int kClocksPerSecond = 25e6;
+}  // namespace
+
+int32_t ticks_per_second() { return kClocksPerSecond; }
+
+int32_t GetCurrentTimeTicks() {
+  static bool is_initialized = false;
+  if (!is_initialized) {
+    KIN1_UnlockAccessToDWT();
+    KIN1_InitCycleCounter();
+    KIN1_ResetCycleCounter();
+    KIN1_EnableCycleCounter();
+    is_initialized = true;
+  }
+  return KIN1_GetCycleCounter();
+}
 
 #ifdef ETHOS_U
 void ethosuIrqHandler0() { ethosu_irq_handler(); }

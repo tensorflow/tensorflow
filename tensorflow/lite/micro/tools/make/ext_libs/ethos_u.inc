@@ -42,10 +42,15 @@ INCLUDES += -I$(ETHOSU_DRIVER_PATH)/include \
             -I$(CMSIS_PATH)/CMSIS/Core/Include
 GENERATED_PROJECT_INCLUDES += -I./$(ETHOSU_DRIVER_PATH)/include
 
-ETHOSU_LOG_SEVERITY := ETHOSU_LOG_INFO
+ETHOSU_LOG_SEVERITY := ETHOSU_LOG_WARN
 CCFLAGS += -DETHOSU_LOG_SEVERITY=$(ETHOSU_LOG_SEVERITY)
 
 # TODO(#47718): resolve warnings.
 CCFLAGS += \
   -Wno-return-type \
   -Wno-format
+
+ifeq ($(TOOLCHAIN), gcc)
+  CCFLAGS += \
+    -Wno-unused-but-set-variable
+endif
