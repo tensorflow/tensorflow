@@ -244,6 +244,9 @@ cc_library(
         "kernel_util.cc",
     ],
     hdrs = ["kernel_util.h"],
+    visibility = [
+        ":micro",
+    ],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
