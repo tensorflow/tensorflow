@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -125,7 +127,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
-      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
+      mlir::FileLineColLoc::get(context, input->getBufferIdentifier(), 0, 0);
 
   // Parses input/output names from command line options.
   std::vector<std::string> inputs;

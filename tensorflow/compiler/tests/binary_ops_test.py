@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
@@ -1107,6 +1106,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
             x,
             expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
 
+  def testBatchMatMulMixedPrecision(self):
+    # Verify that accumulation happens in the specified output type int32 by
+    # using a result (16 * 16 * 16) that doesn't fit in int8.
+    self._testBinary(
+        lambda x, y: math_ops.matmul(x, y, output_type=np.int32),
+        np.tile(np.array([[[16]]], dtype=np.int8), (1, 1, 16)),
+        np.tile(np.array([[[16]]], dtype=np.int8), (1, 16, 1)),
+        expected=np.array([[[16 * 16 * 16]]], dtype=np.int32))
+
   def testExpandDims(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1612,8 +1620,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   @test_util.disable_mlir_bridge("Error handling")
   def testBroadcastArgsError(self):
-    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                             "Incompatible shapes"):
+    with self.assertRaisesIncompatibleShapesError():
       self._testBinary(array_ops.broadcast_dynamic_shape,
                        np.array([1, 2, 3], dtype=np.int32),
                        np.array([4, 5, 6], dtype=np.int32),

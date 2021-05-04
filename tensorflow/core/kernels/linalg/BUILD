@@ -23,7 +23,8 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 # TODO(rmlarsen): Remove ASAP.
@@ -48,6 +49,8 @@ exports_files([
     "einsum_op.h",
     "linalg_ops_common.h",
     "linalg_ops_common.cc",
+    "matrix_band_part_op.h",
+    "matrix_band_part_op.cc",
     "matrix_diag_op.h",
     "matrix_diag_op.cc",
     "matrix_inverse_op.cc",
@@ -360,7 +363,7 @@ tf_cuda_cc_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",

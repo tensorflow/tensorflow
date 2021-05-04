@@ -25,75 +25,85 @@ namespace tflite {
 namespace testing {
 namespace {
 
-TF_LITE_MICRO_TESTS_BEGIN
+void ExecuteFloorDivTest(TfLiteTensor* tensors, int tensors_count) {
+  constexpr int kInputArrayData[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
+  constexpr int kOutputArrayData[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
-TF_LITE_MICRO_TEST(FloorDivModelSimple) {
-#ifdef notdef
-  FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, 9, 11, 3});
-  model.PopulateTensor<int32_t>(model.input2(), {2, 2, 3, 4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5, 4, 3, 0));
-#endif
+  const TfLiteRegistration registration = tflite::Register_FLOOR_DIV();
+  micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
+                             outputs_array, nullptr);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 }
 
-TF_LITE_MICRO_TEST(FloorDivModelNegativeValue) {
-#ifdef notdef
-  FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int32_t>(model.input2(), {2, 2, -3, -4});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5, -5, 3, -2));
-#endif
-}
+template <typename T>
+void TestFloorDiv(const int* input1_dims_data, const T* input1_data,
+                  const int* input2_dims_data, const T* input2_data,
+                  const int* expected_dims, const T* expected_data,
+                  T* output_data) {
+  TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
+  TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
 
-TF_LITE_MICRO_TEST(FloorDivModelBroadcastFloorDiv) {
-#ifdef notdef
-  FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1}}, {TensorType_INT32, {}});
-  model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int32_t>(model.input2(), {-3});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
-#endif
-}
+  TfLiteTensor tensors[] = {
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
+  };
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
 
-TF_LITE_MICRO_TEST(FloorDivModelSimpleFloat) {
-#ifdef notdef
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.05, 9.09, 11.9, 3.01});
-  model.PopulateTensor<float>(model.input2(), {2.05, 2.03, 3.03, 4.03});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(4.0, 4.0, 3.0, 0.0));
-#endif
-}
+  ExecuteFloorDivTest(tensors, tensors_count);
 
-TF_LITE_MICRO_TEST(FloorDivModelNegativeValueFloat) {
-#ifdef notdef
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
-  model.PopulateTensor<float>(model.input2(), {2.0, 2.3, -3.0, -4.1});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5.0, -5.0, 3.0, -2.0));
-#endif
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_data[i], output_data[i]);
+  }
 }
-
-TF_LITE_MICRO_TEST(FloorDivModelBroadcastFloorDivFloat) {
-#ifdef notdef
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
-  model.PopulateTensor<float>(model.input2(), {-3.3});
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
-#endif
-}
-
-TF_LITE_MICRO_TESTS_END
 
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(FloorDivTestSimpleFloat) {
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  constexpr float kInput1[] = {10.05, 9.09, 11.9, 3.01};
+  constexpr float kInput2[] = {2.05, 2.03, 3.03, 4.03};
+  constexpr float kExpect[] = {4.0, 4.0, 3.0, 0.0};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorDiv(kDims, kInput1, kDims, kInput2, kDims, kExpect,
+                                output_data);
+}
+
+TF_LITE_MICRO_TEST(FloorDivTestNegativeValueFloat) {
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  constexpr float kInput1[] = {10.03, -9.9, -11.0, 7.0};
+  constexpr float kInput2[] = {2.0, 2.3, -3.0, -4.1};
+  constexpr float kExpect[] = {5.0, -5.0, 3.0, -2.0};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorDiv(kDims, kInput1, kDims, kInput2, kDims, kExpect,
+                                output_data);
+}
+
+TF_LITE_MICRO_TEST(FloorDivTestBroadcastFloat) {
+  constexpr int kDims1[] = {4, 1, 2, 2, 1};
+  constexpr int kDims2[] = {1, 1};
+  constexpr float kInput1[] = {10.03, -9.9, -11.0, 7.0};
+  constexpr float kInput2[] = {-3.3};
+  constexpr float kExpect[] = {-4.0, 2.0, 3.0, -3.0};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestFloorDiv(kDims1, kInput1, kDims2, kInput2, kDims1,
+                                kExpect, output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

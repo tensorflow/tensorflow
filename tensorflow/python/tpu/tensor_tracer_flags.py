@@ -73,6 +73,11 @@ FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
+# Flag used in v2 only.
+FLAG_SUMMARY_MODE_TYPE = 'summary_mode'
+UI_MODE = 'ui'
+TEXT_MODE = 'text'
+
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
 
@@ -141,6 +146,7 @@ class TTParameters(object):
     self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
+    self.summary_mode = self._get_summary_mode()
     self._check_flag_errors()
 
   def _check_flag_errors(self):
@@ -153,8 +159,7 @@ class TTParameters(object):
     """Sets the path of the output report file."""
 
     found, report_file_path = self.get_flag_value(FLAG_NAME_REPORT_FILE)
-    if found and report_file_path \
-       and self.use_test_undeclared_outputs_dir():
+    if found and report_file_path and self.use_test_undeclared_outputs_dir():
       if os.path.isabs(report_file_path):
         raise ValueError('If use_test_undeclared_outputs_dir is set,'
                          'report_file_path cannot be an absolute path (%s)'
@@ -178,8 +183,7 @@ class TTParameters(object):
 
   def _get_trace_dir(self):
     found, trace_dir = self.get_flag_value(FLAG_NAME_TRACE_DIR)
-    if found and trace_dir \
-       and self.use_test_undeclared_outputs_dir():
+    if found and trace_dir and self.use_test_undeclared_outputs_dir():
       raise ValueError(
           'Cannot not use --%s and --%s at the same time' %
           (FLAG_NAME_TRACE_DIR, FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR))
@@ -266,7 +270,7 @@ class TTParameters(object):
         FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
         FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
         FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
-        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY
+        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY, FLAG_SUMMARY_MODE_TYPE
     ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
@@ -467,3 +471,17 @@ class TTParameters(object):
     """
 
     return self.is_flag_on(FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR)
+
+  def _get_summary_mode(self):
+    """Returns the summary mode after checking if it is valid."""
+
+    found, summary_mode = self.get_flag_value(FLAG_SUMMARY_MODE_TYPE)
+    if not found:
+      summary_mode = UI_MODE
+
+    valid_summary_modes = [UI_MODE, TEXT_MODE]
+    if summary_mode not in valid_summary_modes:
+      raise ValueError('Invalid summary mode "%s" given to the Tensor_Tracer.'
+                       'Valid submodes are: %s'%(summary_mode,
+                                                 valid_summary_modes))
+    return summary_mode

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
 import numpy as np
 from tensorflow import keras
 
@@ -430,15 +431,7 @@ class TfLiteConvertV1Test(TestModels):
 
     # Ensure --allow_custom_ops.
     flags_str_final = ('{} --allow_custom_ops').format(flags_str)
-    self._run(flags_str_final, should_succeed=False)
 
-    # Ensure --experimental_new_converter.
-    flags_str_final = ('{} --experimental_new_converter').format(flags_str)
-    self._run(flags_str_final, should_succeed=False)
-
-    # Valid conversion.
-    flags_str_final = ('{} --allow_custom_ops '
-                       '--experimental_new_converter').format(flags_str)
     self._run(
         flags_str_final,
         should_succeed=True,
@@ -525,9 +518,10 @@ class TfLiteConvertV2Test(TestModels):
         should_succeed=False)
 
 
-class ArgParserTest(test_util.TensorFlowTestCase):
+class ArgParserTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def test_without_experimental_new_converter(self):
+  @parameterized.named_parameters(('v1', False), ('v2', True))
+  def test_without_experimental_new_converter(self, use_v2_converter):
     args = [
         '--saved_model_dir=/tmp/saved_model/',
         '--output_file=/tmp/output.tflite',
@@ -536,85 +530,69 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     # Note that when the flag parses to None, the converter uses the default
     # value, which is True.
 
-    # V1 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=False)
+    parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
-    self.assertIsNone(parsed_args.experimental_new_converter)
-    self.assertFalse(parsed_args.experimental_new_quantizer)
+    self.assertTrue(parsed_args.experimental_new_converter)
+    self.assertIsNone(parsed_args.experimental_new_quantizer)
 
-    # V2 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=True)
-    parsed_args = parser.parse_args(args)
-    self.assertIsNone(parsed_args.experimental_new_converter)
-    self.assertFalse(parsed_args.experimental_new_quantizer)
-
-  def test_experimental_new_converter(self):
+  @parameterized.named_parameters(('v1', False), ('v2', True))
+  def test_experimental_new_converter_none(self, use_v2_converter):
     args = [
         '--saved_model_dir=/tmp/saved_model/',
         '--output_file=/tmp/output.tflite',
         '--experimental_new_converter',
     ]
 
-    # V1 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=False)
+    parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_converter)
 
-    # V2 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=True)
-    parsed_args = parser.parse_args(args)
-    self.assertTrue(parsed_args.experimental_new_converter)
-
-  def test_experimental_new_converter_true(self):
+  @parameterized.named_parameters(
+      ('v1_true', False, True),
+      ('v1_false', False, False),
+      ('v2_true', True, True),
+      ('v2_false', True, False),
+  )
+  def test_experimental_new_converter(self, use_v2_converter, new_converter):
     args = [
         '--saved_model_dir=/tmp/saved_model/',
         '--output_file=/tmp/output.tflite',
-        '--experimental_new_converter=true',
+        '--experimental_new_converter={}'.format(new_converter),
     ]
 
-    # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
-    self.assertTrue(parsed_args.experimental_new_converter)
+    self.assertEqual(parsed_args.experimental_new_converter, new_converter)
 
-    # V2 parser.
-    parser = tflite_convert._get_parser(True)
-    parsed_args = parser.parse_args(args)
-    self.assertTrue(parsed_args.experimental_new_converter)
-
-  def test_experimental_new_converter_false(self):
-    args = [
-        '--saved_model_dir=/tmp/saved_model/',
-        '--output_file=/tmp/output.tflite',
-        '--experimental_new_converter=false',
-    ]
-
-    # V1 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=False)
-    parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
-
-    # V2 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=True)
-    parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
-
-  def test_experimental_new_quantizer(self):
+  @parameterized.named_parameters(('v1', False), ('v2', True))
+  def test_experimental_new_quantizer_none(self, use_v2_converter):
     args = [
         '--saved_model_dir=/tmp/saved_model/',
         '--output_file=/tmp/output.tflite',
         '--experimental_new_quantizer',
     ]
 
-    # V1 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=False)
+    parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_quantizer)
 
-    # V2 parser.
-    parser = tflite_convert._get_parser(use_v2_converter=True)
+  @parameterized.named_parameters(
+      ('v1_true', False, True),
+      ('v1_false', False, False),
+      ('v2_true', True, True),
+      ('v2_false', True, False),
+  )
+  def test_experimental_new_quantizer(self, use_v2_converter, new_quantizer):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_quantizer={}'.format(new_quantizer),
+    ]
+
+    parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
-    self.assertTrue(parsed_args.experimental_new_quantizer)
+    self.assertEqual(parsed_args.experimental_new_quantizer, new_quantizer)
+
 
 if __name__ == '__main__':
   test.main()

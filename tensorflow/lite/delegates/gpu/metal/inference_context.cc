@@ -214,6 +214,9 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
   std::vector<Node*> graph_nodes = graph.nodes();
   for (int i = 0; i < graph_nodes.size(); ++i) {
     const Node& node = *graph_nodes[i];
+    if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
+      continue;
+    }
     auto op_type = OperationTypeFromString(node.operation.type);
     if (op_type == OperationType::CONSTANT) {
       auto attr =

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/recordable_queue_builder.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -118,27 +119,31 @@ class InferenceContext {
                                    const GpuInfo& gpu_info,
                                    const GraphFloat32& graph);
   absl::Status Merge();
-  absl::Status AllocateMemory(CLContext* context);
+  absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status AllocateMemoryForConstTensors(CLContext* context);
 
   absl::Status AllocateMemoryForVariableTensors(CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(CLContext* context);
+  absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
+                                        CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(CLContext* context);
+  absl::Status AllocateMemoryForStrongShapes(const GpuInfo& gpu_info,
+                                             CLContext* context);
 
   // utility function
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
 
-  TensorMemoryType GetTensorMemoryType(ValueId id);
+  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+
+  void InitRecordableQueue(Environment* env);
 
   void ReleaseCPURepresentation();
 
@@ -237,6 +242,8 @@ class InferenceContext {
   // for serialization
   std::vector<int64_t> in_refs_;
   std::vector<int64_t> out_refs_;
+
+  std::unique_ptr<RecordableQueue> recordable_queue_;
 };
 
 // Runs OpenCL specific transforms for the graph.

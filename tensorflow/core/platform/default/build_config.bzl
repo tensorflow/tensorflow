@@ -152,6 +152,7 @@ def cc_proto_library(
         cc_libs = [],
         include = None,
         protoc = "@com_google_protobuf//:protoc",
+        internal_bootstrap_hack = False,
         use_grpc_plugin = False,
         use_grpc_namespace = False,
         make_default_target_header_only = False,
@@ -168,6 +169,10 @@ def cc_proto_library(
           cc_library.
       include: a string indicating the include path of the .proto files.
       protoc: the label of the protocol compiler to generate the sources.
+      internal_bootstrap_hack: a flag indicate the cc_proto_library is used only
+          for bootstraping. When it is set to True, no files will be generated.
+          The rule will simply be a provider for .proto files, so that other
+          cc_proto_library can depend on it.
       use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
           when processing the proto files.
       use_grpc_namespace: the namespace for the grpc services.
@@ -188,6 +193,25 @@ def cc_proto_library(
         includes = [include]
     if protolib_name == None:
         protolib_name = name
+
+    if internal_bootstrap_hack:
+        # For pre-checked-in generated files, we add the internal_bootstrap_hack
+        # which will skip the codegen action.
+        proto_gen(
+            name = protolib_name + "_genproto",
+            srcs = srcs,
+            includes = includes,
+            protoc = protoc,
+            visibility = ["//visibility:public"],
+            deps = [s + "_genproto" for s in all_protolib_deps],
+        )
+
+        # An empty cc_library to make rule dependency consistent.
+        native.cc_library(
+            name = name,
+            **kargs
+        )
+        return
 
     grpc_cpp_plugin = None
     plugin_options = []
@@ -248,10 +272,10 @@ def cc_proto_library(
     )
     native.cc_library(
         name = header_only_name,
-        hdrs = gen_hdrs,
         deps = [
             "@com_google_protobuf//:protobuf_headers",
         ] + header_only_deps + if_static([impl_name]),
+        hdrs = gen_hdrs,
         **kargs
     )
 
@@ -601,7 +625,10 @@ def tf_protos_grappler():
     )
 
 def tf_additional_device_tracer_srcs():
-    return ["device_tracer.cc"]
+    return [
+        "device_tracer_cuda.cc",
+        "device_tracer_rocm.cc",
+    ]
 
 def tf_additional_cupti_utils_cuda_deps():
     return []
@@ -635,9 +662,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [
-            "//tensorflow/core/platform/cloud:gcs_file_system",
-        ],
         clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
@@ -656,9 +680,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
-        ],
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
@@ -774,9 +795,10 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    # TODO(b/...): The TF XLA build fails when adding a dependency on
-    # @llvm/llvm-project/llvm:aarch64_target.
-    return otherwise
+    return select({
+        "//tensorflow:linux_aarch64": then,
+        "//conditions:default": otherwise,
+    })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({

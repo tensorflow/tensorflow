@@ -16,4 +16,8 @@ tf_module {
     name: "ne"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "ragged_getitem"
+    argspec: "args=[\'rt_input\', \'key\'], varargs=None, keywords=None, defaults=None"
+  }
 }

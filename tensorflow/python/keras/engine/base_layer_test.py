@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TensorFlow 2.0 layer behavior."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 import sys
@@ -320,6 +316,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
       # Cannot access tensor.name in eager execution.
       self.assertIn('Variable_2/Regularizer', layer.losses[0].name)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_add_weight_by_getter(self):
+    layer = base_layer.Layer()
+    variable = variables.Variable('abc')
+    added = layer.add_weight(
+        dtype=dtypes.string, getter=lambda *_, **__: variable)
+    self.assertIs(variable, added)
+
   @combinations.generate(combinations.keras_mode_combinations(mode=['eager']))
   def test_learning_phase_freezing_for_layers(self):
 
@@ -574,6 +578,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 'not compatible with provided weight shape'):
       layer.set_weights([kernel.T, bias])
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_set_weights_accepts_output_of_get_weights(self):
+    layer = layers.Layer()
+    layer.add_weight(name='scalar_float', shape=(), dtype=dtypes.float32)
+    layer.add_weight(name='scalar_string', shape=(), dtype=dtypes.string,
+                     initializer=lambda *a, **k: 'abc')
+    layer.add_weight(name='vector_float', shape=(3,), dtype=dtypes.float32)
+    layer.add_weight(name='vector_string', shape=(2,), dtype=dtypes.string,
+                     initializer=lambda *a, **k: 2 * ['abc'])
+    layer.set_weights(layer.get_weights())
 
   def test_get_config_error(self):
 

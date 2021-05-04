@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -61,13 +60,14 @@ class TaskRunner {
   // Creates a `TaskRunner` and stores it in `out`.
   static Status Create(const experimental::WorkerConfig& worker_config,
                        const TaskDef& task_def,
-                       CancellationManager& cancellation_manager,
                        std::unique_ptr<TaskIterator> iterator,
                        std::unique_ptr<TaskRunner>& out);
   virtual ~TaskRunner() = default;
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
                          GetElementResult& result) = 0;
+  // Cancels in-progress `GetNext` requests.
+  virtual void Cancel() = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -78,6 +78,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
       std::unique_ptr<TaskIterator> iterator);
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+  void Cancel() override;
 
  private:
   mutex mu_;
@@ -150,12 +151,11 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers, string worker_address,
-                       CancellationManager& cancellation_manager);
-  ~RoundRobinTaskRunner() override;
+                       int64 num_consumers, string worker_address);
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+  void Cancel() override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
@@ -187,7 +187,6 @@ class RoundRobinTaskRunner : public TaskRunner {
   // Thread which constantly tries to prepare `num_consumers` elements for the
   // next round.
   PrefetchThread prefetch_thread_;
-  std::function<void()> deregister_cancel_callback_;
 };
 
 }  // namespace data

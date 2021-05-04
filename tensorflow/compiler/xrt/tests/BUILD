@@ -10,7 +10,7 @@ package(
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

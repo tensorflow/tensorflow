@@ -141,17 +141,16 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
         optimizer = tpu_embedding_v2_utils.Adagrad(learning_rate=0.1)
       elif optimizer_name == 'adam':
         optimizer = tpu_embedding_v2_utils.Adam(learning_rate=0.1)
+      elif optimizer_name == 'ftrl':
+        optimizer = tpu_embedding_v2_utils.FTRL(learning_rate=0.1)
       else:
         raise ValueError('optimizer is not recognized: ', optimizer_name)
       mid_level_api = self._create_mid_level(optimizer=optimizer)
 
     return strategy, mid_level_api, optimizer
 
-  @parameterized.parameters(
-      *itertools.product(
-          ['sgd', 'adagrad', 'adam'],
-          [True, False],
-          [True, False]))
+  @parameterized.parameters(*itertools.product(
+      ['sgd', 'adagrad', 'adam', 'ftrl'], [True, False], [True, False]))
   def test_embedding(self, optimizer_name, training, sparse):
     strategy, mid_level_api, optimizer = (
         self._create_strategy_and_mid_level(optimizer_name))
@@ -379,6 +378,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       check_fn = self._check_embedding_and_slot_variables_for_adagrad
     elif isinstance(optimizer, tpu_embedding_v2_utils.Adam):
       check_fn = self._check_embedding_and_slot_variables_for_adam
+    elif isinstance(optimizer, tpu_embedding_v2_utils.FTRL):
+      check_fn = self._check_embedding_and_slot_variables_for_ftrl
     else:
       raise ValueError('optimizer is not recognized: ', type(optimizer))
     check_fn(embedding_table_user_before, gradients_wrt_user,
@@ -430,6 +431,30 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
                         m, rtol=1e-4)
     self.assertAllClose(_get_variable(variable['velocities']).numpy(),
                         v, rtol=1e-4)
+
+  def _check_embedding_and_slot_variables_for_ftrl(self, embedding_table_before,
+                                                   gradients, optimizer,
+                                                   variable):
+    embedding_table = np.copy(embedding_table_before)
+    neg_lr_p = -optimizer.learning_rate_power
+    accumulator = (
+        optimizer.initial_accumulator_value + np.sum(gradients, axis=0)**2)
+    sigma = (accumulator**neg_lr_p - optimizer.initial_accumulator_value**
+             neg_lr_p) / optimizer.learning_rate
+    linear = np.sum(gradients, axis=0) - sigma * embedding_table
+    quadratic = accumulator**neg_lr_p / optimizer.learning_rate
+    embedding_table = -linear / quadratic
+    actual_parameters = _get_variable(variable['parameters']).numpy()
+    # For entries where `linear` == 0, it is not worth comparing since the
+    # initial values have not been touched yet and they will not agree with what
+    # the actual values should be.
+    actual_parameters *= (linear != 0.0)
+    # FTRL has a bit more precision diff on parameters.
+    self.assertAllClose(actual_parameters, embedding_table, rtol=5e-5)
+    self.assertAllClose(
+        _get_variable(variable['linears']).numpy(), linear, rtol=5e-4)
+    self.assertAllClose(
+        _get_variable(variable['accumulators']).numpy(), accumulator)
 
   def _get_replica_numpy(self, structured, strategy, replica_id):
     def select_replica(x):

@@ -420,6 +420,15 @@ class RaggedBincountOp : public OpKernel {
     int num_values = values.size();
     int batch_idx = 0;
 
+    OP_REQUIRES(ctx, splits(0) == 0,
+                errors::InvalidArgument("Splits must start with 0, not with ",
+                                        splits(0)));
+
+    OP_REQUIRES(ctx, splits(num_rows) == num_values,
+                errors::InvalidArgument(
+                    "Splits must end with the number of values, got ",
+                    splits(num_rows), " instead of ", num_values));
+
     Tensor* out_t;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));

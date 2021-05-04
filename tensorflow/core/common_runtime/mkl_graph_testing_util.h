@@ -18,10 +18,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <sys/types.h>
-
 #include <algorithm>
-#include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"

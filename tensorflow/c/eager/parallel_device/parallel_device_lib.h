@@ -81,6 +81,11 @@ class ParallelDevice {
   // The number of devices operations run on.
   size_t num_underlying_devices() const { return underlying_devices_.size(); }
 
+  // The devices operations run on.
+  const std::vector<std::string>& underlying_devices() const {
+    return underlying_devices_;
+  }
+
   // Takes a description of a single operation being executed on the
   // ParallelDevice, and in turn runs one operation per component device with
   // its corresponding inputs from the input ParallelTensors. Wraps the
@@ -129,6 +134,11 @@ class ParallelDevice {
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Join(
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
+
+  // Device strings for component devices that only include a
+  // worker/task/replica if any of those differ across components. Useful for
+  // printing debug messages.
+  std::vector<std::string> SummarizeDeviceNames() const;
 
  private:
   // A sequence of device names, indicating which devices replicated operations
@@ -181,6 +191,10 @@ class ParallelTensor {
   // bad status unless all tensors have the same shape.
   Status Shape(const std::vector<int64_t>** shape) const;
   TF_DataType dtype() const { return dtype_; }
+
+  // Sets its output argument to a summary of the values of this tensor on every
+  // component device.
+  Status SummarizeValue(std::string& summary);
 
  private:
   ParallelTensor(const ParallelDevice& device,

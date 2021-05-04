@@ -5,7 +5,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_test(
@@ -72,7 +72,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -89,7 +89,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -178,7 +178,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -195,7 +195,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -229,7 +229,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -304,6 +304,23 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gather_test",
+    srcs = ["gather_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -482,6 +499,23 @@ cc_test(
 )
 
 cc_test(
+    name = "resampler_test",
+    srcs = ["resampler_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
     linkstatic = True,
@@ -567,6 +601,23 @@ cc_test(
 )
 
 cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "strided_slice_test",
     srcs = ["strided_slice_test.cc"],
     linkstatic = True,
@@ -579,6 +630,23 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tile_test",
+    srcs = ["tile_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -652,6 +720,7 @@ test_suite(
         "depthwise_conv_test",
         "elementwise_test",
         "fully_connected_test",
+        "gather_test",
         "lstm_test",
         "max_unpooling_test",
         "mean_stddev_normalization_test",
@@ -665,7 +734,9 @@ test_suite(
         "resize_test",
         "softmax1x1_test",
         "softmax_test",
+        "split_test",
         "strided_slice_test",
+        "tile_test",
         "transpose_test",
         "winograd_test",
     ],

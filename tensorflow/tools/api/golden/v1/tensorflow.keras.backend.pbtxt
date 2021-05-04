@@ -366,7 +366,7 @@ tf_module {
   }
   member_method {
     name: "print_tensor"
-    argspec: "args=[\'x\', \'message\'], varargs=None, keywords=None, defaults=[\'\'], "
+    argspec: "args=[\'x\', \'message\', \'summarize\'], varargs=None, keywords=None, defaults=[\'\', \'3\'], "
   }
   member_method {
     name: "prod"

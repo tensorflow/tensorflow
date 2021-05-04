@@ -21,7 +21,6 @@ from __future__ import print_function
 import functools
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1105,33 +1104,50 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 @dispatch.add_dispatch_support
 def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                          target_width):
-  """Crops an image to a specified bounding box.
+  """Crops an `image` to a specified bounding box.
 
-  This op cuts a rectangular part out of `image`. The top-left corner of the
-  returned image is at `offset_height, offset_width` in `image`, and its
+  This op cuts a rectangular bounding box out of `image`. The top-left corner
+  of the bounding box is at `offset_height, offset_width` in `image`, and the
   lower-right corner is at
   `offset_height + target_height, offset_width + target_width`.
 
+  Example Usage:
+
+  >>> image = tf.constant(np.arange(1, 28, dtype=np.float32), shape=[3, 3, 3])
+  >>> image[:,:,0] # print the first channel of the 3-D tensor
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[ 1.,  4.,  7.],
+         [10., 13., 16.],
+         [19., 22., 25.]], dtype=float32)>
+  >>> cropped_image = tf.image.crop_to_bounding_box(image, 0, 0, 2, 2)
+  >>> cropped_image[:,:,0] # print the first channel of the cropped 3-D tensor
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[ 1.,  4.],
+         [10., 13.]], dtype=float32)>
+
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
-      of shape `[height, width, channels]`.
-    offset_height: Vertical coordinate of the top-left corner of the result in
-      the input.
-    offset_width: Horizontal coordinate of the top-left corner of the result in
-      the input.
-    target_height: Height of the result.
-    target_width: Width of the result.
+    image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
+      `Tensor` of shape `[height, width, channels]`.
+    offset_height: Vertical coordinate of the top-left corner of the bounding
+      box in `image`.
+    offset_width: Horizontal coordinate of the top-left corner of the bounding
+      box in `image`.
+    target_height: Height of the bounding box.
+    target_width: Width of the bounding box.
 
   Returns:
-    If `image` was 4-D, a 4-D float Tensor of shape
-    `[batch, target_height, target_width, channels]`
-    If `image` was 3-D, a 3-D float Tensor of shape
-    `[target_height, target_width, channels]`
+    If `image` was 4-D, a 4-D `Tensor` of shape
+    `[batch, target_height, target_width, channels]`.
+    If `image` was 3-D, a 3-D `Tensor` of shape
+    `[target_height, target_width, channels]`.
+    It has the same dtype with `image`.
 
   Raises:
-    ValueError: If the shape of `image` is incompatible with the `offset_*` or
-      `target_*` arguments, or either `offset_height` or `offset_width` is
-      negative, or either `target_height` or `target_width` is not positive.
+    ValueError: `image` is not a 3-D or 4-D `Tensor`.
+    ValueError: `offset_width < 0` or `offset_height < 0`.
+    ValueError: `target_width <= 0` or `target_width <= 0`.
+    ValueError: `width < offset_width + target_width` or
+      `height < offset_height + target_height`.
   """
   with ops.name_scope(None, 'crop_to_bounding_box', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1196,9 +1212,44 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
+
+  For example:
+
+  >>> image = np.arange(75).reshape(5, 5, 3)  # create 3-D image input
+  >>> image[:,:,0]  # print first channel just for demo purposes
+  array([[ 0,  3,  6,  9, 12],
+         [15, 18, 21, 24, 27],
+         [30, 33, 36, 39, 42],
+         [45, 48, 51, 54, 57],
+         [60, 63, 66, 69, 72]])
+  >>> image = tf.image.resize_with_crop_or_pad(image, 3, 3)  # crop
+  >>> # print first channel for demo purposes; centrally cropped output
+  >>> image[:,:,0]
+  <tf.Tensor: shape=(3, 3), dtype=int64, numpy=
+  array([[18, 21, 24],
+         [33, 36, 39],
+         [48, 51, 54]])>
+
   If `width` or `height` is smaller than the specified `target_width` or
   `target_height` respectively, this op centrally pads with 0 along that
   dimension.
+
+  For example:
+
+  >>> image = np.arange(1, 28).reshape(3, 3, 3)  # create 3-D image input
+  >>> image[:,:,0]  # print first channel just for demo purposes
+  array([[ 1,  4,  7],
+         [10, 13, 16],
+         [19, 22, 25]])
+  >>> image = tf.image.resize_with_crop_or_pad(image, 5, 5)  # pad
+  >>> # print first channel for demo purposes; we should see 0 paddings
+  >>> image[:,:,0]
+  <tf.Tensor: shape=(5, 5), dtype=int64, numpy=
+  array([[ 0,  0,  0,  0,  0],
+         [ 0,  1,  4,  7,  0],
+         [ 0, 10, 13, 16,  0],
+         [ 0, 19, 22, 25,  0],
+         [ 0,  0,  0,  0,  0]])>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1844,15 +1895,32 @@ def per_image_standardization(image):
     - `N` is the number of elements in `x`
     - `stddev` is the standard deviation of all values in `x`
 
+  Example Usage:
+
+  >>> image = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
+  >>> image # 3-D tensor
+  <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
+  array([[[ 1,  2,  3],
+          [ 4,  5,  6]],
+         [[ 7,  8,  9],
+          [10, 11, 12]]], dtype=int32)>
+  >>> new_image = tf.image.per_image_standardization(image)
+  >>> new_image # 3-D tensor with mean ~= 0 and variance ~= 1
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[-1.593255  , -1.3035723 , -1.0138896 ],
+          [-0.7242068 , -0.4345241 , -0.14484136]],
+         [[ 0.14484136,  0.4345241 ,  0.7242068 ],
+          [ 1.0138896 ,  1.3035723 ,  1.593255  ]]], dtype=float32)>
+
   Args:
-    image: An n-D Tensor with at least 3 dimensions, the last 3 of which are the
-      dimensions of each image.
+    image: An n-D `Tensor` with at least 3 dimensions, the last 3 of which are
+      the dimensions of each image.
 
   Returns:
-    A `Tensor` with the same shape as `image`.
+    A `Tensor` with the same shape as `image` and its dtype is `float32`.
 
   Raises:
-    ValueError: if the shape of 'image' is incompatible with this function.
+    ValueError: The shape of `image` has fewer than 3 dimensions.
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
@@ -3123,96 +3191,22 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
-    if compat.forward_compatible(2020, 8, 14):
-      channels = 0 if channels is None else channels
-      if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
-        dest_dtype = dtype
-        dtype = dtypes.uint16
-        return convert_image_dtype(gen_image_ops.decode_image(
-            contents=contents,
-            channels=channels,
-            expand_animations=expand_animations,
-            dtype=dtype), dest_dtype)
-      else:
-        return gen_image_ops.decode_image(
-            contents=contents,
-            channels=channels,
-            expand_animations=expand_animations,
-            dtype=dtype)
-
-    if channels not in (None, 0, 1, 3, 4):
-      raise ValueError('channels must be in (None, 0, 1, 3, 4)')
-    substr = string_ops.substr(contents, 0, 3)
-
-    def _bmp():
-      """Decodes a BMP image."""
-      signature = string_ops.substr(contents, 0, 2)
-      # Create assert op to check that bytes are BMP decodable
-      is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
-      decode_msg = 'Unable to decode bytes as JPEG, PNG, GIF, or BMP'
-      assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
-      bmp_channels = 0 if channels is None else channels
-      good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
-      channels_msg = ('Channels must be in (None, 0, 3, 4) when decoding BMP '
-                      'images')
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_decode, assert_channels]):
-        return convert_image_dtype(
-            gen_image_ops.decode_bmp(contents, channels=bmp_channels), dtype)
-
-    def _gif():
-      """Decodes a GIF image."""
-      # Create assert to make sure that channels is not set to 1
-      # Already checked above that channels is in (None, 0, 1, 3)
-      gif_channels = 0 if channels is None else channels
-      good_channels = math_ops.logical_and(
-          math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
-          math_ops.not_equal(gif_channels, 4, name='check_gif_channels'))
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_channels]):
-        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
-        if not expand_animations:
-          # For now we decode animated GIFs fully and toss out all but the
-          # first frame when expand_animations is False
-          result = array_ops.gather(result, 0)
-        return result
-
-    def check_gif():
-      # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
-      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
-
-    def _png():
-      """Decodes a PNG image."""
+    channels = 0 if channels is None else channels
+    if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
+      dest_dtype = dtype
+      dtype = dtypes.uint16
       return convert_image_dtype(
-          gen_image_ops.decode_png(
-              contents,
-              channels,
-              dtype=dtypes.uint8 if dtype == dtypes.uint8 else dtypes.uint16),
-          dtype)
-
-    def check_png():
-      """Checks if an image is PNG."""
-      return control_flow_ops.cond(
-          _is_png(contents), _png, check_gif, name='cond_png')
-
-    def _jpeg():
-      """Decodes a jpeg image."""
-      jpeg_channels = 0 if channels is None else channels
-      good_channels = math_ops.not_equal(
-          jpeg_channels, 4, name='check_jpeg_channels')
-      channels_msg = ('Channels must be in (None, 0, 1, 3) when decoding JPEG '
-                      'images')
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(
-            gen_image_ops.decode_jpeg(contents, channels), dtype)
-
-    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
-    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    return control_flow_ops.cond(
-        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
+          gen_image_ops.decode_image(
+              contents=contents,
+              channels=channels,
+              expand_animations=expand_animations,
+              dtype=dtype), dest_dtype)
+    else:
+      return gen_image_ops.decode_image(
+          contents=contents,
+          channels=channels,
+          expand_animations=expand_animations,
+          dtype=dtype)
 
 
 @tf_export('image.total_variation')
@@ -3906,8 +3900,8 @@ def rgb_to_yuv(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
   The output is only well defined if the value in images are in [0, 1].
-  There are two ways of representing an image: [0, 255] pixel values range or 
-  [0, 1] (as float) pixel values range. Users need to convert the input image 
+  There are two ways of representing an image: [0, 255] pixel values range or
+  [0, 1] (as float) pixel values range. Users need to convert the input image
   into a float [0, 1] range.
 
   Args:
@@ -4285,9 +4279,9 @@ def ssim(img1,
 
   Args:
     img1: First image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
@@ -4350,8 +4344,9 @@ def ssim_multiscale(img1,
   Computers, 2004.
 
   Args:
-    img1: First image batch.
-    img2: Second image batch. Must have the same rank as img1.
+    img1: First image batch with only Positive Pixel Values.
+    img2: Second image batch with only Positive Pixel Values. Must have the
+    same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     power_factors: Iterable of weights for each of the scales. The number of
@@ -5280,40 +5275,30 @@ def non_max_suppression_padded(boxes,
    Raises:
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
-  # if no new arguments are used and no later than 2020/6/23, use the old
-  # version to give us time to fix TFLite conversion after the TF 2.3 release.
-  if (not sorted_input) and \
-      (not canonicalized_coordinates) and \
-      tile_size == 512 and not compat.forward_compatible(2020, 6, 23):
-    return non_max_suppression_padded_v1(
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    if not pad_to_max_output_size:
+      # pad_to_max_output_size may be set to False only when the shape of
+      # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
+      # detect violations at compile time. If `boxes` does not have a static
+      # rank, the check allows computation to proceed.
+      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
+                         'batched input'.format(pad_to_max_output_size))
+    if name is None:
+      name = ''
+    idx, num_valid = non_max_suppression_padded_v2(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
-        pad_to_max_output_size, name)
-  else:
-    with ops.name_scope(name, 'non_max_suppression_padded'):
-      if not pad_to_max_output_size:
-        # pad_to_max_output_size may be set to False only when the shape of
-        # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
-        # detect violations at compile time. If `boxes` does not have a static
-        # rank, the check allows computation to proceed.
-        if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
-          raise ValueError(
-              "'pad_to_max_output_size' (value {}) must be True for "
-              'batched input'.format(pad_to_max_output_size))
-      if name is None:
-        name = ''
-      idx, num_valid = non_max_suppression_padded_v2(
-          boxes, scores, max_output_size, iou_threshold, score_threshold,
-          sorted_input, canonicalized_coordinates, tile_size)
-      # def_function.function seems to lose shape information, so set it here.
-      if not pad_to_max_output_size:
-        idx = idx[0, :num_valid]
-      else:
-        batch_dims = array_ops.concat([
-            array_ops.shape(boxes)[:-2],
-            array_ops.expand_dims(max_output_size, 0)
-        ], 0)
-        idx = array_ops.reshape(idx, batch_dims)
-      return idx, num_valid
+        sorted_input, canonicalized_coordinates, tile_size)
+    # def_function.function seems to lose shape information, so set it here.
+    if not pad_to_max_output_size:
+      idx = idx[0, :num_valid]
+    else:
+      batch_dims = array_ops.concat([
+          array_ops.shape(boxes)[:-2],
+          array_ops.expand_dims(max_output_size, 0)
+      ], 0)
+      idx = array_ops.reshape(idx, batch_dims)
+    return idx, num_valid
 
 
 # TODO(b/158709815): Improve performance regression due to
@@ -5547,7 +5532,8 @@ def non_max_suppression_padded_v2(boxes,
         array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                          gather_idx),
         [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  invalid_index = array_ops.zeros([batch_size, max_output_size],
+                                  dtype=dtypes.int32)
   idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
   num_valid_expanded = array_ops.expand_dims(num_valid, 1)
   idx = array_ops.where(idx_index < num_valid_expanded,
@@ -5738,17 +5724,17 @@ def generate_bounding_box_proposals(scores,
      `[num_images, height, width, num_achors]` containing scores of
       the boxes for given anchors, can be unsorted.
     bbox_deltas: A 4-D float `Tensor` of shape
-     `[num_images, height, width, 4 x num_anchors]` encoding boxes 
-      with respect to each anchor. Coordinates are given 
+     `[num_images, height, width, 4 x num_anchors]` encoding boxes
+      with respect to each anchor. Coordinates are given
       in the form `[dy, dx, dh, dw]`.
-    image_info: A 2-D float `Tensor` of shape `[num_images, 5]` 
+    image_info: A 2-D float `Tensor` of shape `[num_images, 5]`
       containing image information Height, Width, Scale.
-    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]` 
+    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]`
       describing the anchor boxes.
       Boxes are formatted in the form `[y1, x1, y2, x2]`.
     nms_threshold: A scalar float `Tensor` for non-maximal-suppression
       threshold. Defaults to 0.7.
-    pre_nms_topn: A scalar int `Tensor` for the number of 
+    pre_nms_topn: A scalar int `Tensor` for the number of
       top scoring boxes to be used as input. Defaults to 6000.
     min_size: A scalar float `Tensor`. Any box that has a smaller size
       than min_size will be discarded. Defaults to 16.

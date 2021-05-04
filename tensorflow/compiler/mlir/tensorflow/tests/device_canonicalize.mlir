@@ -24,3 +24,4 @@ func @empty_launch(%arg0 : tensor<i1>, %arg1 : tensor<i32>) -> (tensor<i32>, ten
 
 // CHECK-NOT: tf_device.launch
 // CHECK: return %[[ARG_1]], %[[ARG_0]]
+

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Distribution tests for keras.layers.preprocessing.discretization."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python import keras
@@ -33,7 +29,7 @@ from tensorflow.python.platform import test
 
 @ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.strategies_minus_tpu,
+        distribution=strategy_combinations.all_strategies,
         mode=["eager", "graph"]))
 class DiscretizationDistributionTest(
     keras_parameterized.TestCase,
@@ -49,7 +45,7 @@ class DiscretizationDistributionTest(
 
     with distribution.scope():
       input_data = keras.Input(shape=(4,))
-      layer = discretization.Discretization(bins=[0., 1., 2.])
+      layer = discretization.Discretization(bin_boundaries=[0., 1., 2.])
       bucket_data = layer(input_data)
       self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 

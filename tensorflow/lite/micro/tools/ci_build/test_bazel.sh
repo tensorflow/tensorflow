@@ -32,6 +32,7 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
 # Replace Tensorflow's versions of files with pared down versions that download
 # a smaller set of external dependencies to speed up the CI.
+readable_run rm -f .bazelrc
 readable_run rm -f tensorflow/BUILD
 readable_run rm -f tensorflow/tensorflow.bzl
 readable_run rm -f tensorflow/workspace.bzl
@@ -40,6 +41,7 @@ readable_run rm -f tensorflow/workspace1.bzl
 readable_run rm -f tensorflow/workspace2.bzl
 readable_run rm -f WORKSPACE
 
+readable_run cp tensorflow/lite/micro/tools/ci_build/tflm_bazel/dot_bazelrc .bazelrc
 readable_run cp tensorflow/lite/micro/tools/ci_build/tflm_bazel/BUILD tensorflow/
 readable_run cp tensorflow/lite/micro/tools/ci_build/tflm_bazel/tensorflow.bzl tensorflow/
 readable_run cp tensorflow/lite/micro/tools/ci_build/tflm_bazel/workspace.bzl tensorflow/

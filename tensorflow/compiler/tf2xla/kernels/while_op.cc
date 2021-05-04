@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -119,12 +120,14 @@ void GetLoopInvariants(XlaOpKernelContext* ctx,
                        std::vector<bool>* const loop_invariants) {
   const FunctionBody* body;
   OP_REQUIRES_OK(ctx, ctx->compiler()->FindFunctionBody(body_name_attr, &body));
+  const tensorflow::FunctionLibraryDefinition* fld =
+      ctx->compiler()->flib_runtime()->GetFunctionLibraryDefinition();
   for (int i = 0; i < body->ret_nodes.size(); i++) {
-    const Node* arg = body->arg_nodes[i];
-    const Node* ret = body->ret_nodes[i];
-    const Node* ret_input_0;
-    OP_REQUIRES_OK(ctx, ret->input_node(0, &ret_input_0));
-    (*loop_invariants)[i] = (ret_input_0->id() == arg->id());
+    StatusOr<bool> is_loop_invariant = IsLoopInvariant(body, i, fld);
+    OP_REQUIRES_OK(ctx, is_loop_invariant.status());
+    (*loop_invariants)[i] = *is_loop_invariant;
+    VLOG(2) << "Arg " << i << " of " << body_name_attr.name() << " is "
+            << ((*loop_invariants)[i] ? "" : "not ") << "loop invariant";
   }
 }
 
@@ -160,6 +163,8 @@ Status ConvertLoopInvariantsToConst(
       ConvertCompileTimeConstArgumentsToConst(ctx, args,
                                               /*xla_expression_offset=*/0,
                                               should_convert_to_const);
+  VLOG(2) << "Converted args to constants: {"
+          << absl::StrJoin(converted_constants, ",") << "}";
   for (int arg_idx : converted_constants) {
     compile_time_const_arg_indices->at(arg_idx) = true;
     (*num_compile_time_const_args)++;
@@ -284,6 +289,10 @@ XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
                                      &propagate_compile_time_consts_));
   }
+  if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                    &original_node_name_)
+           .ok())
+    original_node_name_ = name();
 }
 
 void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
@@ -599,7 +608,8 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the loop.

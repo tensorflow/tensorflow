@@ -64,9 +64,9 @@ HloModule SelectAndScatter
 }
 
 // CHECK-LABEL: module
-// CHECK: global_memref "private" constant @[[$GLOBAL:.*]] : memref<f32> = dense<0.000000e+00>
+// CHECK: memref.global "private" constant @[[$GLOBAL:.*]] : memref<f32> = dense<0.000000e+00>
 // CHECK-LABEL: func @main
-// CHECK: %[[GLOBAL_MEMREF:.*]] = get_global_memref @[[$GLOBAL]] : memref<f32>
+// CHECK: %[[GLOBAL_MEMREF:.*]] = memref.get_global @[[$GLOBAL]] : memref<f32>
 // CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %[[GLOBAL_MEMREF]], %{{.*}})
 // CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
 // CHECK: %[[COMPARE:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = "GE"}
@@ -536,8 +536,8 @@ max {
 
 // CHECK: func @main
 // CHECK: "lmhlo.reduce_window"(%arg0, %{{.*}}, %{{.*}}) ( {
-// CHECK:   ^bb0(%arg6: tensor<f32>, %arg7: tensor<f32>):
-// CHECK:   %2 = mhlo.maximum %arg6, %arg7 : tensor<f32>
+// CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
+// CHECK:   %2 = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
 // CHECK:   "mhlo.return"(%2) : (tensor<f32>) -> ()
 // CHECK: }) {
 // CHECK-SAME: padding = dense<{{\[}}[0, 0], [2, 0], [0, 2], [0, 0]{{\]}}> : tensor<4x2xi64>,
@@ -633,12 +633,12 @@ ENTRY entry {
 // CHECK: func @main
 // CHECK: "lmhlo.collective_permute"
 // CHECK-SAME:  channel_id = {handle = 2 : i64, type = 0 : i64}
-// CHECK-SAME{LITERAL}: source_target_pairs = dense<[[0, 1], [0, 2], [1, 0]]> : tensor<3x2xi64>
+// CHECK-SAME{LITERAL}: source_target_pairs = dense<[[0, 1], [1, 2], [2, 0]]> : tensor<3x2xi64>
 HloModule TestCollectivePermute
 ENTRY main {
     p0 = f32[128] parameter(0)
     ROOT permute = f32[128] collective-permute(p0),
-      source_target_pairs={{0,1}, {0,2}, {1,0}}, channel_id=2
+      source_target_pairs={{0,1}, {1,2}, {2,0}}, channel_id=2
 }
 
 // -----

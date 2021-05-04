@@ -41,6 +41,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
+#endif  // GOOGLE_CUDA
+
 namespace stream_executor {
 
 namespace host {
@@ -260,11 +264,13 @@ class Stream {
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
-      const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &scale, const DeviceMemory<float> &offset,
+      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+      const DeviceMemory<float> &y, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop,
+      dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
+      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<float> *side_input_backprop,
       DeviceMemory<uint8> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
@@ -286,11 +292,14 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+      const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
+      const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::half> &y,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half> *x_backprop,
       DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<Eigen::half> *side_input_backprop,
       DeviceMemory<uint8> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
@@ -348,6 +357,32 @@ class Stream {
           *output, convolution_descriptor, algorithm_desc, scratch_memory,
           output_profile_result);
     }
+    return port::UnimplementedError("DNN library is not found.");
+  }
+
+  template <typename InputType, typename OutputType>
+  port::Status ConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<InputType> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<InputType> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
+          dnn::ToDataType<OutputType>::value, this, input_descriptor,
+          input_data, filter_descriptor, filter_data, output_descriptor,
+          *output, convolution_descriptor, plan_config, scratch_allocator,
+          output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 
@@ -433,6 +468,34 @@ class Stream {
       DeviceMemory<float> *output);
 
   template <typename ElementType>
+  port::Status ConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<ElementType> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<ElementType> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<ElementType> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::BACKWARD_DATA,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          *backward_input_data, filter_descriptor, filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          plan_config, scratch_allocator, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
+
+  template <typename ElementType>
   port::Status ConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<ElementType> &filter_data,
@@ -493,6 +556,34 @@ class Stream {
           output_descriptor, backward_output_data, convolution_descriptor,
           algorithm_desc, scratch_memory, output_profile_result);
     }
+    return port::UnimplementedError("DNN library is not found.");
+  }
+
+  template <typename ElementType>
+  port::Status ConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<ElementType> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<ElementType> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::BACKWARD_FILTER,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          input_data, filter_descriptor, *backward_filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          plan_config, scratch_allocator, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 

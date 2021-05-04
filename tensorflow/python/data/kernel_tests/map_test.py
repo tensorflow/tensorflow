@@ -17,8 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
-from collections import namedtuple
 import threading
 import time
 import warnings
@@ -60,6 +60,11 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as trackable_utils
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 def _test_combinations_with_mode_v1(mode):
@@ -569,7 +574,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_tuple = dataset_ops.Dataset.zip((labels, images))
 
     # convert dataset of tuples to dataset of namedtuples
-    example = namedtuple("Example", ["label", "image"])
+    example = collections.namedtuple("Example", ["label", "image"])
     dataset_namedtuple = apply_map(dataset_tuple, example)
 
     def preprocess_tuple(label, image):
@@ -594,6 +599,37 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_namedtuple())
+
+  @combinations.generate(_test_combinations())
+  def testMapAttrs(self, apply_map):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    # construct dataset of tuples
+    labels = dataset_ops.Dataset.range(10)
+    images = apply_map(labels, lambda l: -l)
+    dataset = dataset_ops.Dataset.zip((labels, images))
+
+    @attr.s(cmp=True)
+    class Example(object):
+      label = attr.ib()
+      image = attr.ib()
+
+    dataset = apply_map(dataset, Example)
+
+    def preprocess(example):
+      example.image = 2 * example.image
+      return example
+
+    dataset = apply_map(dataset, preprocess)
+    get_next = self.getNext(dataset)
+
+    for i in range(10):
+      data = self.evaluate(get_next())
+      self.assertEqual(data, Example(i, -2 * i))
+
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @combinations.generate(_test_combinations())
   def testUseStepContainerInMap(self, apply_map):
@@ -1046,7 +1082,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.map(broken_function)
     self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, "BrokenConst"))
+        dataset, expected_error=(errors.InvalidArgumentError, "Type mismatch"))
 
   @combinations.generate(
       combinations.times(
@@ -1386,48 +1422,50 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    # Tensor of size 100M
+    # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(30)
-    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=25)
-
+        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
+    dataset = dataset.repeat()
+    # Set parallelism to 5 to exceed the 2GB protobuf limit
+    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    # Call next() to trigger parallel map calls.
-    next(iterator)
+    next(iterator)  # request an element to fill the parallel map buffer
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
 
 
-class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                               parameterized.TestCase):
+class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                        parameterized.TestCase):
 
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 7
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCore(self, num_parallel_calls):
 
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+    tensor_slice_len = 7
+    num_epochs = 2
+    multiplier = 37.0
 
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+    def _build_ds():
 
-    return (
-        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn).repeat(
-            self._num_epochs))
+      components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
+                    np.arange(tensor_slice_len)[:, np.newaxis],
+                    np.array(multiplier) * np.arange(tensor_slice_len))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveRestoreCore(self):
-    self.run_core_tests(self._build_ds, self._num_outputs)
+      def _map_fn(x, y, z):
+        return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveStatefulFunction(self):
+      return (dataset_ops.Dataset.from_tensor_slices(components).map(
+          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
+
+    self.run_core_tests(_build_ds, tensor_slice_len * num_epochs)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testSaveStatefulFunction(self, num_parallel_calls):
 
     def _build_ds():
 
@@ -1435,34 +1473,42 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         return random_ops.random_uniform(
             (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
 
-      return dataset_ops.Dataset.range(100).map(_map_fn)
+      return dataset_ops.Dataset.range(100).map(
+          _map_fn, num_parallel_calls=num_parallel_calls)
 
     self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureVariableInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureVariableInMapFn(self, num_parallel_calls):
 
     def _build_ds():
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1)))
+          lambda _: counter_var.assign_add(1),
+          num_parallel_calls=num_parallel_calls))
 
     self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureConstantInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureConstantInMapFn(self, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
       constant_var = constant_op.constant(5)
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var))
+          lambda x: x + constant_var, num_parallel_calls=num_parallel_calls))
 
     self.run_core_tests(_build_ds, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureDefunInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureDefunInMapFn(self, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1471,12 +1517,15 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       def defun_fn(x):
         return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return dataset_ops.Dataset.range(num_outputs).map(
+          defun_fn, num_parallel_calls=num_parallel_calls)
 
     self.run_core_tests(_build_ds, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testBuildDefunInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testBuildDefunInMapFn(self, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1491,12 +1540,15 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         return constant_op.constant(11000) + defun_fn_deep(
             math_ops.cast(x, dtypes.int32))
 
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return dataset_ops.Dataset.range(num_outputs).map(
+          defun_fn, num_parallel_calls=num_parallel_calls)
 
     self.run_core_tests(_build_ds, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testSparseCore(self, num_parallel_calls):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -1505,7 +1557,8 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           dense_shape=np.array([1, 1]))
 
     def _build_ds(num_outputs):
-      return dataset_ops.Dataset.range(num_outputs).map(_sparse)
+      return dataset_ops.Dataset.range(num_outputs).map(
+          _sparse, num_parallel_calls=num_parallel_calls)
 
     num_outputs = 10
     self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)

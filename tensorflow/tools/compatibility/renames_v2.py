@@ -157,7 +157,7 @@ renames = {
     'tf.assert_greater_equal':
         'tf.compat.v1.assert_greater_equal',
     'tf.assert_integer':
-        'tf.compat.v1.assert_integer',
+        'tf.debugging.assert_integer',
     'tf.assert_less_equal':
         'tf.compat.v1.assert_less_equal',
     'tf.assert_near':
@@ -183,7 +183,7 @@ renames = {
     'tf.assert_scalar':
         'tf.compat.v1.assert_scalar',
     'tf.assert_type':
-        'tf.compat.v1.assert_type',
+        'tf.debugging.assert_type',
     'tf.assert_variables_initialized':
         'tf.compat.v1.assert_variables_initialized',
     'tf.assign':
@@ -1502,6 +1502,10 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
+    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
+    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

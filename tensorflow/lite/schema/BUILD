@@ -20,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -78,8 +78,8 @@ py_test(
 #     ],
 #     python_version = "PY3",
 #     deps = [
-#         "//pyglib",
 #         "//testing/pybase",
+#         "@absl_py//absl/flags",
 #     ],
 # )
 # copybara:uncomment_end

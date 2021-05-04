@@ -289,6 +289,19 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
+  let summary = "Marks device cluster inputs-output pairs that read/write to the same variable as aliases";
+
+  let description = [{
+This pass analyzes the inputs and outputs to device cluster and marks those
+input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
+and write to the same resource. This aliasing information can then be propagated
+to XLA compiler for input/output buffer space optimizations.
+  }];
+
+  let constructor = "TFDevice::CreateMarkInputOutputAliasesPass()";
+}
+
 def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
   let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
 
@@ -800,6 +813,8 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
                "such that each op's single user is the next op in the list.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
+
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
 def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
@@ -822,4 +837,73 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
   }];
 
   let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}
+
+def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
+
+  let description = [{
+This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+the same device attribute.
+
+For example, the following:
+
+```mlir
+func @single_op_launch() {
+  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+  return %a
+}
+```
+
+will be transformed into:
+
+```mlir
+func @single_op_launch() {
+  %1 = tf_device.launch() ( {
+    %a = "tf.opA"() : () -> tensor<i1>
+    tf_device.return %a
+  }) {device = "CPU:0"} : () -> tensor<i1>
+  return %1
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
+}
+
+def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
+  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
+
+  let description = [{
+This pass takes ops wrapped in a tf_device.launch op with host device
+assignment extracts them from launch and adds an `_xla_outside_compilation`
+attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
+
+A simple example:
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf_device.launch"() {
+      "tf.B"()
+      tf_device.return
+    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+
+Would become the following ops (unimportant attribute, type are omitted):
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf.B"() {_xla_outside_compilation = "cluster1"}
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+  }];
+
+  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }

@@ -44,7 +44,7 @@ class BufRendezvous {
   explicit BufRendezvous(uint64 step_id, const DeviceMgr* dev_mgr)
       : step_id_(step_id), dev_mgr_(dev_mgr) {}
 
-  ~BufRendezvous();
+  virtual ~BufRendezvous();
 
   // Inform all waiting parties that this BufRendezvous is defunct because of
   // an error Status interrupting the Step.
@@ -103,9 +103,10 @@ class BufRendezvous {
   // If a non-null cancellation manager is provided, this function registers a
   // callback to delete the hook and invoke provider/consumer callbacks with
   // cancelled error.
-  void ConsumeBuf(const string& key, const string& device,
-                  const uint64 incarnation, const ConsumerCallback& done,
-                  CancellationManager* cancellation_manager);
+  virtual void ConsumeBuf(const string& key, const string& device,
+                          const uint64 incarnation,
+                          const ConsumerCallback& done,
+                          CancellationManager* cancellation_manager);
 
   // Cancel the rendezvous entry corresponding to `key`.  Triggered by the
   // cancellation manager. No-op if the rendezvous was already successful.

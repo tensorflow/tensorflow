@@ -339,6 +339,8 @@ used to form the cluster.
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {

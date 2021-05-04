@@ -113,8 +113,10 @@ BM_Reduce_Arg(64, 32, 2);
 BM_Reduce_Arg(4096, 32, 2);
 BM_Reduce_Arg(4096, 128, 2);
 
+template <DataType T>
 static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                                         float uniqueness, int size) {
+  typedef typename EnumToDataType<T>::Type DT;
   Graph* g = new Graph(OpRegistry::Global());
   CHECK_LE(uniqueness, 1.0);
   CHECK_GT(uniqueness, 0.0);
@@ -136,8 +138,8 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
 
   const int kDim1 = segments_flat(kNumIndices - 1) + 1;
   const int kDim2 = 128;
-  Tensor input(DT_FLOAT, TensorShape({kDim1, kDim2}));
-  input.flat<float>().setRandom();
+  Tensor input(T, TensorShape({kDim1, kDim2}));
+  input.flat<DT>().setRandom();
 
   Node* node;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "SparseSegmentMeanGrad")
@@ -145,7 +147,7 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                   .Input(test::graph::Constant(g, indices))
                   .Input(test::graph::Constant(g, segments))
                   .Input(test::graph::Constant(g, output_dim0))
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", T)
                   .Finalize(g, &node));
 
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
@@ -153,19 +155,49 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                           (kDim1 * kDim2) * sizeof(float));
 }
 
-static void BM_SparseSegmentMeanGrad_Low(::testing::benchmark::State& state) {
+static void BM_SparseSegmentMeanGrad_Low_FP32(
+    ::testing::benchmark::State& state) {
   const int size = state.range(0);
 
-  return SparseSegmentMeanGradHelper(state, 1.0, size);
+  return SparseSegmentMeanGradHelper<DT_FLOAT>(state, 1.0, size);
 }
 
-static void BM_SparseSegmentMeanGrad_High(::testing::benchmark::State& state) {
+static void BM_SparseSegmentMeanGrad_High_FP32(
+    ::testing::benchmark::State& state) {
   const int size = state.range(0);
 
-  return SparseSegmentMeanGradHelper(state, 0.01, size);
+  return SparseSegmentMeanGradHelper<DT_FLOAT>(state, 0.01, size);
 }
 
-BENCHMARK(BM_SparseSegmentMeanGrad_Low)->UseRealTime()->Arg(1000)->Arg(100000);
-BENCHMARK(BM_SparseSegmentMeanGrad_High)->UseRealTime()->Arg(1000)->Arg(100000);
+static void BM_SparseSegmentMeanGrad_Low_BF16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_BFLOAT16>(state, 1.0, size);
+}
+
+static void BM_SparseSegmentMeanGrad_High_BF16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_BFLOAT16>(state, 0.01, size);
+}
+
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_FP32)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_FP32)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_BF16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_BF16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
 
 }  // namespace tensorflow

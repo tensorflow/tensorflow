@@ -678,6 +678,18 @@ bool ReplicateOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
+// tf_device.cluster
+//===----------------------------------------------------------------------===//
+
+void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  // TODO(b/186717563): Eliminate pass through results once XLA correctly
+  // handles empty computations.  Another approach could be to drop empty
+  // clusters within MLIR but that seems to trigger other failures but can be
+  // considered again.
+}
+
+//===----------------------------------------------------------------------===//
 // tf_device.launch
 //===----------------------------------------------------------------------===//
 

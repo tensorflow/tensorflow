@@ -72,6 +72,14 @@ bool HaveSameShapes(const TfLiteEvalTensor* input1,
 
 PaddingType RuntimePaddingType(TfLitePadding padding);
 
+// Relocate tensor dims from FlatBuffer to the persistent storage arena.
+// The old dims data is copied to the new storage area.
+// The tensor and eval_tensor must be the same tensor.
+// Only use during Prepare phase.
+TfLiteStatus CreateWritableTensorDimsWithCopy(TfLiteContext* context,
+                                              TfLiteTensor* tensor,
+                                              TfLiteEvalTensor* eval_tensor);
+
 }  // namespace micro
 }  // namespace tflite
 

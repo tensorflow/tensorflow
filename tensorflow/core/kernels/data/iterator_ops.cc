@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -617,24 +617,40 @@ Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
 
 namespace {
 
-class ToSingleElementOp : public HybridAsyncOpKernel {
+class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {
+      : AsyncOpKernel(ctx),
+        unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
- protected:
-  Status DoCompute(OpKernelContext* ctx) override {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    unbounded_threadpool_.Schedule([this, ctx, done = std::move(done)]() {
+      ctx->SetStatus(DoCompute(ctx));
+      done();
+    });
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    ctx->SetStatus(DoCompute(ctx));
+  }
+
+ private:
+  Status DoCompute(OpKernelContext* ctx) {
+    profiler::TraceMe traceme(
+        [&] {
+          return profiler::TraceMeEncode("ToSingleElementOp::DoCompute",
+                                         {{"id", ctx->step_id()}});
+        },
+        profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    FunctionHandleCache function_handle_cache(params.flr);
-    params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -670,7 +686,7 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     return Status::OK();
   }
 
- private:
+  UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };
@@ -691,6 +707,12 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
+    profiler::TraceMe traceme(
+        [&] {
+          return profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
+                                         {{"id", ctx->step_id()}});
+        },
+        profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     DatasetBase* dataset;
@@ -1164,7 +1186,18 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
-  OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, serializer.GetReader()));
+  Status s = iterator_resource->Restore(ctx, serializer.GetReader());
+  if (!s.ok()) {
+    OP_REQUIRES_OK(
+        ctx,
+        Status(s.code(),
+               absl::StrCat(
+                   "Failed to restore dataset iterator from checkpoint: ",
+                   s.error_message(),
+                   ". Make sure the dataset definition has not changed between "
+                   "the process that saved the checkpoint and the process that "
+                   "is restoring it.")));
+  }
 }
 
 namespace {
