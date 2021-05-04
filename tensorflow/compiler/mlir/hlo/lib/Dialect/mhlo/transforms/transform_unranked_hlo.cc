@@ -82,7 +82,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     // Only apply conversion if at least one operand is unranked.
-    if (!llvm::any_of(op.getOperation()->getOperands(), [&](Value operand) {
+    if (llvm::none_of(op.getOperation()->getOperands(), [&](Value operand) {
           return operand.getType().isa<UnrankedTensorType>();
         })) {
       return failure();
@@ -563,7 +563,7 @@ struct TransformUnrankedHloPass
     AddLegalOpOnRankedTensor<mhlo::SelectOp>(&target);
     target.addDynamicallyLegalDialect<chlo::HloClientDialect>(
         [](Operation *op) {
-          return !llvm::any_of(op->getOperandTypes(), [](Type type) {
+          return llvm::none_of(op->getOperandTypes(), [](Type type) {
             return type.isa<UnrankedTensorType>();
           });
         });
