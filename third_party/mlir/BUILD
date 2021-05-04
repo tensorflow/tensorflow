@@ -27,8 +27,8 @@ package_group(
 exports_files([
     "LICENSE.TXT",
     "include/mlir/Dialect/LLVMIR/LLVMOps.td",
-    "lib/Bindings/Python/StandardOps.td",
-    "lib/Bindings/Python/BuiltinOps.td",
+    "python/mlir/dialects/StandardOps.td",
+    "python/mlir/dialects/BuiltinOps.td",
     "run_lit.sh",
 ])
 
@@ -486,11 +486,11 @@ gentbl_filegroup(
     tbl_outs = [
         (
             "-gen-python-op-bindings -bind-dialect=std",
-            "lib/Bindings/Python/mlir/dialects/_std_ops_gen.py",
+            "python/mlir/dialects/_std_ops_gen.py",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "lib/Bindings/Python/StandardOps.td",
+    td_file = "python/mlir/dialects/StandardOps.td",
     deps = [
         ":StandardOpsPyTdFiles",
     ],
@@ -500,7 +500,7 @@ td_library(
     name = "BuiltinOpsPyTdFiles",
     srcs = [
         "include/mlir/Bindings/Python/Attributes.td",
-        "lib/Bindings/Python/BuiltinOps.td",
+        "python/mlir/dialects/BuiltinOps.td",
     ],
     includes = ["include"],
     deps = [
@@ -514,11 +514,11 @@ gentbl_filegroup(
     tbl_outs = [
         (
             "-gen-python-op-bindings -bind-dialect=builtin",
-            "lib/Bindings/Python/mlir/dialects/_builtin_ops_gen.py",
+            "python/mlir/dialects/_builtin_ops_gen.py",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "lib/Bindings/Python/BuiltinOps.td",
+    td_file = "python/mlir/dialects/BuiltinOps.td",
     deps = [
         ":BuiltinOpsPyTdFiles",
     ],
@@ -527,8 +527,8 @@ gentbl_filegroup(
 filegroup(
     name = "BuiltinOpsPyFiles",
     srcs = [
-        "lib/Bindings/Python/mlir/dialects/_builtin_ops_ext.py",
-        "lib/Bindings/Python/mlir/dialects/builtin.py",
+        "python/mlir/dialects/_builtin_ops_ext.py",
+        "python/mlir/dialects/builtin.py",
         ":BuiltinOpsPyGen",
     ],
 )
@@ -536,29 +536,29 @@ filegroup(
 filegroup(
     name = "CorePyFiles",
     srcs = [
-        "lib/Bindings/Python/mlir/_cext_loader.py",
-        "lib/Bindings/Python/mlir/_dlloader.py",
+        "python/mlir/_cext_loader.py",
+        "python/mlir/_dlloader.py",
     ],
 )
 
 filegroup(
     name = "DialectCorePyFiles",
     srcs = [
-        "lib/Bindings/Python/mlir/dialects/_ods_common.py",
+        "python/mlir/dialects/_ods_common.py",
     ],
 )
 
 filegroup(
     name = "IRPyFiles",
     srcs = [
-        "lib/Bindings/Python/mlir/ir.py",
+        "python/mlir/ir.py",
     ],
 )
 
 filegroup(
     name = "StandardOpsPyFiles",
     srcs = [
-        "lib/Bindings/Python/mlir/dialects/std.py",
+        "python/mlir/dialects/std.py",
         ":StandardOpsPyGen",
     ],
 )
@@ -6046,6 +6046,7 @@ cc_library(
     hdrs = glob(["include/mlir/Dialect/MemRef/Transforms/*.h"]),
     includes = ["include"],
     deps = [
+        ":Affine",
         ":IR",
         ":MemRefDialect",
         ":MemRefPassIncGen",
