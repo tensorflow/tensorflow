@@ -247,9 +247,10 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
+  if (definition_.precision == CalculationsPrecision::F16) {
+    if (gpu_info.IsPowerVR() || gpu_info.IsMali()) {
+      compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+    }
   }
   if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl20);

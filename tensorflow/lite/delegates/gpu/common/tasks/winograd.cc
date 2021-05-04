@@ -236,7 +236,7 @@ Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
   }
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
 }
 
@@ -521,7 +521,7 @@ Winograd36To4x4Tile4x1::Winograd36To4x4Tile4x1(const OperationDef& definition,
   work_group_size_ = int3(32, 1, 1);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   code_ = GetWinograd36To4x4Tile4x1Code(definition_);
 }
