@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -61,7 +61,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
     ],
     deps = [
         ":profiler_v2",

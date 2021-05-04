@@ -97,9 +97,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
+               bool async, /*const*/ DeviceMgr* device_mgr,
+               bool device_mgr_owned, /*const*/ Rendezvous* rendezvous,
+               DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+               bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 
@@ -142,6 +143,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterFunction(AbstractFunction* f) override;
 
   bool UsesTFRT() override;
+
+  bool RunEagerOpAsFunction() const;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
@@ -283,6 +286,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<Rendezvous*(int64)> RendezvousCreator() {
     if (reuse_rendezvous_for_functions_) {
       return [this](int64 step_id) {
+        mutex_lock l(global_rendezvous_mu_);
         global_rendezvous_for_functions_->Ref();
         return global_rendezvous_for_functions_.get();
       };
@@ -349,6 +353,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   uint64 GetContextViewId() const;
   void IncrementContextViewId();
 
+  Status EnableCollectiveOps(const ServerDef& server_def) override;
+
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
   //
@@ -363,14 +369,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
   // - remote_contexts: A vector containing task names.
+  // TODO(b/184375824): clean up parameter order for better readability.
   Status InitializeRemoteMaster(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       const std::vector<string>& remote_contexts, uint64 context_id,
-      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr,
+      /*const*/ Rendezvous* r, /*const*/ DeviceMgr* local_device_mgr,
+      int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
@@ -653,7 +660,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // Whether to use same rendezvous instance across function/eager executions.
   bool reuse_rendezvous_for_functions_ = false;
-  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_;
+  mutable mutex global_rendezvous_mu_;
+  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
+      TF_GUARDED_BY(global_rendezvous_mu_);
 
   Env* const env_;
 
@@ -666,13 +675,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
                            uint64 context_id, uint64 context_view_id);
 
+  // TODO(b/184375824): clean up parameter order for better readability.
   Status SetMasterContextState(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
-      uint64 context_id, uint64 context_view_id, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      uint64 context_id, uint64 context_view_id, /*const*/ Rendezvous* r,
+      /*const*/ DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
@@ -729,6 +739,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Function that will be invoked in destructor to deallocate resources related
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
+  bool run_eager_op_as_function_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

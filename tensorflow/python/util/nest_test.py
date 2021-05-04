@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import time
+from typing import NamedTuple
 
 from absl.testing import parameterized
 import numpy as np
@@ -1249,6 +1250,62 @@ class NestTest(parameterized.TestCase, test.TestCase):
           nest1=array_ops.zeros((1)),
           nest2=array_ops.ones((1, 1, 1)),
           expand_composites=array_ops.ones((2)))
+
+  def testIsNamedtuple(self):
+    # A classic namedtuple.
+    Foo = collections.namedtuple("Foo", ["a", "b"])
+    self.assertTrue(nest.is_namedtuple(Foo(1, 2)))
+
+    # A subclass of it.
+    class SubFoo(Foo):
+
+      def extra_method(self, x):
+        return self.a + x
+
+    self.assertTrue(nest.is_namedtuple(SubFoo(1, 2)))
+
+    # A typing.NamedTuple.
+    class TypedFoo(NamedTuple):
+      a: int
+      b: int
+    self.assertTrue(nest.is_namedtuple(TypedFoo(1, 2)))
+
+    # Their types are not namedtuple values themselves.
+    self.assertFalse(nest.is_namedtuple(Foo))
+    self.assertFalse(nest.is_namedtuple(SubFoo))
+    self.assertFalse(nest.is_namedtuple(TypedFoo))
+
+    # These values don't have namedtuple types.
+    self.assertFalse(nest.is_namedtuple(123))
+    self.assertFalse(nest.is_namedtuple("abc"))
+    self.assertFalse(nest.is_namedtuple((123, "abc")))
+
+    class SomethingElseWithFields(tuple):
+
+      def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._fields = [1, 2, 3]  # Not str, as expected for a namedtuple.
+
+    self.assertFalse(nest.is_namedtuple(SomethingElseWithFields()))
+
+  def testSameNamedtuples(self):
+    # A classic namedtuple and an equivalent cppy.
+    Foo1 = collections.namedtuple("Foo", ["a", "b"])
+    Foo2 = collections.namedtuple("Foo", ["a", "b"])
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo1(3, 4)))
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo2(3, 4)))
+
+    # Non-equivalent namedtuples.
+    Bar = collections.namedtuple("Bar", ["a", "b"])
+    self.assertFalse(nest.same_namedtuples(Foo1(1, 2), Bar(1, 2)))
+    FooXY = collections.namedtuple("Foo", ["x", "y"])
+    self.assertFalse(nest.same_namedtuples(Foo1(1, 2), FooXY(1, 2)))
+
+    # An equivalent subclass from the typing module
+    class Foo(NamedTuple):
+      a: int
+      b: int
+    self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo(3, 4)))
 
 
 class NestBenchmark(test.Benchmark):

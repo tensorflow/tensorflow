@@ -6,7 +6,7 @@ load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_IN
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1", "TENSORFLOW_API_INIT_FILES_V1")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(

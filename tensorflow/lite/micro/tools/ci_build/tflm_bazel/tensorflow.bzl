@@ -16,6 +16,9 @@ tf_cc_test = cc_test
 def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
     pass
 
+def pybind_extension(**kwargs):
+    pass
+
 def if_not_windows(a):
     return select({
         clean_dep("//tensorflow:windows"): [],

@@ -979,7 +979,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
-  auto input_shapes = reduce_window_instr->input_array_shapes();
+  auto input_shapes = reduce_window_instr->input_shapes();
   VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
   VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";

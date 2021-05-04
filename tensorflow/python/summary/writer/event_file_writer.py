@@ -67,8 +67,7 @@ class EventFileWriter(object):
         `filename_suffix`.
     """
     self._logdir = str(logdir)
-    if not gfile.IsDirectory(self._logdir):
-      gfile.MakeDirs(self._logdir)
+    gfile.MakeDirs(self._logdir)
     self._max_queue = max_queue
     self._flush_secs = flush_secs
     self._flush_complete = threading.Event()

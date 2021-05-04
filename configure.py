@@ -39,7 +39,9 @@ _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -1328,8 +1330,8 @@ def main():
 
   with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
   if with_xla_support is not None:
-    write_to_bazelrc('build --define=with_xla_support=%s' % (
-        'true' if int(with_xla_support) else 'false'))
+    write_to_bazelrc('build --define=with_xla_support=%s' %
+                     ('true' if int(with_xla_support) else 'false'))
 
   set_action_env_var(
       environ_cp, 'TF_NEED_ROCM', 'ROCm', False, bazel_config_name='rocm')
@@ -1465,9 +1467,7 @@ def main():
   config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
-  config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
-  config_info_line('nohdfs', 'Disable HDFS support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
 

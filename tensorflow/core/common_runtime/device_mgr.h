@@ -143,7 +143,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   // Remove devices from device manager.
   // Returns error for non-existing devices or if the HostCPU() device is in the
   // input list. If an error is returned, the device list is not modified.
-  Status RemoveDevices(std::vector<Device*> devices);
+  Status RemoveDevices(const std::vector<Device*>& devices);
 
   // Remove devices from device manager by their names. Returns error for
   // non-existing devices or if the HostCPU() device is given in the input list.

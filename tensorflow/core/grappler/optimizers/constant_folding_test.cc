@@ -800,6 +800,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
     Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
+    Output floordiv = ops::FloorDiv(s.WithOpName("floordiv"), x, ones);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
     Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);
@@ -814,10 +815,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
     Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
-    Output concat =
-        ops::Stack(s.WithOpName("stack"),
-                   {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
-                    matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
+    Output concat = ops::Stack(
+        s.WithOpName("stack"),
+        {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, floordiv, matmul1,
+         matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     item.fetch = {"stack",      "matmul3",    "matmul4",   "mul1_bcast",
@@ -836,7 +837,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
 
-    EXPECT_EQ(const_type == kFill ? 42 : 38, output.node_size());
+    EXPECT_EQ(const_type == kFill ? 43 : 39, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -880,6 +881,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Reciprocal", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ(ctrl_ones_name, node.input(1));
+      } else if (name == "floordiv") {
+        EXPECT_EQ("FloorDiv", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ(ones_name, node.input(1));
       } else if (name == "matmul1") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));

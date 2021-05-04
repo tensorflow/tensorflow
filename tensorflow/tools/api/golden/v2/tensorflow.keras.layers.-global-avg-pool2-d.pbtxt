@@ -130,7 +130,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'data_format\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'data_format\', \'keepdims\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "add_loss"

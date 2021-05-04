@@ -31,10 +31,10 @@ DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
 DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>> devices) {
   Status status = AddDevices(std::move(devices));
-  DCHECK(status.ok());
+  CHECK(status.ok());  // Crash OK
   mutex_lock l(devices_mu_);
   // Initialize cpu_device_.
-  for (int i = 0, n = dynamic_devices_.size(); i < n; ++i) {
+  for (int i = 0; i < dynamic_devices_.size(); ++i) {
     auto* d = dynamic_devices_[i].get();
     if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
       cpu_device_ = d;
@@ -167,7 +167,7 @@ Status DynamicDeviceMgr::AddDevices(
   return Status::OK();
 }
 
-Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
+Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
   mutex_lock l(devices_mu_);
 
   for (const auto& d : devices) {
@@ -175,11 +175,13 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
       TF_RETURN_IF_ERROR(
           errors::InvalidArgument("Can not remove HostCPU device ", d->name()));
     }
-    int i = 0, n = dynamic_devices_.size();
-    for (; i < n; ++i) {
+    int i = 0;
+    for (; i < dynamic_devices_.size(); ++i) {
       if (d == dynamic_devices_[i].get()) break;
     }
-    if (i >= n) return errors::InvalidArgument("Unknown device ", d->name());
+    if (i >= dynamic_devices_.size()) {
+      return errors::InvalidArgument("Unknown device ", d->name());
+    }
   }
 
   for (const auto& d : devices) {
@@ -196,11 +198,12 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
     device_type_counts_[d->device_type()]--;
     device_incarnation_set_.erase(d->attributes().incarnation());
 
-    int i = 0, n = dynamic_devices_.size();
-    for (; i < n; ++i) {
+    int i = 0;
+    for (; i < dynamic_devices_.size(); ++i) {
       if (d == dynamic_devices_[i].get()) break;
     }
-    DCHECK(i < n);  // There shouldn't be unknown devices.
+    // There shouldn't be unknown devices at this point.
+    CHECK(i < dynamic_devices_.size());  // Crash OK
     stale_devices_.add(std::move(dynamic_devices_[i]));
     dynamic_devices_.erase(dynamic_devices_.begin() + i);
   }

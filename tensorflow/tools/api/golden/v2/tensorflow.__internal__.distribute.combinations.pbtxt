@@ -37,6 +37,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {
+    name: "mirrored_strategy_with_two_gpus_no_merge_call"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
     name: "multi_worker_mirrored_2x1_cpu"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
@@ -46,6 +50,10 @@ tf_module {
   }
   member {
     name: "multi_worker_mirrored_2x2_gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "multi_worker_mirrored_2x2_gpu_no_merge_call"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {

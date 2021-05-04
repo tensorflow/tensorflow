@@ -444,12 +444,12 @@ def global_policy():
 
 
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
-  if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
+  if mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled():
     raise ValueError(
         'The global dtype policy cannot be set to "{policy.name}", because the '
         'mixed precision graph rewrite has already been enabled.\n'
         'At most, one of the following can be called:\n\n'
-        '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
+        '  1. tf.compat.v1.train.enable_mixed_precision_graph_rewrite() '
         '(You called this first)\n'
         '  2. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
         'precision policy (You called this second)\n\n'
@@ -515,7 +515,7 @@ def set_policy(policy):
                      '"mixed_float16", but got policy: %s'
                      % (policy.name,))
   _global_policy = policy
-  mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
+  mixed_precision_global_state.set_using_mixed_precision_policy(is_mixed_policy)
 
 
 # TODO(reedwm): Make this thread local

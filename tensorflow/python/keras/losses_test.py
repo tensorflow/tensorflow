@@ -1150,6 +1150,57 @@ class SparseCategoricalCrossentropyTest(test.TestCase):
     loss = cce_obj(y_true, y_pred, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), .7449, 3)
 
+  def test_ragged_tensors(self):
+    cce_obj = losses.SparseCategoricalCrossentropy()
+    y_true = ragged_factory_ops.constant([[0, 1], [2]])
+    y_pred = ragged_factory_ops.constant(
+        [[[.9, .05, .05], [.5, .89, .6]], [[.05, .01, .94]]],
+        dtype=dtypes.float32)
+    # batch losses [[0.1054, 0.8047], [0.0619]]
+    sample_weight = constant_op.constant([[1.2], [3.4]], shape=(2, 1))
+    loss = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+    # sum([0.1054, 0.8047, 0.0619]) / 3
+    self.assertAlmostEqual(self.evaluate(loss), 0.4341, 3)
+
+    # Test with logits.
+    logits = ragged_factory_ops.constant([[[8., 1., 1.], [0., 9., 1.]],
+                                          [[2., 3., 5.]]])
+    cce_obj = losses.SparseCategoricalCrossentropy(from_logits=True)
+    # batch losses [[0.0018, 0.0004], [0.1698]]
+    loss = cce_obj(y_true, logits, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0.1934, 3)
+
+  def test_ragged_tensors_rank_1(self):
+    cce_obj = losses.SparseCategoricalCrossentropy()
+    y_true = ragged_factory_ops.constant([[0, 1], [2]])
+    y_pred = ragged_factory_ops.constant(
+        [[[.9, .05, .05], [.5, .89, .6]], [[.05, .01, .94]]],
+        ragged_rank=1,
+        dtype=dtypes.float32)
+    # batch losses [[0.1054, 0.8047], [0.0619]]
+    sample_weight = constant_op.constant([[1.2], [3.4]], shape=(2, 1))
+    loss = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+    # sum([0.1054, 0.8047, 0.0619]) / 3
+    self.assertAlmostEqual(self.evaluate(loss), 0.4341, 3)
+
+    # Test with logits.
+    logits = ragged_factory_ops.constant(
+        [[[8., 1., 1.], [0., 9., 1.]], [[2., 3., 5.]]], ragged_rank=1)
+    cce_obj = losses.SparseCategoricalCrossentropy(from_logits=True)
+    # batch losses [[0.0018, 0.0004], [0.1698]]
+    loss = cce_obj(y_true, logits, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0.1934, 3)
+
+  def test_ragged_tensors_3d(self):
+    # shape [2, 1, None]
+    y_true = ragged_factory_ops.constant([[[1, 1]], [[0]]])
+    # shape [2, 1, None, 2]
+    y_pred = ragged_factory_ops.constant([[[[0.1, 0.9], [0.1, 0.9]]],
+                                          [[[0.9, 0.1]]]])
+    cce_obj = losses.SparseCategoricalCrossentropy()
+    loss = cce_obj(y_true, y_pred)
+    self.assertAlmostEqual(self.evaluate(loss), 0.1054, 3)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class HingeTest(test.TestCase):
@@ -1783,7 +1834,7 @@ class HuberLossTest(test.TestCase):
 class BinaryTruePositivesViaControlFlow(losses.Loss):
 
   def __init__(self, reduction=losses_utils.ReductionV2.AUTO):
-    super(BinaryTruePositivesViaControlFlow, self).__init__(reduction=reduction)
+    super().__init__(reduction=reduction)
 
   def call(self, y_true, y_pred):
     y_true = math_ops.cast(y_true, dtypes.bool)

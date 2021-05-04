@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -1389,6 +1390,62 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
+/// Converts a TF::RollOp to HLO. Only support 0D axis and shift case, and axis
+/// have to be a constant.
+class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::RollOp op,
+                                PatternRewriter &rewriter) const override {
+    auto shift_ty = op.shift().getType().dyn_cast<RankedTensorType>();
+    if (!shift_ty || shift_ty.getRank() != 0) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of shift to be 0D tensor");
+    }
+
+    APInt val;
+    if (!matchPattern(op.axis(), m_ConstantInt(&val))) {
+      return rewriter.notifyMatchFailure(op, "require axis to be constant");
+    }
+    int axis = val.getSExtValue();
+
+    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of input to have static shapes");
+    }
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+    int input_rank = input_ty.getRank();
+    if (axis < 0) axis += input_rank;
+
+    // Adjust large offsets into [0, axis_size). This also makes negative
+    // offsets positive.
+    // offset = ((offset % axis_size) + axis_size) % axis_size
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    Value offset = op.shift();
+    auto axis_size = b.create<mhlo::ConstOp>(b.getIntegerAttr(
+        getElementTypeOrSelf(offset.getType()), input_shape[axis]));
+    offset = b.create<RemOp>(
+        b.create<AddOp>(b.create<RemOp>(offset, axis_size), axis_size),
+        axis_size);
+
+    // Stack two copies of the dimension, then slice from the calculated
+    // offset. This also works if shift is not constant.
+    // DynamicSliceOp requires the sizes being integer, and we can get the
+    // information from input shape.
+    auto concat = b.create<ConcatenateOp>(ValueRange{op.input(), op.input()},
+                                          b.getI64IntegerAttr(axis));
+    Value zero = b.create<mhlo::ConstOp>(
+        b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
+    SmallVector<Value> slice_begin_indices(input_rank, zero);
+    slice_begin_indices[axis] = b.create<SubOp>(axis_size, offset);
+    rewriter.replaceOpWithNewOp<DynamicSliceOp>(
+        op, input_ty, concat, slice_begin_indices,
+        rewriter.getI64TensorAttr(input_shape));
+    return success();
+  }
+};
+
 /// Converts a TF::LeakyReluOp to HLO.
 /// LeakyRelu(x) = alpha * x if x < 0 else x.
 class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
@@ -2361,7 +2418,8 @@ Operation *AvgPoolDivideByCount(
     BuildReduceBody<AddOp>(element_type, &divisor.body(), &rewriter);
 
     // Divide `pooled` by window counts.
-    result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled, divisor);
+    result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled,
+                                          divisor.getResult(0));
   }
   return result;
 }
@@ -2401,7 +2459,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
       input_value = rewriter.create<ConvertOp>(op.getLoc(), input_value,
                                                sum_element_type);
 
-    // Create the tf.ReduceWindow op.
+    // Create the ReduceWindow op.
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
     DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
@@ -2423,7 +2481,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
     GetI64ArrayAttrValues(op.strides(), &strides);
 
     Operation *result_op = AvgPoolDivideByCount<OpTy, num_dims>(
-        reduce.getResult(), input_shape, ksize, strides, op, init, rewriter);
+        reduce.getResult(0), input_shape, ksize, strides, op, init, rewriter);
 
     // Convert back if we enlarged the element type's bitwidth.
     Value result = result_op->getOpResult(0);
@@ -2600,7 +2658,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
         /*padding=*/DenseIntElementsAttr());
     BuildReduceBody<AddOp>(sum_element_type, &reduce_window_op.body(),
                            &rewriter);
-    Value result = reduce_window_op.getResult();
+    Value result = reduce_window_op.getResult(0);
 
     if (element_type != sum_element_type) {
       // Convert back to original element type.
@@ -2656,7 +2714,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
     BuildReduceBody<MaxOp>(element_type, &reduce.body(), &rewriter);
 
-    rewriter.replaceOp(op, reduce.getResult());
+    rewriter.replaceOp(op, reduce.getResult(0));
     return success();
   }
 };
@@ -2751,12 +2809,21 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
 //    %halved_tanh = mhlo.multiply %tanh, %half : tensor<2xf32>
 //    %sigmoid = mhlo.add %halved_tanh, %half : tensor<2xf32>
 //
-class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
+class ConvertSigmoidOp : public RewritePattern {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  explicit ConvertSigmoidOp(MLIRContext *context)
+      : RewritePattern(
+            TF::SigmoidOp::getOperationName(), 0, context,
+            {mhlo::ConstOp::getOperationName(),
+             shape::ShapeOfOp::getOperationName(),
+             shape::ToExtentTensorOp::getOperationName(),
+             mhlo::DynamicBroadcastInDimOp::getOperationName(),
+             mhlo::MulOp::getOperationName(), mhlo::TanhOp::getOperationName(),
+             mhlo::AddOp::getOperationName()}) {}
 
-  LogicalResult matchAndRewrite(TF::SigmoidOp op,
+  LogicalResult matchAndRewrite(Operation *sigmoid_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<TF::SigmoidOp>(sigmoid_op);
     Location loc = op.getLoc();
 
     // Create constant half with shape and element type same as the operand.
@@ -2933,6 +3000,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
   // Set benefit of this pattern to zero to prefer the fallback pattern when
   // available and applicable. That pattern avoids broadcast on operands and is
   // therefore faster.
+  //
+  // Native legalization for BatchMatMulV3 needs to be added as well.
   explicit ConvertBatchMatMulV2Op(MLIRContext *context)
       : OpRewritePattern<TF::BatchMatMulV2Op>(context, /*benefit=*/0) {}
 
@@ -4014,6 +4083,27 @@ class ConvertArgMaxOp
   }
 
   static StringRef GetDirection() { return "GE"; }
+};
+
+// Converts tensorflow ArgMin op to mhlo operations. The actual
+// implementation is in class ConvertArgMinMaxOp:
+//
+//   %init_index = constant dense<...> : tensor<T>
+//   %init = constant dense<...> : tensor<T>
+//   %reduce = "mhlo.reduce"(%selected_input, %select_index, %init,
+//                              %init_index) ["mhlo.arg_min"]
+class ConvertArgMinOp
+    : public ConvertArgMinMaxOp<ConvertArgMinOp, TF::ArgMinOp> {
+ public:
+  using ConvertArgMinMaxOp::ConvertArgMinMaxOp;
+
+  static Value GetInitialValue(Type reduce_element_type, Location loc,
+                               PatternRewriter &rewriter) {
+    return GetScalarLimitConstOfType(reduce_element_type, loc,
+                                     hlo::kInfinityMax, &rewriter);
+  }
+
+  static StringRef GetDirection() { return "LE"; }
 };
 
 // Converts TF TensorScatterUpdate op into Scatter Op with assignment:
@@ -5578,7 +5668,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
     BuildReduceBody<AggregationOp>(sum_element_type, &reduce.body(), &rewriter);
-    Value result = reduce.getResult();
+    Value result = reduce.getResult(0);
 
     if (op.exclusive()) {
       // In "exclusive" operation, the output will start with the "init" (0)
@@ -6369,6 +6459,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertAllOp,
     ConvertAnyOp,
     ConvertArgMaxOp,
+    ConvertArgMinOp,
     ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
@@ -6438,6 +6529,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaAllReduceOp,
+    ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp>(context);
   // clang-format on

@@ -1151,3 +1151,20 @@ func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   return
 }
+
+// -----
+
+func @invalid_complex_abs_call(%input:memref<2xcomplex<f32>>, %result:memref<2xcomplex<f32>>) -> () {
+  // expected-error @+1 {{requires output type to be the same as the element type of the input}}
+  "lmhlo.abs"(%input, %result)
+      : (memref<2xcomplex<f32>>, memref<2xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_float_abs_call(%input:memref<2xf32>, %result:memref<2xf64>) -> () {
+  // expected-error @+1 {{requires all operands to have the same type}}
+  "lmhlo.abs"(%input, %result) : (memref<2xf32>, memref<2xf64>) -> ()
+  return
+}

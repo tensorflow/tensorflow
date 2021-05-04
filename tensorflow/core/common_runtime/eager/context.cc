@@ -78,7 +78,8 @@ EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
-    DistributedFunctionLibraryRuntime* cluster_flr)
+    DistributedFunctionLibraryRuntime* cluster_flr,
+    bool run_eager_op_as_function)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
@@ -97,7 +98,8 @@ EagerContext::EagerContext(
       env_(opts.env),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
-          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
+      run_eager_op_as_function_(run_eager_op_as_function) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -593,6 +595,10 @@ std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
 
 bool EagerContext::UsesTFRT() { return false; }
 
+bool EagerContext::RunEagerOpAsFunction() const {
+  return run_eager_op_as_function_;
+}
+
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {
   local_device_mgr()->ListDeviceAttributes(devices);
@@ -602,11 +608,12 @@ void EagerContext::ListDevices(
 }
 
 Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
-  if (!devices.empty() && devices[0]->device_type() != "CPU")
+  if (!devices.empty() && devices[0]->device_type() != "CPU") {
     return errors::InvalidArgument(
         "Device: ", devices[0]->device_type(), " is not allowed to be added ",
         "after the context is initialized. Currently allowed device: CPU. ",
         "May update this API to allow adding more types of devices.");
+  }
   TF_RETURN_IF_ERROR(
       reinterpret_cast<DynamicDeviceMgr*>(local_device_manager_.Get())
           ->AddDevices(std::move(devices)));
@@ -853,10 +860,13 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
-  // Reset the global function rendezvous, which otherwise stores a failure
-  // state.
-  global_rendezvous_for_functions_ =
-      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  {
+    // Reset the global function rendezvous, which otherwise stores a failure
+    // state.
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
   return sg.as_summary_status();
 }
 
@@ -1081,6 +1091,10 @@ uint64 EagerContext::GetContextViewId() const {
 void EagerContext::IncrementContextViewId() {
   mutex_lock l(remote_state_mu_);
   context_view_id_ += 1;
+}
+
+Status EagerContext::EnableCollectiveOps(const ServerDef& server_def) {
+  return distributed_manager_->EnableCollectiveOps(server_def);
 }
 
 // Set collective ops related state in the context. Passing nullptr to

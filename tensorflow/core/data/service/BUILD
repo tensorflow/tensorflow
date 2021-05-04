@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(
@@ -127,7 +127,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:compression_utils",
-        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_test_base",
         tf_grpc_cc_dependency(),
     ] + tf_protos_profiler_service(),
 )
@@ -225,9 +225,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/kernels/data:dataset_utils",
-        "//tensorflow/core/kernels/data:hash_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
@@ -488,8 +488,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/framework:protos_all_cc",
-        "//tensorflow/core/kernels/data:dataset_test_base",
     ],
 )
 
@@ -502,8 +502,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/kernels/data:dataset_test_base",
     ],
 )
 

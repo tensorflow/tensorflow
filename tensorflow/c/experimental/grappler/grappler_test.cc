@@ -28,8 +28,9 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-void optimize_func(void* optimizer, TF_Buffer* graph_buf,
-                   TF_Buffer* optimized_graph_buf, TF_Status* tf_status) {}
+void optimize_func(void* optimizer, const TF_Buffer* graph_buf,
+                   const TF_GrapplerItem* item, TF_Buffer* optimized_graph_buf,
+                   TF_Status* tf_status) {}
 
 void PopulateDefaultParam(TP_OptimizerRegistrationParams* params) {
   params->struct_size = TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE;

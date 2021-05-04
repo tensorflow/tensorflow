@@ -93,7 +93,8 @@
 // CHECK:         %[[VAL_91:.*]] = add i32 %[[VAL_44]], 0
 // CHECK:         %[[VAL_92:.*]] = icmp ult i32 %[[VAL_91]], 1024
 // CHECK:         br i1 %[[VAL_92]], label %[[VAL_93:.*]], label %[[VAL_94:.*]]
-// CHECK:       concat_index_from_operand_id06:                   ; preds = %[[VAL_65]]
+
+// CHECK:       concat_index_from_operand_id03:                   ; preds = %[[VAL_65]]
 // CHECK:         %[[VAL_95:.*]] = phi i32 [ 0, %[[VAL_65]] ]
 // CHECK:         %[[VAL_96:.*]] = sub nsw i32 %[[VAL_91]], %[[VAL_95]]
 // CHECK:         %[[VAL_97:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_20]], i32 0, i32 %[[VAL_96]]
@@ -102,7 +103,7 @@
 // CHECK:         %[[VAL_100:.*]] = load half, half* %[[VAL_99]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_101:.*]] = fmul half %[[VAL_98]], %[[VAL_100]]
 // CHECK:         br label %[[VAL_102:.*]]
-// CHECK:       concat_index_from_operand_id18:                   ; preds = %[[VAL_94]]
+// CHECK:       concat_index_from_operand_id15:                   ; preds = %[[VAL_94]]
 // CHECK:         %[[VAL_103:.*]] = phi i32 [ 1024, %[[VAL_94]] ]
 // CHECK:         %[[VAL_104:.*]] = sub nsw i32 %[[VAL_91]], %[[VAL_103]]
 // CHECK:         %[[VAL_105:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_26]], i32 0, i32 %[[VAL_104]]
@@ -111,12 +112,12 @@
 // CHECK:         %[[VAL_108:.*]] = load half, half* %[[VAL_107]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_109:.*]] = fadd half %[[VAL_106]], %[[VAL_108]]
 // CHECK:         br label %[[VAL_102]]
-// CHECK:       concat_index_not_from_operand010:                 ; preds = %[[VAL_65]]
+// CHECK:       concat_index_not_from_operand07:                 ; preds = %[[VAL_65]]
 // CHECK:         %[[VAL_110:.*]] = icmp ult i32 %[[VAL_91]], 2047
 // CHECK:         br i1 %[[VAL_110]], label %[[VAL_111:.*]], label %[[VAL_112:.*]]
-// CHECK:       concat_index_not_from_operand111:                 ; preds = %[[VAL_94]]
+// CHECK:       concat_index_not_from_operand18:                 ; preds = %[[VAL_94]]
 // CHECK:         unreachable
-// CHECK:       concatenate.7.merge5:                             ; preds = %[[VAL_111]], %[[VAL_93]]
+// CHECK:       concatenate.7.merge2:                             ; preds = %[[VAL_111]], %[[VAL_93]]
 // CHECK:         %[[VAL_113:.*]] = phi half [ %[[VAL_101]], %[[VAL_93]] ], [ %[[VAL_109]], %[[VAL_111]] ]
 // CHECK:         %[[VAL_114:.*]] = insertvalue { half, half } undef, half %[[VAL_113]], 0
 // CHECK:         %[[VAL_115:.*]] = add i32 %[[VAL_44]], 0
@@ -137,7 +138,7 @@
 // CHECK:         %[[VAL_128:.*]] = add i32 %[[VAL_46]], 0
 // CHECK:         %[[VAL_129:.*]] = icmp ult i32 %[[VAL_128]], 1024
 // CHECK:         br i1 %[[VAL_129]], label %[[VAL_130:.*]], label %[[VAL_131:.*]]
-// CHECK:       concat_index_from_operand_id014:                  ; preds = %[[VAL_102]]
+// CHECK:       concat_index_from_operand_id011:                  ; preds = %[[VAL_102]]
 // CHECK:         %[[VAL_132:.*]] = phi i32 [ 0, %[[VAL_102]] ]
 // CHECK:         %[[VAL_133:.*]] = sub nsw i32 %[[VAL_128]], %[[VAL_132]]
 // CHECK:         %[[VAL_134:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_20]], i32 0, i32 %[[VAL_133]]
@@ -146,7 +147,7 @@
 // CHECK:         %[[VAL_137:.*]] = load half, half* %[[VAL_136]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_138:.*]] = fmul half %[[VAL_135]], %[[VAL_137]]
 // CHECK:         br label %[[VAL_139:.*]]
-// CHECK:       concat_index_from_operand_id116:                  ; preds = %[[VAL_131]]
+// CHECK:       concat_index_from_operand_id113:                  ; preds = %[[VAL_131]]
 // CHECK:         %[[VAL_140:.*]] = phi i32 [ 1024, %[[VAL_131]] ]
 // CHECK:         %[[VAL_141:.*]] = sub nsw i32 %[[VAL_128]], %[[VAL_140]]
 // CHECK:         %[[VAL_142:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_26]], i32 0, i32 %[[VAL_141]]
@@ -155,12 +156,12 @@
 // CHECK:         %[[VAL_145:.*]] = load half, half* %[[VAL_144]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_146:.*]] = fadd half %[[VAL_143]], %[[VAL_145]]
 // CHECK:         br label %[[VAL_139]]
-// CHECK:       concat_index_not_from_operand018:                 ; preds = %[[VAL_102]]
+// CHECK:       concat_index_not_from_operand015:                 ; preds = %[[VAL_102]]
 // CHECK:         %[[VAL_147:.*]] = icmp ult i32 %[[VAL_128]], 2047
 // CHECK:         br i1 %[[VAL_147]], label %[[VAL_148:.*]], label %[[VAL_149:.*]]
-// CHECK:       concat_index_not_from_operand119:                 ; preds = %[[VAL_131]]
+// CHECK:       concat_index_not_from_operand116:                 ; preds = %[[VAL_131]]
 // CHECK:         unreachable
-// CHECK:       concatenate.7.merge13:                            ; preds = %[[VAL_148]], %[[VAL_130]]
+// CHECK:       concatenate.7.merge10:                            ; preds = %[[VAL_148]], %[[VAL_130]]
 // CHECK:         %[[VAL_150:.*]] = phi half [ %[[VAL_138]], %[[VAL_130]] ], [ %[[VAL_146]], %[[VAL_148]] ]
 // CHECK:         %[[VAL_151:.*]] = insertvalue { half, half } undef, half %[[VAL_150]], 0
 // CHECK:         %[[VAL_152:.*]] = add i32 %[[VAL_46]], 0
@@ -181,7 +182,7 @@
 // CHECK:         %[[VAL_165:.*]] = add i32 %[[VAL_48]], 0
 // CHECK:         %[[VAL_166:.*]] = icmp ult i32 %[[VAL_165]], 1024
 // CHECK:         br i1 %[[VAL_166]], label %[[VAL_167:.*]], label %[[VAL_168:.*]]
-// CHECK:       concat_index_from_operand_id022:                  ; preds = %[[VAL_139]]
+// CHECK:       concat_index_from_operand_id019:                  ; preds = %[[VAL_139]]
 // CHECK:         %[[VAL_169:.*]] = phi i32 [ 0, %[[VAL_139]] ]
 // CHECK:         %[[VAL_170:.*]] = sub nsw i32 %[[VAL_165]], %[[VAL_169]]
 // CHECK:         %[[VAL_171:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_20]], i32 0, i32 %[[VAL_170]]
@@ -190,7 +191,7 @@
 // CHECK:         %[[VAL_174:.*]] = load half, half* %[[VAL_173]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_175:.*]] = fmul half %[[VAL_172]], %[[VAL_174]]
 // CHECK:         br label %[[VAL_52]]
-// CHECK:       concat_index_from_operand_id124:                  ; preds = %[[VAL_168]]
+// CHECK:       concat_index_from_operand_id121:                  ; preds = %[[VAL_168]]
 // CHECK:         %[[VAL_176:.*]] = phi i32 [ 1024, %[[VAL_168]] ]
 // CHECK:         %[[VAL_177:.*]] = sub nsw i32 %[[VAL_165]], %[[VAL_176]]
 // CHECK:         %[[VAL_178:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_26]], i32 0, i32 %[[VAL_177]]
@@ -199,12 +200,12 @@
 // CHECK:         %[[VAL_181:.*]] = load half, half* %[[VAL_180]], align 2, !invariant.load !5
 // CHECK:         %[[VAL_182:.*]] = fadd half %[[VAL_179]], %[[VAL_181]]
 // CHECK:         br label %[[VAL_52]]
-// CHECK:       concat_index_not_from_operand026:                 ; preds = %[[VAL_139]]
+// CHECK:       concat_index_not_from_operand023:                 ; preds = %[[VAL_139]]
 // CHECK:         %[[VAL_183:.*]] = icmp ult i32 %[[VAL_165]], 2047
 // CHECK:         br i1 %[[VAL_183]], label %[[VAL_184:.*]], label %[[VAL_185:.*]]
-// CHECK:       concat_index_not_from_operand127:                 ; preds = %[[VAL_168]]
+// CHECK:       concat_index_not_from_operand124:                 ; preds = %[[VAL_168]]
 // CHECK:         unreachable
-// CHECK:       concatenate.7.merge21:                            ; preds = %[[VAL_184]], %[[VAL_167]]
+// CHECK:       concatenate.7.merge18:                            ; preds = %[[VAL_184]], %[[VAL_167]]
 // CHECK:         %[[VAL_186:.*]] = phi half [ %[[VAL_175]], %[[VAL_167]] ], [ %[[VAL_182]], %[[VAL_184]] ]
 // CHECK:         %[[VAL_187:.*]] = insertvalue { half, half } undef, half %[[VAL_186]], 0
 // CHECK:         %[[VAL_188:.*]] = add i32 %[[VAL_48]], 0

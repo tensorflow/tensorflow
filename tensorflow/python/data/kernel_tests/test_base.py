@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 import re
 
+from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -319,7 +320,7 @@ class DatasetTestBase(test.TestCase):
     keys = dataset_ops.Dataset.range(len(vals))
     values = dataset_ops.Dataset.from_tensor_slices(vals)
     ds = dataset_ops.Dataset.zip((keys, values))
-    return lookup_ops.DatasetInitializer(ds)
+    return data_lookup_ops.DatasetInitializer(ds)
 
   def lookupTableInitializer(self, init_source, vals):
     """Returns a lookup table initializer for the given source and values.

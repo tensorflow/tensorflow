@@ -694,6 +694,64 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(5, self.evaluate(iterations_var))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testSlotWithNonstandardShapeRestoresBasedOnCheckpoint(self):
+    # First create an optimizer and a slot variable with a non-standard shape.
+    x = variables.Variable([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+    slot_shape = [2, 1]
+    optimizer_1 = optimizer_v2.OptimizerV2(name='test')
+    optimizer_1.add_slot(x, 'test_slot', 'ones', shape=slot_shape)
+
+    # Then save the variable and optimizer to a checkpoint.
+    checkpoint_1 = trackable_utils.Checkpoint(var=x, optimizer=optimizer_1)
+    checkpoint_path = checkpoint_1.save(self.get_temp_dir())
+
+    # Create a new optimizer and call restore on it (and x)
+    optimizer_2 = optimizer_v2.OptimizerV2(name='test')
+    checkpoint_2 = trackable_utils.Checkpoint(var=x, optimizer=optimizer_2)
+    checkpoint_2.restore(checkpoint_path)
+
+    self.assertEqual(slot_shape,
+                     optimizer_2.get_slot(x, 'test_slot').shape.as_list())
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_gradient_aggregator(self):
+    def gradient_aggregator(grads_and_vars):
+      # Simulate an all-reduce where the other replica has zeros for gradients,
+      # by dividing each gradient by 2.
+      grads = [g for g, _ in grads_and_vars]
+      vars = [v for _, v in grads_and_vars]  # pylint: disable=redefined-builtin
+      all_reduced_grads = [g / 2 for g in grads]
+      return list(zip(all_reduced_grads, vars))
+
+    var = variables.Variable(2.0)
+    sgd = gradient_descent.SGD(1.0, gradient_aggregator=gradient_aggregator)
+    loss = lambda: 2 * var
+    opt_op = sgd.minimize(loss, var_list=[var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+    self.assertEqual(self.evaluate(var), 1.0)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_override_aggregate_gradients(self):
+    class MyOptimizer(gradient_descent.SGD):
+
+      def _aggregate_gradients(self, grads_and_vars):
+        # Simulate an all-reduce where the other replica has zeros for
+        # gradients, by dividing each gradient by 2.
+        grads = [g for g, _ in grads_and_vars]
+        vars = [v for _, v in grads_and_vars]  # pylint: disable=redefined-builtin
+        all_reduced_grads = [g / 2 for g in grads]
+        return list(zip(all_reduced_grads, vars))
+
+    var = variables.Variable(2.0)
+    sgd = MyOptimizer(1.0)
+    loss = lambda: 2 * var
+    opt_op = sgd.minimize(loss, var_list=[var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+    self.assertEqual(self.evaluate(var), 1.0)
+
 
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):

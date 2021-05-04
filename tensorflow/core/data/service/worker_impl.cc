@@ -119,14 +119,18 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   registered_ = true;
   return Status::OK();
 }
+
 void DataServiceWorkerImpl::Stop() {
+  std::vector<std::shared_ptr<Task>> tasks;
   {
     mutex_lock l(mu_);
-    cancellation_manager_.StartCancel();
     cancelled_ = true;
-    while (outstanding_requests_ > 0) {
-      cv_.wait(l);
+    for (const auto& entry : tasks_) {
+      tasks.push_back(entry.second);
     }
+  }
+  for (auto& task : tasks) {
+    StopTask(*task);
   }
   // At this point there are no outstanding requests in this RPC handler.
   // However, requests successfully returned from this RPC handler may still be
@@ -140,15 +144,9 @@ void DataServiceWorkerImpl::Stop() {
 
 Status DataServiceWorkerImpl::GetElementResult(
     const GetElementRequest* request, struct GetElementResult* result) {
-  auto cleanup = gtl::MakeCleanup([&] {
-    mutex_lock l(mu_);
-    outstanding_requests_--;
-    cv_.notify_all();
-  });
   Task* task;
   {
     mutex_lock l(mu_);
-    outstanding_requests_++;
     if (cancelled_) {
       return errors::Cancelled("Worker is shutting down");
     }
@@ -174,7 +172,13 @@ Status DataServiceWorkerImpl::GetElementResult(
     }
     task = it->second.get();
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
+    task->outstanding_requests++;
   }
+  auto cleanup = gtl::MakeCleanup([&] {
+    mutex_lock l(mu_);
+    task->outstanding_requests--;
+    cv_.notify_all();
+  });
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
   return Status::OK();
 }
@@ -251,13 +255,26 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   }
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
-  TF_RETURN_IF_ERROR(
-      TaskRunner::Create(config_, task.task_def, cancellation_manager_,
-                         std::move(task_iterator), task.task_runner));
+  TF_RETURN_IF_ERROR(TaskRunner::Create(
+      config_, task.task_def, std::move(task_iterator), task.task_runner));
 
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
+}
+
+void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
+  {
+    mutex_lock l(task.mu);
+    task.initialized = true;
+  }
+  if (task.task_runner) {
+    task.task_runner->Cancel();
+  }
+  mutex_lock l(mu_);
+  while (task.outstanding_requests > 0) {
+    cv_.wait(l);
+  }
 }
 
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
@@ -379,24 +396,32 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   std::vector<TaskDef> new_tasks;
-  std::vector<int64> tasks_to_delete;
-  TF_RETURN_IF_ERROR(
-      dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
-                                   current_tasks, new_tasks, tasks_to_delete));
-  mutex_lock l(mu_);
-  for (const auto& task : new_tasks) {
-    VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
-    Status s = ProcessTaskInternal(task);
-    if (!s.ok() && !errors::IsAlreadyExists(s)) {
-      LOG(WARNING) << "Failed to start processing task " << task.task_id()
-                   << ": " << s;
+  std::vector<int64> task_ids_to_delete;
+  TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
+      worker_address_, transfer_address_, current_tasks, new_tasks,
+      task_ids_to_delete));
+  std::vector<std::shared_ptr<Task>> tasks_to_delete;
+  {
+    mutex_lock l(mu_);
+    for (const auto& task : new_tasks) {
+      VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
+      Status s = ProcessTaskInternal(task);
+      if (!s.ok() && !errors::IsAlreadyExists(s)) {
+        LOG(WARNING) << "Failed to start processing task " << task.task_id()
+                     << ": " << s;
+      }
+    }
+    tasks_to_delete.reserve(task_ids_to_delete.size());
+    for (int64 task_id : task_ids_to_delete) {
+      VLOG(3) << "Deleting task " << task_id
+              << " at the request of the dispatcher";
+      tasks_to_delete.push_back(std::move(tasks_[task_id]));
+      tasks_.erase(task_id);
+      finished_tasks_.insert(task_id);
     }
   }
-  for (int64 task_id : tasks_to_delete) {
-    VLOG(3) << "Deleting task " << task_id
-            << " at the request of the dispatcher";
-    tasks_.erase(task_id);
-    finished_tasks_.insert(task_id);
+  for (const auto& task : tasks_to_delete) {
+    StopTask(*task);
   }
   return Status::OK();
 }

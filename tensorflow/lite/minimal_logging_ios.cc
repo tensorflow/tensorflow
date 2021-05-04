@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/minimal_logging.h"
-
 #include <syslog.h>
+
 #include <cstdarg>
+#include <cstdio>
+
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace logging_internal {
@@ -39,8 +41,19 @@ int GetPlatformSeverity(LogSeverity severity) {
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
+  // First log to iOS system logging API.
+  va_list args_copy;
+  va_copy(args_copy, args);
   // TODO(b/123704468): Use os_log when available.
-  vsyslog(GetPlatformSeverity(severity), format, args);
+  vsyslog(GetPlatformSeverity(severity), format, args_copy);
+  va_end(args_copy);
+
+  // Also print to stderr for standard console applications.
+  fprintf(stderr, "%s: ", GetSeverityName(severity));
+  va_copy(args_copy, args);
+  vfprintf(stderr, format, args_copy);
+  va_end(args_copy);
+  fputc('\n', stderr);
 }
 
 }  // namespace logging_internal

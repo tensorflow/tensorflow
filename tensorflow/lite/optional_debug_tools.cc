@@ -17,11 +17,13 @@ limitations under the License.
 #include <stddef.h>
 #include <stdio.h>
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -87,29 +89,47 @@ class MemoryArenaInfo {
   size_t max_tensor_end_addr_ = 0;
 };
 
-void PrintIntVector(const std::vector<int>& v) {
+void PrintIntVector(const std::vector<int>& v,
+                    bool collapse_consecutives = false) {
   if (v.empty()) {
     printf("(null)\n");
     return;
   }
 
+  int range_start = v[0];
+  int range_end = range_start;
+  std::function<void(const char*)> print_range = [&](const char* suffix) {
+    if (range_end == range_start) {
+      printf("%d%s", range_start, suffix);
+    } else if (range_end == range_start + 1) {
+      printf("%d,%d%s", range_start, range_end, suffix);
+    } else {
+      printf("%d-%d%s", range_start, range_end, suffix);
+    }
+  };
+
   printf("[");
-  for (int i = 0; i < v.size() - 1; ++i) {
-    printf("%d,", v[i]);
+  for (int i = 1; i < v.size(); ++i) {
+    int current = v[i];
+    if (collapse_consecutives && (current == range_end + 1)) {
+      range_end = current;
+    } else {
+      print_range(",");
+      range_start = range_end = current;
+    }
   }
-  printf("%d]\n", v.back());
+  print_range("]\n");
 }
 
-void PrintTfLiteIntVector(const TfLiteIntArray* v) {
+void PrintTfLiteIntVector(const TfLiteIntArray* v,
+                          bool collapse_consecutives = false) {
+  std::vector<int> tmp;
   if (!v || v->size <= 0) {
-    printf("(null)\n");
+    PrintIntVector(tmp);
     return;
   }
-  printf("[");
-  for (int k = 0; k < v->size - 1; k++) {
-    printf("%d,", v->data[k]);
-  }
-  printf("%d]\n", v->data[v->size - 1]);
+  tmp.insert(tmp.end(), v->data, v->data + v->size);
+  PrintIntVector(tmp, collapse_consecutives);
 }
 
 const char* TensorTypeName(TfLiteType type) {
@@ -233,21 +253,58 @@ void PrintInterpreterState(Interpreter* interpreter) {
     printf("\n");
     rw_persistent_info.Print();
     printf("\n");
+
+    // Going to print out all nodes (i.e. op kernels) in this subgraph.
+    std::vector<bool> replaced_node_bits;
+    std::vector<size_t> replaced_by_node;
+    replaced_node_bits.resize(subgraph.nodes_size());
+    replaced_by_node.resize(subgraph.nodes_size());
+    bool has_delegate_applied = false;
+    for (size_t node_index = 0; node_index < subgraph.nodes_size();
+         node_index++) {
+      replaced_node_bits[node_index] = false;
+      const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+          subgraph.node_and_registration(static_cast<int>(node_index));
+      const TfLiteNode& node = node_and_reg->first;
+      auto* const delegate = node.delegate;
+      if (delegate != nullptr) {
+        has_delegate_applied = true;
+        auto* params = static_cast<TfLiteDelegateParams*>(node.builtin_data);
+        for (int nid : TfLiteIntArrayView(params->nodes_to_replace)) {
+          replaced_node_bits[nid] = true;
+          replaced_by_node[nid] = node_index;
+        }
+      }
+    }
     for (size_t node_index = 0; node_index < subgraph.nodes_size();
          node_index++) {
       const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
           subgraph.node_and_registration(static_cast<int>(node_index));
       const TfLiteNode& node = node_and_reg->first;
       const TfLiteRegistration& reg = node_and_reg->second;
+
+      std::string delegated_status;
+      if (node.delegate == nullptr) {
+        if (replaced_node_bits[node_index]) {
+          delegated_status = "(delegated by node ";
+          delegated_status.append(std::to_string(replaced_by_node[node_index]));
+          delegated_status.append(")");
+        } else {
+          delegated_status = "(not delegated)";
+        }
+      }
+
       if (reg.custom_name != nullptr) {
-        printf("Node %3zu Operator Custom Name %s\n", node_index,
-               reg.custom_name);
+        printf("Node %3zu Operator Custom Name %s %s\n", node_index,
+               reg.custom_name, delegated_status.c_str());
       } else {
-        printf("Node %3zu Operator Builtin Code %3d %s\n", node_index,
-               reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code]);
+        printf("Node %3zu Operator Builtin Code %3d %s %s\n", node_index,
+               reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code],
+               delegated_status.c_str());
       }
       printf("  Input Tensors:");
-      PrintTfLiteIntVector(node.inputs);
+      PrintTfLiteIntVector(
+          node.inputs, /*collapse_consecutives=*/(node.delegate != nullptr));
       printf("  Output Tensors:");
       PrintTfLiteIntVector(node.outputs);
       if (node.intermediates && node.intermediates->size) {
@@ -259,6 +316,28 @@ void PrintInterpreterState(Interpreter* interpreter) {
         PrintTfLiteIntVector(node.temporaries);
       }
     }
+
+    printf("\nExecution plan as the list of nodes invoked in-order: ");
+    PrintIntVector(subgraph.execution_plan(), /*collapse_consecutives=*/true);
+    if (has_delegate_applied) {
+      printf("Among these nodes in the execution plan:\n");
+      for (int node_id : subgraph.execution_plan()) {
+        const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+            subgraph.node_and_registration(node_id);
+        const TfLiteNode& node = node_and_reg->first;
+        auto* const delegate = node.delegate;
+        if (delegate == nullptr) continue;
+        const char* delegate_name = node_and_reg->second.custom_name;
+        printf(
+            "  Node %d is a %s node (%p), which has delegated nodes: ", node_id,
+            delegate_name == nullptr ? "[n/a]" : delegate_name, delegate);
+        PrintTfLiteIntVector(
+            static_cast<TfLiteDelegateParams*>(node.builtin_data)
+                ->nodes_to_replace,
+            /*collapse_consecutives=*/true);
+      }
+    }
+
     printf("--------------Subgraph-%d dump has completed--------------\n\n", i);
   }
 }

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 
@@ -107,7 +106,6 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
                  cycle_length=10,
                  iters=100,
                  num_parallel_calls=None,
-                 attach_stats_aggregator=False,
                  name=None):
     dataset = self.make_dataset(
         interleave_version=interleave_version,
@@ -115,11 +113,6 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
         remainder_delay=remainder_delay_us,
         cycle_length=cycle_length,
         num_parallel_calls=num_parallel_calls)
-    if attach_stats_aggregator:
-      aggregator = stats_aggregator.StatsAggregator()
-      opts = dataset_ops.Options()
-      opts.experimental_stats.aggregator = aggregator
-      dataset = dataset.with_options(opts)
 
     self.run_and_report_benchmark(
         dataset=dataset,
@@ -188,16 +181,6 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
           name="long_cycle_" + version,
           benchmark_id=i,
           benchmark_label="long_cycle")
-
-  def benchmark_stats(self):
-    self._benchmark(
-        interleave_version=CORE_PARALLEL,
-        cycle_length=50,
-        num_elements=1000,
-        name="stats",
-        attach_stats_aggregator=True,
-        benchmark_id=1,
-        benchmark_label="stats")
 
 
 if __name__ == "__main__":

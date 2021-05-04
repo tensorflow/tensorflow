@@ -80,6 +80,10 @@ class FractionalAvgPoolOp : public OpKernel {
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
+      OP_REQUIRES(
+          context, pooling_ratio_[i] <= input_size[i],
+          errors::InvalidArgument(
+              "Pooling ratio cannot be bigger than input tensor dim size."));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {

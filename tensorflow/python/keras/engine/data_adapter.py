@@ -511,8 +511,9 @@ class DatasetCreatorAdapter(DataAdapter):
     if steps is None:
       raise ValueError("When using a "
                        "`tf.keras.utils.experimental.DatasetCreator`, "
-                       "`steps_per_epoch` argument must be provided in "
-                       "`Model.fit`.")
+                       "`steps_per_epoch`, `validation_steps` or `steps` "
+                       "argument must be provided in `Model.fit` or "
+                       "`Model.evaluate`.")
     self.dataset_creator = x
     self.steps = steps
     self.strategy = distribution_strategy
@@ -533,7 +534,8 @@ class DatasetCreatorAdapter(DataAdapter):
     return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -1335,8 +1337,13 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def _verify_data_adapter_compatibility(self, adapter_cls):
     if adapter_cls != DatasetCreatorAdapter:
-      raise NotImplementedError("Only `DatasetCreator` input is supported in "
-                                "`ParameterServerStrategy` at this time.")
+      # TODO(b/186414920): Update the error message once `DatasetCreator` is no
+      # longer experimental.
+      raise NotImplementedError(
+          "Only `tf.keras.utils.experimental.DatasetCreator` input is "
+          "supported with `ParameterServerStrategy` at this time. Please see "
+          "`tf.keras.utils.experimental.DatasetCreator` class docstring for "
+          "more information.")
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1345,7 +1352,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)

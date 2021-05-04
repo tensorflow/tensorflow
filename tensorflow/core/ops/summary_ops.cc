@@ -81,7 +81,7 @@ REGISTER_OP("WriteHistogramSummary")
     .Input("step: int64")
     .Input("tag: string")
     .Input("values: T")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr("T: {realnumbertype, bool} = DT_FLOAT")
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("WriteImageSummary")
@@ -91,7 +91,7 @@ REGISTER_OP("WriteImageSummary")
     .Input("tensor: T")
     .Input("bad_color: uint8")
     .Attr("max_images: int >= 1 = 3")
-    .Attr("T: {uint8, float, half} = DT_FLOAT")
+    .Attr("T: {uint8, double, float, half} = DT_FLOAT")
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("WriteAudioSummary")

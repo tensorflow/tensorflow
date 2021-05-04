@@ -24,6 +24,15 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 pwd
 
+# Clean up the intermediate files to avoid errors with Kokoro.
+# See http://b/186570469 for additional context.
+function cleanup() {
+  cd "${ROOT_DIR}"
+  echo "Cleaning up to prevent Kokoro errors (see http://b/186570469)"
+  make -f tensorflow/lite/micro/tools/make/Makefile clean clean_downloads DISABLE_DOWNLOADS=true
+}
+trap cleanup EXIT
+
 echo "Starting to run micro tests at `date`"
 
 make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
@@ -106,5 +115,12 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
+
+if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
+  # This is needed to prevent rsync errors with the TFLM github Kokoro build.
+  # See https://github.com/tensorflow/tensorflow/issues/48254 for additional
+  # context.
+  make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+fi
 
 echo "Finished all micro tests at `date`"

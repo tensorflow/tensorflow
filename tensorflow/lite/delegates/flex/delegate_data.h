@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
+#include "tensorflow/lite/delegates/flex/subgraph_resource.h"
 
 namespace tflite {
 namespace flex {
@@ -35,7 +37,11 @@ class DelegateData {
   // This must be called at least once before execution. After preparation
   // succeeds, redundant calls will be ignored (even if the session_options
   // differ).
-  tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options);
+  // When `main_subgraph` parameter is provided, this function will register
+  // FunctionDefs associated with each of the subgraphs attached to the
+  // `main_subgraph`.
+  tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options,
+                             Subgraph* main_subgraph = nullptr);
 
   // The EagerContext that is required for execution of Flex Ops.
   // Note: The context is lazily created after the first call to |Prepare()|.
@@ -53,6 +59,22 @@ class DelegateData {
   // necessary cleanup hook from a TfLiteContext to a TfLiteDelegate.
   std::unordered_map<const TfLiteContext*, BufferMap> buffer_map_;
 };
+
+// Creates a `TFLiteSubgraphResource` for each subgraph (execpt
+// for main subgraph) in the model and adds it in the eager context's resource
+// manager. It also registers FunctionDefs in the function library runtime for
+// subgraphs which are used by a list of flex ops.
+// TODO(b/181352924): For now, the `GetSubgraphs` API will return all the
+// subgraphs in the tflite model, so that it ensures we won't miss any subgraphs
+// during function registration. We need to revisit here when we introduce
+// multi-signature support.
+tensorflow::Status RegisterFunctionDefForSubgraphs(
+    Subgraph& main_subgraph,
+    const std::function<tensorflow::Status(
+        const std::vector<std::unique_ptr<Subgraph>>&,
+        std::set<std::string>* result)>& select_subgraphs_to_register,
+    tensorflow::ResourceMgr* resource_mgr,
+    tensorflow::EagerContext* eager_context);
 
 }  // namespace flex
 }  // namespace tflite

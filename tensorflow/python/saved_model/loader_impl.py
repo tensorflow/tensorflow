@@ -69,6 +69,7 @@ def parse_saved_model_with_debug_info(export_dir):
   return (saved_model, debug_info)
 
 
+@tf_export("__internal__.saved_model.parse_saved_model", v1=[])
 def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 

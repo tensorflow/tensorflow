@@ -3,8 +3,11 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/tflite_micro:__subpackages__",
+    ],
+    licenses = ["notice"],
 )
 
 exports_files(["tflite_convert.py"])
@@ -41,10 +44,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",

@@ -216,7 +216,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
   std::error_code error_code;
   llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
-                               llvm::sys::fs::F_None);
+                               llvm::sys::fs::OF_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -696,7 +696,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   // Dump LLVM IR.
   std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
-      new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
+      new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::OF_None));
   module->print(*ir_fs, nullptr);
   ir_fs->flush();
 
@@ -713,7 +713,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   llvm::SmallVector<char, 0> stream;
   llvm::raw_svector_ostream pstream(stream);
   std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(
-      new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_Text));
+      new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
                                       llvm::CGFT_ObjectFile);
@@ -722,7 +722,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   if (keep_tempfiles) {
     std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
-        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::F_None));
+        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::OF_None));
     module->print(*ir_fs, nullptr);
     ir_fs->flush();
   }
@@ -795,6 +795,13 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, amdgpu_version->first,
                                           device_bitcode_dir_path));
 
+  // If ftz is enabled, set it as an attribute on every function in the module.
+  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+    for (llvm::Function& fn : *module) {
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -810,9 +817,9 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 // upstream commit), the following mapping will need to change
 std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
   if (token == "sramecc+") {
-    return "+sram-ecc";
+    return "+sramecc";
   } else if (token == "sramecc-") {
-    return "-sram-ecc";
+    return "-sramecc";
   } else if (token == "xnack+") {
     return "+xnack";
   } else if (token == "xnack-") {
@@ -874,6 +881,14 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
+
+#if TF_ROCM_VERSION < 40100
+  // Use code-object-v3 for ROCm versions 4.0.1 and lower, since the
+  // HIP runtime for those ROCm versions expects the v3 HSACO objects
+  // Default is now v4 for newer LLVM versions (starting around 210326)
+  FeedLLVMWithFlags({"--amdhsa-code-object-version=3"});
+#endif
+
 #endif
 
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();

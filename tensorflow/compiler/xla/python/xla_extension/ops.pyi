@@ -26,6 +26,7 @@ XlaOp = xla_extension.XlaOp
 PrecisionConfig_Precision = xla_extension.PrecisionConfig_Precision
 PrimitiveType = xla_extension.PrimitiveType
 Shape = xla_extension.Shape
+ShapeIndex = xla_extension.ShapeIndex
 
 _ConvDimensionNumbers = Any
 _DotDimensionNumbers = Any
@@ -135,6 +136,16 @@ def CustomCallWithLayout(
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
     has_side_effects: bool = ...) -> XlaOp: ...
+def CustomCallWithAliasing(
+    builder: XlaBuilder,
+    call_target_name: bytes,
+    operands: Sequence[XlaOp],
+    shape_with_layout: Shape,
+    operand_shapes_with_layout: Sequence[Shape],
+    opaque: bytes = ...,
+    has_side_effects: bool = ...,
+    output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
+    literal: _LiteralSlice = ...) -> XlaOp: ...
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
@@ -218,9 +229,20 @@ def ReducePrecision(
     operand: XlaOp,
     exponent_bits: int,
     mantissa_bits: int) -> XlaOp: ...
+@overload
 def ReduceWindowWithGeneralPadding(
     operand: XlaOp,
     init_value: XlaOp,
+    computation: XlaComputation,
+    window_dimensions: Sequence[int],
+    window_strides: Sequence[int],
+    base_dilations: Sequence[int],
+    window_dilations: Sequence[int],
+    padding: Sequence[Tuple[int, int]]) -> XlaOp: ...
+@overload
+def ReduceWindowWithGeneralPadding(
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
     computation: XlaComputation,
     window_dimensions: Sequence[int],
     window_strides: Sequence[int],

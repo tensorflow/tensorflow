@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 _selectors_package = (

@@ -7,7 +7,7 @@ func @decompose_use_subtype() {
 
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<2x8xi32>>>
 
-  // CHECK:      %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK:      %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
   // CHECK:      %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
   // CHECK-SAME: (tensor<*x!tf.resource<tensor<2x8xi32>>>) -> tensor<2x8xi32>
   // CHECK:      "tf.AddV2"(%[[RES_READ_VAL]], %[[ONE]])
@@ -30,7 +30,7 @@ func @decompose_assign_add_variable_op() -> () {
 
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<i32>>>
 
-  // CHECK: %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
   // CHECK: "tf.AddV2"(%[[RES_READ_VAL]], %[[ONE]])
   // CHECK: "tf.AssignVariableOp"
@@ -51,7 +51,7 @@ func @decompose_assign_sub_variable_op() -> () {
 
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<i32>>>
 
-  // CHECK: %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
   // CHECK: "tf.Sub"(%[[RES_READ_VAL]], %[[ONE]])
   // CHECK: "tf.AssignVariableOp"
@@ -72,7 +72,7 @@ func @decompose_resource_apply_gradient_descent(%arg0: tensor<f32>) -> () {
 
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<f32>>>
 
-  // CHECK: %[[ALPHA:[0-9]*]] = "tf.Const"
+  // CHECK: %[[ALPHA:.*]] = "tf.Const"
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
   // CHECK: %[[MUL:[0-9]*]] = "tf.Mul"(%[[DELTA]], %[[ALPHA]])
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])

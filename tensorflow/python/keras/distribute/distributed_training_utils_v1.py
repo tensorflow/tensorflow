@@ -21,8 +21,6 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -34,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -398,13 +397,7 @@ def _wait_for_variable_initialization(session):
 
 def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
-  session = backend._get_session()  # pylint: disable=protected-access
-  if not multi_worker_util.has_worker_context(
-  ) or multi_worker_util.should_load_checkpoint():
-    # TODO(yuefengz): if checkpoints exist, restore from checkpoint.
-    backend._initialize_variables(session)  # pylint: disable=protected-access
-  else:
-    _wait_for_variable_initialization(session)
+  backend._initialize_variables(backend._get_session())  # pylint: disable=protected-access
 
 
 def validate_inputs(x, y):
@@ -1088,7 +1081,7 @@ def distributed_scope(strategy, learning_phase):
 
 
 def is_current_worker_chief():
-  return dc_context.get_current_worker_context().is_chief
+  return dc.get_current_worker_context().is_chief
 
 
 def filter_distributed_callbacks(callbacks_list, model):

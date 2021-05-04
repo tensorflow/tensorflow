@@ -143,7 +143,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
+  return status;
 }
 
 // Builds the XLA computation.
@@ -1114,18 +1114,6 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-      VLOG(1) << "Setting dynamic size " << i << " -> "
-              << dynamic_size_param_index;
-      arg_handles[i] = xla::SetDimensionSize(
-          arg_handles[i], arg_handles[dynamic_size_param_index],
-          dim_and_arg_num.first);
-    }
-  }
-
   builder->ClearOpMetadata();
 
   // Fill in the handles in non-constant arguments, and reshape parameters
@@ -1376,8 +1364,12 @@ Status XlaCompiler::CompileGraph(
     }
   }
 
-  TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
-                                  flib_runtime_, NextStepId()));
+  Status execute_status = ExecuteGraph(context, std::move(graph), device_,
+                                       flib_runtime_, NextStepId());
+  if (!execute_status.ok()) {
+    VLOG(1) << "Failed executing graph " << name;
+    return execute_status;
+  }
   if (token_input_index != -1) {
     // Add extra token output.
     std::vector<xla::XlaOp> token_inputs;

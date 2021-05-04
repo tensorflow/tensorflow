@@ -35,6 +35,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -523,12 +524,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle.device
+    return self.handle.device
 
   @property
   def graph(self):
     """The `Graph` of this variable."""
-    return self._handle.graph
+    return self.handle.graph
 
   @property
   def name(self):
@@ -603,7 +604,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def op(self):
     """The op for this variable."""
-    return self._handle.op
+    return self.handle.op
 
   @property
   def trainable(self):
@@ -662,7 +663,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       new_variable = copy_to_graph_uninitialized(self)
     obj_map = {self: new_variable}
-    resource_map = {self._handle: new_variable.handle}
+    resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
   def _read_variable_op(self):
@@ -670,8 +671,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
     def read_and_set_handle():
       result = gen_resource_variable_ops.read_variable_op(
-          self._handle, self._dtype)
-      _maybe_set_handle_data(self._dtype, self._handle, result)
+          self.handle, self._dtype)
+      _maybe_set_handle_data(self._dtype, self.handle, result)
       return result
 
     if getattr(self, "_caching_device", None) is not None:
@@ -685,7 +686,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle],
+          "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
     return result
@@ -710,12 +711,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     with ops.name_scope("Gather" if name is None else name) as name:
       variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
       if self._dtype == dtypes.variant:
         # For DT_VARIANT types, the handle's shape_and_type[1:] stores the
         # variant's handle data.  Extract it.
-        handle_data = get_eager_safe_handle_data(self._handle)
+        handle_data = get_eager_safe_handle_data(self.handle)
         if handle_data.is_set and len(handle_data.shape_and_type) > 1:
           value._handle_data = (  # pylint: disable=protected-access
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
@@ -729,7 +730,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       if self.trainable:
         variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather_nd(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
@@ -862,7 +863,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def _lazy_read(self, op):
     variable_accessed(self)
     return _UnreadVariable(
-        handle=self._handle,
+        handle=self.handle,
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
@@ -1360,6 +1361,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
             indices,
             ops.convert_to_tensor(updates, self.dtype),
             name=name))
+
+  def _write_object_proto(self, proto, options):
+    """Writes additional information of the variable into the SavedObject proto.
+
+    Subclasses of ResourceVariables could choose to override this method to
+    customize extra information to provide when saving a SavedModel.
+
+    Ideally, this should contain the logic in
+    write_object_proto_for_resource_variable but `DistributedValue` is an
+    outlier at the momemnt. Once `DistributedValue` becomes a proper
+    ResourceVariable, we should remove the helper method below.
+
+    Args:
+      proto: `SavedObject` proto to update.
+      options: A `SaveOption` instance that configures save behavior.
+    """
+    write_object_proto_for_resource_variable(self, proto, options)
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
@@ -2152,10 +2170,10 @@ def _ReadGrad(_, grad):
 
 
 def variable_shape(handle, out_type=dtypes.int32):
-  if getattr(handle, "_handle_data",
-             None) is None or not handle._handle_data.is_set:  # pylint: disable=protected-access
+  handle_data = get_eager_safe_handle_data(handle)
+  if handle_data is None or not handle_data.is_set:
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
-  shape_proto = handle._handle_data.shape_and_type[0].shape  # pylint: disable=protected-access
+  shape_proto = handle_data.shape_and_type[0].shape
   if shape_proto.unknown_rank or any(x.size == -1 for x in shape_proto.dim):
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
   return constant_op.constant([x.size for x in shape_proto.dim], dtype=out_type)
@@ -2279,3 +2297,35 @@ class VariableSpec(tensor_spec.DenseSpec):
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
+
+
+def write_object_proto_for_resource_variable(resource_variable, proto, options):
+  """Writes additional information of the variable into the SavedObject proto.
+
+  This allows users to define a `hook` to provide extra information of the
+  variable to the SavedObject.
+
+  For example, DistritubtedVariable class would fill in components in the
+  distributed context.
+
+  Args:
+    resource_variable: A `ResourceVariable` or `DistributedValue` that has the
+      information to be saved into the proto.
+    proto: `SavedObject` proto to update.
+    options: A `SaveOption` instance that configures save behavior.
+  """
+  proto.variable.SetInParent()
+  if not resource_variable.name.endswith(":0"):
+    raise ValueError("Cowardly refusing to save variable {} because of"
+                     " unexpected suffix which won't be restored.".format(
+                         resource_variable.name))
+  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.trainable = resource_variable.trainable
+  proto.variable.dtype = resource_variable.dtype.as_datatype_enum
+  proto.variable.synchronization = resource_variable.synchronization.value
+  proto.variable.aggregation = resource_variable.aggregation.value
+  proto.variable.shape.CopyFrom(resource_variable.shape.as_proto())
+  if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
+  ):
+    if hasattr(resource_variable, "device"):
+      proto.variable.device = resource_variable.device

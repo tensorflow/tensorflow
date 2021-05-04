@@ -14,7 +14,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -32,6 +32,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":distribute_coordinator_utils",
         ":sidecar_evaluator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
@@ -248,7 +249,6 @@ distribute_py_test(
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
@@ -270,7 +270,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_rocm",
         "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
@@ -323,6 +322,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":multi_worker_testing_utils",
         ":optimizer_combinations",
         ":strategy_combinations",
         "//tensorflow/python:client_testlib",
@@ -545,7 +545,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
+        "no_rocm",  # Would require size large, but that effectively disables the test for presubmits.
         "no_windows_gpu",
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
@@ -605,7 +605,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_rocm",
         "no_windows_gpu",
         "notsan",
     ],
@@ -690,7 +689,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -740,7 +738,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -825,6 +822,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -860,10 +858,9 @@ distribute_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
-    shard_count = 1,
+    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -891,6 +888,38 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "parameter_server_evaluation_test",
+    srcs = ["parameter_server_evaluation_test.py"],
+    python_version = "PY3",
+    shard_count = 1,
+    tags = [
+        "multi_and_single_gpu",
+        "no_cuda_asan",  # TODO(b/186361027)
+        "no_oss",  # TODO(b/186248973)
+        "no_tfrt",
+        "notpu",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:dataset_creator",
+    ],
+)
+
+distribute_py_test(
     name = "dataset_creator_model_fit_test",
     srcs = ["dataset_creator_model_fit_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
@@ -900,7 +929,8 @@ distribute_py_test(
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
+        "no_rocm",
+        "notsan",  # TODO(b/184542721)
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -984,7 +1014,9 @@ tf_py_test(
     deps = [
         ":sidecar_evaluator",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1008,5 +1040,21 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
+    name = "distribute_coordinator_utils",
+    srcs = [
+        "distribute_coordinator_utils.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )

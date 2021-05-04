@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
@@ -176,6 +177,8 @@ const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
 const OpDef& Node::op_def() const { return *props_->op_def; }
+
+NodeDef* Node::mutable_def() { return &props_->node_def; }
 
 int32 Node::num_inputs() const { return props_->input_types.size(); }
 DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
@@ -444,6 +447,9 @@ void Graph::Copy(const Graph& src) {
     Node* dst_copy = node_map[e->dst()];
     AddEdge(src_copy, e->src_output(), dst_copy, e->dst_input());
   }
+
+  types_ = src.types_;
+  node_name_to_out_type_ = src.node_name_to_out_type_;
 }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
@@ -874,6 +880,26 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
     result[n->name()] = n;
   }
   return result;
+}
+
+void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
+  TypeRef t = {std::make_shared<FullTypeDef>(ft)};
+  auto ret = types_.emplace(t);
+  if (ret.second == false) {
+    t = *ret.first;
+  }
+
+  node_name_to_out_type_.emplace(string(name), t);
+}
+
+void Graph::NodeType(StringPiece name, FullTypeDef** result) {
+  *result = nullptr;
+  auto it = node_name_to_out_type_.find(string(name));
+  if (it == node_name_to_out_type_.end()) {
+    *result = nullptr;
+    return;
+  }
+  *result = it->second.full_type.get();
 }
 
 std::string Edge::DebugString() const {

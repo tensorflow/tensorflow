@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -27,6 +29,11 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 def _dataset_factory(components):
@@ -98,6 +105,29 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNamedTuple(self):
+    Foo = collections.namedtuple("Foo", ["x", "y"])
+    x = Foo(x=dataset_ops.Dataset.range(3), y=dataset_ops.Dataset.range(3, 6))
+    dataset = dataset_ops.Dataset.zip(x)
+    expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAttrs(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s
+    class Foo(object):
+      x = attr.ib()
+      y = attr.ib()
+
+    x = Foo(x=dataset_ops.Dataset.range(3), y=dataset_ops.Dataset.range(3, 6))
+    dataset = dataset_ops.Dataset.zip(x)
+    expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
+    self.assertDatasetProduces(dataset, expected)
 
 
 class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,

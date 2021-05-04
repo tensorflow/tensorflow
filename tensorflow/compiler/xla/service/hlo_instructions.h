@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -1316,7 +1317,7 @@ class HloReduceWindowInstruction : public HloInstruction {
   // init values) this reduce has.
   int64 input_count() const { return operand_count() / 2; }
   // Returns the input tensors to be reduced.
-  absl::Span<HloInstruction* const> input_arrays() const {
+  absl::Span<HloInstruction* const> inputs() const {
     return absl::MakeSpan(operands()).subspan(0, input_count());
   }
   // Returns the init values of the reduction.
@@ -1324,9 +1325,9 @@ class HloReduceWindowInstruction : public HloInstruction {
     return absl::MakeSpan(operands()).subspan(input_count(), operand_count());
   }
   // Returns the shapes of input tensors to be reduced.
-  absl::InlinedVector<const Shape*, 2> input_array_shapes() const {
+  absl::InlinedVector<const Shape*, 2> input_shapes() const {
     absl::InlinedVector<const Shape*, 2> shapes;
-    for (const auto* op : input_arrays()) {
+    for (const auto* op : inputs()) {
       VLOG(2) << "Pushing input array shape for: " << op->ToString() << "\n";
       shapes.push_back(&op->shape());
       VLOG(2) << "Pushed shape: " << shapes.back()->ToString() << "\n";
@@ -1338,6 +1339,18 @@ class HloReduceWindowInstruction : public HloInstruction {
     absl::InlinedVector<const Shape*, 2> shapes;
     for (const auto* op : init_values()) {
       shapes.push_back(&op->shape());
+    }
+    return shapes;
+  }
+  // Returns the shapes of the reduced output tensors.
+  absl::InlinedVector<const Shape*, 2> output_shapes() const {
+    absl::InlinedVector<const Shape*, 2> shapes;
+    if (shape().IsArray()) {
+      shapes.push_back(&shape());
+    } else {
+      for (const Shape& tuple_element_shape : shape().tuple_shapes()) {
+        shapes.push_back(&tuple_element_shape);
+      }
     }
     return shapes;
   }

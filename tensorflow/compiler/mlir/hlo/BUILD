@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -1077,7 +1077,7 @@ cc_binary(
         ":lhlo",
         ":lhlo_gpu",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",

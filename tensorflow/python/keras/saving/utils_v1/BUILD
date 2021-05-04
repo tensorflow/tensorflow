@@ -22,10 +22,8 @@ package(
     default_visibility = [
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "utils_v1",
