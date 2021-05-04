@@ -1997,6 +1997,61 @@ ENTRY %entry {
                   "device: 1 of channel instruction: recv"));
 }
 
+TEST_P(ParameterizedMetadataTest, WhileConv) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(2)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %kernel = bf16[2048, 768]{1,0}
+   get-tuple-element(%param), index=1
+  %lhs = bf16[128,512,2048]{2,1,0}
+   get-tuple-element(%param), index=2,
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  %reshape = bf16[2048,768,1]{2,1,0} reshape(bf16[2048,768]{1,0} %kernel)
+  %convolution = bf16[128,512,768]{2,1,0}
+    convolution(bf16[128,512,2048]{2,1,0} %lhs,
+    bf16[2048,768,1]{2,1,0} %reshape), window={size=1},
+    dim_labels=0bf_io0->0bf, sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %tuple = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%count, %kernel, %lhs, %convolution)
+}
+
+ENTRY %entry {
+  %p0 = bf16[2048,768] parameter(0),
+    sharding={devices=[2,1,8]0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15 last_tile_dim_replicate}
+  %p1 = bf16[128,512,2048] parameter(1),
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  %p2 = bf16[128,512,768] parameter(2)
+  %zero = u32[] constant(0)
+  %init = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%zero, %p0, %p1, %p2)
+  %while = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) while(%init), body=%body, condition=%cond
+  ROOT %result = bf16[128,512,768] get-tuple-element(%while), index=3, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* kernel = FindInstruction(module.get(), "kernel");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_THAT(kernel, op::Sharding("{devices=[2,1,8]0,2,4,6,8,10,12,14,1,3,5,"
+                                   "7,9,11,13,15 last_tile_dim_replicate}"));
+}
+
 TEST_P(ParameterizedMetadataTest, Dot) {
   const char* const hlo_string = R"(
 HloModule module

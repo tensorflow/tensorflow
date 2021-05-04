@@ -563,7 +563,10 @@ bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
   // At minimum agressiveness, only allow pass-through ops.
   if (aggressiveness < 1 && !inst.IsElementwise() &&
       inst.opcode() != HloOpcode::kTranspose &&
-      inst.opcode() != HloOpcode::kReshape) {
+      inst.opcode() != HloOpcode::kReshape &&
+      inst.opcode() != HloOpcode::kTuple &&
+      inst.opcode() != HloOpcode::kGetTupleElement &&
+      inst.opcode() != HloOpcode::kWhile) {
     return false;
   }
   // Broadcast propagation should have at least aggressiveness 2.
