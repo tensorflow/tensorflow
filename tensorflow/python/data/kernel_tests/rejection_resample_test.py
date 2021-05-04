@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.rejection_resample()`."""
+"""Tests for `tf.data.Dataset.rejection_resample()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import resampling
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -47,12 +46,11 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
     get_next = self.getNext(
-        dataset.apply(
-            resampling.rejection_resample(
+        dataset.rejection_resample(
                 target_dist=target_dist,
                 initial_dist=initial_dist,
                 class_func=lambda c, _: c,
-                seed=27)))
+                seed=27))
 
     returned = []
     while len(returned) < 2000:
@@ -83,11 +81,10 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
 
     # Reshape distribution.
-    dataset = dataset.apply(
-        resampling.rejection_resample(
+    dataset = dataset.rejection_resample(
             class_func=lambda x: x,
             target_dist=target_dist,
-            initial_dist=init_dist))
+            initial_dist=init_dist)
 
     get_next = self.getNext(dataset)
 
@@ -114,11 +111,10 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(_remap_fn)
 
     # Reshape distribution.
-    dataset = dataset.apply(
-        resampling.rejection_resample(
+    dataset = dataset.rejection_resample(
             class_func=lambda x: x,
             target_dist=target_dist,
-            initial_dist=init_dist))
+            initial_dist=init_dist)
 
     get_next = self.getNext(dataset)
 
@@ -139,11 +135,10 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     init_dist = [0.5, 0.5]
     target_dist = [0.9, 0.1]
     dataset = dataset_ops.Dataset.range(10000)
-    resampler = resampling.rejection_resample(
+    dataset = dataset.rejection_resample(
         class_func=lambda x: x % 2,
         target_dist=target_dist,
         initial_dist=init_dist)
-    dataset = dataset.apply(resampler)
 
     get_next = self.getNext(dataset)
     returned = []
@@ -173,12 +168,10 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
       init_dist = np.array([0.5, 0.5], dtype=init_dtype)
 
     dataset = dataset_ops.Dataset.range(10)
-    resampler = resampling.rejection_resample(
+    dataset = dataset.rejection_resample(
         class_func=lambda x: x % 2,
         target_dist=target_dist,
         initial_dist=init_dist)
-
-    dataset = dataset.apply(resampler)
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
