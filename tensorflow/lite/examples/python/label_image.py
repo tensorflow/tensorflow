@@ -23,7 +23,7 @@ import time
 
 import numpy as np
 from PIL import Image
-import tensorflow as tf # TF2
+import tensorflow as tf
 
 
 def load_labels(filename):
