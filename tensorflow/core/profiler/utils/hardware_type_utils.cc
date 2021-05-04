@@ -131,11 +131,11 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
   else if (device_cap.dev_manufacturer() == "AMD"){
     switch (device_cap.compute_capability().major()){
       case 9:
-        return "AMD GPU - gfx9";
+        return "AMD GPU - gfx-9XX series";
       case 10:
-        return "AMD GPU - gfx10";
+        return "AMD GPU - gfx-10XX series";
       case 11:
-        return "AMD GPU - gfx11";    
+        return "AMD GPU - gfx-11XX series";    
       default:
         return "AMD GPU";  
 

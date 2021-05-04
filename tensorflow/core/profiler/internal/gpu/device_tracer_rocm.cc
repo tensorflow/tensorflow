@@ -527,8 +527,6 @@ struct CorrelationInfo {
   struct PerDeviceCollector {
     void GetDeviceCapabilities(int32 device_ordinal,
                                XPlaneBuilder* device_plane) {
-      std::cout << "REZA1:" << std::endl;
-      std::flush(std::cout);
       std::string device_manfacturer = "AMD";
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
@@ -539,8 +537,6 @@ struct CorrelationInfo {
           hipSuccess)
         return;
 
-      std::cout << "REZA: "<<device_properties_.major << "." << device_properties_.minor << ", " << device_properties_.gcnArch << std::endl;
-      std::flush(std::cout);
       auto clock_rate_in_khz =
           device_properties_.clockRate;  // this is also in Khz
       if (clock_rate_in_khz) {

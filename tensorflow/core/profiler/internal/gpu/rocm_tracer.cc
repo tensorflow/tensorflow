@@ -405,8 +405,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipMemcpyPeerAsync:  // TODO(reza): recently added *
         // AddMemcpyPeerEventUponApiExit(cbid, data, enter_time, exit_time);
         // tracer_->AddToPendingActivityRecords(data->correlation_id);
-        std::cout << "hipMemcpyPeer API was called!\n";
-        std::flush(std::cout);
+        
         break;
       case HIP_API_ID_hipMemset:       // TODO(reza): recently added
       case HIP_API_ID_hipMemsetAsync:  // TODO(reza): recently added
@@ -1010,11 +1009,6 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
                 AddNormalHipOpsMemcpyActivityEvent(record);
                 tracer_->RemoveFromPendingActivityRecords(
                     record->correlation_id);
-                if (record->end_ns - record->begin_ns > 1e9) {
-                  std::cout << "REZA: this kernel activity is bogus: "
-                            << record->correlation_id;
-                  std::flush(std::cout);
-                }
               } break;
               case 4615: /*FillBuffer*/
                 /*MEMSET*/
@@ -1624,8 +1618,6 @@ Status RocmTracer::DisableActivityTracing() {
             << " ms";
     std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
   }
-  std::cout << "REZA: number of pending activities:" << GetPendingActivityRecordsCount() << std::endl;
-  std::flush(std::cout);
   ClearPendingActivityRecordsCount();
 
 
