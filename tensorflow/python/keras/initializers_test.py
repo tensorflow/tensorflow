@@ -61,12 +61,12 @@ class KerasInitializersTest(test.TestCase):
   def _runner(self, init, shape, dtype=dtypes.float32,
               target_mean=None, target_std=None,
               target_max=None, target_min=None):
-    variable = backend.variable(init(shape, dtype))
+    variable = backend.variable(init(shape, dtype), dtype)
     output = backend.get_value(variable)
     # Test serialization (assumes deterministic behavior).
     config = init.get_config()
     reconstructed_init = init.__class__.from_config(config)
-    variable = backend.variable(reconstructed_init(shape, dtype))
+    variable = backend.variable(reconstructed_init(shape, dtype), dtype)
     output_2 = backend.get_value(variable)
     self.assertAllClose(output, output_2, atol=1e-4)
 
