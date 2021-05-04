@@ -44,6 +44,18 @@ def CopyRemoval : FunctionPass<"copy-removal"> {
   let constructor = "createCopyRemovalPass()";
 }
 
+def BufferPacking : FunctionPass<"buffer-packing"> {
+  let summary = "";
+  let description = [{ }];
+  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect"];
+  let constructor = "createBufferPackingPass()";
+  let options = [
+   Option<"window_size_", "window-size", "unsigned",
+           /*default=*/"5", "The window size to equalize the start position "
+           "of a buffer.">,
+  ];
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";

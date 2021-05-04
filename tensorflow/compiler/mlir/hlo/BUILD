@@ -1794,6 +1794,7 @@ cc_library(
         ":lhlo_legalize_to_parallel_loops",
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
+        ":buffer_packing",
         ":mhlo_flatten_tuple",
         ":mhlo_fusion",
         ":mhlo_mark_shape_calc",
@@ -1879,6 +1880,22 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+cc_library(
+    name = "buffer_packing",
+    srcs = ["lib/Transforms/buffer_packing.cc"],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

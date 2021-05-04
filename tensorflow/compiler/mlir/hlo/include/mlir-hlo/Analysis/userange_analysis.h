@@ -98,6 +98,7 @@ struct UseInterval {
 /// compute intervals starting at the first and ending with the last use of
 /// every alloc value.
 class UserangeAnalysis {
+
  public:
   using UsePosition = std::pair<size_t, Operation *>;
   using UsePositionList = std::vector<UsePosition>;
@@ -152,7 +153,7 @@ class UserangeAnalysis {
   /// Dumps the liveness information to the given stream.
   void dump(raw_ostream &os);
 
- private:
+private:
   using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
   using OperationListT = Liveness::OperationListT;
 
@@ -199,6 +200,6 @@ class UserangeAnalysis {
   Liveness liveness;
 };
 
-}  // namespace mlir
+} // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#endif // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
