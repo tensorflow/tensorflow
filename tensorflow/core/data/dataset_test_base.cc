@@ -938,11 +938,12 @@ Status DatasetOpsTestBase::MakeDatasetTensor(
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
 
+  auto input_tensors = dataset_params.GetInputTensors();
   gtl::InlinedVector<TensorValue, 4> inputs;
+  inputs.reserve(input_datasets.size() + input_tensors.size());
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
   }
-  auto input_tensors = dataset_params.GetInputTensors();
   for (auto& input_tensor : input_tensors) {
     inputs.emplace_back(TensorValue(&input_tensor));
   }

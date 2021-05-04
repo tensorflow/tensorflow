@@ -18,7 +18,7 @@ package(
     licenses = ["notice"],
 )
 
-# Export a few files for use on Android.
+# Export files for use on Android.
 exports_files([
     "captured_function.cc",
     "captured_function.h",
@@ -26,8 +26,12 @@ exports_files([
     "dataset_utils.h",
     "name_utils.cc",
     "name_utils.h",
-    "split_utils.h",
+    "rewrite_utils.cc",
+    "rewrite_utils.h",
+    "root_dataset.cc",
+    "root_dataset.h",
     "split_utils.cc",
+    "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
 ])

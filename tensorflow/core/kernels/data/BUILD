@@ -13,7 +13,7 @@ package(
     licenses = ["notice"],
 )
 
-# Export a few files for use on Android.
+# Export files for use on Android.
 exports_files([
     "batch_dataset_op.cc",
     "batch_dataset_op.h",
@@ -436,6 +436,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
@@ -1374,6 +1375,10 @@ filegroup(
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:rewrite_utils.cc",
+        "//tensorflow/core/data:rewrite_utils.h",
+        "//tensorflow/core/data:root_dataset.cc",
+        "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/data:split_utils.cc",

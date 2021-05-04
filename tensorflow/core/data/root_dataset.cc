@@ -45,8 +45,7 @@ inline int64 value_or_default(int64 x, int64 y, int64 z) {
 }  // namespace
 
 // static
-Status RootDataset::FromOptions(OpKernelContext* ctx, DatasetBase* input,
-                                DatasetBase** output) {
+Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   const Options& options = input->options();
   Params params;
   if (ShouldConfigureMaxIntraOpParallelism(options)) {
@@ -70,7 +69,7 @@ Status RootDataset::FromOptions(OpKernelContext* ctx, DatasetBase* input,
         value_or_default(options.optimization_options().autotune_ram_budget(),
                          0, kRamBudgetShare * port::AvailableRam());
   }
-  *output = new RootDataset(ctx, input, params);
+  *output = new RootDataset(input, params);
   return Status::OK();
 }
 
@@ -106,11 +105,8 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
-    {
-      mutex_lock l(mu_);
-      if (dataset()->params_.autotune) {
-        TF_RETURN_IF_ERROR(EnsureOptimizationLoopThreadStarted(ctx));
-      }
+    if (dataset()->params_.autotune) {
+      TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
     return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
                                 end_of_sequence);
@@ -124,14 +120,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
-    mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     return Status::OK();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(
         RestoreInput(IteratorContext(CreateParams(ctx)), reader, input_impl_));
     return Status::OK();
@@ -147,21 +141,21 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     if (dataset()->params_.autotune) {
       params.model = model_;
     }
-    if (dataset()->params_.max_intra_op_parallelism >= 0) {
-      params.runner =
-          RunnerWithMaxParallelism(*ctx->runner(), max_intra_op_parallelism_);
-    }
     if (dataset()->params_.private_threadpool_size >= 0) {
       params.runner = [pool = thread_pool_.get()](std::function<void()> c) {
         pool->Schedule(std::move(c));
       };
       params.runner_threadpool_size = threadpool_size_;
     }
+    if (dataset()->params_.max_intra_op_parallelism >= 0) {
+      params.runner =
+          RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
+    }
     return params;
   }
 
-  Status EnsureOptimizationLoopThreadStarted(IteratorContext* ctx)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status EnsureModelThreadStarted(IteratorContext* ctx) {
+    mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
         Status status =
@@ -177,22 +171,23 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     return Status::OK();
   }
 
-  mutex mu_;
-  std::unique_ptr<IteratorBase> input_impl_;
-
   std::shared_ptr<model::Model> model_ = nullptr;
   // Controls cancellation of `model_thread_`. Must be ordered before
   // `model_thread_` so that `model_thread_` is destroyed first.
   std::unique_ptr<CancellationManager> cancellation_manager_;
+  mutex mu_;
   std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
   int64 max_intra_op_parallelism_;
   int64 threadpool_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // Must be ordered last as its execution may depend on other members.
+  std::unique_ptr<IteratorBase> input_impl_;
 };
 
-RootDataset::RootDataset(OpKernelContext* ctx, const DatasetBase* input,
-                         Params params)
-    : DatasetBase(DatasetContext(ctx)),
+RootDataset::RootDataset(const DatasetBase* input, Params params)
+    : DatasetBase(DatasetContext({name_utils::OpName(kDatasetType),
+                                  name_utils::OpName(kDatasetType)})),
       input_(input),
       params_(std::move(params)) {
   if (params_.autotune) {
@@ -263,6 +258,7 @@ Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
   return errors::Unimplemented("RootDataset does not support serialization.");
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
                        DatasetBase** output) {
   const Options& options = input->options();
@@ -278,8 +274,7 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
       optimizations_enabled, optimizations_disabled, optimizations_default);
 
   if (optimizations.empty()) {
-    TF_RETURN_IF_ERROR(RootDataset::FromOptions(ctx, input, output));
-    return Status::OK();
+    return RootDataset::FromOptions(input, output);
   }
 
   auto config_factory = [&optimizations, &optimization_configs]() {
@@ -291,15 +286,22 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
     LOG(WARNING) << s.ToString();
-    TF_RETURN_IF_ERROR(RootDataset::FromOptions(ctx, input, output));
-    return Status::OK();
+    return RootDataset::FromOptions(input, output);
   }
   if (!s.ok()) {
     return s;
   }
   input = *output;
-  return RootDataset::FromOptions(ctx, input, output);
+  TF_RETURN_IF_ERROR(RootDataset::FromOptions(input, output));
+  input->Unref();
+  return Status::OK();
 }
+#else   // !IS_MOBILE_PLATFORM
+Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+                       DatasetBase** output) {
+  return RootDataset::FromOptions(input, output);
+}
+#endif  // !IS_MOBILE_PLATFORM
 
 }  // namespace data
 }  // namespace tensorflow

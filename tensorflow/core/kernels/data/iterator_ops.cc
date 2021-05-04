@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -740,8 +741,16 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
         captured_func->Instantiate(&iter_ctx, &instantiated_captured_func));
 
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
-                                             "ReduceIterator", &iterator));
+    if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
+      DatasetBase* finalized_dataset = nullptr;
+      TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+      TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
+          &iter_ctx, /*parent=*/nullptr, "ReduceIterator", &iterator));
+      finalized_dataset->Unref();
+    } else {
+      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
+                                               "ReduceIterator", &iterator));
+    }
 
     // Iterate through the input dataset.
     while (true) {
