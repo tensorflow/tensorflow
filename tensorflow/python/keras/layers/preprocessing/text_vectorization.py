@@ -29,7 +29,6 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -547,7 +546,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     lookup_data = self._index_lookup_layer(inputs)
     if self._output_mode == INT:
 
-      # Trim the output (magic of None slicing)
+      # Maybe trim the output (NOOP if self._output_sequence_length is None).
       output_tensor = lookup_data[..., :self._output_sequence_length]
 
       output_shape = output_tensor.shape.as_list()
@@ -559,9 +558,9 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
       if self._output_sequence_length is None:
         return output_tensor
-      else:
-        padding, _ = array_ops.required_space_to_batch_paddings(
-          output_tensor.shape, output_shape)
-        return array_ops.pad(output_tensor, padding)
+
+      padding, _ = array_ops.required_space_to_batch_paddings(
+        output_tensor.shape, output_shape)
+      return array_ops.pad(output_tensor, padding)
 
     return lookup_data
