@@ -1022,6 +1022,7 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
+        "relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",
