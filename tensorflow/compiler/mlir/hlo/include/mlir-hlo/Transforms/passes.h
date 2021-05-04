@@ -32,6 +32,8 @@ std::unique_ptr<FunctionPass> createBufferReusePass();
 /// Creates a pass that tries to simplify dynamic reshapes.
 std::unique_ptr<FunctionPass> createReshapeSimplifierPass();
 
+std::unique_ptr<FunctionPass> createBufferPackingPass();
+
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<FunctionPass> createTestUserangePass();
 

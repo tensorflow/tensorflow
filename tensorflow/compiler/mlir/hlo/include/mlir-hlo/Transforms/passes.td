@@ -44,6 +44,12 @@ def CopyRemoval : FunctionPass<"copy-removal"> {
   let constructor = "createCopyRemovalPass()";
 }
 
+def BufferPacking : FunctionPass<"buffer-packing"> {
+  let summary = "";
+  let description = [{ }];
+  let constructor = "createBufferPackingPass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";
