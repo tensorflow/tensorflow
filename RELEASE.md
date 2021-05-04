@@ -40,8 +40,6 @@
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
-    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
-        creation of custom wrapper objects for resource tensors.
     *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
         generic mutable hash table implementation.
         *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
@@ -51,6 +49,13 @@
    *    Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+   *   SavedModel
+        *   Added `tf.saved_model.experimental.TrackableResource`, which allows
+            the creation of custom wrapper objects for resource tensors.
+        *   Added a SavedModel load option to allow restoring partial
+            checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
+  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
+            for details.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
