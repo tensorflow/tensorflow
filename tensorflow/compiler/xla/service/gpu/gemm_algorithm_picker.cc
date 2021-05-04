@@ -131,12 +131,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                        /*implements_whole_instruction=*/true,
-                        /*profile_index=*/-1,
-                        /*profiler=*/nullptr,
-                        /*profile_result=*/&profile_result, algorithm);
-    CHECK(st.ok()) << st.ToString();
+    CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                  /*implements_whole_instruction=*/true,
+                  /*profile_index=*/-1,
+                  /*profiler=*/nullptr,
+                  /*profile_result=*/&profile_result, algorithm)
+              .ok());
 
     if (!profile_result.is_valid()) {
       // Unsupported algorithm.
