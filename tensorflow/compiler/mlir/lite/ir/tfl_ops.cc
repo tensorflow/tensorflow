@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -1080,8 +1081,15 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   return true;
 }
 
-// TODO(b/186119062): Implement this.
-int64_t Conv2DOp::GetArithmeticCount(Operation *op) { return -1; }
+int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count)) {
+    return count;
+  }
+
+  return -1;
+}
 
 //===----------------------------------------------------------------------===//
 // DepthwiseConv2DO

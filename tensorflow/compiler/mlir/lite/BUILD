@@ -252,6 +252,7 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
+        ":cost_estimators",
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_structs_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -288,6 +289,19 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+    ],
+)
+
+cc_library(
+    name = "cost_estimators",
+    hdrs = [
+        "utils/arithmetic_count_util.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -508,6 +522,7 @@ cc_library(
     ],
     deps = [
         ":constant_utils",
+        ":cost_estimators",
         ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",

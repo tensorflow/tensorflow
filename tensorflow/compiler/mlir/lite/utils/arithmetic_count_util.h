@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ARITHMETIC_COUNT_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ARITHMETIC_COUNT_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ARITHMETIC_COUNT_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ARITHMETIC_COUNT_UTIL_H_
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+
+namespace mlir {
+namespace TFL {
 
 // For add/mul/div/sub and other broadcastable ops.
 class ArithmeticCountUtilHelper {
@@ -66,14 +69,14 @@ class ArithmeticCountUtilHelper {
     }
     const int64_t cost_per_col = 2 * weight_type.getNumElements();
 
-    *count = 2 * cost_per_col * cols;
+    *count = cost_per_col * cols;
 
     auto bias = op->getOperand(2);
     if (bias) {
       auto bias_type =
           bias.getType().dyn_cast_or_null<mlir::RankedTensorType>();
       if (bias_type && bias_type.hasStaticShape()) {
-        *count += bias_type.getNumElements();
+        *count += output_type.getNumElements();
       }
     }
 
@@ -81,4 +84,7 @@ class ArithmeticCountUtilHelper {
   }
 };
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ARITHMETIC_COUNT_UTIL_H_
+}  // namespace TFL
+}  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ARITHMETIC_COUNT_UTIL_H_
