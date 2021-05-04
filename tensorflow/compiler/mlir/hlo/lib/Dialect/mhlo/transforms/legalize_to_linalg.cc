@@ -953,7 +953,9 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
       return success();
     }
 
-    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    auto result_type =
+        this->typeConverter->convertType(op.getResult().getType())
+            .dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
