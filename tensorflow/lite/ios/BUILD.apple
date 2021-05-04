@@ -84,6 +84,7 @@ strip_common_include_path_prefix(
     name = "strip_common_include_path_core",
     hdr_labels = [
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_experimental.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
     ],
@@ -103,6 +104,7 @@ tflite_ios_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [
         ":c_api.h",
+        ":c_api_experimental.h",
         ":common.h",
         ":xnnpack_delegate.h",
         "//tensorflow/lite/c:c_api_types.h",
@@ -121,6 +123,7 @@ ios_static_framework(
     name = "TensorFlowLiteC_static_framework",
     hdrs = [
         ":c_api.h",
+        ":c_api_experimental.h",
         ":common.h",
         ":xnnpack_delegate.h",
         "//tensorflow/lite/c:c_api_types.h",
@@ -193,6 +196,7 @@ cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_experimental.h",
         "//tensorflow/lite/c:c_api_types.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
@@ -203,6 +207,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
