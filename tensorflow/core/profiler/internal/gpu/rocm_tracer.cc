@@ -401,12 +401,6 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         this->AddNormalMemcpyEventUponApiExit(cbid, data, enter_time, exit_time);
         tracer_->AddToPendingActivityRecords(data->correlation_id);
         break;
-      case HIP_API_ID_hipMemcpyPeer:       // TODO(reza): recently added *
-      case HIP_API_ID_hipMemcpyPeerAsync:  // TODO(reza): recently added *
-        // AddMemcpyPeerEventUponApiExit(cbid, data, enter_time, exit_time);
-        // tracer_->AddToPendingActivityRecords(data->correlation_id);
-        
-        break;
       case HIP_API_ID_hipMemset:       // TODO(reza): recently added
       case HIP_API_ID_hipMemsetAsync:  // TODO(reza): recently added
       case HIP_API_ID_hipMemsetD32:
@@ -939,15 +933,6 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddNormalHipMemcpyActivityEvent(record);
             break;
-          case HIP_API_ID_hipMemcpyPeer:       // TODO(reza): recently added *
-          case HIP_API_ID_hipMemcpyPeerAsync:  // TODO(reza): recently added *
-            // TODO(rocm-profiler): check if we have unit test for P2P copy
-            // AddNormalHipMemcpyActivityEvent(record);
-            // MemcpyPeer does not have a HIP-OPS activity!
-            // we add it here instead.
-            // tracer_->RemoveFromPendingActivityRecords(record->correlation_id);
-            break;
-
           case HIP_API_ID_hipMemset:       // TODO(reza): recently added
           case HIP_API_ID_hipMemsetAsync:  // TODO(reza): recently added
           case HIP_API_ID_hipMemsetD32:
