@@ -130,6 +130,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing/benchmarks:feature_column_benchmark",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
+    "//tensorflow/python/keras/distribute:dataset_creator_model_fit_test_base",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",

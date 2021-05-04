@@ -1352,8 +1352,17 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
+
+      def wrapped_dataset_fn(input_context):
+        # TODO(b/186692679): Currently we need to remove the device scope
+        # imposed in `distribute_datasets_from_function` lib so that any
+        # `StaticHashTable` is placed on the coordinator. Remove this workaround
+        # once resolved.
+        with ops.device_v2(None):
+          return x(input_context)
+
       return strategy.distribute_datasets_from_function(
-          x, options=x.input_options)
+          wrapped_dataset_fn, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
