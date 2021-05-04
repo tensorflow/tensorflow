@@ -58,7 +58,7 @@ namespace {
 // Becomes:
 // scf.for %i = %c0 to %c10 step %c2
 //   %a = %c2
-// scf.for %i = %c10 to %c11 step %c2
+// scf.if %one_more_iter
 //   %a = affine.min(2, %c11-%i)
 //
 // This is possible because we can determine that the min will always be 2
@@ -155,20 +155,26 @@ void SplitSCFForOp(scf::ForOp scf_for) {
       min_op->replaceAllUsesWith(llvm::makeArrayRef(scf_for.step()));
   });
 
-  // Tail loop
-  // TODO(TPOPP): Remove AffineMinOps and if/else statements because this only
-  // executes if the result is less than the step size. This is for simpler
-  // code rather than appreciable performance improvements with any large
-  // inputs.
+  // Peeled loop iteration (or nothing if perfectly aligned data and step sizes)
   BlockAndValueMapping tail_mapper;
-  tail_mapper.map(scf_for.initArgs(), new_loop.results());
-  auto tail_loop = llvm::cast<scf::ForOp>(b.clone(*scf_for, tail_mapper));
-  tail_loop.setLowerBound(split_point);
+  tail_mapper.map(scf_for.getRegionIterArgs(), new_loop.results());
+  tail_mapper.map(scf_for.getInductionVar(), split_point);
+  auto tail_if = b.create<scf::IfOp>(
+      scf_for.getResultTypes(),
+      b.create<CmpIOp>(CmpIPredicate::ult, split_point, scf_for.upperBound()),
+      [&](OpBuilder &then_b, Location loc) {
+        for (auto &op : *scf_for.getBody()) {
+          then_b.clone(op, tail_mapper);
+        }
+      }, scf_for->getNumResults() ?
+      [&](OpBuilder &else_b, Location loc) {
+        else_b.clone(scf_for.getBody()->back(), tail_mapper);
+      } : static_cast<function_ref<void(OpBuilder &, Location)>>(nullptr));
 
-  tail_loop->walk([&](AffineMinOp min_op) {
+  tail_if->walk([&](AffineMinOp min_op) {
     SmallVector<AffineExpr> exprs;
 
-    if (!is_op_of_interest(min_op, tail_loop.getInductionVar())) return;
+    if (!is_op_of_interest(min_op, split_point)) return;
 
     ImplicitLocOpBuilder::InsertionGuard g(b);
     b.setInsertionPoint(min_op);
@@ -232,7 +238,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
     min_op->replaceAllUsesWith(llvm::makeArrayRef(new_min));
   });
 
-  scf_for->replaceAllUsesWith(tail_loop.results());
+  scf_for->replaceAllUsesWith(tail_if.results());
   scf_for.erase();
 }
 

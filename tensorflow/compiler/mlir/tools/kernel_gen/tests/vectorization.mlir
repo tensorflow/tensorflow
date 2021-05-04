@@ -25,9 +25,10 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:        %[[ABS0:.*]] = absf %[[FULL_TILE]] : vector<4xf64>
 // CHECK-NEXT:        vector.transfer_write %[[ABS0]], %[[OUTPUT_FULL_TILE]]{{\[}}%[[C0]]] {in_bounds = [true]} : vector<4xf64>, memref<4xf64, #map0>
 // CHECK-NEXT:      }
-// CHECK-NEXT:      scf.for %[[IV_LAST:.*]] = %[[SPLIT_POINT]] to %[[SIZE]] step %[[C4]] {
-// CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.min #map1(%[[IV_LAST]]){{\[}}%[[SIZE]]]
-// CHECK-NEXT:        %[[SUBVIEW:.*]] = memref.subview %[[BUF]]{{\[}}%[[IV_LAST]]] {{\[}}%[[TILE_SIZE]]] [1] : memref<?xf64> to memref<?xf64, #map0>
+// CHECK-NEXT:      %[[LAST_ITER:.*]] = cmpi ult, %[[SPLIT_POINT]], %[[SIZE]] : index
+// CHECK-NEXT:      scf.if %[[LAST_ITER]] {
+// CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.min #map1(){{\[}}%[[SIZE]], %[[SPLIT_POINT]]]
+// CHECK-NEXT:        %[[SUBVIEW:.*]] = memref.subview %[[BUF]]{{\[}}%[[SPLIT_POINT]]] {{\[}}%[[TILE_SIZE]]] [1] : memref<?xf64> to memref<?xf64, #map0>
 // CHECK-NEXT:        %[[VAL_20:.*]] = vector.transfer_read %[[SUBVIEW]]{{\[}}%[[C0]]], %[[CF0]] : memref<?xf64, #map0>, vector<4xf64>
 // CHECK-NEXT:        %[[VAL_21:.*]] = vector.type_cast %[[FULL_BUF]] : memref<4xf64> to memref<vector<4xf64>>
 // CHECK-NEXT:        memref.store %[[VAL_20]], %[[VAL_21]][] : memref<vector<4xf64>>
