@@ -2946,7 +2946,11 @@ name=None))
 
     return _UniqueDataset(self)
 
-  def rejection_resample(self, class_func, target_dist, initial_dist=None, seed=None):
+  def rejection_resample(self,
+                         class_func,
+                         target_dist,
+                         initial_dist=None,
+                         seed=None):
     """A transformation that resamples a dataset to achieve a target distribution.
 
     **NOTE** Resampling is performed via rejection sampling; some fraction
