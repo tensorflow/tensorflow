@@ -241,23 +241,6 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(apply_autotune=[None, True, False])))
-  def testOptimizationGraduatedExperiments(self, apply_autotune):
-    dataset = dataset_ops.Dataset.range(6)
-    dataset = dataset.apply(
-        testing.assert_next(
-            ["MaxIntraOpParallelism", "PrivateThreadPool"]))
-
-    if apply_autotune is not None:
-      options = dataset_ops.Options()
-      options.experimental_optimization.autotune = apply_autotune
-      dataset = dataset.with_options(options)
-
-    self.assertDatasetProduces(dataset, expected_output=list(range(6)))
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
           combinations.combine(autotune=False, autotune_buffers=False) +
           combinations.combine(autotune=True, autotune_buffers=False) +
           combinations.combine(autotune=True, autotune_buffers=True),

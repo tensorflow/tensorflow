@@ -270,6 +270,8 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   std::vector<std::string> optimization_configs;
   CreateGraphRewriteConfigs(options, &optimization_configs);
+  // Disable `enable_gradient_descent` as it assumes presence of ModelDatasetOp.
+  optimizations_disabled.push_back("enable_gradient_descent");
   auto optimizations = ConfigureExperimentsAndSelectOptimizations(
       optimizations_enabled, optimizations_disabled, optimizations_default);
 
