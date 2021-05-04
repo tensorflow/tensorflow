@@ -594,6 +594,7 @@ tf_kernel_library(
         "optional_ops.cu.cc",
         "optional_ops.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
