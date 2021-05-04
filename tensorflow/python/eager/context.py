@@ -78,6 +78,26 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+
+
+def enable_run_eager_op_as_function():
+  """Execute elementary eager ops (non-function) wrapped in a call op.
+
+  This should be functionally equivalent to running the eager op's kernel
+  directly (the default) but reduces the number of codepaths for executing
+  TF2 programs in the runtime, thereby improving consistency (in terms of
+  optimizations and rewrites for instance) and maintainability.
+  """
+  # Must be called before context is actually built.
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+
+
+def run_eager_op_as_function_enabled():
+  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
 # Expose it as internally public APIs for Keras use cases in b/171080602.
 tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
 
@@ -420,6 +440,8 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._use_tfrt_distributed_runtime = None
+    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -522,6 +544,13 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        # pylint: disable=g-backslash-continuation
+        if self._use_tfrt is not None and \
+            self._use_tfrt_distributed_runtime is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
+              opts, self._use_tfrt_distributed_runtime)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
+            opts, self._run_eager_op_as_function)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -663,14 +692,9 @@ class Context(object):
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels.
-
-    Raises:
-      ValueError: if context is not initialized.
     """
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
-    else:
-      raise ValueError("Context is not initialized.")
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -1725,6 +1749,28 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
+
+  @property
+  def use_tfrt_distributed_runtime(self):
+    return self._use_tfrt_distributed_runtime
+
+  @use_tfrt_distributed_runtime.setter
+  def use_tfrt_distributed_runtime(self, enable):
+    """Sets whether to use TFRT distributed runtime.
+
+    This is only effective when use_tfrt is also true. Note that currently TFRT
+    distributed runtime is not function complete and this config is for testing
+    only.
+    Args:
+      enable: A boolean to set whether to use TFRT distributed runtime.
+    """
+    if not isinstance(enable, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(enable))
+
+    if self._use_tfrt_distributed_runtime != enable:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt_distributed_runtime = enable
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.

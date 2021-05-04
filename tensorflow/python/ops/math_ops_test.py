@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -596,19 +597,31 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class DivNoNanTest(test_util.TensorFlowTestCase):
+class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def testBasic(self):
-    for dtype in [np.float32, np.float64]:
-      nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
-      divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def testBasic(self, dtype):
+    nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
+    divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
 
-      np_result = np.true_divide(nums, divs)
-      np_result[:, divs[0] == 0] = 0
+    np_result = np.true_divide(nums, divs)
+    np_result[:, divs[0] == 0] = 0
 
-      with test_util.use_gpu():
-        tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllClose(tf_result, np_result)
+    with test_util.use_gpu():
+      tf_result = math_ops.div_no_nan(nums, divs)
+      self.assertAllClose(tf_result, np_result)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def testSmall(self, dtype):
+    # Choose values whose squared magnitude underflows to zero/subnormal.
+    zero = constant_op.constant([0, 0, 0, 0], dtype=dtype)
+    divs = constant_op.constant([1e-25, -1e-20, 1e-165, -1e-160], dtype=dtype)
+    tf_result = math_ops.div_no_nan(zero, divs)
+
+    # Results should always be exactly zero.
+    self.assertAllEqual(tf_result, zero)
 
 
 @test_util.run_all_in_graph_and_eager_modes

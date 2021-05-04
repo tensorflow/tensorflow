@@ -44,6 +44,7 @@ from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util.tf_export import keras_export
 
+# Required to support google internal urlretrieve
 if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):

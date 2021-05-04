@@ -24,13 +24,23 @@ import textwrap
 
 import gast
 
+from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
 class LoaderTest(test.TestCase):
+
+  def assertAstMatches(self, actual_node, expected_node_src):
+    expected_node = gast.parse(expected_node_src).body[0]
+
+    msg = 'AST did not match expected:\n{}\nActual:\n{}'.format(
+        pretty_printer.fmt(expected_node),
+        pretty_printer.fmt(actual_node))
+    self.assertTrue(ast_util.matches(actual_node, expected_node), msg)
 
   def test_parse_load_identity(self):
 
@@ -43,11 +53,11 @@ class LoaderTest(test.TestCase):
 
     node, _ = parser.parse_entity(test_fn, future_features=())
     module, _, _ = loader.load_ast(node)
+    source = tf_inspect.getsource(module.test_fn)
+    expected_node_src = textwrap.dedent(tf_inspect.getsource(test_fn))
 
-    # astunparse uses fixed 4-space indenting.
-    self.assertEqual(
-        textwrap.dedent(tf_inspect.getsource(test_fn)),
-        tf_inspect.getsource(module.test_fn).replace('    ', '  '))
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
 
   def test_load_ast(self):
     node = gast.FunctionDef(
@@ -80,19 +90,19 @@ class LoaderTest(test.TestCase):
 
     module, source, _ = loader.load_ast(node)
 
-    expected_source = """
+    expected_node_src = """
       # coding=utf-8
       def f(a):
           return (a + 1)
     """
-    self.assertEqual(
-        textwrap.dedent(expected_source).strip(),
-        source.strip())
+    expected_node_src = textwrap.dedent(expected_node_src)
+
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+
     self.assertEqual(2, module.f(1))
     with open(module.__file__, 'r') as temp_output:
-      self.assertEqual(
-          textwrap.dedent(expected_source).strip(),
-          temp_output.read().strip())
+      self.assertAstMatches(node, temp_output.read())
 
   def test_load_source(self):
     test_source = textwrap.dedent(u"""

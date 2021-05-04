@@ -3631,7 +3631,7 @@ def get(identifier):
   <class 'function'>
   >>> metric = tf.keras.metrics.get("CategoricalCrossentropy")
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   You can also specify `config` of the metric to this function by passing dict
   containing `class_name` and `config` as an identifier. Also note that the
@@ -3641,7 +3641,7 @@ def get(identifier):
   ...               "config": {"from_logits": True}}
   >>> metric = tf.keras.metrics.get(identifier)
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   Args:
     identifier: A metric identifier. One of None or string name of a metric

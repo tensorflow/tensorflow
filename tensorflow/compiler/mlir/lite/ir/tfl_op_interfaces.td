@@ -107,4 +107,20 @@ def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// TFL arithmetic count interface.
+
+def TFL_ArithmeticCount : OpInterface<"TflArithmeticCountOpInterface"> {
+  let description = [{
+    Interface for TFLite ops to calculate arithmetic count (Multiply-Add Count).
+  }];
+
+  let methods = [
+    StaticInterfaceMethod<
+      [{Returns an integer representing the op's arithmetic count (Multiply-Add
+      Count), return -1 if the arithmetic count cannot be determined.}],
+       "int64_t", "GetArithmeticCount", (ins "Operation*":$op)
+    >,
+  ];
+}
 #endif // TFL_OP_INTERFACES

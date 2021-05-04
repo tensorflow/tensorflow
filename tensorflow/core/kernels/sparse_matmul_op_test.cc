@@ -317,6 +317,9 @@ class SparseMatmulOpTest : public ::testing::Test {
   // bfloat16 representation of data3
   EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize];
   EIGEN_ALIGN_MAX float ref[kMaxPacketSize];
+
+ public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
 TEST_F(SparseMatmulOpTest, BroadcastPacketTest) {

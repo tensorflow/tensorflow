@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -28,8 +29,51 @@ template <typename Key, typename Value,
           typename Hash = typename absl::node_hash_map<Key, Value>::hasher,
           typename Eq = typename absl::node_hash_map<Key, Value>::key_equal>
 class LRUCache {
+ private:
+  struct LRUListEntry {
+    LRUListEntry* next;
+    LRUListEntry* prev;
+  };
+
  public:
-  explicit LRUCache(int capacity);
+  // Multiple LRUCaches can share a LRU list, meaning that the capacity and
+  // eviction policy is shared. The user provides an LRU list
+  // to the cache constructor, and must ensure that it remains alive as long
+  // as the cache does.
+  class LRUList {
+   public:
+    explicit LRUList(int capacity) : capacity_(capacity) {
+      head_.next = &head_;
+      head_.prev = &head_;
+    }
+    ~LRUList() {
+      CHECK(head_.next == &head_);
+      CHECK(head_.prev == &head_);
+    }
+
+    LRUList(const LRUList&) = delete;
+    LRUList(LRUList&&) = delete;
+    LRUList& operator=(const LRUList&) = delete;
+    LRUList& operator=(LRUList&&) = delete;
+
+    int Capacity() const { return capacity_; }
+    int Size() const { return size_; }
+
+    void Clear();
+
+   private:
+    friend class LRUCache;
+    int capacity_;
+    int size_ = 0;
+
+    // Root of a circular doubly-linked list of entries, in order from least
+    // recently used to most recently used. An "empty" cache always contains
+    // this element in the LRU list.
+    LRUListEntry head_;
+  };
+
+  explicit LRUCache(LRUList* lru_list) : lru_list_(lru_list) {}
+  ~LRUCache();
 
   LRUCache(const LRUCache&) = delete;
   LRUCache(LRUCache&&) = delete;
@@ -45,25 +89,20 @@ class LRUCache {
   void Clear();
 
   int Size() const { return entries_.size(); }
-  int Capacity() const { return capacity_; }
+  int Capacity() const { return lru_list_->Capacity(); }
 
  private:
-  const int capacity_;
+  LRUList* lru_list_;
 
-  struct Entry {
+  struct Entry : public LRUListEntry {
     Entry() = default;
 
     // Pointer to the key in `entries_`. absl::node_hash_map<> promises
     // pointer stability for keys.
     const Key* key;
+    LRUCache* container;
     absl::optional<Value> value;
-    Entry* next;  // Circular list; never nullptr.
-    Entry* prev;  // Circular list; ever nullptr.
   };
-  // Root of a circular doubly-linked list of entries, in order from least
-  // recently used to most recently used. An "empty" cache always contains
-  // this element in the LRU list.
-  Entry lru_root_;
 
   // We use `node_hash_map` because we want to guarantee pointer stability for
   // keys and values.
@@ -71,16 +110,27 @@ class LRUCache {
 };
 
 template <typename Key, typename Value, typename Hash, typename Eq>
-LRUCache<Key, Value, Hash, Eq>::LRUCache(int capacity) : capacity_(capacity) {
-  lru_root_.next = &lru_root_;
-  lru_root_.prev = &lru_root_;
+void LRUCache<Key, Value, Hash, Eq>::LRUList::Clear() {
+  while (head_.next != &head_) {
+    static_cast<Entry*>(head_.next)->container->Clear();
+  }
+  size_ = 0;
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
 void LRUCache<Key, Value, Hash, Eq>::Clear() {
+  for (auto& e : entries_) {
+    LRUListEntry* l = &e.second;
+    l->next->prev = l->prev;
+    l->prev->next = l->next;
+    --lru_list_->size_;
+  }
   entries_.clear();
-  lru_root_.next = &lru_root_;
-  lru_root_.prev = &lru_root_;
+}
+
+template <typename Key, typename Value, typename Hash, typename Eq>
+LRUCache<Key, Value, Hash, Eq>::~LRUCache() {
+  Clear();
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
@@ -93,6 +143,7 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   if (inserted) {
     entry.key = &it->first;
     entry.value = factory(*entry.key);
+    ++lru_list_->size_;
   } else {
     // Removes the entry from the LRU list, in preparation for adding it
     // to the back of the list.
@@ -101,19 +152,22 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   }
   // (Re-)adds entry to the back of the LRU list. Since it is now the
   // most recently used element, it goes at the back.
-  entry.prev = lru_root_.prev;
-  entry.next = &lru_root_;
-  lru_root_.prev->next = &entry;
-  lru_root_.prev = &entry;
+  LRUListEntry& lru_head = lru_list_->head_;
+  entry.container = this;
+  entry.prev = lru_head.prev;
+  entry.next = &lru_head;
+  lru_head.prev->next = &entry;
+  lru_head.prev = &entry;
 
   Value v = *entry.value;
 
-  // Evicts an entry if we are over capacity.
-  if (entries_.size() > capacity_) {
-    Entry* to_remove = lru_root_.next;
-    to_remove->next->prev = &lru_root_;
-    lru_root_.next = to_remove->next;
-    entries_.erase(*to_remove->key);
+  // Evict an LRU entry if we are over capacity.
+  if (lru_list_->size_ > lru_list_->capacity_) {
+    Entry* to_remove = static_cast<Entry*>(lru_head.next);
+    to_remove->next->prev = &lru_head;
+    lru_head.next = to_remove->next;
+    to_remove->container->entries_.erase(*to_remove->key);
+    --lru_list_->size_;
   }
   return v;
 }

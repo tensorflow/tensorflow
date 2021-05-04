@@ -181,7 +181,7 @@ void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
   for (int i = 0; i < num_dims; ++i) {
     shape.AddDim(tensor->dims->data[i]);
   }
-  // TODO(ahentz): we assume this is a new tensor and allocate a new buffer
+  // TODO(b/152916533): We assume this is a new tensor and allocate a new buffer
   // for it. This is not always the best approach. For example, this might
   // be a reallocation after resizing tensors. In that case it would be
   // preferable to somehow reuse the buffer.

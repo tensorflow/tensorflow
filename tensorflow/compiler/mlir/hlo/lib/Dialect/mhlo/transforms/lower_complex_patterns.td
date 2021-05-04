@@ -87,3 +87,11 @@ def : Pat<(HLO_ExpOp HLO_ComplexTensor:$val),
             (HLO_CosOp (HLO_ImagOp:$imag $val)),
             (HLO_ExpOp:$exp (HLO_RealOp:$real $val))),
            (HLO_MulOp (HLO_SinOp $imag), $exp))>;
+
+foreach pair = [[HLO_COMPARISON_DIRECTION_NE, HLO_OrOp],
+                [HLO_COMPARISON_DIRECTION_EQ, HLO_AndOp]] in {
+  def : Pat<(HLO_CompareOp HLO_ComplexTensor:$lhs, HLO_ComplexTensor:$rhs, pair[0], $compare_type),
+            (pair[1]
+             (HLO_CompareOp (HLO_RealOp $lhs), (HLO_RealOp $rhs), pair[0], $compare_type),
+             (HLO_CompareOp (HLO_ImagOp $lhs), (HLO_ImagOp $rhs), pair[0], $compare_type))>;
+}

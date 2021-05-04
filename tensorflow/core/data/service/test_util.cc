@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_util.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 

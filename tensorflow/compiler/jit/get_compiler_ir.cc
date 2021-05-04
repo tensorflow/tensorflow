@@ -97,7 +97,8 @@ xla::StatusOr<std::string> GetCompilerIr(
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<XlaCompilationCache>(
       rmgr->default_container(), "xla_cache", &cache,
       [&](XlaCompilationCache** cache_write_into) {
-        return BuildXlaCompilationCache(dev, platform_info, cache_write_into);
+        return BuildXlaCompilationCache(dev, flr, platform_info,
+                                        cache_write_into);
       }));
   core::ScopedUnref cache_ref(cache);
 

@@ -70,6 +70,7 @@ class PyBuffer {
 
   std::shared_ptr<PyClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
+  std::shared_ptr<PjRtBuffer> shared_ptr_buffer() const { return buffer_; }
 
   ClientAndPtr<PjRtDevice> device() const;
   absl::string_view platform_name() const {

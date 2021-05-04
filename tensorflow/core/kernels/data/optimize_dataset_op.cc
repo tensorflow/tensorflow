@@ -19,10 +19,10 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include <map>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -47,68 +47,6 @@ namespace data {
 /* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV2;
 
 namespace {
-
-constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
-constexpr char kOptimizers[] = "optimizers";
-constexpr char kOptimizerConfigs[] = "optimizer_configs";
-
-// A wrapper around `SelectOptimizations` responsible for configuring which
-// tf.data experiments to apply.
-std::vector<tstring> SelectOptimizationsHelper(
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default) {
-  string job_name = port::JobName();
-  // The map that stores the live experiment names and for how much percentage
-  // of the Borg jobs, the experiments will be randomly turned on.
-  // clang-format off
-  absl::flat_hash_map<string, uint64> live_experiments = {
-    {"enable_gradient_descent", 0}
-  };
-  // clang-format on
-  auto hash_func = [](const string& str) { return Hash64(str); };
-  auto optimizations = SelectOptimizations(
-      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
-      optimizations_default, hash_func);
-
-  // Log and record the live experiments that will be applied.
-  if (!job_name.empty() && !live_experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiment. "
-               "Please see `go/tf-data-experiments` for more details.";
-
-    for (auto& pair : live_experiments) {
-      string experiment = pair.first;
-      if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
-          optimizations.end()) {
-        VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
-        metrics::RecordTFDataExperiment(experiment);
-      }
-    }
-  }
-  return optimizations;
-}
-
-RewriterConfig CreateConfig(const std::vector<tstring>& optimizations,
-                            const std::vector<string>& optimizations_configs) {
-  RewriterConfig rewriter_config;
-  rewriter_config.add_optimizers(kOptimizerName);
-  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
-  rewriter_config.set_fail_on_optimizer_errors(true);
-  auto custom_optimizer = rewriter_config.add_custom_optimizers();
-  custom_optimizer->set_name(kOptimizerName);
-  auto* custom_optimizations_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
-  for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt.data(), opt.size());
-  }
-  auto* config_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
-          .mutable_list();
-  for (const auto& config : optimizations_configs) {
-    config_list->add_s(config.data(), config.size());
-  }
-  return rewriter_config;
-}
 
 // Applies given optimizations and optimizatin_config in dataset graph rewrite
 // to return the OptimizeDataset.
@@ -142,7 +80,7 @@ void MakeDatasetHelper(OpKernelContext* ctx,
   }
 
   auto config_factory = [&optimizations, &optimization_configs]() {
-    return CreateConfig(optimizations, optimization_configs);
+    return CreateRewriterConfig(optimizations, optimization_configs);
   };
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
                             /*record_fingerprint=*/true, output);
@@ -167,8 +105,9 @@ void OptimizeDatasetOp::MakeDatasetFromOptions(
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     const std::vector<string>& optimization_configs, DatasetBase** output) {
-  std::vector<tstring> optimizations = SelectOptimizationsHelper(
-      optimizations_enabled, optimizations_disabled, optimizations_default);
+  std::vector<tstring> optimizations =
+      ConfigureExperimentsAndSelectOptimizations(
+          optimizations_enabled, optimizations_disabled, optimizations_default);
   MakeDatasetHelper(ctx, optimizations, optimization_configs, input, output);
 }
 
@@ -200,7 +139,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                 &optimizations_disabled));
     OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
                                                      &optimizations_default));
-    optimizations = SelectOptimizationsHelper(
+    optimizations = ConfigureExperimentsAndSelectOptimizations(
         optimizations_enabled, optimizations_disabled, optimizations_default);
   }
 

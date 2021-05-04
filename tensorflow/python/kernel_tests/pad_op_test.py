@@ -32,6 +32,13 @@ from tensorflow.python.platform import test
 
 class PadOpTest(test.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    # Create mapping between TensorFlow quantized types and numpy types.
+    self._quint8 = np.dtype([("quint8", np.uint8)])
+    self._qint8 = np.dtype([("qint8", np.int8)])
+    self._qint32 = np.dtype([("qint32", np.int32)])
+
   def _npPad(self, inp, paddings, mode, constant_values=0):
     mode = mode.lower()
     if mode == "constant":
@@ -87,13 +94,18 @@ class PadOpTest(test.TestCase):
   def _testPad(self, np_inputs, paddings, mode, constant_values):
     np_val = self._npPad(np_inputs, paddings, mode=mode,
                          constant_values=constant_values)
+    for use_gpu in [True, False]:
+      with test_util.device(use_gpu=use_gpu):
+        tf_val = array_ops.pad(np_inputs, paddings, mode=mode,
+                               constant_values=constant_values)
+        out = self.evaluate(tf_val)
 
-    with test_util.use_gpu():
-      tf_val = array_ops.pad(np_inputs, paddings, mode=mode,
-                             constant_values=constant_values)
-      out = self.evaluate(tf_val)
-    self.assertAllEqual(np_val, out)
-    self.assertShapeEqual(np_val, tf_val)
+        if np_inputs.dtype in [self._qint8, self._quint8, self._qint32]:
+          # Cast quantized types back to their numpy equivalents.
+          np_val = np_val.astype(np_inputs.dtype[0])
+
+      self.assertAllEqual(np_val, out)
+      self.assertShapeEqual(np_val, tf_val)
 
   def _testGradient(self,
                     x,
@@ -245,6 +257,16 @@ class PadOpTest(test.TestCase):
                 mode=mode,
                 constant_values=0,
                 paddings_dtype=paddings_dtype)
+
+  def testQuantizedTypes(self):
+    for t in [self._qint8, self._quint8, self._qint32]:
+      self._testAll(
+          np.random.randint(-100, 100, (4, 4, 3)).astype(t),
+          [[1, 0], [2, 3], [0, 2]], 0)
+      self._testAll(
+          np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
+          [[0, 0], [0, 0], [0, 0], [0, 0]],
+          np.array(123).astype(t))
 
   def testIntTypes(self):
     # TODO(touts): Figure out why the padding tests do not work on GPU

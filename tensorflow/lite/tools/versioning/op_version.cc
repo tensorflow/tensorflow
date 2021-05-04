@@ -497,6 +497,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ADD:
+      if (!op_sig.input_types.empty() &&
+          op_sig.input_types.at(0) == TensorType_INT64) {
+        return 4;
+      }
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.output_types.at(0) == TensorType_INT16) {
         if (!op_sig.options.addsub.pot_scale_int16) {

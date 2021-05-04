@@ -184,15 +184,23 @@ class LayoutConstraints {
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
+  //
+  // If `allow_alias` is false, the function will check that all output buffers
+  // are defined by `instruction`, not aliased to an instruction elsewhere.
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction,
-                              bool mandatory = true, bool dfs = true);
+                              bool mandatory = true, bool dfs = true,
+                              bool allow_alias = false);
 
   // Returns true if any buffer in the given operand is forwarded to the output
   // of the given instruction. For example, the Tuple instruction forwards the
   // buffers of its operands and would return true for each of its operands.
-  bool OperandBufferForwarded(const HloInstruction* instruction,
-                              int64 operand_no) const;
+  bool AnyOperandBufferForwarded(const HloInstruction* instruction,
+                                 int64 operand_no) const;
+  // Similar to above, but returns true only if all buffers associated with that
+  // operand are forwarded.
+  bool AllOperandBuffersForwarded(const HloInstruction* instruction,
+                                  int64 operand_no) const;
 
   // Returns the set of logical buffers (by LogicalBuffer:Id) which do not
   // yet have a layout constraint

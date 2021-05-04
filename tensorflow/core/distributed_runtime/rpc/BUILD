@@ -104,10 +104,22 @@ cc_library(
 )
 
 cc_library(
+    name = "grpc_channel_common",
+    hdrs = ["grpc_channel_common.h"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "grpc_channel",
     srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
     deps = [
+        ":grpc_channel_common",
         ":grpc_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -35,10 +35,12 @@ namespace ops {
 //   given row.
 //
 //   Inputs are the logits, not probabilities.
-Status SparseSoftmaxCrossEntropyWithLogits(
-    AbstractContext* ctx, AbstractTensorHandle* const features,
-    AbstractTensorHandle* const labels,
-    absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx,
+                                           AbstractTensorHandle* const features,
+                                           AbstractTensorHandle* const labels,
+                                           AbstractTensorHandle** loss,
+                                           AbstractTensorHandle** backprop,
+                                           const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits",
                                    /*raw_device_name=*/nullptr));
@@ -46,7 +48,11 @@ Status SparseSoftmaxCrossEntropyWithLogits(
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
   int num_retvals = 2;
-  return op_ptr->Execute(outputs, &num_retvals);
+  AbstractTensorHandle* temp_outputs[2];
+  Status status = op_ptr->Execute(temp_outputs, &num_retvals);
+  *loss = temp_outputs[0];
+  *backprop = temp_outputs[1];
+  return status;
 }
 
 // Op: ReluGrad()
@@ -55,14 +61,14 @@ Status SparseSoftmaxCrossEntropyWithLogits(
 // Description:
 Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
                 AbstractTensorHandle* const features,
-                absl::Span<AbstractTensorHandle*> backprops, const char* name) {
+                AbstractTensorHandle** backprops, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("ReluGrad", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(gradients));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   int num_retvals = 1;
-  return op_ptr->Execute(backprops, &num_retvals);
+  return op_ptr->Execute(absl::MakeSpan(backprops, 1), &num_retvals);
 }
 
 // Op: Relu()
@@ -74,13 +80,13 @@ Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
 //   >>> tf.nn.relu([-2., 0., 3.]).numpy()
 //   array([0., 0., 3.], dtype=float32)
 Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
-            absl::Span<AbstractTensorHandle*> activations, const char* name) {
+            AbstractTensorHandle** activations, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Relu", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   int num_retvals = 1;
-  return op_ptr->Execute(activations, &num_retvals);
+  return op_ptr->Execute(absl::MakeSpan(activations, 1), &num_retvals);
 }
 
 // Op: BiasAdd()
@@ -90,9 +96,8 @@ Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
 //   This is a special case of `tf.add` where `bias` is restricted to be 1-D.
 //   Broadcasting is supported, so `value` may have any number of dimensions.
 Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
-               AbstractTensorHandle* const bias,
-               absl::Span<AbstractTensorHandle*> output, const char* name,
-               const char* data_format) {
+               AbstractTensorHandle* const bias, AbstractTensorHandle** output,
+               const char* name, const char* data_format) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAdd", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -101,7 +106,7 @@ Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("data_format", data_format, strlen(data_format)));
   int num_retvals = 1;
-  return op_ptr->Execute(output, &num_retvals);
+  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
 }
 
 // Op: BiasAddGrad()
@@ -113,7 +118,7 @@ Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
 //   format, the feature dimension is the third-to-last.
 Status BiasAddGrad(AbstractContext* ctx,
                    AbstractTensorHandle* const out_backprop,
-                   absl::Span<AbstractTensorHandle*> output, const char* name,
+                   AbstractTensorHandle** output, const char* name,
                    const char* data_format) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
@@ -122,7 +127,7 @@ Status BiasAddGrad(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("data_format", data_format, strlen(data_format)));
   int num_retvals = 1;
-  return op_ptr->Execute(output, &num_retvals);
+  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
 }
 
 }  // namespace ops

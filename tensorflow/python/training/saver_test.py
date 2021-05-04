@@ -2334,13 +2334,13 @@ class MetaGraphTest(test.TestCase):
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(ops, [
-            "Add", "Assign", "Const", "Identity", "NoOp",
+            "AddV2", "Assign", "Const", "Identity", "NoOp",
             "PlaceholderWithDefault", "RestoreV2", "SaveSlices", "Sub",
             "VariableV2"
         ])
       else:
         self.assertEqual(ops, [
-            "Add", "Assign", "Const", "Identity", "NoOp",
+            "AddV2", "Assign", "Const", "Identity", "NoOp",
             "PlaceholderWithDefault", "RestoreV2", "SaveV2", "Sub", "VariableV2"
         ])
 

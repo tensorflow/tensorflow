@@ -183,6 +183,8 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
               not text.startswith("tf.compat.v1") and
               not text.startswith("tf.compat.v2") and
               text not in self.v2_symbols and
+              # Ignore any symbol that contains __internal__
+              "__internal__" not in text and
               # Builds currently install old version of estimator that doesn't
               # have some 2.0 symbols.
               not text.startswith("tf.estimator")):
@@ -305,6 +307,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
           # 2. Convert the input to V2.
           _, _, _, text = self._upgrade(text_input)
           new_function_name, new_args = get_func_and_args_from_str(text)
+          if "__internal__" in new_function_name:
+            # Skip the tf.__internal__ and tf.keras.__internal__ API.
+            continue
           if new_function_name == "tf.compat.v1.%s" % name:
             if tf_name in keyword_renames:
               # If we rename arguments, new function must be available in 2.0.

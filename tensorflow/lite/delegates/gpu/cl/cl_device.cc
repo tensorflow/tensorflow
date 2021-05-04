@@ -221,6 +221,21 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
+  info.opencl_info.image_pitch_alignment = 0;
+  if (info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_1 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_2) {
+    info.opencl_info.image_pitch_alignment =
+        GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT);
+  } else if (info.SupportsExtension("cl_khr_image2d_from_buffer")) {
+    cl_uint result;
+    auto status =
+        GetDeviceInfo(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT_KHR, &result);
+    if (status.ok()) {
+      info.opencl_info.image_pitch_alignment = result;
+    }
+  }
+
   if (info.IsIntel()) {
     if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
       size_t sub_groups_count;

@@ -97,6 +97,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:object_identity",
@@ -466,6 +467,9 @@ tf_py_test(
     size = "small",
     srcs = ["losses_test.py"],
     python_version = "PY3",
+    tags = [
+        "noasan",  # b/186128525
+    ],
     deps = [
         ":backend",
         ":combinations",

@@ -1091,6 +1091,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     return StructuredTensorSpec.from_value(self)
 
 
+@type_spec.register('tf.StructuredTensorSpec')
 class StructuredTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `StructuredTensor`s."""
 

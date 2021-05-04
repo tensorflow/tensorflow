@@ -236,7 +236,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
 #else
     // Priority outside the range (-2, 0) for NVidia GPUs
     SessionOptions opts =
-        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-3, 0}});
+        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-9999, 0}});
 #endif
     std::vector<std::unique_ptr<Device>> devices;
     Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
@@ -249,7 +249,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
         " virtual device 0 on GPU# 0");
 #else
     ExpectErrorMessageSubstr(
-        status, "Priority -3 is outside the range of supported priorities");
+        status, "Priority -9999 is outside the range of supported priorities");
 #endif
   }
   {

@@ -61,7 +61,8 @@ TEST(GrpcChannelTest, HostPorts) {
       "mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
-  std::unique_ptr<GrpcChannelCache> cc(NewGrpcChannelCache(spec, channel_func));
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, channel_func, RPCOptions()));
 
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
@@ -118,13 +119,183 @@ TEST(GrpcChannelTest, HostPorts) {
   }
 }
 
+TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
+  GrpcChannelSpec spec;
+  TF_EXPECT_OK(spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3"}));
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  RPCOptions rpc_options;
+  rpc_options.set_num_channels_per_target(4);
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, channel_func, rpc_options));
+
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:3"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
+
+  {
+    // NOTE(mrry): The gRPC channel doesn't expose the target, so we
+    // can't compare it for equality.
+    std::vector<SharedGrpcChannelPtr> a_1_channels, b_2_channels, c_3_channels;
+
+    for (int i = 0; i < 10; i++) {
+      a_1_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist/replica:0/task:0"));
+      b_2_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist/replica:0/task:1"));
+      c_3_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist/replica:0/task:2"));
+    }
+
+    // Same channel every 4 calls.
+    for (int i = 0; i < 6; i++) {
+      EXPECT_EQ(a_1_channels[i].get(), a_1_channels[i + 4].get());
+      EXPECT_EQ(b_2_channels[i].get(), b_2_channels[i + 4].get());
+      EXPECT_EQ(c_3_channels[i].get(), c_3_channels[i + 4].get());
+    }
+
+    // Other channels not equal
+    for (int i = 0; i < 6; i++) {
+      for (int j = 1; j < 4; j++) {
+        EXPECT_NE(a_1_channels[i].get(), a_1_channels[i + j].get());
+        EXPECT_NE(b_2_channels[i].get(), b_2_channels[i + j].get());
+        EXPECT_NE(c_3_channels[i].get(), c_3_channels[i + j].get());
+      }
+    }
+
+    // Cross Channels never equal
+    for (int i = 0; i < 6; i++) {
+      for (int j = 0; j < 6; j++) {
+        EXPECT_NE(a_1_channels[i].get(), b_2_channels[j].get());
+        EXPECT_NE(a_1_channels[i].get(), c_3_channels[j].get());
+        EXPECT_NE(b_2_channels[i].get(), c_3_channels[j].get());
+      }
+    }
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkers(&workers);
+    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
+                                   "/job:mnist/replica:0/task:1",
+                                   "/job:mnist/replica:0/task:2"}),
+              workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("mnist", &workers);
+    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
+                                   "/job:mnist/replica:0/task:1",
+                                   "/job:mnist/replica:0/task:2"}),
+              workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("other", &workers);
+    EXPECT_TRUE(workers.empty());
+  }
+}
+
+TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
+  GrpcChannelSpec spec;
+  TF_EXPECT_OK(spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3"}));
+  TF_EXPECT_OK(spec.AddHostPortsJob("mnist2", {"a:1", "b:2", "c:3"}));
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  RPCOptions rpc_options;
+  rpc_options.set_num_channels_per_target(4);
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, channel_func, rpc_options));
+
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:3"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
+  EXPECT_NE(nullptr, cc->FindWorkerChannel("/job:mnist2/replica:0/task:0"));
+
+  {
+    // NOTE(mrry): The gRPC channel doesn't expose the target, so we
+    // can't compare it for equality.
+    std::vector<SharedGrpcChannelPtr> a_1_channels, b_2_channels, c_3_channels;
+
+    for (int i = 0; i < 10; i++) {
+      a_1_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist/replica:0/task:0"));
+      b_2_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist/replica:0/task:1"));
+      c_3_channels.push_back(
+          cc->FindWorkerChannel("/job:mnist2/replica:0/task:0"));
+    }
+
+    // Same channel every 4 calls.
+    for (int i = 0; i < 6; i++) {
+      EXPECT_EQ(a_1_channels[i].get(), a_1_channels[i + 4].get());
+      EXPECT_EQ(b_2_channels[i].get(), b_2_channels[i + 4].get());
+      EXPECT_EQ(c_3_channels[i].get(), c_3_channels[i + 4].get());
+    }
+
+    // Other channels not equal
+    for (int i = 0; i < 6; i++) {
+      for (int j = 1; j < 4; j++) {
+        EXPECT_NE(a_1_channels[i].get(), a_1_channels[i + j].get());
+        EXPECT_NE(b_2_channels[i].get(), b_2_channels[i + j].get());
+        EXPECT_NE(c_3_channels[i].get(), c_3_channels[i + j].get());
+      }
+    }
+
+    // Cross Channels never equal
+    for (int i = 0; i < 6; i++) {
+      for (int j = 0; j < 6; j++) {
+        EXPECT_NE(a_1_channels[i].get(), b_2_channels[j].get());
+        EXPECT_NE(a_1_channels[i].get(), c_3_channels[j].get());
+        EXPECT_NE(b_2_channels[i].get(), c_3_channels[j].get());
+      }
+    }
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkers(&workers);
+    EXPECT_EQ(
+        std::vector<string>(
+            {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
+             "/job:mnist/replica:0/task:2", "/job:mnist2/replica:0/task:0",
+             "/job:mnist2/replica:0/task:1", "/job:mnist2/replica:0/task:2"}),
+        workers);
+  }
+
+  {
+    std::vector<string> workers, workers2;
+    cc->ListWorkersInJob("mnist", &workers);
+    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
+                                   "/job:mnist/replica:0/task:1",
+                                   "/job:mnist/replica:0/task:2"}),
+              workers);
+    cc->ListWorkersInJob("mnist2", &workers2);
+    EXPECT_EQ(std::vector<string>({"/job:mnist2/replica:0/task:0",
+                                   "/job:mnist2/replica:0/task:1",
+                                   "/job:mnist2/replica:0/task:2"}),
+              workers2);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("other", &workers);
+    EXPECT_TRUE(workers.empty());
+  }
+}
+
 TEST(GrpcChannelTest, SparseHostPorts) {
   GrpcChannelSpec spec;
   TF_EXPECT_OK(
       spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
-  std::unique_ptr<GrpcChannelCache> cc(NewGrpcChannelCache(spec, channel_func));
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, channel_func, RPCOptions()));
 
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));

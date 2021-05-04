@@ -304,6 +304,7 @@ cc_library(
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
     deps = [
+        ":hlo_control_flow_flattening",
         ":hlo_module_loader",
         ":prepare_reference_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -345,6 +346,32 @@ tf_cc_binary(
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
+)
+
+cc_library(
+    name = "hlo_control_flow_flattening",
+    srcs = ["hlo_control_flow_flattening.cc"],
+    hdrs = ["hlo_control_flow_flattening.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:tuple_util",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_control_flow_flattening_test",
+    srcs = ["hlo_control_flow_flattening_test.cc"],
+    deps = [
+        ":hlo_control_flow_flattening",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
 )
 
 # This target is used to reproduce miscompiles in OSS outside of TF, and it can

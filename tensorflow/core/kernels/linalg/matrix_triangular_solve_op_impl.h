@@ -162,6 +162,9 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
     const Tensor& in1 = ctx->input(1);
 
     ValidateInputTensors(ctx, in0, in1);
+    if (!ctx->status().ok()) {
+      return;
+    }
 
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
@@ -230,13 +233,22 @@ class MatrixTriangularSolveOp
  private:
   void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
                             const Tensor& in1) override {
+    const auto in0_num_dims = in0.dims();
     OP_REQUIRES(
-        ctx, in0.dims() >= 2,
-        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims()));
+        ctx, in0_num_dims >= 2,
+        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0_num_dims));
 
+    const auto in1_num_dims = in1.dims();
     OP_REQUIRES(
-        ctx, in1.dims() >= 2,
-        errors::InvalidArgument("In[0] ndims must be >= 2: ", in1.dims()));
+        ctx, in1_num_dims >= 2,
+        errors::InvalidArgument("In[1] ndims must be >= 2: ", in1_num_dims));
+
+    const auto in0_last_dim = in0.dim_size(in0_num_dims - 1);
+    const auto in0_prev_dim = in0.dim_size(in0_num_dims - 2);
+    OP_REQUIRES(ctx, in0_last_dim == in0_prev_dim,
+                errors::InvalidArgument(
+                    "In[0] matrices in the last dimensions must be square (",
+                    in0_last_dim, " =/= ", in0_prev_dim, ")"));
   }
 };
 

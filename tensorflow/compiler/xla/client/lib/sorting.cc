@@ -67,8 +67,12 @@ XlaOp TopK(XlaOp input, int64 k) {
 
     XlaOp values = Slice(GetTupleElement(sort_result, 0), start_indices,
                          limit_indices, strides);
+    // The k in TopK is static so we shouldn't generate a dynamic dimension even
+    // if input is dynamic.
+    values = RemoveDynamicDimension(values, last_dim);
     XlaOp indices = Slice(GetTupleElement(sort_result, 1), start_indices,
                           limit_indices, strides);
+    indices = RemoveDynamicDimension(indices, last_dim);
     return Tuple(builder, {values, indices});
   });
 }

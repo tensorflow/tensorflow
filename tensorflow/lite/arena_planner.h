@@ -46,12 +46,11 @@ struct AllocationInfo;
 class ArenaPlanner : public MemoryPlanner {
  public:
   // Ownership of 'context' is not taken and it must remain util the
-  // ArenaPlanner is destroyed. If 'preserve_inputs' is true the inputs to the
-  // graph will not share memory with any other tensor, effectively preserving
-  // them until the end of inference.
+  // ArenaPlanner is destroyed. The inputs to the graph will not share
+  // memory with any other tensor, effectively preserving them until the end
+  // of inference.
   ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
-               bool preserve_inputs, bool preserve_intermediates,
-               int tensor_alignment);
+               bool preserve_all_tensors, int tensor_alignment);
   ~ArenaPlanner() override;
   ArenaPlanner(const ArenaPlanner&) = delete;
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;
@@ -120,14 +119,10 @@ class ArenaPlanner : public MemoryPlanner {
   // declared as kTfLiteArenaRwPersistent.
   SimpleMemoryArena persistent_arena_;
 
-  // Ensure that the memory self-allocated for inputs is never reused by the
-  // allocator. This allows for example, multiple runs without getting
-  // unpredictable results.
-  bool preserve_inputs_;
-
   // If true, then no overlapping of memory areas is done, meaning intermediate
-  // results can be queried after running (modulo running delegates).
-  bool preserve_intermediates_;
+  // tensors and temporary tensors can be queried after running.
+  // (modulo running delegates)
+  bool preserve_all_tensors_;
 
   // Number of bytes that tensor buffers should be aligned to.
   int tensor_alignment_;

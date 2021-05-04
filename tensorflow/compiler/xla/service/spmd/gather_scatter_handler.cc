@@ -366,8 +366,12 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
           indices_sharding.ReplicateOnLastTileDim()
               ? HloSharding::PartialTile(output_tile_assignment)
               : HloSharding::Tile(output_tile_assignment);
-      // Shape of the partitioned gather
-      Shape pshape = MakePartitionedShape(output_shape, gather_output_sharding);
+      if (output_sharding.NumTiles() > gather_output_sharding.NumTiles()) {
+        hlo_sharding_util::MergeShardingIfCompatible(
+            output_sharding,
+            /*minimum_tiles=*/gather_output_sharding.NumTiles() + 1,
+            &gather_output_sharding);
+      }
       // Construct the offsets for the operand sharding to be used to adjust
       // the indices. Because we know the only dimensions partitioned are the
       // parallel ones and because the partitioning is the same across indices
@@ -426,6 +430,9 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
               operand_sharding.NumTiles(operand_parallel_dims) &&
           indices_sharding.NumTiles() ==
               indices_sharding.NumTiles(indices_parallel_dims)) {
+        // Shape of the partitioned gather
+        Shape pshape =
+            MakePartitionedShape(output_shape, gather_output_sharding);
         pgather = b->AddInstruction(HloInstruction::CreateGather(
             pshape, operand.hlo(), adjusted_indices, dnums,
             gather->gather_slice_sizes(), gather->indices_are_sorted()));
@@ -440,10 +447,11 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
             per_group_partitioner_state);
         GroupedSharding grouped_output =
             GroupShardingOnDims(gather_output_sharding, output_parallel_dims);
-        TF_ASSIGN_OR_RETURN(pgather, PartitionGather(gather, per_group_operand,
-                                                     per_group_indices, pshape,
-                                                     grouped_output.sharding,
-                                                     batch_dims, visitor));
+        TF_ASSIGN_OR_RETURN(
+            pgather,
+            PartitionGather(gather, per_group_operand, per_group_indices,
+                            GetPerGroupBaseShape(grouped_output, output_shape),
+                            grouped_output.sharding, batch_dims, visitor));
       }
       if (pgather) {
         pgather->set_sharding(gather_output_sharding);

@@ -43,15 +43,15 @@ class LookupTableOp : public OpKernel {
  public:
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), table_handle_set_(false) {
+      : OpKernel(ctx), table_set_(false) {
     if (ctx->output_type(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
-                                                   tensorflow::TensorShape({}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                        tensorflow::TensorShape({}), &table_));
     } else {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                   tensorflow::TensorShape({2}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_STRING,
+                                        tensorflow::TensorShape({2}), &table_));
     }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
@@ -61,7 +61,7 @@ class LookupTableOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
 
-    if (!table_handle_set_) {
+    if (!table_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
                                       use_node_name_sharing_));
     }
@@ -76,7 +76,7 @@ class LookupTableOp : public OpKernel {
               }
               if (ctx->track_allocations()) {
                 ctx->record_persistent_memory_allocation(
-                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+                    container->MemoryUsed() + table_.AllocatedBytes());
               }
               *ret = container;
               return Status::OK();
@@ -94,27 +94,26 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      if (!table_handle_set_) {
-        auto h =
-            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+      if (!table_set_) {
+        auto h = table_.template scalar<ResourceHandle>();
         h() = MakeResourceHandle<lookup::LookupInterface>(
             ctx, cinfo_.container(), cinfo_.name());
       }
-      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
+      ctx->set_output(0, table_);
     } else {
-      if (!table_handle_set_) {
-        auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
+      if (!table_set_) {
+        auto h = table_.template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
-      ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+      ctx->set_output_ref(0, &mu_, &table_);
     }
-    table_handle_set_ = true;
+    table_set_ = true;
   }
 
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
-    if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
+    if (table_set_ && cinfo_.resource_is_private_to_kernel()) {
       if (!cinfo_.resource_manager()
                ->template Delete<lookup::LookupInterface>(cinfo_.container(),
                                                           cinfo_.name())
@@ -126,8 +125,8 @@ class LookupTableOp : public OpKernel {
 
  private:
   mutex mu_;
-  PersistentTensor table_handle_ TF_GUARDED_BY(mu_);
-  bool table_handle_set_ TF_GUARDED_BY(mu_);
+  Tensor table_ TF_GUARDED_BY(mu_);
+  bool table_set_ TF_GUARDED_BY(mu_);
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
 

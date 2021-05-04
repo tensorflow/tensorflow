@@ -722,6 +722,7 @@ cc_library(
 cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/strings",
     ],
@@ -825,7 +826,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
-        "@com_google_absl//absl/strings",
+        ":stringpiece",
     ],
 )
 
@@ -1198,6 +1199,7 @@ tf_cc_test(
     srcs = ["tstring_test.cc"],
     deps = [
         ":cord",
+        ":stringpiece",
         ":tstring",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

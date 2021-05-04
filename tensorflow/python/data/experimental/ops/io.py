@@ -107,7 +107,7 @@ def save(dataset, path, compression=None, shard_func=None):
   shard_func.add_to_graph(ops.get_default_graph())
 
   # pylint: disable=protected-access
-  dataset = dataset._apply_options()
+  dataset = dataset._apply_debug_options()
   gen_experimental_dataset_ops.save_dataset(
       dataset._variant_tensor,
       path=path,

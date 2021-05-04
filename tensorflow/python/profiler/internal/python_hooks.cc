@@ -117,11 +117,11 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
   start_timestamp_ns_ = GetCurrentTimeNanos();
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
-    if (options_.enable_trace_python_function) {
-      SetProfilerInAllThreads();
-    }
     if (options_.enable_python_traceme) {
       EnableTraceMe(true);
+    }
+    if (options_.enable_trace_python_function) {
+      SetProfilerInAllThreads();
     }
     if (options_.end_to_end_mode) {
       // When end to end mode is used, Stop() and Finalize() i.e. symbolization

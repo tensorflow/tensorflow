@@ -83,8 +83,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       element_spec: The dataset element spec for the dataset to read from.
       protocol: The protocol to use for communicating with the tf.data service,
         e.g. "grpc".
-      data_transfer_protocol: The protocol to use for transferring data with the
-        tf.data service, e.g. "grpc".
+      data_transfer_protocol: (Optional.) The protocol to use for transferring
+        data with the tf.data service. By default, data is transferred using
+        gRPC.
       job_name: (Optional.) The name of the job. This argument makes it possible
         for multiple datasets to share the same job. The default behavior is
         that the dataset creates anonymous, exclusively owned jobs.
@@ -271,7 +272,7 @@ def _distribute(processing_mode,
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service.
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
@@ -514,7 +515,7 @@ def distribute(processing_mode,
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service, e.g. "grpc".
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
@@ -677,7 +678,7 @@ def _from_dataset_id(processing_mode,
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service.
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: An indication of how the dataset's elements were compressed, so
       that `from_dataset_id` can uncompress them if necessary.
 
@@ -738,7 +739,8 @@ def from_dataset_id(processing_mode,
                     job_name=None,
                     consumer_index=None,
                     num_consumers=None,
-                    max_outstanding_requests=None):
+                    max_outstanding_requests=None,
+                    data_transfer_protocol=None):
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
@@ -812,6 +814,8 @@ def from_dataset_id(processing_mode,
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -824,4 +828,5 @@ def from_dataset_id(processing_mode,
       job_name=job_name,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
-      max_outstanding_requests=max_outstanding_requests)
+      max_outstanding_requests=max_outstanding_requests,
+      data_transfer_protocol=data_transfer_protocol)

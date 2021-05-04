@@ -202,3 +202,39 @@ func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
     (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
   return
 }
+
+// CHECK-LABEL: func @concatenate
+func @concatenate(%arg0: memref<1x1xf32>, %arg1: memref<1x100xf32>, %arg2: memref<1x200xf32>, %arg3: memref<1x301xf32>) {
+    // CHECK-NEXT:    %[[RESULT:.*]] = memref.alloc() : memref<1x301xf32>
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 0 to 1 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg0[%[[X]], %[[Y]]] : memref<1x1xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    // CHECK-NEXT:      }
+    // CHECK-NEXT:    }
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 1 to 101 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg1[%[[X]], %[[Y]] - 1] : memref<1x100xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    // CHECK-NEXT:      }
+    // CHECK-NEXT:    }
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 101 to 301 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg2[%[[X]], %[[Y]] - 101] : memref<1x200xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    %0 = memref.alloc() : memref<1x301xf32>
+    "lmhlo.concatenate"(%arg0, %arg1, %arg2, %0) {dimension = 1 : i64} : (memref<1x1xf32>, memref<1x100xf32>, memref<1x200xf32>, memref<1x301xf32>) -> ()
+    "lmhlo.copy"(%0, %arg3) : (memref<1x301xf32>, memref<1x301xf32>) -> ()
+    "lmhlo.terminator"() : () -> ()
+}
+
+// TODO(pashu123): Extend Support for dynamic dimensions.
+// CHECK-LABEL: func @concatenate_dynamic
+func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2: memref<1x?xf32>) {
+    // CHECK: "lmhlo.concatenate"
+    %cst_1 = constant 1 : index
+    %0 = memref.alloc(%cst_1) : memref<1x?xf32>
+    "lmhlo.concatenate"(%arg0, %arg1, %0) {dimension = 1 : i64} : (memref<1x?xf32>,  memref<1x?xf32>, memref<1x?xf32>) -> ()
+    "lmhlo.copy"(%0, %arg2) : (memref<1x?xf32>, memref<1x?xf32>) -> ()
+    "lmhlo.terminator"() : () -> ()
+}

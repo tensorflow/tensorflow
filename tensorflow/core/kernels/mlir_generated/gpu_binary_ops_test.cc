@@ -47,6 +47,10 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Half, Eigen::half, Eigen::half,
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Float, float, float, baseline_add)
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add)
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64, int64, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_add)
 
 /// Test `tf.AddV2`.
 
@@ -204,6 +208,10 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Bool, bool, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int8, int8, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int16, int16, bool, baseline_equal)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C64, std::complex<float>, bool,
+                       baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C128, std::complex<double>, bool,
+                       baseline_equal)
 
 /// Test `tf.FloorDiv`.
 
@@ -419,6 +427,10 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int8, int8, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
                        baseline_not_equal)
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C64, std::complex<float>, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C128, std::complex<double>, bool,
                        baseline_not_equal)
 
 /// Test `tf.Polygamma`.

@@ -173,6 +173,7 @@ int main(int argc, char** argv) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   mlir::registerPassManagerCLOptions();
+  mlir::registerMLIRContextCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(

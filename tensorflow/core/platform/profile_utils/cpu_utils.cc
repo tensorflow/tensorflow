@@ -111,7 +111,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
       }
       const int64 freq_n =
           static_cast<int64>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
-      LOG(INFO) << "CPU Frequency: " << freq_n << " Hz";
+      VLOG(1) << "CPU Frequency: " << freq_n << " Hz";
       return freq_n;
     }
   }

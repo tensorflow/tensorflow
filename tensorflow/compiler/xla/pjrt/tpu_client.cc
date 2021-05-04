@@ -49,7 +49,7 @@ namespace {
 class TpuDeviceState : public LocalDeviceState {
  public:
   TpuDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                 bool asynchronous);
+                 int max_inflight_computations);
 
   Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
                                   se::Stream* dst_stream,
@@ -58,9 +58,10 @@ class TpuDeviceState : public LocalDeviceState {
 };
 
 TpuDeviceState::TpuDeviceState(se::StreamExecutor* executor,
-                               LocalClient* client, bool asynchronous)
+                               LocalClient* client,
+                               int max_inflight_computations)
     : LocalDeviceState(executor, client, LocalDeviceState::kAsynchronous,
-                       asynchronous,
+                       max_inflight_computations,
                        /*allow_event_reuse=*/false,
                        /*use_callback_stream=*/true) {}
 
@@ -194,7 +195,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
 }  // namespace
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
-    bool asynchronous, absl::Duration init_retry_timeout) {
+    int max_inflight_computations, absl::Duration init_retry_timeout) {
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
@@ -230,8 +231,8 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
-    local_device_states.push_back(
-        absl::make_unique<TpuDeviceState>(executor, client, asynchronous));
+    local_device_states.push_back(absl::make_unique<TpuDeviceState>(
+        executor, client, max_inflight_computations));
   }
 
   TF_ASSIGN_OR_RETURN(auto devices,

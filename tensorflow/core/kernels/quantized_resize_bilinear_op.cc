@@ -64,6 +64,8 @@ inline void ComputeInterpolationWeights(
         std::max(static_cast<int64>(in_f), static_cast<int64>(0));
     interpolation->upper[i] =
         std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+    interpolation->lower[i] =
+        std::min(interpolation->lower[i], interpolation->upper[i]);
     interpolation->lerp[i] = in - in_f;
     interpolation->ilerp[i] =
         static_cast<T_SCALE>((in - in_f) * (1 << resolution));
@@ -700,8 +702,14 @@ class QuantizedResizeBilinearOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const float in_min = context->input(2).flat<float>()(0);
-    const float in_max = context->input(3).flat<float>()(0);
+    const auto& in_min_tensor = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(in_min_tensor.shape()),
+                errors::InvalidArgument("min must be a scalar"));
+    const float in_min = in_min_tensor.flat<float>()(0);
+    const auto& in_max_tensor = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(in_max_tensor.shape()),
+                errors::InvalidArgument("max must be a scalar"));
+    const float in_max = in_max_tensor.flat<float>()(0);
 
     ImageResizerState st(align_corners_, false);
     st.ValidateAndCreateOutput(context);

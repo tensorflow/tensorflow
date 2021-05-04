@@ -24,9 +24,14 @@ namespace gpu {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
-SequentialThunk::SequentialThunk(ThunkInfo thunk_info,
-                                 std::vector<std::unique_ptr<Thunk>> thunks)
+SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
     : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
+
+std::string SequentialThunk::ToStringExtra(int indent) const {
+  std::string result = "\n";
+  absl::StrAppend(&result, thunks().ToString(indent + 1, nullptr));
+  return result;
+}
 
 Status SequentialThunk::Initialize(const GpuExecutable& executable,
                                    se::StreamExecutor* executor) {

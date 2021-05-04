@@ -414,7 +414,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           }
         }
       }
-
+      worker_cache_factory_options.rpc_options = &req->config().rpc_options();
       // Create the worker cache from the computed server_def.
       status = env_->worker_cache_factory(worker_cache_factory_options,
                                           &worker_cache);

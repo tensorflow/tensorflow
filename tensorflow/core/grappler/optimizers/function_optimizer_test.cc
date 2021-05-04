@@ -1883,9 +1883,9 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
@@ -2044,9 +2044,9 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {

@@ -202,7 +202,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorData<int32_t>(bias),
                  tflite::micro::GetTensorShape(output),
                  tflite::micro::GetTensorData<int8_t>(output));
-#elif defined(FUSION_F1)
+#elif ((defined(FUSION_F1)) || (defined(HIFI5)))
   const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
   const int num_batches = output_shape.Dims(0);
   const int output_depth = output_shape.Dims(1);

@@ -198,7 +198,7 @@ def _normalize_feature_columns(feature_columns):
   if isinstance(feature_columns, feature_column_v2.FeatureColumn):
     feature_columns = [feature_columns]
 
-  if isinstance(feature_columns, collections.Iterator):
+  if isinstance(feature_columns, collections.abc.Iterator):
     feature_columns = list(feature_columns)
 
   if isinstance(feature_columns, dict):

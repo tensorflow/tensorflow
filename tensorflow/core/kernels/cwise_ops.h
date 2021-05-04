@@ -167,16 +167,60 @@ struct no_nan_op {
   }
 };
 
+template <typename T, bool IsComplex = Eigen::NumTraits<T>::IsComplex>
+struct div_no_nan_op;
+
 template <typename T>
-struct div_no_nan_op : public no_nan_op<T, scalar_quotient_op<T>> {
+struct div_no_nan_op<T, /*IsComplex=*/false>
+    : public no_nan_op<T, scalar_quotient_op<T>> {
   EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
 };
 
 template <typename T>
-struct functor_traits<div_no_nan_op<T>> {
+struct functor_traits<div_no_nan_op<T, /*IsComplex=*/false>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = true,
+  };
+};
+
+// Whether or not complex division produces a NaN depends on the underlying
+// implementation. Some compilers (e.g. gcc) use a simple method that divides
+// by |b|^2, which may underflow to 0 for b != 0.
+template <typename T>
+struct div_no_nan_op<T, /*IsComplex=*/true> {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    if (b == T(0)) {
+      return T(0);
+    } else {
+      // If the numerator is zero, then the result must be zero even if |b|^2
+      // underflows to zero.
+      const T numerator =
+          scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
+      if (numerator == T(0)) {
+        return T(0);
+      }
+    }
+    return scalar_quotient_op<T>()(a, b);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    const Packet numerator = pmul(a, pconj(b));
+    const Packet mask = por(pcmp_eq(b, pzero(a)), pcmp_eq(numerator, pzero(a)));
+    const Packet quotient = pdiv(a, b);
+    return pandnot(quotient, mask);
+  }
+};
+
+template <typename T>
+struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::MulCost,
+    PacketAccess = packet_traits<T>::HasMul && packet_traits<T>::HasDiv &&
+                   packet_traits<T>::HasConj,
   };
 };
 

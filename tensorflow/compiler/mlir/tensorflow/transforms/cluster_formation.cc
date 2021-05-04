@@ -188,7 +188,7 @@ void BuildClusters(Block* block, OpBuilder builder) {
   llvm::MapVector<StringRef, Cluster> nearest_clusters;
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     auto device = GetDevice(&op);
-    if (device == "") continue;
+    if (device.empty()) continue;
 
     // If no cluster of same device has been formed yet, create a new cluster
     // with op alone.

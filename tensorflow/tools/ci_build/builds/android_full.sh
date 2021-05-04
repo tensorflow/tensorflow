@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
-CPUS=armeabi-v7a,arm64-v8a,x86
+CPUS=armeabi-v7a,arm64-v8a
 
 OUT_DIR="$(pwd)/out/"
 AAR_LIB_TMP="$(pwd)/aar_libs"

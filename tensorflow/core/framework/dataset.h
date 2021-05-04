@@ -647,6 +647,10 @@ class IteratorBase {
   // should be converted to a different error type before being propagated to
   // the caller.
   //
+  // Implementations must explicitly set `*end_of_sequence = false` if an
+  // `Status::OK()` status is returned and the iterator is not at the end of the
+  // sequence.
+  //
   // This method is thread-safe.
   //
   // TODO(mrry): Define `GetNextAsync()` or `GetNextManyAsync()`, and
@@ -1045,6 +1049,9 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   // Internal implementation of GetNext that is wrapped in tracing logic.
+  //
+  // See the docstring of `GetNext` method regaring the contract for
+  // `out_tensors` and `end_of_sequence`.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;

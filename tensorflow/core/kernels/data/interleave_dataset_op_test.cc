@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/interleave_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -334,6 +334,58 @@ std::vector<GetNextTestCase<InterleaveDatasetParams>> GetNextTestCases() {
 
 ITERATOR_GET_NEXT_TEST_P(InterleaveDatasetOpTest, InterleaveDatasetParams,
                          GetNextTestCases())
+
+std::vector<SkipTestCase<InterleaveDatasetParams>> SkipTestCases() {
+  return {{/*dataset_params=*/InterleaveDatasetParams1(),
+           /*num_to_skip*/ 0, /*expected_num_skipped*/ 0, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{0}})},
+          {/*dataset_params=*/InterleaveDatasetParams1(),
+           /*num_to_skip*/ 5, /*expected_num_skipped*/ 5, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{5}})},
+          {/*dataset_params=*/InterleaveDatasetParams1(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams2(),
+           /*num_to_skip*/ 5, /*expected_num_skipped*/ 5, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{5}})},
+          {/*dataset_params=*/InterleaveDatasetParams2(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams3(),
+           /*num_to_skip*/ 5, /*expected_num_skipped*/ 5, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{7}})},
+          {/*dataset_params=*/InterleaveDatasetParams3(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams4(),
+           /*num_to_skip*/ 5, /*expected_num_skipped*/ 5, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{7}})},
+          {/*dataset_params=*/InterleaveDatasetParams4(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams5(),
+           /*num_to_skip*/ 3, /*expected_num_skipped*/ 3, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({1}), {{"e"}})},
+          {/*dataset_params=*/InterleaveDatasetParams5(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams6(),
+           /*num_to_skip*/ 3, /*expected_num_skipped*/ 3, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({1}), {{"d"}})},
+          {/*dataset_params=*/InterleaveDatasetParams6(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9},
+          {/*dataset_params=*/InterleaveDatasetParams7(),
+           /*num_to_skip*/ 3, /*expected_num_skipped*/ 3, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({1}), {{"d"}})},
+          {/*dataset_params=*/InterleaveDatasetParams7(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9}};
+}
+
+ITERATOR_SKIP_TEST_P(InterleaveDatasetOpTest, InterleaveDatasetParams,
+                     SkipTestCases())
 
 TEST_F(InterleaveDatasetOpTest, DatasetNodeName) {
   auto dataset_params = InterleaveDatasetParams1();

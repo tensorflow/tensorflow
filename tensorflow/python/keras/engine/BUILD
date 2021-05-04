@@ -71,6 +71,7 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/mixed_precision:autocast_variable",
         "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision:policy",

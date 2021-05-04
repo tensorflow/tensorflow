@@ -950,4 +950,25 @@ Status MaybeAddPrefixToColocationConstraints(
   return Status::OK();
 }
 
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
+    NodeDef* node_def) {
+  auto attr = node_def->mutable_attr()->find(kColocationAttrName);
+  if (attr == node_def->mutable_attr()->end()) {
+    return Status::OK();
+  }
+  auto constraints_list = attr->second.mutable_list();
+  auto constraints_size = constraints_list->s_size();
+  for (size_t i = 0; i < constraints_size; ++i) {
+    StringPiece original(constraints_list->s(i));
+    if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
+      if (node_name_map.find(original) != node_name_map.end()) {
+        (*constraints_list->mutable_s(i)) =
+            strings::StrCat(kColocationGroupPrefix, node_name_map.at(original));
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

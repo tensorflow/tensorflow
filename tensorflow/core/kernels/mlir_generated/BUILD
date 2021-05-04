@@ -188,6 +188,7 @@ tf_kernel_library(
         "cpu_op_ceil.cc",
         "cpu_op_cos.cc",
         "cpu_op_floor.cc",
+        "cpu_op_invert.cc",
         "cpu_op_rsqrt.cc",
         "cpu_op_sin.cc",
         "cpu_op_sqrt.cc",
@@ -202,6 +203,7 @@ tf_kernel_library(
         ":cpu_ceil_kernels",
         ":cpu_cos_kernels",
         ":cpu_floor_kernels",
+        ":cpu_invert_kernels",
         ":cpu_rsqrt_kernels",
         ":cpu_sin_kernels",
         ":cpu_sqrt_kernels",
@@ -283,12 +285,22 @@ tf_kernel_library(
     srcs = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "cpu_op_add.cc",
+        "cpu_op_bitwise_and.cc",
+        "cpu_op_bitwise_or.cc",
+        "cpu_op_bitwise_xor.cc",
+        "cpu_op_left_shift.cc",
+        "cpu_op_right_shift.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":base_cpu_op",
         ":cpu_add_v2_kernels",
+        ":cpu_bitwise_and_kernels",
+        ":cpu_bitwise_or_kernels",
+        ":cpu_bitwise_xor_kernels",
+        ":cpu_left_shift_kernels",
+        ":cpu_right_shift_kernels",
         "//third_party/eigen3",
     ]),
 )
@@ -324,6 +336,28 @@ tf_kernel_library(
     deps = [
     ] + if_cuda_or_rocm([
         ":gpu_cast_op",
+    ]),
+)
+
+tf_kernel_library(
+    name = "gpu_relu_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_relu.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_relu_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "relu_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_relu_op",
     ]),
 )
 
@@ -682,6 +716,28 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_digamma_kernels",
+    op = "digamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels",
+    op = "lgamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
     name = "gpu_sign_kernels",
     op = "sign",
     tile_size = "256",
@@ -723,8 +779,27 @@ gpu_kernel_library(
     )
     for op in [
         "square",
-        "add_v2",
         "squared_difference",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+            "c64",
+            "c128",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "add_v2",
         "sub",
     ]
 ]
@@ -845,9 +920,11 @@ gpu_kernel_library(
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
         op = op,
-        output_types = ["i1"] * 8,
+        output_types = ["i1"] * 10,
         tile_size = "1024",
         types = [
+            "c64",
+            "c128",
             "f16",
             "f32",
             "f64",
@@ -962,13 +1039,12 @@ gpu_kernel_library(
     )
     for op in [
         "ceil",
-        "digamma",
         "exp",
         "expm1",
         "floor",
-        "lgamma",
         "log",
         "log1p",
+        "relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",
@@ -1034,8 +1110,8 @@ gpu_kernel_library(
         "f64",
     ] * 8,
     tile_size = "256",
-    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 + ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
-    unroll_factors = "4",
+    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 +
+            ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
 )
 
 gpu_kernel_library(
@@ -1091,6 +1167,24 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_invert_kernels",
+    op = "invert",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        # TODO(b/172804967): Enable once fixed.
+        # "ui8",
+        # "ui16",
+        # "ui32",
+        # "ui64",
     ],
     unroll_factors = "4",
 )
@@ -1208,3 +1302,31 @@ cpu_kernel_library(
     ],
     unroll_factors = "4",
 )
+
+# Binary bitwise operations.
+[
+    cpu_kernel_library(
+        name = "cpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            # TODO(b/172804967): Enable once fixed.
+            # "ui8",
+            # "ui16",
+            # "ui32",
+            # "ui64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+        "left_shift",
+        "right_shift",
+    ]
+]

@@ -870,3 +870,40 @@ func @single_op_launch() {
 
   let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
 }
+
+def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
+  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
+
+  let description = [{
+This pass takes ops wrapped in a tf_device.launch op with host device
+assignment extracts them from launch and adds an `_xla_outside_compilation`
+attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
+
+A simple example:
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf_device.launch"() {
+      "tf.B"()
+      tf_device.return
+    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+
+Would become the following ops (unimportant attribute, type are omitted):
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf.B"() {_xla_outside_compilation = "cluster1"}
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+  }];
+
+  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
+}

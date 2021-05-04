@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-classes-have-attributes
 """Module implementing RNN Cells.
 
 This module provides a number of basic commonly used RNN cells, such as LSTM
@@ -53,6 +54,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 _BIAS_VARIABLE_NAME = "bias"
@@ -182,6 +184,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return nest.map_structure(get_state_shape, state_size)
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.RNNCell"])
 @tf_export(v1=["nn.rnn_cell.RNNCell"])
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
@@ -395,6 +398,7 @@ class LayerRNNCell(RNNCell):
         self, inputs, state, scope=scope, *args, **kwargs)
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.BasicRNNCell"])
 @tf_export(v1=["nn.rnn_cell.BasicRNNCell"])
 class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
@@ -491,6 +495,7 @@ class BasicRNNCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.GRUCell"])
 @tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell.
@@ -630,6 +635,7 @@ class GRUCell(LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.LSTMStateTuple"])
 @tf_export(v1=["nn.rnn_cell.LSTMStateTuple"])
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
@@ -650,6 +656,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.BasicLSTMCell"])
 @tf_export(v1=["nn.rnn_cell.BasicLSTMCell"])
 class BasicLSTMCell(LayerRNNCell):
   """DEPRECATED: Please use `tf.compat.v1.nn.rnn_cell.LSTMCell` instead.
@@ -820,6 +827,7 @@ class BasicLSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.LSTMCell"])
 @tf_export(v1=["nn.rnn_cell.LSTMCell"])
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
@@ -1187,6 +1195,7 @@ class _RNNCellWrapperV1(RNNCell):
                        "instance.")
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.DropoutWrapper"])
 @tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
 class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
                      _RNNCellWrapperV1):
@@ -1198,6 +1207,7 @@ class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
   __init__.__doc__ = rnn_cell_wrapper_impl.DropoutWrapperBase.__init__.__doc__
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.ResidualWrapper"])
 @tf_export(v1=["nn.rnn_cell.ResidualWrapper"])
 class ResidualWrapper(rnn_cell_wrapper_impl.ResidualWrapperBase,
                       _RNNCellWrapperV1):
@@ -1209,6 +1219,7 @@ class ResidualWrapper(rnn_cell_wrapper_impl.ResidualWrapperBase,
   __init__.__doc__ = rnn_cell_wrapper_impl.ResidualWrapperBase.__init__.__doc__
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.DeviceWrapper"])
 @tf_export(v1=["nn.rnn_cell.DeviceWrapper"])
 class DeviceWrapper(rnn_cell_wrapper_impl.DeviceWrapperBase,
                     _RNNCellWrapperV1):
@@ -1219,6 +1230,7 @@ class DeviceWrapper(rnn_cell_wrapper_impl.DeviceWrapperBase,
   __init__.__doc__ = rnn_cell_wrapper_impl.DeviceWrapperBase.__init__.__doc__
 
 
+@keras_export(v1=["keras.__internal__.legacy.rnn_cell.MultiRNNCell"])
 @tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells.

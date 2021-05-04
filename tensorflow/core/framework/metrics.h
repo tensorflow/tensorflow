@@ -141,9 +141,6 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 // Updates the metrics stored about time BFC allocator spents during delay.
 void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
-// Increment the number of jobs that failed during import to mlir.
-void IncrementMLIRImportFailureCount();
-
 }  // namespace metrics
 }  // namespace tensorflow
 

@@ -582,8 +582,10 @@ def prod(a, axis=None, dtype=None, keepdims=None):
       tf_bool_fn=math_ops.reduce_all)
 
 
-@np_utils.np_doc('mean')
-def mean(a, axis=None, dtype=None, keepdims=None):
+@np_utils.np_doc('mean', unsupported_params=['out'])
+def mean(a, axis=None, dtype=None, out=None, keepdims=None):
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
   return _reduce(
       math_ops.reduce_mean,
       a,
@@ -593,8 +595,10 @@ def mean(a, axis=None, dtype=None, keepdims=None):
       promote_int=_TO_FLOAT)
 
 
-@np_utils.np_doc('amax')
-def amax(a, axis=None, keepdims=None):
+@np_utils.np_doc('amax', unsupported_params=['out'])
+def amax(a, axis=None, out=None, keepdims=None):
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
   return _reduce(
       math_ops.reduce_max,
       a,
@@ -606,8 +610,10 @@ def amax(a, axis=None, keepdims=None):
       preserve_bool=True)
 
 
-@np_utils.np_doc('amin')
-def amin(a, axis=None, keepdims=None):
+@np_utils.np_doc('amin', unsupported_params=['out'])
+def amin(a, axis=None, out=None, keepdims=None):
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
   return _reduce(
       math_ops.reduce_min,
       a,

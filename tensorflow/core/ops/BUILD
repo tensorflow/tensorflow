@@ -377,7 +377,7 @@ cc_library(
 
 filegroup(
     name = "portable_op_registrations_and_gradients",
-    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
+    srcs = ["//tensorflow/c/kernels:portable_all_ops"] + glob(
         [
             "**/*.cc",
             "**/*.h",

@@ -29,8 +29,8 @@ namespace tflite {
 namespace gpu {
 namespace {
 absl::Status TryDepthwiseConvPlus1x1Conv(
-    CalculationsPrecision precision, const GraphFloat32& graph,
-    NodeId first_node_id,
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   auto* dw_node = graph.GetNode(first_node_id);
@@ -79,7 +79,8 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (it != tensor_descriptors.end()) {
     op_def.dst_tensors.push_back(it->second);
   }
-  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, dw_attr, conv_attr)) {
+  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr,
+                                           conv_attr)) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
   std::unique_ptr<GPUOperation>* gpu_op =
@@ -212,8 +213,9 @@ absl::Status GPUSubgraphFromGraph(
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
     std::string* name) {
-  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia()) &&
-      TryDepthwiseConvPlus1x1Conv(precision, graph, first_node_id,
+  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() ||
+       (gpu_info.IsApple() && gpu_info.apple_info.IsBionic())) &&
+      TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {

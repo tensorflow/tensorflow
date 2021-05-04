@@ -45,8 +45,10 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  TfLiteIntArray* ret =
-      (TfLiteIntArray*)malloc(TfLiteIntArrayGetSizeInBytes(size));
+  int alloc_size = TfLiteIntArrayGetSizeInBytes(size);
+  if (alloc_size <= 0) return NULL;
+  TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
+  if (!ret) return ret;
   ret->size = size;
   return ret;
 }

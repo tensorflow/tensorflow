@@ -156,7 +156,8 @@ inline string GetMklNativeOpName(const string& name) {
   bool result =
       (0 == name.compare("ConjugateTranspose") ||
        0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
-       0 == name.compare("MatMul") || 0 == name.compare("Transpose"));
+       0 == name.compare("Einsum") || 0 == name.compare("MatMul") ||
+       0 == name.compare("Transpose"));
   if (result) {
     return string(kMklOpPrefix) + name;
   } else {
@@ -283,7 +284,6 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
     }
     return isTypeAllowed;
   }
-
   return false;
 }
 

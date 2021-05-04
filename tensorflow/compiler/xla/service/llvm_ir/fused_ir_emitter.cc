@@ -80,8 +80,6 @@ Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
 }
 
 Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
-  unsigned global_address_space =
-      llvm_ir::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
     const Literal& literal = constant->literal();
     llvm::Constant* initializer =
@@ -93,7 +91,7 @@ Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
         /*Initializer=*/initializer,
         /*Name=*/"", /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
+        /*AddressSpace=*/0,
         /*isExternallyInitialized=*/false);
 
     global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);

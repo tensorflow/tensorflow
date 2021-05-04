@@ -48,5 +48,87 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int32, int32, int32, baseline_add)
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
 
+/// Test `tf.BitwiseAnd`.
+template <typename T>
+T baseline_bitwise_and(T lhs, T rhs) {
+  return lhs & rhs;
+}
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_and)
+
+/// Test `tf.BitwiseOr`.
+template <typename T>
+T baseline_bitwise_or(T lhs, T rhs) {
+  return lhs | rhs;
+}
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_or)
+
+/// Test `tf.BitwiseXor`.
+template <typename T>
+T baseline_bitwise_xor(T lhs, T rhs) {
+  return lhs ^ rhs;
+}
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_xor)
+
+/// Test `tf.LeftShift`.
+template <typename T>
+T baseline_left_shift(T lhs, T rhs) {
+  return lhs << rhs;
+}
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_left_shift)
+
+/// Test `tf.RightShift`.
+template <typename T>
+T baseline_right_shift(T lhs, T rhs) {
+  return lhs >> rhs;
+}
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
+
 }  // namespace
 }  // namespace tensorflow

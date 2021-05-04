@@ -545,6 +545,47 @@ static LogicalResult Verify(RandomUniformOp op) {
 // RangeOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Compute the length of a range (1-D) tensor given `start`, `limit`, `delta`.
+// Template parameter `FloatOrInt` must be standard C integer or floating-point
+// types.
+template <typename FloatOrInt>
+int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
+  // Refer to the implementation in
+  // tensorflow/lite/kernels/range.cc.
+  FloatOrInt diff = limit - start;
+  if (std::is_integral<FloatOrInt>::value) {
+    return ((std::abs(diff) + std::abs(delta) - 1) / std::abs(delta));
+  }
+  return std::ceil(std::abs(diff / delta));
+}
+
+// Builds a constant range tensor of `result_elem_type` elements.
+// Template parameter `FloatOrIntAtrr` must be mlir::IntegerAttr or
+// mlir::FloatAttr.
+template <typename FloatOrIntAtrr>
+DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
+                                        FloatOrIntAtrr start_attr,
+                                        FloatOrIntAtrr delta_attr) {
+  using ValueType = typename FloatOrIntAtrr::ValueType;  // APInt or APFloat
+  ValueType start = start_attr.getValue();
+  ValueType delta = delta_attr.getValue();
+
+  SmallVector<ValueType, 16> new_values;
+  new_values.reserve(num_elements);
+  ValueType new_value = start;
+  for (int i = 0; i < num_elements; ++i) {
+    new_values.push_back(new_value);
+    new_value = new_value + delta;
+  }
+  // Result is always a 1-D tensor.
+  auto new_result_type =
+      RankedTensorType::get({num_elements}, result_elem_type);
+  return DenseElementsAttr::get(new_result_type, new_values);
+}
+}  // namespace
+
 void RangeOp::build(OpBuilder &builder, OperationState &result, Value start,
                     Value limit, Value delta) {
   assert(start.getType() == limit.getType());
@@ -571,6 +612,53 @@ void RangeOp::build(OpBuilder &builder, OperationState &result, Value start,
           {-1}, start.getType().cast<TensorType>().getElementType()),
       start, limit, delta);
 }
+
+OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 3);
+  auto start_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto limit_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto delta_tensor = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (!(start_tensor && limit_tensor && delta_tensor)) return nullptr;
+
+  // Operands should all be scalars
+  assert(start_tensor.getType().getRank() == 0 &&
+         limit_tensor.getType().getRank() == 0 &&
+         delta_tensor.getType().getRank() == 0);
+  Type elem_type = getType().cast<ShapedType>().getElementType();
+  if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
+    auto start_attr = start_tensor.getValue<IntegerAttr>({});
+    auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
+    auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
+    int num_elements;
+    if (elem_type.isUnsignedInteger()) {
+      uint64_t start = start_attr.getUInt();
+      uint64_t limit = limit_attr.getUInt();
+      uint64_t delta = delta_attr.getUInt();
+      assert(start <= (uint64_t)INT_MAX);
+      assert(limit <= (uint64_t)INT_MAX);
+      assert(delta <= (uint64_t)INT_MAX);
+      num_elements =
+          GetLengthOfRange(static_cast<int>(start), static_cast<int>(limit),
+                           static_cast<int>(delta));
+    } else {
+      num_elements = GetLengthOfRange(start_attr.getInt(), limit_attr.getInt(),
+                                      delta_attr.getInt());
+    }
+    return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                 delta_attr);
+  } else if (elem_type.isa<FloatType>()) {
+    auto start_attr = start_tensor.getValue<FloatAttr>({});
+    auto limit_attr = limit_tensor.getValue<FloatAttr>({});
+    auto delta_attr = delta_tensor.getValue<FloatAttr>({});
+    const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
+                                              limit_attr.getValueAsDouble(),
+                                              delta_attr.getValueAsDouble());
+    return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                 delta_attr);
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//

@@ -62,6 +62,30 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
       >();
 }
 
+//===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AbsOp op) {
+  auto operand_type = getElementTypeOrSelf(op.input().getType());
+  auto output_type = getElementTypeOrSelf(op.output().getType());
+  if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
+    if (complex_type.getElementType() != output_type) {
+      return op.emitOpError(
+          "requires output type to be the same as the element type of the "
+          "input");
+    }
+    return success();
+  }
+  if (operand_type != output_type)
+    return op.emitOpError("requires all operands to have the same type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
+
 // Verifies replica groups attached to collective communication operations.
 // If the attribute is not empty, it must be a rank 2 tensor, and each replica
 // should appear exactly once. If `is_uniform_sized` is true, then we also check
@@ -120,8 +144,8 @@ static LogicalResult Verify(AllReduceOp op) {
   if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
     return failure();
 
-  // AllReduce had variadic operands and results that have the same size.
-  // Each memeber of the operand should have the same type as the corresponding
+  // AllReduce has variadic operands and results that have the same size.
+  // Each member of the operand should have the same type as the corresponding
   // member of the result.
   for (auto it : llvm::enumerate(
            llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {

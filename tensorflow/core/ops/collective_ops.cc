@@ -117,6 +117,7 @@ REGISTER_OP("CollectiveReduceV2")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .Attr("Nordering_token: int >= 0 = 0")
+    .Attr("max_subdivs_per_device: int = -1")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 

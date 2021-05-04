@@ -363,7 +363,7 @@ class _TrackableResourceSummaryWriter(_ResourceSummaryWriter,
 
   def __init__(self, create_fn, init_op_fn):
     # Resolve multiple inheritance via explicit calls to __init__() on parents.
-    tracking.TrackableResource.__init__(self, device="cpu:0")
+    tracking.TrackableResource.__init__(self, device="/CPU:0")
     self._create_fn = create_fn
     self._init_op_fn = init_op_fn
     # Pass .resource_handle into _ResourceSummaryWriter parent class rather than

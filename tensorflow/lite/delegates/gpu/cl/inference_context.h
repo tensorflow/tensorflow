@@ -119,21 +119,23 @@ class InferenceContext {
                                    const GpuInfo& gpu_info,
                                    const GraphFloat32& graph);
   absl::Status Merge();
-  absl::Status AllocateMemory(CLContext* context);
+  absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status AllocateMemoryForConstTensors(CLContext* context);
 
   absl::Status AllocateMemoryForVariableTensors(CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(CLContext* context);
+  absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
+                                        CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(CLContext* context);
+  absl::Status AllocateMemoryForStrongShapes(const GpuInfo& gpu_info,
+                                             CLContext* context);
 
   // utility function
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
 
-  TensorMemoryType GetTensorMemoryType(ValueId id);
+  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);

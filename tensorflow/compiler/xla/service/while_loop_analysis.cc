@@ -618,8 +618,8 @@ optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
   }
 
   Literal cond_result_pred = std::move(eval_result.ValueOrDie());
-  CHECK(ShapeUtil::Equal(cond_result_pred.shape(),
-                         ShapeUtil::MakeShape(PRED, {})));
+  CHECK(Shape::Equal().IgnoreLayout()(cond_result_pred.shape(),
+                                      ShapeUtil::MakeShape(PRED, {})));
 
   // Per the explanation above, if the evaluated condition returns false, the
   // loop executes at most once.

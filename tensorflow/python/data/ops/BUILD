@@ -27,7 +27,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:optimization_options",
-        "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/experimental/ops:threading_options",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",

@@ -133,7 +133,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
           continue;
         }
         // Skip over forwarded operands.
-        if (constraints->OperandBufferForwarded(instruction, operand_no)) {
+        if (constraints->AnyOperandBufferForwarded(instruction, operand_no)) {
           continue;
         }
         // Skip operands with non-array shapes.

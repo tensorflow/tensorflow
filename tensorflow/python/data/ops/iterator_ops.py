@@ -697,7 +697,7 @@ class OwnedIterator(IteratorBase):
 
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
-    dataset = dataset._apply_options()
+    dataset = dataset._apply_debug_options()
 
     # Store dataset reference to ensure that dataset is alive when this iterator
     # is being used. For example, `tf.data.Dataset.from_generator` registers

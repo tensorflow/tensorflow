@@ -34,9 +34,9 @@ def gen_op_libraries(
         ] + deps,
     )
 
-    registed_op = "registed_" + name
+    registered_op = "registered_" + name
     native.genrule(
-        name = registed_op,
+        name = registered_op,
         srcs = [],
         outs = [name + ".inc.cc"],
         cmd = "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
@@ -47,7 +47,7 @@ def gen_op_libraries(
     native.cc_library(
         name = name + "_cc",
         testonly = test,
-        srcs = [":" + registed_op],
+        srcs = [":" + registered_op],
         deps = [
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
@@ -58,7 +58,7 @@ def gen_op_libraries(
 
     tf_custom_op_library(
         name = name + ".so",
-        srcs = [":" + registed_op],
+        srcs = [":" + registered_op],
     )
 
     tf_gen_op_wrapper_py(

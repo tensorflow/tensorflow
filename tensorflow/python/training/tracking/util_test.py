@@ -881,8 +881,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     new_model = self._create_trackable()
     load_checkpoint = trackable_utils.Checkpoint(new_model)
 
-    with self.assertRaisesRegex(errors_impl.NotFoundError,
-                                "Could not find checkpoint or SavedModel"):
+    with self.assertRaisesRegex(
+        errors_impl.NotFoundError,
+        "Failed to restore from checkpoint or SavedModel"):
       load_checkpoint.restore(saved_model_dir + "no").expect_partial()
 
     load_checkpoint.restore(saved_model_dir).expect_partial()

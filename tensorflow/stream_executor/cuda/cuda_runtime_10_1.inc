@@ -1429,6 +1429,15 @@ extern __host__ cudaError_t CUDARTAPI cudaGetChannelDesc(
   return func_ptr(desc, array);
 }
 
+extern __host__ struct cudaChannelFormatDesc CUDARTAPI cudaCreateChannelDesc(
+    int x, int y, int z, int w, enum cudaChannelFormatKind f) {
+  using FuncPtr = struct cudaChannelFormatDesc(CUDARTAPI *)(
+      int, int, int, int, enum cudaChannelFormatKind);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaCreateChannelDesc");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(x, y, z, w, f);
+}
+
 extern __host__ cudaError_t CUDARTAPI cudaCreateTextureObject(
     cudaTextureObject_t *pTexObject, const struct cudaResourceDesc *pResDesc,
     const struct cudaTextureDesc *pTexDesc,

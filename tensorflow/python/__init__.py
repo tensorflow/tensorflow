@@ -145,6 +145,9 @@ from tensorflow.python.compiler.xla import xla
 # MLIR APIs.
 from tensorflow.python.compiler.mlir import mlir
 
+# Structs (aka extension types)
+from tensorflow.python.framework import tensor_struct as _tensor_struct
+
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).
 nn.dynamic_rnn = rnn.dynamic_rnn

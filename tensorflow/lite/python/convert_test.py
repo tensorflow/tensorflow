@@ -286,7 +286,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
             self._getGraphOpTypes(
                 stubbed_graphdef,
                 output_nodes=[op_hint._tensor_name_base(output.name)]),
-            set(["add_test", "Const", "Identity", "Add"]))
+            set(["add_test", "Const", "Identity", "AddV2"]))
 
   def _get_input_index(self, x):
     return x.op.node_def.attr[op_hint.OpHint.FUNCTION_INPUT_INDEX_ATTR].i

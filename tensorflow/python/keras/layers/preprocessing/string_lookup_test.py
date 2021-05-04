@@ -165,7 +165,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = string_lookup.StringLookup(
-        vocabulary=vocab_data, output_mode="binary")
+        vocabulary=vocab_data, output_mode="multi_hot")
     res = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=res)
     output_data = model.predict(input_array)
@@ -190,7 +190,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = string_lookup.StringLookup(
-        vocabulary=vocab_data, output_mode="binary", sparse=True)
+        vocabulary=vocab_data, output_mode="multi_hot", sparse=True)
     res = layer(input_data)
     self.assertTrue(res.__class__.__name__, "SparseKerasTensor")
 

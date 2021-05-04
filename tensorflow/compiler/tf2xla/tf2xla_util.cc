@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -307,17 +308,44 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
   return Status::OK();
 }
 
+using GraphCache = absl::flat_hash_map<string, std::unique_ptr<FunctionBody>>;
+
+xla::StatusOr<FunctionBody*> FindOrInsert(
+    GraphCache* cache, const NameAttrList& body_attr,
+    const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld) {
+  const string name = body_attr.name();
+  std::unique_ptr<FunctionBody>& value = (*cache)[name];
+  if (!value) {
+    const FunctionDef* body_func = lookup_fld->Find(name);
+    if (!body_func && fallback_fld != nullptr) {
+      body_func = fallback_fld->Find(name);
+    }
+    if (!body_func) {
+      return errors::Internal("Traverse: Cannot find body function ", name);
+    }
+    std::unique_ptr<FunctionBody> fbody;
+    Status s = FunctionDefToBodyHelper(*body_func, AttrSlice(&body_attr.attr()),
+                                       lookup_fld, &fbody);
+    if (!s.ok() && fallback_fld != nullptr) {
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          *body_func, AttrSlice(&body_attr.attr()), fallback_fld, &fbody));
+    }
+    value = std::move(fbody);
+  }
+  return value.get();
+}
 // Determines whether a loop body is invariant for the given argument index.
 xla::StatusOr<bool> IsLoopInvariant(
     const FunctionBody* loop_body, int index,
     const FunctionLibraryDefinition* lookup_fld,
-    const FunctionLibraryDefinition* fallback_fld);
+    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache);
 
 // Traces backward through non-modifying ops such as Identity and loop-invariant
 // While, to find a preceding source edge.
 xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
     const Edge* src, const FunctionLibraryDefinition* lookup_fld,
-    const FunctionLibraryDefinition* fallback_fld) {
+    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
   const Edge* e = src;
   VLOG(2) << "Traverse: Begin at " << e->DebugString();
   // TODO(b/184727356): Also traverse If/Case nodes.
@@ -328,28 +356,15 @@ xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
     if (e->src()->IsWhileNode()) {
       NameAttrList body_attr;
       TF_RETURN_IF_ERROR(GetNodeAttr(e->src()->def(), "body", &body_attr));
-      const string fn_name = body_attr.name();
-      const FunctionDef* body_func = lookup_fld->Find(fn_name);
-      if (!body_func && fallback_fld != nullptr) {
-        body_func = fallback_fld->Find(fn_name);
-      }
-      if (!body_func) {
-        return errors::Internal("Traverse: Cannot find body function ", fn_name,
-                                " for While node ", e->src()->name());
-      }
-      std::unique_ptr<FunctionBody> fbody;
-      Status s = FunctionDefToBodyHelper(
-          *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody);
-      if (!s.ok() && fallback_fld != nullptr) {
-        TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-            *body_func, AttrSlice(&body_attr.attr()), fallback_fld, &fbody));
-      }
+      TF_ASSIGN_OR_RETURN(
+          FunctionBody * fbody,
+          FindOrInsert(cache, body_attr, lookup_fld, fallback_fld));
       TF_ASSIGN_OR_RETURN(bool is_loop_invariant,
-                          IsLoopInvariant(fbody.get(), e->src_output(),
-                                          lookup_fld, fallback_fld));
+                          IsLoopInvariant(fbody, e->src_output(), lookup_fld,
+                                          fallback_fld, cache));
       if (!is_loop_invariant) {
         VLOG(2) << "Non-loop-invariant: index " << e->src_output() << " of "
-                << fn_name;
+                << body_attr.name();
         break;
       }
     }  // if While|StatelessWhile
@@ -365,11 +380,12 @@ xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
 xla::StatusOr<bool> IsLoopInvariant(
     const FunctionBody* loop_body, int index,
     const FunctionLibraryDefinition* lookup_fld,
-    const FunctionLibraryDefinition* fallback_fld) {
+    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
   const Edge* e;
   TF_RETURN_IF_ERROR(loop_body->ret_nodes[index]->input_edge(0, &e));
-  TF_ASSIGN_OR_RETURN(const Edge* reachable, TraverseUnmodifiedPathBackward(
-                                                 e, lookup_fld, fallback_fld));
+  TF_ASSIGN_OR_RETURN(
+      const Edge* reachable,
+      TraverseUnmodifiedPathBackward(e, lookup_fld, fallback_fld, cache));
   if (reachable->src()->id() == loop_body->arg_nodes[index]->id()) {
     VLOG(2) << "Index " << index << " is loop invariant.";
     return true;
@@ -405,7 +421,7 @@ Status PropagateConstIntoAndAroundWhileNode(
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody));
-
+  GraphCache cache;
   for (int i = 0; i < while_node->num_inputs(); i++) {
     // Check if i-th retval's input comes from i-th arg directly.
     // For resource variable input of While nodes, TF2XLA convention is to place
@@ -413,21 +429,22 @@ Status PropagateConstIntoAndAroundWhileNode(
     // them. So number of While node inputs might be larger than number of its
     // outputs.
     if (i >= body_func->signature().output_arg_size()) {
-      continue;
+      break;
     }
 
     const Edge* input_edge;
     TF_RETURN_IF_ERROR(while_node->input_edge(i, &input_edge));
     TF_ASSIGN_OR_RETURN(input_edge, TraverseUnmodifiedPathBackward(
-                                        input_edge, lookup_fld, fld));
+                                        input_edge, lookup_fld, fld, &cache));
     if (!input_edge->src()->IsConstant()) {
       VLOG(2) << "Input " << i << " is not Const; is "
               << input_edge->src()->type_string();
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool is_loop_invariant,
-                        IsLoopInvariant(fbody.get(), i, lookup_fld, fld));
+    TF_ASSIGN_OR_RETURN(
+        bool is_loop_invariant,
+        IsLoopInvariant(fbody.get(), i, lookup_fld, fld, &cache));
     if (!is_loop_invariant) {
       VLOG(2) << "While state not loop-invariant; not propagating Const " << i;
       continue;
@@ -463,8 +480,9 @@ Status PropagateConstIntoAndAroundWhileNode(
 xla::StatusOr<bool> IsLoopInvariant(
     const FunctionBody* loop_body, int index,
     const FunctionLibraryDefinition* lookup_fld) {
+  GraphCache cache;
   return IsLoopInvariant(loop_body, index, lookup_fld,
-                         /*fallback_fld=*/nullptr);
+                         /*fallback_fld=*/nullptr, &cache);
 }
 
 const char kTpuReplicateAttrName[] = "_tpu_replicate";
@@ -942,12 +960,14 @@ Status PropagateConstIntoFunctionalNodes(
           VLOG(1) << "PropagateConstIntoIfNode: " << n->name();
           TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
           done_node_ids.emplace(n->id());
+          VLOG(1) << "Done PropagateConstIntoIfNode: " << n->name();
         } else if (n->IsWhileNode()) {
           VLOG(1) << "PropagateConstIntoWhileNode: " << n->name();
           TF_RETURN_IF_ERROR(
               PropagateConstIntoAndAroundWhileNode(g, n, lookup_fld, fld));
           done_node_ids.emplace(n->id());
           should_continue = true;
+          VLOG(1) << "Done PropagateConstIntoWhileNode: " << n->name();
           break;
         }
       }

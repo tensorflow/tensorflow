@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project

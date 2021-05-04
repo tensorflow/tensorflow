@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -51,6 +52,8 @@ namespace {
 
 constexpr auto kUnknownResourceId =
     ResourceAliasAnalysis::Info::kUnknownResourceId;
+// Use a single generator resource id.
+int64_t kGeneratorResourceId = -2;
 
 //===----------------------------------------------------------------------===//
 // SideEffectAnalysisInfo helper functions.
@@ -67,15 +70,22 @@ llvm::SmallDenseSet<int64_t, 8> UnknownResourceSet() {
 // if we cannot find all of them.
 llvm::SmallDenseSet<int64_t, 8> FindAccessedResources(
     Operation* op, const ResourceAliasAnalysis::Info& alias_analysis) {
+  VLOG(1) << "Find accessed resources for: " << debugString(*op);
   llvm::SmallDenseSet<int64_t, 8> resources;
 
   for (auto operand : filter_resources(op->getOperands())) {
-    if (alias_analysis.IsUnknownResource(operand)) return UnknownResourceSet();
+    if (alias_analysis.IsUnknownResource(operand)) {
+      VLOG(1) << "\tunknown resource in operand";
+      return UnknownResourceSet();
+    }
     const auto& ids = alias_analysis.GetResourceUniqueIds(operand);
     resources.insert(ids.begin(), ids.end());
   }
   for (auto result : filter_resources(op->getResults())) {
-    if (alias_analysis.IsUnknownResource(result)) return UnknownResourceSet();
+    if (alias_analysis.IsUnknownResource(result)) {
+      VLOG(1) << "\tunknown resource in result";
+      return UnknownResourceSet();
+    }
     const auto& ids = alias_analysis.GetResourceUniqueIds(result);
     resources.insert(ids.begin(), ids.end());
   }
@@ -96,6 +106,8 @@ struct SideEffects {
 using ResourceSideEffectsByValue = llvm::SmallDenseMap<Value, SideEffects>;
 
 bool MustExecute(const MemoryEffects::EffectInstance& effect) {
+  VLOG(1) << "MustExecute check with: "
+          << std::string(effect.getResource()->getName());
   if (llvm::isa<ResourceEffects::TPUEmbedding>(effect.getResource())) {
     assert(!effect.getValue() && !effect.getParameters() &&
            isa<MemoryEffects::Write>(effect.getEffect()));
@@ -109,6 +121,7 @@ bool MustExecute(const MemoryEffects::EffectInstance& effect) {
 void GetResourceInfoForOp(Operation* op,
                           ResourceSideEffectsByValue& resource_info,
                           bool& must_execute) {
+  VLOG(1) << "Querying for " << mlir::debugString(*op);
   auto interface = dyn_cast<MemoryEffectOpInterface>(op);
   if (!interface) return;
 
@@ -117,11 +130,14 @@ void GetResourceInfoForOp(Operation* op,
 
   for (auto& effect : effects) {
     if (MustExecute(effect)) {
+      VLOG(1) << "\tmust execute";
       must_execute = true;
       continue;
     }
+
     // TODO(lyandy): Support effects with no value defined.
     if (!effect.getValue()) {
+      VLOG(1) << "\teffect with no value, skipping";
       resource_info.clear();
       must_execute = false;
       return;
@@ -130,14 +146,19 @@ void GetResourceInfoForOp(Operation* op,
     auto& side_effect = it.first->getSecond();
     auto* resource_effect = effect.getEffect();
     if (isa<MemoryEffects::Allocate>(resource_effect)) {
+      VLOG(1) << "\tallocate effect";
       side_effect.alloc = true;
     } else if (isa<MemoryEffects::Free>(resource_effect)) {
+      VLOG(1) << "\tfree effect";
       side_effect.free = true;
     } else if (isa<MemoryEffects::Read>(resource_effect)) {
+      VLOG(1) << "\tread effect";
       side_effect.read = true;
     } else if (isa<MemoryEffects::Write>(resource_effect)) {
+      VLOG(1) << "\twrite effect";
       side_effect.write = true;
     } else {
+      VLOG(1) << "\tunknown effect, skipping";
       resource_info.clear();
       must_execute = false;
       return;
@@ -219,12 +240,6 @@ llvm::Optional<ResourceIdsByValue> GetResourceIdsByValue(
 
 // Returns true if `op` is known to not have any side effect.
 bool OpIsKnownToHaveNoSideEffect(Operation* op) {
-  // Note: Identity op is really side-effect free, but it is not marked as such
-  // in the TF dialect (see comments in definition of Identity op in tf_ops.td)
-  // However, for adding control dependencies, its safe to assume
-  // that the Identity op is side-effect free.
-  if (isa<IdentityOp>(op)) return true;
-
   // For op's in the Tensorflow dialect, query the dialect.
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return !TensorFlowDialect::CanHaveSideEffects(op);
@@ -242,7 +257,9 @@ namespace detail {
 
 void SideEffectAnalysisInfo::TrackAccess(int64_t resource_id, Operation* op,
                                          bool read_only) {
+  VLOG(1) << "TrackAccess for " << debugString(*op);
   if (resource_id == kUnknownResourceId) {
+    VLOG(1) << "\tunknown resource id";
     if (read_only) {
       // New unknown read is not tracked by any known resource access.
       for (auto& entry : per_resource_access_info_) {
@@ -251,9 +268,11 @@ void SideEffectAnalysisInfo::TrackAccess(int64_t resource_id, Operation* op,
     } else {
       // Unknown write can clear all other tracked information, since it acts
       // like a barrier.
+      VLOG(1) << "\tclearing per resource access info";
       per_resource_access_info_.clear();
     }
   }
+  VLOG(1) << "\tinfo for " << resource_id;
   auto& info = per_resource_access_info_[resource_id];
   if (read_only) {
     info.reads_since_last_write.push_back(op);
@@ -275,6 +294,8 @@ void SideEffectAnalysisInfo::TrackAccess(int64_t resource_id, Operation* op,
 void SideEffectAnalysisInfo::AddPredecessorsForAccess(int64_t resource_id,
                                                       Operation* op,
                                                       bool read_only) {
+  VLOG(1) << "Adding predecessors for resource " << resource_id << " and op "
+          << debugString(*op);
   auto it = per_resource_access_info_.find(resource_id);
   if (it == per_resource_access_info_.end()) return;
   const auto& access_info = it->getSecond();
@@ -330,16 +351,22 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
   // considered.
   auto unknown_access_indirectly_tracked_by_resource = [&](int64_t resource,
                                                            bool read_only) {
+    VLOG(1) << "\tunknown access indirectly tracked by resource " << resource;
     auto it = per_resource_access_info_.find(resource);
-    if (it == per_resource_access_info_.end()) return false;
+    if (it == per_resource_access_info_.end()) {
+      VLOG(1) << "\t\tnot found";
+      return false;
+    }
     auto unknown_it = per_resource_access_info_.find(kUnknownResourceId);
     const bool no_unknown_read =
         unknown_it == per_resource_access_info_.end() ||
         unknown_it->getSecond().reads_since_last_write.empty();
-    return read_only
-               ? it->second.tracked_last_unknown_write_for_read
-               : it->second.tracked_last_unknown_write_for_write &&
-                     (it->second.tracked_last_unknown_read || no_unknown_read);
+    bool ret = read_only ? it->second.tracked_last_unknown_write_for_read
+                         : it->second.tracked_last_unknown_write_for_write &&
+                               (it->second.tracked_last_unknown_read ||
+                                no_unknown_read);
+    VLOG(1) << "\t\tunknown access inderictly tracked by resource: " << ret;
+    return ret;
   };
 
   // We explicitly iterates through the regions and blocks, in order to handle
@@ -365,7 +392,10 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       if (resource_op_info.empty() && OpIsKnownToHaveNoSideEffect(&op))
         continue;
 
+      // TODO(jpienaar): This only currently uses unknown when not per value
+      // resource is used.
       if (resource_op_info.empty() && must_execute) {
+        VLOG(1) << "No resources & must execute: " << debugString(op);
         // Add unknown resource ops as predecessors of the op that must execute,
         // to guarantee ordering between unknown resource ops.
         AddPredecessorsForAccess(kUnknownResourceId, &op, /*read_only=*/false);
@@ -373,7 +403,10 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
         continue;
       }
 
-      if (IsResourceOpAllocOnly(&op, resource_op_info)) continue;
+      if (IsResourceOpAllocOnly(&op, resource_op_info)) {
+        VLOG(1) << "Resource alloc only: " << debugString(op);
+        continue;
+      }
 
       auto resource_ids_by_value =
           GetResourceIdsByValue(&op, alias_analysis, resource_op_info);
@@ -381,8 +414,12 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       bool indirectly_tracked_unknown_access = false;
       // First add edges from known resources.
       if (!resource_ids_by_value.hasValue()) {
+        VLOG(1) << "Resource not by value: " << debugString(op);
         for (auto& entry : per_resource_access_info_) {
-          if (entry.getFirst() == kUnknownResourceId) continue;
+          if (entry.getFirst() == kUnknownResourceId) {
+            VLOG(1) << "\tskipping over unknown resource id";
+            continue;
+          }
           AddPredecessorsForAccess(entry.getFirst(), &op, read_only);
           indirectly_tracked_unknown_access |=
               unknown_access_indirectly_tracked_by_resource(entry.getFirst(),
@@ -421,11 +458,32 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
         }
       }
 
-      // If not indirectly tracked, add edges from the unknown resource.
+      // If not indirectly tracked, add edges from the resource.
+      bool found_generator = false;
+
       if (!indirectly_tracked_unknown_access) {
-        AddPredecessorsForAccess(kUnknownResourceId, &op, read_only);
+        VLOG(1) << "Not indirectly tracked with unknown access: "
+                << debugString(op);
+        if (auto interface = dyn_cast<MemoryEffectOpInterface>(op)) {
+          llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+          interface.getEffects(effects);
+
+          found_generator =
+              llvm::any_of(effects, [&](MemoryEffects::EffectInstance& effect) {
+                return isa<ResourceEffects::GeneratorOp>(effect.getResource());
+              });
+        }
+        AddPredecessorsForAccess(
+            found_generator ? kGeneratorResourceId : kUnknownResourceId, &op,
+            read_only);
       }
       if (!resource_ids_by_value.hasValue()) {
+        VLOG(1) << "Indirectly tracked with no value: " << debugString(op);
+        if (found_generator) {
+          TrackAccess(kGeneratorResourceId, &op, read_only);
+          continue;
+        }
+
         // Update access info for unknown resource.
         TrackAccess(kUnknownResourceId, &op, read_only);
         // Add ops that must execute to unknown resource op predecessors.

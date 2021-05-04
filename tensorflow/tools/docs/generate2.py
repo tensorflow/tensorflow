@@ -194,6 +194,11 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
     pass
 
   try:
+    doc_controls.do_not_generate_docs(tf.keras.__internal__)
+  except AttributeError:
+    pass
+
+  try:
     doc_controls.do_not_generate_docs(tf.__operators__)
   except AttributeError:
     pass

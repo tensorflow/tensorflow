@@ -87,6 +87,10 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto padding = params->padding;
   int out_width, out_height;
 
+  // Prevent division by 0 in optimized pooling implementations
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
   data->padding = ComputePaddingHeightWidth(
       params->stride_height, params->stride_width, 1, 1, height, width,
       params->filter_height, params->filter_width, padding, &out_height,

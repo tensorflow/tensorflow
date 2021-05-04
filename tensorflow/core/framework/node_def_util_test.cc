@@ -802,6 +802,38 @@ TEST(MaybeAddPrefixToColocationConstraints, NoConstraints) {
   EXPECT_FALSE(HasNodeAttr(node_def, kColocationAttrName));
 }
 
+TEST(MaybeUpdateColocationConstraintsWithMap, Basic) {
+  NodeDef node_def;
+  node_def.set_name("Identity");
+  node_def.set_op("Identity");
+  AddNodeAttr(kColocationAttrName,
+              {strings::StrCat(kColocationGroupPrefix, "Node1"),
+               strings::StrCat(kColocationGroupPrefix, "Node2"),
+               strings::StrCat(kColocationGroupPrefix, "Node3")},
+              &node_def);
+
+  std::map<absl::string_view, absl::string_view> node_map;
+  node_map["Node1"] = "Node4";
+  node_map["Invalid"] = "Node5";
+  TF_ASSERT_OK(MaybeUpdateColocationConstraintsWithMap(node_map, &node_def));
+  std::vector<string> coloc_constraints;
+  TF_ASSERT_OK(GetNodeAttr(node_def, kColocationAttrName, &coloc_constraints));
+  EXPECT_EQ(coloc_constraints,
+            std::vector<string>({"loc:@Node4", "loc:@Node2", "loc:@Node3"}));
+}
+
+TEST(MaybeUpdateColocationConstraintsWithMap, NoConstraints) {
+  NodeDef node_def;
+  node_def.set_name("Identity");
+  node_def.set_op("Identity");
+
+  std::map<absl::string_view, absl::string_view> node_map;
+  node_map["Node1"] = "Node4";
+  node_map["Invalid"] = "Node5";
+  TF_ASSERT_OK(MaybeUpdateColocationConstraintsWithMap(node_map, &node_def));
+  EXPECT_FALSE(HasNodeAttr(node_def, kColocationAttrName));
+}
+
 TEST(FormatNodeForErrorTest, Node) {
   Graph g(OpRegistry::Global());
   Node* node;

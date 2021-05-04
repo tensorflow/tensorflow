@@ -106,7 +106,6 @@ int SingleOpModel::AddIntermediate(TensorType type,
                                    const std::vector<float>& scale,
                                    const std::vector<int64_t>& zero_point) {
   // Currently supports only int16 intermediate types.
-  // TODO(jianlijianli): make use of the type.
   int id = tensors_.size();
   flatbuffers::Offset<QuantizationParameters> q_params =
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,

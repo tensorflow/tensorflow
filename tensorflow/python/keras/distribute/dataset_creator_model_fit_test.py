@@ -95,10 +95,13 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
         norm = keras.layers.BatchNormalization(
             axis=-1, input_shape=(4, 4, 3), momentum=0.8)
         model.add(norm)
+      model.add(core_layers.Dense(1, activation="sigmoid"))
+      self._metric = keras.metrics.Accuracy()
 
     model.compile(
         gradient_descent.SGD(),
-        loss="mse",
+        loss="binary_crossentropy",
+        metrics=[self._metric],
         steps_per_execution=steps_per_execution,
         run_eagerly=run_eagerly)
     return model, [ResultAssertingCallback()]
@@ -129,13 +132,45 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
           (x, y)).shuffle(10).repeat().batch(2)
 
     x = x or dataset_creator.DatasetCreator(dataset_fn)
+    validation_data = (
+        validation_data or dataset_creator.DatasetCreator(dataset_fn))
 
     model.fit(
         x,
         epochs=10,
         steps_per_epoch=steps_per_epoch,
         callbacks=callbacks,
-        validation_data=validation_data)
+        validation_data=validation_data,
+        validation_steps=steps_per_epoch)
+    return model
+
+  def _model_evaluate(self,
+                      strategy,
+                      steps_per_execution=1,
+                      validation_data=None,
+                      steps=10,
+                      run_eagerly=False,
+                      with_normalization_layer=False,
+                      callbacks=None):
+    if callbacks is None:
+      callbacks = []
+
+    model, default_callbacks = self._model_compile(strategy,
+                                                   steps_per_execution,
+                                                   run_eagerly,
+                                                   with_normalization_layer)
+    callbacks += default_callbacks
+
+    def dataset_fn(input_context):
+      del input_context
+      x = random_ops.random_uniform((10, 10))
+      y = random_ops.random_uniform((10, 1))
+      return dataset_ops.DatasetV2.from_tensor_slices(
+          (x, y)).shuffle(10).repeat().batch(8)
+
+    validation_data = (
+        validation_data or dataset_creator.DatasetCreator(dataset_fn))
+    model.evaluate(x=validation_data, steps=steps, callbacks=callbacks)
     return model
 
 
@@ -150,7 +185,6 @@ class DatasetCreatorModelFitTest(DatasetCreatorModelFitTestBase):
   def testModelFit(self, strategy):
     model = self._model_fit(strategy)
     self.assertEqual(model.optimizer.iterations, 100)
-    return model
 
   def testModelFitWithNormalizationLayer(self, strategy):
     model = self._model_fit(strategy, with_normalization_layer=True)
@@ -163,10 +197,60 @@ class DatasetCreatorModelFitTest(DatasetCreatorModelFitTestBase):
   def testModelFitWithNoStepsPerEpoch(self, strategy):
     with self.assertRaisesRegex(
         ValueError, "When using a "
-        "`tf.keras.utils.experimental.DatasetCreator`, "
-        "`steps_per_epoch` argument must be provided in "
-        "`Model.fit`."):
+        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
+        "`validation_steps` or `steps` argument must be provided in "
+        "`Model.fit` or `Model.evaluate`."):
       self._model_fit(strategy, steps_per_epoch=None)
+
+
+@ds_combinations.generate(
+    combinations.combine(strategy=["ParameterServerStrategy"], mode="eager"))
+class DatasetCreatorModelEvaluateParameterServerStrategyOnlyTest(
+    DatasetCreatorModelFitTestBase):
+
+  def testModelEvaluate(self, strategy):
+    self._model_evaluate(strategy)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
+
+  def testModelEvaluateWithNormalizationLayer(self, strategy):
+    self._model_evaluate(strategy, with_normalization_layer=True)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
+
+  def testModelEvaluateWithStepsPerExecution(self, strategy):
+    self._model_evaluate(strategy, steps_per_execution=10)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
+
+  def testModelEvaluateWithNoStepsPerEpoch(self, strategy):
+    with self.assertRaisesRegex(
+        ValueError, "When using a "
+        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
+        "`validation_steps` or `steps` argument must be provided in "
+        "`Model.fit` or `Model.evaluate`."):
+      self._model_evaluate(strategy, steps=None)
+
+  def testModelEvaluateWithDatasetInstance(self, strategy):
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        "Only `tf.keras.utils.experimental.DatasetCreator` input is supported "
+        "with `ParameterServerStrategy` at this time. Please see "
+        "`tf.keras.utils.experimental.DatasetCreator` class docstring for more "
+        "information."
+    ):
+      self._model_evaluate(
+          strategy,
+          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+
+  def testModelFitErrorOnBatchLevelCallbacks(self, strategy):
+
+    class BatchLevelCallback(callbacks_lib.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        pass
+
+    with self.assertRaisesRegex(ValueError,
+                                "Batch-level `Callback`s are not supported"):
+      callbacks = [BatchLevelCallback()]
+      self._model_evaluate(strategy, callbacks=callbacks)
 
 
 @ds_combinations.generate(
@@ -180,27 +264,15 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
         "`run_eagerly` is not supported."):
       self._model_fit(strategy, run_eagerly=True)
 
-  def testModelFitWithValidationData(self, strategy):
-    with self.assertRaisesRegex(
-        NotImplementedError, "Evaluation in `model.fit` with "
-        "`ParameterServerStrategy` is not yet supported."):
-      self._model_fit(
-          strategy,
-          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
   def testModelFitWithDatasetInstance(self, strategy):
     with self.assertRaisesRegex(
-        NotImplementedError, "Only `DatasetCreator` input is supported in "
-        "`ParameterServerStrategy` at this time."):
+        NotImplementedError,
+        "Only `tf.keras.utils.experimental.DatasetCreator` input is supported "
+        "with `ParameterServerStrategy` at this time. Please see "
+        "`tf.keras.utils.experimental.DatasetCreator` class docstring for "
+        "more information."):
       self._model_fit(
           strategy, x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  def testModelEvaluate(self, strategy):
-    model, _ = self._model_compile(strategy)
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.evaluate` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.evaluate(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
 
   def testModelPredict(self, strategy):
     model, _ = self._model_compile(strategy)

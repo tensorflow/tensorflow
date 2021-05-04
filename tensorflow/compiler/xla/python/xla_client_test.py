@@ -468,6 +468,13 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+    def testXlaShapeIndex(self):
+      a = xla_client.ShapeIndex((1, 2))
+      b = xla_client.ShapeIndex((1, 2))
+      c = xla_client.ShapeIndex((2, 3))
+      self.assertEqual(a, b)
+      self.assertNotEqual(b, c)
+
     def testBlockHostUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)

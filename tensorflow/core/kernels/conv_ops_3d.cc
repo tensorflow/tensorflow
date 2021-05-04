@@ -69,6 +69,11 @@ struct LaunchConvOp<CPUDevice, T> {
                 errors::InvalidArgument("CPU implementation of Conv3D "
                                         "currently only supports dilated rates "
                                         "of 1."));
+    OP_REQUIRES(context, filter.dim_size(3) == input.dim_size(input.dims() - 1),
+                errors::InvalidArgument(
+                    "Number of channels in filter (", filter.dim_size(3),
+                    ") must match last dimension of input (",
+                    input.dim_size(input.dims() - 1), ")"));
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
@@ -142,6 +147,8 @@ class Conv3DOp : public BinaryOp<T> {
     const int64 filter_depth = filter.dim_size(3);
     const int64 out_depth = filter.dim_size(4);
 
+    OP_REQUIRES(context, filter_depth != 0,
+                errors::InvalidArgument("filter_depth must be non-zero"));
     OP_REQUIRES(context, in_depth % filter_depth == 0,
                 errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",

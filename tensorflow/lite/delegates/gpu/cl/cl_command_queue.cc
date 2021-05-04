@@ -100,12 +100,13 @@ absl::Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
 }
 
 absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
-                                               const void* data) {
+                                               const void* data, bool async) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
                       static_cast<size_t>(region.z)};
-  auto error_code = clEnqueueWriteImage(queue_, memory, CL_TRUE, origin, r, 0,
+  const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
+  auto error_code = clEnqueueWriteImage(queue_, memory, blocking, origin, r, 0,
                                         0, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
@@ -117,13 +118,14 @@ absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
 }
 
 absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
-                                              void* data) {
+                                              void* data, bool async) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
                       static_cast<size_t>(region.z)};
-  auto error_code = clEnqueueReadImage(queue_, memory, CL_TRUE, origin, r, 0, 0,
-                                       data, 0, nullptr, nullptr);
+  const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
+  auto error_code = clEnqueueReadImage(queue_, memory, blocking, origin, r, 0,
+                                       0, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
         absl::StrCat("Failed to read data from GPU (clEnqueueReadImage) - ",
@@ -135,9 +137,10 @@ absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
 
 absl::Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory,
                                                 size_t size_in_bytes,
-                                                const void* data) {
+                                                const void* data, bool async) {
+  const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
   auto error_code = clEnqueueWriteBuffer(
-      queue_, memory, CL_TRUE, 0, size_in_bytes, data, 0, nullptr, nullptr);
+      queue_, memory, blocking, 0, size_in_bytes, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
         absl::StrCat("Failed to upload data to GPU (clEnqueueWriteBuffer) - ",
@@ -147,10 +150,11 @@ absl::Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory,
 }
 
 absl::Status CLCommandQueue::EnqueueReadBuffer(cl_mem memory,
-                                               size_t size_in_bytes,
-                                               void* data) {
+                                               size_t size_in_bytes, void* data,
+                                               bool async) {
+  const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
   auto error_code = clEnqueueReadBuffer(
-      queue_, memory, CL_TRUE, 0, size_in_bytes, data, 0, nullptr, nullptr);
+      queue_, memory, blocking, 0, size_in_bytes, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
         absl::StrCat("Failed to read data from GPU (clEnqueueReadBuffer) - ",

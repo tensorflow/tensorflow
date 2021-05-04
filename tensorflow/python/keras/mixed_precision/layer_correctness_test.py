@@ -33,12 +33,12 @@ from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
 from tensorflow.python.keras.layers import noise
-from tensorflow.python.keras.layers import normalization
-from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import wrappers
+from tensorflow.python.keras.layers.normalization import batch_normalization
+from tensorflow.python.keras.layers.normalization import layer_normalization
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.platform import test
 
@@ -118,11 +118,11 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('GaussianNoise', lambda: noise.GaussianNoise(0.5), (2, 2)),
       ('GaussianDropout', lambda: noise.GaussianDropout(0.5), (2, 2)),
       ('AlphaDropout', lambda: noise.AlphaDropout(0.5), (2, 2)),
-      ('BatchNormalization', normalization_v2.BatchNormalization,
+      ('BatchNormalization', batch_normalization.BatchNormalization,
        (2, 2), 1e-2, 1e-2),
-      ('LayerNormalization', normalization.LayerNormalization, (2, 2)),
+      ('LayerNormalization', layer_normalization.LayerNormalization, (2, 2)),
       ('LayerNormalizationUnfused',
-       lambda: normalization.LayerNormalization(axis=1), (2, 2, 2)),
+       lambda: layer_normalization.LayerNormalization(axis=1), (2, 2, 2)),
       ('MaxPooling2D', pooling.MaxPooling2D, (2, 2, 2, 1)),
       ('AveragePooling2D', pooling.AveragePooling2D, (2, 2, 2, 1)),
       ('GlobalMaxPooling2D', pooling.GlobalMaxPooling2D, (2, 2, 2, 1)),

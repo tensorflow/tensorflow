@@ -23,7 +23,6 @@ import os
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
@@ -238,8 +237,6 @@ class DebugIdentityV2OpUninitializedWriterTest(
 
   @test_util.run_in_graph_and_eager_modes
   def testInvokingDebugIdentityV2OpBeforeCreatingDebugEventsWriterWorks(self):
-    if not compat.forward_compatible(2020, 6, 24):
-      self.skipTest("Functionality currently not supported.")
     circular_buffer_size = 3
 
     @def_function.function
@@ -290,9 +287,11 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
   def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):
 
     def debug_summary(x):
-      return self.evaluate(gen_debug_ops.debug_numeric_summary_v2(
-          x, tensor_debug_mode=(
-              debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS)))
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(
+                  debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS)))
 
     self.assertAllEqual(
         debug_summary(constant_op.constant([])), [0.0, 0.0, 0.0])
@@ -703,7 +702,11 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     self.assertAllEqual(tensor, expected)
     x[0, 0, 0] = np.nan
     tensor, tensor_id = debug_summary(constant_op.constant(x))
-    expected = [tensor_id, -1, 1,] + tensor_counts(x)
+    expected = [
+        tensor_id,
+        -1,
+        1,
+    ] + tensor_counts(x)
     self.assertAllEqual(tensor, expected)
     x = np.zeros([9701], dtype=np.float64)
     x[9700] = np.nan

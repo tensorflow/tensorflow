@@ -40,6 +40,7 @@ tf_module {
     name: "experimental"
     mtype: "<type \'module\'>"
   }
+  # Placeholder for internal API
   member {
     name: "initializers"
     mtype: "<type \'module\'>"

@@ -112,19 +112,20 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
         op, "only dynamic width and height dimensions are allowed");
   }
 
-  // Check if the ConvOp is preceded by a `Expand` op and succeeded by a
-  // `Squeeze` op.
-  Operation* prev_op = op.getOperation()->getPrevNode();
-  if (!prev_op || prev_op->getNumResults() != 1) {
+  // Check if the ConvOp's input is defined by `Expand` op, and the output used
+  // by `Squeeze` op.
+  Operation* producer_op = op.getOperand(0).getDefiningOp();
+  if (!producer_op || producer_op->getNumResults() != 1) {
     return rewriter.notifyMatchFailure(
-        op, "op doesn't have a preceding node that has a single result");
+        op, "op doesn't have a producer node that has a single result");
   }
-  if (!prev_op->hasOneUse() || *(prev_op->getResult(0).user_begin()) != op) {
+  if (!producer_op->hasOneUse() ||
+      *(producer_op->getResult(0).user_begin()) != op) {
     return rewriter.notifyMatchFailure(
         op, "op's input isn't produced by previous operation");
   }
 
-  auto tryGetNextNode =
+  auto tryGetDirectConsumerOp =
       [&rewriter](Operation* current) -> std::pair<LogicalResult, Operation*> {
     // Check the current operation has a single result.
     if (current->getNumResults() != 1) {
@@ -132,42 +133,44 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
           rewriter.notifyMatchFailure(current, "op doesn't have single result"),
           nullptr};
     }
-    // Check the current operation has a next node.
-    Operation* next_op = current->getNextNode();
-    if (!next_op) {
-      return {rewriter.notifyMatchFailure(current, "op doesn't have next node"),
-              nullptr};
+    // Check the current operation has a consumer node.
+    Operation* consumer_op =
+        current->getResult(0).getUses().begin()->getOwner();
+    if (!consumer_op) {
+      return {
+          rewriter.notifyMatchFailure(current, "op doesn't have consumer node"),
+          nullptr};
     }
     // Check the current operation's result is used by its successor node.
     if (!current->hasOneUse() ||
-        *(current->getResult(0).user_begin()) != next_op) {
+        *(current->getResult(0).user_begin()) != consumer_op) {
       return {
           rewriter.notifyMatchFailure(
               current, "op's result isn't directly consumed by the next op"),
           nullptr};
     }
-    return {LogicalResult::success(), next_op};
+    return {LogicalResult::success(), consumer_op};
   };
 
-  std::pair<LogicalResult, Operation*> maybeNextNode =
-      tryGetNextNode(op.getOperation());
-  if (failed(maybeNextNode.first)) {
-    return maybeNextNode.first;
+  std::pair<LogicalResult, Operation*> maybeConsumer =
+      tryGetDirectConsumerOp(op.getOperation());
+  if (failed(maybeConsumer.first)) {
+    return maybeConsumer.first;
   }
-  Operation* next_op = maybeNextNode.second;
+  Operation* consumer_op = maybeConsumer.second;
 
   TF::ExpandDimsOp expand_op;
   TF::SqueezeOp squeeze_op;
   int64_t expand_axis = -1;
   // Expand + Squeeze op.
-  if (llvm::isa<TF::ExpandDimsOp>(prev_op)) {
-    if (!llvm::isa<TF::SqueezeOp>(next_op)) {
+  if (llvm::isa<TF::ExpandDimsOp>(producer_op)) {
+    if (!llvm::isa<TF::SqueezeOp>(consumer_op)) {
       // Expand/Squeeze op must come in pair.
       return rewriter.notifyMatchFailure(
           op, "ExpandDimsOp and SqueezeOp should come in pair");
     }
-    expand_op = llvm::cast<TF::ExpandDimsOp>(prev_op);
-    squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
+    expand_op = llvm::cast<TF::ExpandDimsOp>(producer_op);
+    squeeze_op = llvm::cast<TF::SqueezeOp>(consumer_op);
     if (!expand_op.getResult().hasOneUse()) {
       return rewriter.notifyMatchFailure(
           expand_op, "result for current op has more than 1 use");
@@ -209,31 +212,32 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     }
 
     // Update previous/next op pointer.
-    Operation* tmp = prev_op->getPrevNode();
+    Operation* tmp = expand_op.input().getDefiningOp();
     if (!tmp || tmp->getNumResults() != 1) {
       return rewriter.notifyMatchFailure(
-          prev_op, "op doesn't have a preceding node that has a single result");
+          producer_op,
+          "op doesn't have a producer node that has a single result");
     }
-    if (!tmp->hasOneUse() || *(tmp->getResult(0).user_begin()) != prev_op) {
+    if (!tmp->hasOneUse() || *(tmp->getResult(0).user_begin()) != producer_op) {
       return rewriter.notifyMatchFailure(
-          prev_op, "op's input isn't defined by its previous node");
+          producer_op, "op's input isn't defined by its previous node");
     }
-    prev_op = tmp;
-    std::pair<LogicalResult, Operation*> maybeNextNode =
-        tryGetNextNode(next_op);
-    if (failed(maybeNextNode.first)) {
-      return maybeNextNode.first;
+    producer_op = tmp;
+    std::pair<LogicalResult, Operation*> maybeConsumer =
+        tryGetDirectConsumerOp(consumer_op);
+    if (failed(maybeConsumer.first)) {
+      return maybeConsumer.first;
     }
-    next_op = maybeNextNode.second;
+    consumer_op = maybeConsumer.second;
   }
 
   // SpaceToBatchND op.
-  if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) {
-    return rewriter.notifyMatchFailure(prev_op,
+  if (!llvm::isa<TF::SpaceToBatchNDOp>(producer_op)) {
+    return rewriter.notifyMatchFailure(producer_op,
                                        "op should be a SpaceToBatchND op");
   }
   // TODO(b/149936532): Check `padding` input, currently ignored.
-  TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(prev_op);
+  TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(producer_op);
   if (!stb_op.getResult().hasOneUse()) {
     return rewriter.notifyMatchFailure(
         stb_op, "result for current op has more than 1 use");
@@ -242,18 +246,18 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   // Pad op.
   TF::PadOp pad_op;
   ElementsAttr pad_attr;
-  if (llvm::isa<TF::PadOp>(next_op)) {
-    pad_op = llvm::cast<TF::PadOp>(next_op);
+  if (llvm::isa<TF::PadOp>(consumer_op)) {
+    pad_op = llvm::cast<TF::PadOp>(consumer_op);
     if (!pad_op.getResult().hasOneUse()) {
       return rewriter.notifyMatchFailure(
           pad_op, "result for current op has more than 1 use");
     }
-    std::pair<LogicalResult, Operation*> maybeNextNode =
-        tryGetNextNode(next_op);
-    if (failed(maybeNextNode.first)) {
-      return maybeNextNode.first;
+    std::pair<LogicalResult, Operation*> maybeConsumer =
+        tryGetDirectConsumerOp(consumer_op);
+    if (failed(maybeConsumer.first)) {
+      return maybeConsumer.first;
     }
-    next_op = maybeNextNode.second;
+    consumer_op = maybeConsumer.second;
     if (!matchPattern(pad_op.paddings(), m_Constant(&pad_attr))) {
       // If the padding value isn't constant, we can't determine the padding
       // scheme for Conv2D below, in this case just reject the pattern.
@@ -266,45 +270,38 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   TF::BatchToSpaceNDOp bts_op;
   TF::BiasAddOp biasadd_op;
   bool final_op_is_bts = true;
-  if (llvm::isa<TF::BiasAddOp>(next_op)) {
+  if (llvm::isa<TF::BiasAddOp>(consumer_op)) {
     // Must be BiasAdd + BatchToSpaceND.
-    biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
+    biasadd_op = llvm::cast<TF::BiasAddOp>(consumer_op);
     if (!biasadd_op.getResult().hasOneUse()) {
       return rewriter.notifyMatchFailure(
           biasadd_op, "result for current op has more than 1 use");
     }
-    std::pair<LogicalResult, Operation*> maybeNextNode =
-        tryGetNextNode(next_op);
-    if (failed(maybeNextNode.first)) {
-      return maybeNextNode.first;
+    std::pair<LogicalResult, Operation*> maybeConsumer =
+        tryGetDirectConsumerOp(consumer_op);
+    if (failed(maybeConsumer.first)) {
+      return maybeConsumer.first;
     }
-    if (!llvm::isa<TF::BatchToSpaceNDOp>(maybeNextNode.second)) {
+    if (!llvm::isa<TF::BatchToSpaceNDOp>(maybeConsumer.second)) {
       return rewriter.notifyMatchFailure(
-          next_op, "op's next node isn't BatchToSpaceND op");
+          consumer_op, "op's next node isn't BatchToSpaceND op");
     }
-    next_op = maybeNextNode.second;
-    bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
-  } else if (llvm::isa<TF::BatchToSpaceNDOp>(next_op)) {
+    consumer_op = maybeConsumer.second;
+    bts_op = llvm::cast<TF::BatchToSpaceNDOp>(consumer_op);
+  } else if (llvm::isa<TF::BatchToSpaceNDOp>(consumer_op)) {
     // BatchToSpaceND + (optional) BiasAdd.
-    bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
-    Operation* tmp = next_op->getNextNode();
+    bts_op = llvm::cast<TF::BatchToSpaceNDOp>(consumer_op);
+    std::pair<LogicalResult, Operation*> maybeConsumer =
+        tryGetDirectConsumerOp(consumer_op);
+    Operation* tmp = maybeConsumer.second;
     if (tmp && llvm::isa<TF::BiasAddOp>(tmp)) {
-      if (!bts_op.getResult().hasOneUse()) {
-        return rewriter.notifyMatchFailure(
-            bts_op, "result for current op has more than 1 use");
-      }
-      if (!next_op->hasOneUse() ||
-          *(next_op->getResult(0).user_begin()) != tmp) {
-        return rewriter.notifyMatchFailure(
-            next_op, "op's result isn't directly consumed by the next op");
-      }
-      next_op = tmp;
-      biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
+      consumer_op = tmp;
+      biasadd_op = llvm::cast<TF::BiasAddOp>(consumer_op);
       final_op_is_bts = false;
     }
   } else {
     return rewriter.notifyMatchFailure(
-        next_op, "next op is neither BiasAdd nor BatchToSpaceND");
+        consumer_op, "next op is neither BiasAdd nor BatchToSpaceND");
   }
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(

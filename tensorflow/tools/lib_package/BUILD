@@ -139,7 +139,6 @@ genrule(
     srcs = [
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
@@ -168,13 +167,7 @@ genrule(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "@aws//:LICENSE",
-            "@aws-checksums//:LICENSE",
-            "@aws-c-event-stream//:LICENSE",
-            "@aws-c-common//:LICENSE",
-        ],
+        "//conditions:default": [],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -216,7 +209,6 @@ genrule(
     srcs = [
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
@@ -247,13 +239,7 @@ genrule(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "@aws//:LICENSE",
-            "@aws-checksums//:LICENSE",
-            "@aws-c-event-stream//:LICENSE",
-            "@aws-c-common//:LICENSE",
-        ],
+        "//conditions:default": [],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

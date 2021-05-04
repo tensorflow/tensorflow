@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
 
@@ -157,6 +158,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
+  PjRtRuntimeType runtime_type() const override { return kStreamExecutor; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -185,6 +187,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) override {
+    return Unimplemented("Async transfer to buffers not implemented");
+  };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
@@ -241,6 +249,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
  protected:
   friend class PjRtStreamExecutorBuffer;
+
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
@@ -251,6 +260,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual Status CopyToRemoteDevice(
       PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
+  }
+
+  virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+                                        int64 offset, int64 transfer_size,
+                                        std::function<void(Status)> on_ready) {
+    return Unimplemented("Raw copies to host not implemented.");
   }
 
   const PjRtPlatformId platform_id_;
@@ -496,6 +511,11 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   using PjRtBuffer::ToLiteral;
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
+
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+
+  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                       std::function<void(Status)> on_ready) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

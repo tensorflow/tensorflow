@@ -338,7 +338,8 @@ def GpuSupportsHalfMatMulAndConv():
 
 
 def IsMklEnabled():
-  return _pywrap_util_port.IsMklEnabled()
+  return (_pywrap_util_port.IsMklEnabled() or
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "False").lower() in ["true", "1"])
 
 
 def InstallStackTraceHandler():

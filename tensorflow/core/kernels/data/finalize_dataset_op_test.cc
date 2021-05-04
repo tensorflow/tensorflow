@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
@@ -163,50 +163,49 @@ FinalizeDatasetParams NoOptimizationFinalizeParams() {
   return FinalizeDatasetParams(NoOptimizationOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"options_dataset_0");
 }
 
 FinalizeDatasetParams MaxIntraOpParallelismParams() {
   return FinalizeDatasetParams(MaxIntraOpParallelismOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"MaxIntraOpParallelismDatasetOp");
 }
 
 FinalizeDatasetParams PrivateThreadPoolParams() {
   return FinalizeDatasetParams(PrivateThreadPoolOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"PrivateThreadPoolDatasetOp");
 }
 
 FinalizeDatasetParams ModelParams() {
   return FinalizeDatasetParams(ModelOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"ModelDatasetOp");
 }
 
 FinalizeDatasetParams OptimizationsDefaultParams() {
   return FinalizeDatasetParams(OptimizationsDefaultOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"private_thread_pool");
 }
 
 FinalizeDatasetParams AllChainedDatasetsParams() {
   return FinalizeDatasetParams(AllChainedDatasetsOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"finalize_dataset_0");
+                               /*node_name=*/"ModelDataset/_9");
 }
 
 TEST_F(FinalizeDatasetOpTest, NoOptimizationNodeName) {
   auto test_case_params = NoOptimizationFinalizeParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings(
-      {"FinalizeDataset", "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings({"OptionsDataset", "RangeDataset"});
 }
 
 std::vector<GetNextTestCase<FinalizeDatasetParams>> GetNextTestCases() {
@@ -239,9 +238,8 @@ TEST_F(FinalizeDatasetOpTest, MaxIntraOpParallelismNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings({"FinalizeDataset",
-                                   "MaxIntraOpParallelismDataset",
-                                   "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings(
+      {"MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
 }
 
 TEST_F(FinalizeDatasetOpTest, PrivateThreadPoolNodeName) {
@@ -250,9 +248,8 @@ TEST_F(FinalizeDatasetOpTest, PrivateThreadPoolNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings({"FinalizeDataset",
-                                   "PrivateThreadPoolDataset", "OptionsDataset",
-                                   "RangeDataset"});
+  CheckDatasetPipelineTypeStrings(
+      {"PrivateThreadPoolDataset", "OptionsDataset", "RangeDataset"});
 }
 
 TEST_F(FinalizeDatasetOpTest, ModelNodeName) {
@@ -262,7 +259,7 @@ TEST_F(FinalizeDatasetOpTest, ModelNodeName) {
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings(
-      {"FinalizeDataset", "ModelDataset", "OptionsDataset", "RangeDataset"});
+      {"ModelDataset", "OptionsDataset", "RangeDataset"});
 }
 
 TEST_F(FinalizeDatasetOpTest, OptimizationsDefaultNodeName) {
@@ -271,9 +268,9 @@ TEST_F(FinalizeDatasetOpTest, OptimizationsDefaultNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings(
-      {"FinalizeDataset", "PrivateThreadPoolDataset",
-       "MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings({"PrivateThreadPoolDataset",
+                                   "MaxIntraOpParallelismDataset",
+                                   "OptionsDataset", "RangeDataset"});
 }
 
 TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {
@@ -282,9 +279,9 @@ TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings(
-      {"FinalizeDataset", "ModelDataset", "PrivateThreadPoolDataset",
-       "MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings({"ModelDataset", "PrivateThreadPoolDataset",
+                                   "MaxIntraOpParallelismDataset",
+                                   "OptionsDataset", "RangeDataset"});
 }
 
 }  // namespace

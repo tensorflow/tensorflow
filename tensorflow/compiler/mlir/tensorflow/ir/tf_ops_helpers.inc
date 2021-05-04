@@ -284,7 +284,7 @@ SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
 // on outer dimension only.
 ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
                            int inner_size = 1) {
-  if (attr.size() == 0) return attr;
+  if (attr.empty()) return attr;
 
   assert(attr.size() % inner_size == 0);
   assert(attr.size() / inner_size == permutation.size());

@@ -34,7 +34,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("run_frequency", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(-1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
@@ -261,9 +261,16 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  if (!parse_result) {
+  // "--help" flag is added in tools/delegates/default_execution_provider.cc. As
+  // this is an optional dependency, we need to check whether "--help" exists or
+  // not first.
+  if (!parse_result ||
+      (params_.HasParam("help") && params_.Get<bool>("help"))) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
+    // Returning kTfLiteError intentionally when "--help=true" is specified so
+    // that the caller could check the return value to decide stopping the
+    // execution.
     return kTfLiteError;
   }
 

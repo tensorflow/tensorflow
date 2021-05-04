@@ -123,6 +123,11 @@ class FunctionDefHelper {
   // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
+  //
+  // If the op has no inputs, then name is be specified.
+  //  Node n = {{}, "AssignVariable", {"resource", "val"}, {{"dtype",
+  //  "DT_FLOAT"},
+  //            {"update0"}, "CPU:0", "update1"}}
   struct Node {
     // When constructing a NodeDef, the first entry in ret is used as
     // the node name, the remaining values are ignored.
@@ -132,6 +137,16 @@ class FunctionDefHelper {
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
     std::string device;
+
+    // Required if the op has zero outputs. Otherwise, ret[0] used as name if
+    // name is left empty.
+    std::string name;
+
+    std::string GetName() const {
+      if (!name.empty()) return name;
+      CHECK(!ret.empty());
+      return ret[0];
+    }
 
     NodeDef ToNodeDef() const;
   };

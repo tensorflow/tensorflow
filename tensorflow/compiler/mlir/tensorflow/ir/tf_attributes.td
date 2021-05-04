@@ -69,4 +69,51 @@ def TF_PlaceholderAttr : TF_Attr<"Placeholder"> {
   );
 }
 
+
+//===----------------------------------------------------------------------===//
+// ShapeAttr
+//===----------------------------------------------------------------------===//
+
+def TF_ShapeAttrDef : TF_Attr<"Shape"> {
+  let mnemonic = "shape";
+  let returnType = "ShapeAttr";
+  let convertFromStorage = "$_self.cast<ShapeAttr>()";
+  let summary = "A shape either unranked or is modelled an array of int64.";
+  let description = [{
+    This attributes matches the `ShapedType` MLIR Type content into an attribute
+    value. It contains a flag to indicate if it unranked, and if ranked it
+    exposes an array of integer modeling the individual dimensions. A value of
+    `ShapedType::kDynamicDim` indicates a dynamic dimension.
+  }];
+
+  let parameters = (ins
+    ArrayRefParameter<"int64_t">:$shape,
+    "bool":$unranked
+  );
+  let builders = [
+    // Returns a shape attribute for the provided `dimension` array. If the
+    // `dimensions` aren't provided, then the shape attribute is unranked.
+    // For ranked shapes, the value of the each individual dimension size must
+    // be >= 0 or `ShapedType::kDynamicDim`. The value of
+    // `ShapedType::kDynamicDim` means the dimension is dynamic. Otherwise, the
+    // dimension is static.
+    AttrBuilder<(ins "llvm::Optional<ArrayRef<int64_t>>":$dimensions)>,
+    // Returns a Shape attribute from a TensorFlow ShapedType type.
+    AttrBuilder<(ins "ShapedType":$shaped_type)>
+  ];
+  let extraClassDeclaration = [{
+    // Returns true if this shape is ranked and no dimension has unknown size
+    // (ShapedType::kDynamicDim).
+    bool hasStaticShape() const;
+
+    bool hasRank() const;
+
+    // If this is ranked, return the rank. Otherwise, abort.
+    int64_t getRank() const;
+
+    // Return the shape array if ranked.
+    llvm::Optional<ArrayRef<int64_t>> getValue() const;
+  }];
+}
+
 #endif

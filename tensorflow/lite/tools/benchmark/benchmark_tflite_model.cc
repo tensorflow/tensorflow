@@ -562,7 +562,8 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
     case kTfLiteString: {
-      // TODO(haoliang): No need to cache string tensors right now.
+      // Don't populate input for string. Instead, return a default-initialized
+      // `InputTensorData` object directly.
       break;
     }
     case kTfLiteBool: {
@@ -748,8 +749,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
-  // TODO(ycling): Consider to make this an error again when the new converter
-  // create tensors with consistent naming.
   for (int j = 0; j < inputs_.size(); ++j) {
     const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
@@ -759,7 +758,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " but flags call it " << input.name;
     }
 
-    if (input.shape.size() != t->dims->size) {
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
       TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
                         << t->dims->size << " dimensions!";
       return kTfLiteError;

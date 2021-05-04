@@ -49,6 +49,11 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
                    bool may_combine_partial_sharding);
 
+// Merges `to_merge` into `dst` only if they are compatible, and the merged
+// sharding has >= minimum_tiles tiles. Returns if merging happened.
+bool MergeShardingIfCompatible(const HloSharding& to_merge, int64 minimum_tiles,
+                               HloSharding* dst);
+
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
 // count of the dominant device returned.
@@ -201,6 +206,10 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64 const> src_to_tgt,
     absl::Span<int64 const> tgt_to_src);
+
+// Returns the iota dimension if maybe_iota is an kIota instruction or
+// equivalent to kIota.
+absl::optional<int64> GetDimensionForIota(const HloInstruction* maybe_iota);
 
 // Returns identified parallel dimensions for Gather.
 absl::optional<GatherParallelDims> GetGatherBatchParallelDims(

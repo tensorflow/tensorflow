@@ -734,7 +734,7 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   kernel = kernel_mask * kernel
   kernel = make_2d(kernel, split_dim=backend.ndim(kernel) // 2)
 
-  output_flat = math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
+  output_flat = math_ops.matmul(inputs_flat, kernel, b_is_sparse=True)
   output = backend.reshape(output_flat, [
       backend.shape(output_flat)[0],
   ] + output_shape.as_list()[1:])

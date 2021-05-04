@@ -40,13 +40,27 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
 template <typename T>
+tflite::TensorType GetTFLiteType() {
+  if (std::is_same<T, int8_t>::value) {
+    return TensorType_INT8;
+  }
+  if (std::is_same<T, int16_t>::value) {
+    return TensorType_INT16;
+  }
+  if (std::is_same<T, int32_t>::value) {
+    return TensorType_INT32;
+  }
+  return TensorType_FLOAT32;
+}
+
+template <typename T>
 class BatchMatMulOpModel : public SingleOpModel {
  public:
   BatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
                      bool adj_x = false, bool adj_y = false) {
     lhs_id_ = AddInput(lhs);
     rhs_id_ = AddInput(rhs);
-    output_id_ = AddOutput(lhs.type);
+    output_id_ = AddOutput(GetTFLiteType<T>());
     SetBuiltinOp(BuiltinOperator_BATCH_MATMUL,
                  BuiltinOptions_BatchMatMulOptions,
                  CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union());
@@ -86,6 +100,18 @@ TEST_P(BatchMatMulOpTest, Float32Test_Simple) {
   model.Invoke();
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+}
+
+TEST_P(BatchMatMulOpTest, Int8Test_Simple) {
+  BatchMatMulOpModel<int32_t> model({TensorType_INT8, {1, 2, 3}},
+                                    {TensorType_INT8, {1, 3, 4}});
+  model.PopulateTensor<int8_t>(model.lhs(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int8_t>(model.rhs(),
+                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({74, 80, 86, 92, 173, 188, 203, 218}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 

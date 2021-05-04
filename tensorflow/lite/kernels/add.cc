@@ -260,6 +260,20 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
         TF_LITE_ADD(optimized_ops, Add, int32_t);
       }
     }
+  } else if (output->type == kTfLiteInt64) {
+    if (kernel_type == kReference) {
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int64_t);
+      } else {
+        TF_LITE_ADD(reference_ops, Add, int64_t);
+      }
+    } else {
+      if (need_broadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, int64_t);
+      } else {
+        TF_LITE_ADD(optimized_ops, Add, int64_t);
+      }
+    }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
@@ -384,7 +398,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
+      output->type == kTfLiteInt64) {
     EvalAdd<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {

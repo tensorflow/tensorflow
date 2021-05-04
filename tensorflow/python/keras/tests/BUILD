@@ -375,7 +375,7 @@ tf_py_test(
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
-        "//tensorflow/python/keras/layers:normalization",
+        "//tensorflow/python/keras/layers/normalization",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:data_structures",

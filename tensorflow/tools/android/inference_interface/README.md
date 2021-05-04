@@ -76,17 +76,6 @@ You will find the JAR file at:
 bazel-bin/tensorflow/tools/android/inference_interface/libandroid_tensorflow_inference_java.jar
 ```
 
-### CMake
-
-For documentation on building a self-contained AAR file with cmake, see
-[tensorflow/tools/android/inference_interface/cmake](cmake).
-
-
-### Makefile
-
-For documentation on building native TF libraries with make, including a CUDA-enabled variant for devices like the Nvidia Shield TV, see [tensorflow/contrib/makefile/README.md](../makefile/README.md)
-
-
 ## AssetManagerFileSystem
 
 This directory also contains a TensorFlow filesystem supporting the Android

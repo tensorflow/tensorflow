@@ -134,4 +134,23 @@ def ShapeSimplification
   let constructor = "transforms::CreateShapeSimplification()";
 }
 
+def VectorizationPass : FunctionPass<"vectorization"> {
+  let summary = "Pass to create vectorized operations for CPU.";
+  let constructor = "transforms::CreateVectorizationPass()";
+  let description = [{
+    Takes linalg loops on buffers and vectorizes the loads/stores and operations
+    in between. This is intended for the CPU backend.
+  }];
+}
+
+def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
+  let summary = "Pass to remove dead code in VectorizationPass.";
+  let constructor = "transforms::CreateVectorizationCleanupPass()";
+  let description = [{
+    VectorizationPass creates some memory transfers that are unneeded but cannot
+    be safely removed by current generic infrastructure. This removes the
+    specific operations.
+  }];
+}
+
 #endif // TF_KERNEL_GEN_PASSES

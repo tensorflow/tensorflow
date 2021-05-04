@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -84,7 +84,9 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 
   ~MapFunctionCallFrame() override = default;
 
-  size_t num_args() const override { return compute_opts_->args.size(); }
+  size_t num_args() const override {
+    return compute_opts_->args.size() + compute_opts_->captured_inputs.size();
+  }
 
   size_t num_retvals() const override {
     return static_cast<size_t>(kernel_->num_outputs());

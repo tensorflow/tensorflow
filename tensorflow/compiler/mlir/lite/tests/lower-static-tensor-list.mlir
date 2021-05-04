@@ -503,19 +503,19 @@ func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> ten
 
 // -----
 
-func @tensorListIf(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<*xf32> {
+func @tensorListIf(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<3x10xf32> {
   %cst = constant dense<2> : tensor<i32>
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>
   %1 = "tf.Less"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
   %res = "tf.If"(%1, %0) {else_branch = @tensorListIfCondFalse, is_stateless = true, then_branch = @tensorListIfCondTrue} : (tensor<i1>, tensor<!tf.variant<tensor<10xf32>>>) -> tensor<!tf.variant<tensor<10xf32>>>
-  %2 = "tf.TensorListStack"(%res, %arg1) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<1xi32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  %2 = "tf.TensorListStack"(%res, %arg1) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<1xi32>) -> tensor<3x10xf32>
+  return %2 : tensor<3x10xf32>
 
 // CHECK: func @tensorListIf
 // CHECK-NEXT:  %cst = constant dense<2> : tensor<i32>
 // CHECK-NEXT:  %0 = "tf.Less"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-// CHECK-NEXT:  %1 = "tf.If"(%0, %arg0) {else_branch = @tensorListIfCondFalse, is_stateless = true, then_branch = @tensorListIfCondTrue} : (tensor<i1>, tensor<3x10xf32>) -> tensor<*xf32>
-// CHECK-NEXT:  return %1 : tensor<*xf32>
+// CHECK-NEXT:  %1 = "tf.If"(%0, %arg0) {else_branch = @tensorListIfCondFalse, is_stateless = true, then_branch = @tensorListIfCondTrue} : (tensor<i1>, tensor<3x10xf32>) -> tensor<3x10xf32>
+// CHECK-NEXT:  return %1 : tensor<3x10xf32>
 }
 
 func @tensorListIfCondTrue(%arg0: tensor<!tf.variant<tensor<10xf32>>>) -> (tensor<!tf.variant<tensor<10xf32>>>) {
@@ -524,7 +524,7 @@ func @tensorListIfCondTrue(%arg0: tensor<!tf.variant<tensor<10xf32>>>) -> (tenso
   %0 = "tf.TensorListSetItem"(%arg0, %cst, %cst_0) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>, tensor<10xf32>) -> tensor<!tf.variant<tensor<10xf32>>>
   return %0 : tensor<!tf.variant<tensor<10xf32>>>
 
-// CHECK: func @tensorListIfCondTrue(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func @tensorListIfCondTrue(%arg0: tensor<3x10xf32>) -> tensor<3x10xf32>
 // CHECK-NOT: tf.TensorListSetItem
 }
 
@@ -534,6 +534,6 @@ func @tensorListIfCondFalse(%arg0: tensor<!tf.variant<tensor<10xf32>>>) -> (tens
   %0 = "tf.TensorListSetItem"(%arg0, %cst, %cst_0) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>, tensor<10xf32>) -> tensor<!tf.variant<tensor<10xf32>>>
   return %0 : tensor<!tf.variant<tensor<10xf32>>>
 
-// CHECK: func @tensorListIfCondFalse(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func @tensorListIfCondFalse(%arg0: tensor<3x10xf32>) -> tensor<3x10xf32>
 // CHECK-NOT: tf.TensorListSetItem
 }

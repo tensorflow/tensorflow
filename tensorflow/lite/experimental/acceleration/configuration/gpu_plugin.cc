@@ -49,6 +49,10 @@ class GpuPlugin : public DelegatePluginInterface {
       } else if (gpu_settings->force_backend() == GPUBackend_OPENGL) {
         options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
       }
+      if (tflite_settings.max_delegated_partitions() >= 0) {
+        options_.max_delegated_partitions =
+            tflite_settings.max_delegated_partitions();
+      }
     }
   }
 

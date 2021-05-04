@@ -34,13 +34,15 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   // The meanings of other parameters are the same as LoopEmitter.
   ParallelLoopEmitter(BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b, int unroll_factor = 1);
+                      llvm::IRBuilder<>* b,
+                      LaunchDimensionsConfig launch_config = {});
   // Constructs a ParallelLoopEmitter from an element generator that generates
   // each element of the given target array.
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b, int unroll_factor = 1);
+                      llvm::IRBuilder<>* b,
+                      LaunchDimensionsConfig launch_config = {});
 
   // Constructs a loop emitter for a loop that generates on element of each of N
   // arrays on each iteration.
@@ -50,7 +52,8 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       absl::Span<const llvm_ir::IrArray> target_arrays,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b, int unroll_factor = 1);
+                      llvm::IRBuilder<>* b,
+                      LaunchDimensionsConfig launch_config = {});
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
@@ -66,7 +69,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
  private:
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;
-  const int unroll_factor_;
+  const LaunchDimensionsConfig launch_config_;
 };
 
 }  // namespace gpu

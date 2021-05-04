@@ -90,7 +90,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       platform->GetExecutor(config));
   auto device_state = absl::make_unique<LocalDeviceState>(
-      executor, client, LocalDeviceState::kSynchronous, /*asynchronous=*/true,
+      executor, client, LocalDeviceState::kSynchronous,
+      /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;

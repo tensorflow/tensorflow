@@ -99,6 +99,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int num_filters = weights_feature->dims->data[0];
+  TF_LITE_ENSURE(context, rank != 0);
   TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];

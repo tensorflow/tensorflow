@@ -374,10 +374,13 @@ CuptiTracerEvent PopulateMemcpyCallbackEvent(
   event.device_id = src_device;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
   event.memcpy_info.num_bytes = num_bytes;
   event.memcpy_info.destination = dst_device;
   event.memcpy_info.async = async;
+  // These are not populated during callback for API activities.
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
+  event.memcpy_info.dst_mem_kind = CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN;
+  event.memcpy_info.src_mem_kind = CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN;
   return event;
 }
 
@@ -594,6 +597,7 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
       event.name = "MemcpyOther";
       break;
   }
+
   event.source = CuptiTracerEventSource::Activity;
   event.start_time_ns = memcpy->start;
   event.end_time_ns = memcpy->end;
@@ -604,7 +608,7 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
       event.device_id, event.correlation_id);
   event.annotation = info.annotation;
-  event.memcpy_info.kind = memcpy->copyKind;
+  event.memcpy_info.copy_kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
   event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
@@ -629,7 +633,7 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
       event.device_id, event.correlation_id);
   event.annotation = info.annotation;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
   event.memcpy_info.async = memcpy2->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
@@ -702,7 +706,7 @@ void AddUnifiedMemoryActivityEvent(
   // record->counterKind of unified memory related events.
   constexpr int kPseudoStreamId = 0x10000000;
   event.stream_id = kPseudoStreamId + record->counterKind;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
   // Check whether the activity is byte transfer.
   if (record->counterKind ==
           CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_HTOD ||
@@ -732,7 +736,7 @@ void AddMemoryActivityEvent(CuptiTraceCollector *collector,
   // Assign to default stream (0) so that event is included during Flush().
   event.stream_id = 0;
   event.memory_residency_info.num_bytes = memory->bytes;
-  event.memory_residency_info.kind = memory->memoryKind;
+  event.memory_residency_info.mem_kind = memory->memoryKind;
   event.memory_residency_info.address = memory->address;
   VLOG(5) << "Cuda activity " << event.name
           << " addr: " << reinterpret_cast<void *>(memory->address)
@@ -742,10 +746,11 @@ void AddMemoryActivityEvent(CuptiTraceCollector *collector,
 
 void AddMemsetActivityEvent(CuptiTraceCollector *collector,
                             const CUpti_ActivityMemset *memset) {
+  auto mem_kind = memset->memoryKind;
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Memset;
   event.source = CuptiTracerEventSource::Activity;
-  event.name = absl::StrCat("Memset ", GetMemoryKindName(memset->memoryKind));
+  event.name = absl::StrCat("Memset ", mem_kind);
   event.start_time_ns = memset->start;
   event.end_time_ns = std::max(memset->end, memset->start + 1);
   event.device_id = memset->deviceId;
@@ -753,7 +758,7 @@ void AddMemsetActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   event.memset_info.num_bytes = memset->bytes;
-  event.memset_info.kind = memset->memoryKind;
+  event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
   VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
           << " async: " << event.memset_info.async;
@@ -1512,6 +1517,10 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2:
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2:
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2:
+      // This would be the place to populate the memcpy API activity's src and
+      // dst memory kind by casting cbdata->functionParams. However, we are not
+      // doing that because that will incur significant overhead to get the
+      // memory aperture of each argument.
       AddNormalMemcpyEventUponApiExit(collector, device_id, cbid, cbdata,
                                       start_tsc, end_tsc);
       break;
@@ -1634,6 +1643,7 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
+  tensorflow::profiler::AnnotationStack::Enable(true);
 }
 
 void CuptiTracer::Disable() {
@@ -1648,6 +1658,7 @@ void CuptiTracer::Disable() {
   collector_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
+  tensorflow::profiler::AnnotationStack::Enable(false);
 }
 
 Status CuptiTracer::EnableApiTracing() {

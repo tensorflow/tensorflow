@@ -155,6 +155,12 @@ class ReverseOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
+    // If input is provided, check to make sure the first dimension is valid.
+    if (input.dims() > 0) {
+      OP_REQUIRES(
+          context, input.dim_size(0) != 0,
+          errors::InvalidArgument("Invalid input first dimension. Found 0."));
+    }
     const Tensor& dims = context->input(1);
 
     if (TensorShapeUtils::IsScalar(input.shape())) {

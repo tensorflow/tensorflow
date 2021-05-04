@@ -165,20 +165,19 @@ class CSRSoftmaxGradOp : public OpKernel {
     // tensor is the elementwise product of some function with the
     // softmax value, it will keep the sparsity structure of the softmax.
     const int total_nnz = softmax_matrix->total_nnz();
-    PersistentTensor gradient_values_pt;
-    Tensor* gradient_values_t;
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
-                            DataTypeToEnum<T>::value, TensorShape({total_nnz}),
-                            &gradient_values_pt, &gradient_values_t));
+    Tensor gradient_values;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                TensorShape({total_nnz}), &gradient_values));
 
     CSRSparseMatrix gradient_matrix;
 
     OP_REQUIRES_OK(
-        ctx, CSRSparseMatrix::CreateCSRSparseMatrix(
-                 DataTypeToEnum<T>::value, dense_shape_t,
-                 softmax_matrix->batch_pointers(),
-                 softmax_matrix->row_pointers(), softmax_matrix->col_indices(),
-                 *gradient_values_t, &gradient_matrix));
+        ctx,
+        CSRSparseMatrix::CreateCSRSparseMatrix(
+            DataTypeToEnum<T>::value, dense_shape_t,
+            softmax_matrix->batch_pointers(), softmax_matrix->row_pointers(),
+            softmax_matrix->col_indices(), gradient_values, &gradient_matrix));
 
     if (total_nnz > 0) {
       functor::CSRSparseMatrixSoftmaxGrad<Device, T> softmax_grad;

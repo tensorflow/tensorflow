@@ -301,6 +301,36 @@ REGISTER_OP("FusedBatchNormGradV3")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
+
+REGISTER_OP("_FusedBatchNormGradEx")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("reserve_space_3: U")
+    .Input("offset: float")
+    .Input("y: T")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_4: U")
+    .Output("reserve_space_5: U")
+    .Output("side_input_backprop: num_side_inputs * T")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr(GetConvnetDataFormat2D3DAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(R"doc(
+Internal FusedBatchNormGrad operation: reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
+expected to create these operators.
+)doc");
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAdd")

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -5152,6 +5153,20 @@ TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
       " input: ['A', 'B']}");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(_MklBatchMatMulV2)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, Einsum_Positive) {
+  InitGraph(
+      "node { name: 'B' op: 'Float32InputList'"
+      " attr { key: 'N'                value { i: 2 } }}"
+      "node { name: 'C' op: 'Einsum'"
+      " attr { key: 'equation'         value { s: '->' }}"
+      " attr { key: 'N'                value { i: 2 } }"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['B:0', 'B:1']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "B(Float32InputList);C(_MklEinsum)"
+            "|B->C;B:1->C:1");
 }
 
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {

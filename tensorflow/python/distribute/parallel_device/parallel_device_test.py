@@ -35,6 +35,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
@@ -157,6 +158,26 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     # Currently backing_device is CPU.
     self.assertIn(self.device.components[0], device_ids[0].device)
     self.assertIn(self.device.components[1], device_ids[1].device)
+
+  def test_zeros(self):
+    with self.device:
+      x = array_ops.zeros([array_ops.identity(constant_op.constant(10))])
+    for component in self.device.unpack(x):
+      self.assertAllClose([0.] * 10, component)
+
+  def test_generator(self):
+    with self.device:
+      g_same = stateful_random_ops.Generator.from_seed(0)
+      g_different = stateful_random_ops.Generator.from_seed(
+          self.device.device_ids)
+      same = g_same.normal([10])
+      different = g_different.normal([10])
+    same_unpacked = self.device.unpack(same)
+    different_unpacked = self.device.unpack(different)
+    for same_component, different_component in zip(same_unpacked[1:],
+                                                   different_unpacked[1:]):
+      self.assertAllClose(same_component, same_unpacked[0])
+      self.assertNotAllClose(different_component, different_unpacked[0])
 
   def test_collective_reduce(self):
     if self.device_type == "TPU":

@@ -102,7 +102,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
 
       {R"(^\/div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
-      {R"(^\/add.*dtype=tf\.int64)", "119126484"},
       {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
   });

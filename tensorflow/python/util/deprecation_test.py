@@ -22,7 +22,14 @@ from __future__ import print_function
 import collections
 import enum
 
+import numpy as np
+
+
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -990,6 +997,26 @@ class DeprecatedArgValuesTest(test.TestCase):
     self.assertEqual(2, mock_warning.call_count)
     _fn(arg0="forbidden", arg1="disallowed")
     self.assertEqual(2, mock_warning.call_count)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  @test_util.run_in_graph_and_eager_modes
+  def test_deprecated_arg_values_when_value_is_none(self, mock_warning):
+
+    @deprecation.deprecated_arg_values("2016-07-04",
+                                       "This is how you update...",
+                                       warn_once=True,
+                                       arg0=None)
+    def _fn(arg0):  # pylint: disable=unused-argument
+      pass
+
+    ops.enable_tensor_equality()
+    initial_count = mock_warning.call_count
+    # Check that we avoid error from explicit `var == None` check.
+    _fn(arg0=variables.Variable(0))
+    self.assertEqual(initial_count, mock_warning.call_count)
+    _fn(arg0=None)
+    self.assertEqual(initial_count + 1, mock_warning.call_count)
+    ops.disable_tensor_equality()
 
 
 class DeprecationArgumentsTest(test.TestCase):

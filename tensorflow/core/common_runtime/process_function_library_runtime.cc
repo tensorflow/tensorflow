@@ -792,6 +792,14 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = dev_set.get();
   optimization_options.is_function_graph = true;
+  std::vector<CompositeDevice*> composite_devices;
+  {
+    tf_shared_lock l(mu_);
+    for (auto* d : composite_devices_) composite_devices.push_back(d);
+  }
+  optimization_options.composite_devices = &composite_devices;
+  optimization_options.default_function_device = default_device;
+  optimization_options.function_def = fdef;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {

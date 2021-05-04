@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -89,10 +90,12 @@ XlaOp Symmetrize(XlaOp x, bool lower);
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 xla::XlaOp BatchDot(
     xla::XlaOp x, xla::XlaOp y,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 xla::XlaOp BatchDot(
     xla::XlaOp x, bool transpose_x, xla::XlaOp y, bool transpose_y,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 
 // Parse an einsum string into dimension numbers:
 //   "ab,cb->ac"
@@ -122,7 +125,8 @@ std::string NormalizeEinsumString(absl::string_view einsum_config);
 // Supports two operand einsum notation like "ab,cb->ac".
 xla::XlaOp Einsum(
     xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 xla::XlaOp Einsum(
     xla::XlaOp x, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
@@ -136,7 +140,8 @@ xla::XlaOp Einsum(
 xla::XlaOp Einsum(
     xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::Span<const int64> y_config, absl::Span<const int64> output_config,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 
 // Transposes a stack of matrices `x` by swapping the last two dimensions.
 xla::XlaOp TransposeInMinorDims(xla::XlaOp x);

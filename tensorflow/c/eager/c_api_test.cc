@@ -634,6 +634,21 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
 
   int num_retvals = 1;
+  if (async) {
+    // Enqueue dummy ops so we backlog async execution & actually test async.
+    // This is usually unnecessary, but we've experienced the occasional test
+    // failure when testing async mode with no explicit forwarding.
+    for (int i = 0; i < 10000; ++i) {
+      TFE_Op* add_op_dummy = AddOp(ctx, m, m);
+      TFE_OpSetDevice(add_op_dummy, cpu_device_name.c_str(), status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_TensorHandle* dummy = nullptr;
+      TFE_Execute(add_op_dummy, &dummy, &num_retvals, status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_DeleteTensorHandle(dummy);
+      TFE_DeleteOp(add_op_dummy);
+    }
+  }
   TFE_TensorHandle* retval = nullptr;
   TFE_Execute(add_op, &retval, &num_retvals, status);
   EXPECT_EQ(1, num_retvals);
@@ -646,15 +661,24 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   TF_Tensor* t = TFE_TensorHandleResolve(retval, status);
   if (async) {
     if (forward_input) {
+      // Since the input was forwarded, we released the input handle right away
+      // and hence expect the input to be forwarded to the return tensor.
       EXPECT_EQ(orig_ptr, TF_TensorData(t));
     } else {
-      // TODO(b/156981931): Flaky test. Very occasionally the following is false
-      // EXPECT_EQ(orig_ptr, TF_TensorData(t));
+      // In async mode we expect forwarding to work without releasing the input
+      // handle since by the time the kernel is executed we have released the
+      // handle in the client code.
+      EXPECT_EQ(orig_ptr, TF_TensorData(t));
     }
   } else {
     if (forward_input) {
+      // Since the input was forwarded, we released the input handle right away
+      // and hence expect the input to be forwarded to the return tensor.
       EXPECT_EQ(orig_ptr, TF_TensorData(t));
     } else {
+      // In sync mode, forwarding can't really happen since the client code will
+      // have a reference count on the input tensor while the kernel is being
+      // executed and thus it cannot be re-used for the return tensor.
       EXPECT_NE(orig_ptr, TF_TensorData(t));
     }
   }

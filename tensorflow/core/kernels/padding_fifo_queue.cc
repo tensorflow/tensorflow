@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/padding_fifo_queue.h"
+
 #include <deque>
 #include <vector>
 
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -35,10 +36,10 @@ namespace tensorflow {
 
 PaddingFIFOQueue::PaddingFIFOQueue(
     int capacity, const DataTypeVector& component_dtypes,
-    const std::vector<PartialTensorShape>& partial_shapes, const string& name)
+    const std::vector<PartialTensorShape>& component_shapes, const string& name)
     : FIFOQueue(capacity, component_dtypes,
-                ConvertShapesPartialDimensionsToZero(partial_shapes), name),
-      partial_shapes_(partial_shapes) {}
+                ConvertShapesPartialDimensionsToZero(component_shapes), name),
+      partial_shapes_(component_shapes) {}
 
 Status PaddingFIFOQueue::Initialize() {
   Status s = FIFOQueue::Initialize();
@@ -57,12 +58,11 @@ Status PaddingFIFOQueue::Initialize() {
 /* static */
 Status PaddingFIFOQueue::GetElementComponent(
     const PaddingFIFOQueue::Tuple& tuple, int component, OpKernelContext* ctx,
-    PersistentTensor* out_tensor) {
+    Tensor* out_tensor) {
   TensorShape element_shape(tuple[component].shape());
-  Tensor* element_access = nullptr;
-  TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-      tuple[component].dtype(), element_shape, out_tensor, &element_access));
-  *element_access = tuple[component];
+  TF_RETURN_IF_ERROR(
+      ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
+  *out_tensor = tuple[component];
   return Status::OK();
 }
 
@@ -107,7 +107,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Restore already-dequeued elements to the front of the queue.
                 for (int64 i = attempt->tuples.size() - 1; i >= 0; --i) {
                   for (int j = 0; j < num_components(); ++j) {
-                    PersistentTensor element;
+                    Tensor element;
                     Status s = GetElementComponent(attempt->tuples[i], j,
                                                    attempt->context, &element);
                     if (!s.ok()) {
@@ -195,8 +195,6 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
 
                   dynamic_shape.push_back(has_dynamic_shape);
-
-                  // TODO(ebrevdo): should this be a persistent tensor?
                   attempt->tuple.emplace_back(element);
                 }
 

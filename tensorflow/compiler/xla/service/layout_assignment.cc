@@ -144,7 +144,7 @@ PointsToSet::BufferSet* LayoutConstraints::GetBufferSet(
   return buffer_set.get();
 }
 
-bool LayoutConstraints::OperandBufferForwarded(
+bool LayoutConstraints::AnyOperandBufferForwarded(
     const HloInstruction* instruction, int64 operand_no) const {
   // The operand is potentially forwarded if the intersection of points-to sets
   // of the operand and the instruction is non-empty.
@@ -152,6 +152,18 @@ bool LayoutConstraints::OperandBufferForwarded(
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
   return absl::c_any_of(*output_buffers, [&](const LogicalBuffer* b) {
+    return operand_buffers->count(b) > 0;
+  });
+}
+
+bool LayoutConstraints::AllOperandBuffersForwarded(
+    const HloInstruction* instruction, int64 operand_no) const {
+  // The operand is potentially forwarded if the intersection of points-to sets
+  // of the operand and the instruction is non-empty.
+  PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
+  PointsToSet::BufferSet* operand_buffers =
+      GetBufferSet(instruction->operand(operand_no));
+  return absl::c_all_of(*output_buffers, [&](const LogicalBuffer* b) {
     return operand_buffers->count(b) > 0;
   });
 }
@@ -234,7 +246,7 @@ Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
   // If any buffers in the operand occur in the output of the instruction, then
   // return an error. This case is not handled because such a constraint changes
   // layouts beyond this immediate use and is complicated to handle.
-  if (OperandBufferForwarded(instruction, operand_no)) {
+  if (AnyOperandBufferForwarded(instruction, operand_no)) {
     return FailedPrecondition(
         "Cannot constraint layout of operand %d of instruction %s "
         "because instruction forwards operand's LogicalBuffer(s)",
@@ -296,7 +308,7 @@ Status LayoutConstraints::SetResultLayout(const Shape& shape_with_layout,
 
 Status LayoutConstraints::SetInstructionLayout(
     const Shape& shape_with_layout, const HloInstruction* instruction,
-    bool mandatory, bool dfs) {
+    bool mandatory, bool dfs, bool allow_alias) {
   VLOG(3) << "SetInstructionLayout : " << instruction->name() << ", "
           << ShapeUtil::HumanStringWithLayout(shape_with_layout);
 
@@ -311,14 +323,14 @@ Status LayoutConstraints::SetInstructionLayout(
   // instruction.
   return ShapeUtil::ForEachSubshapeWithStatus(
       shape_with_layout,
-      [this, instruction, mandatory](const Shape& subshape,
-                                     const ShapeIndex& index) -> Status {
-        // The precondition for this method is that the instruction defines all
-        // buffers in its output.
+      [this, instruction, mandatory, allow_alias](
+          const Shape& subshape, const ShapeIndex& index) -> Status {
         auto buffers =
             points_to_analysis_.GetPointsToSet(instruction).element(index);
         CHECK_EQ(1, buffers.size());
-        CHECK_EQ(buffers[0]->instruction(), instruction);
+        if (!allow_alias) {
+          CHECK_EQ(buffers[0]->instruction(), instruction);
+        }
 
         if (subshape.IsArray() && subshape.has_layout()) {
           return SetBufferLayout(subshape.layout(), *buffers[0], mandatory);
@@ -481,11 +493,19 @@ Status LayoutAssignment::AddMandatoryConstraints(
     } else if (IsLayoutConstrainedCustomCall(instruction)) {
       const HloCustomCallInstruction* custom_call =
           DynCast<HloCustomCallInstruction>(instruction);
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(custom_call->shape(), custom_call));
+
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          custom_call->shape(), custom_call, /*mandatory=*/true, /*dfs=*/true,
+          /*allow_alias=*/true));
+
       for (int64 i = 0; i < custom_call->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-            custom_call->operand_shapes_with_layout()[i], custom_call, i));
+        if (constraints->AnyOperandBufferForwarded(custom_call, i)) {
+          TF_RET_CHECK(constraints->AllOperandBuffersForwarded(custom_call, i))
+              << "Partial alias of an operand is not supported";
+        } else {
+          TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+              custom_call->operand_shapes_with_layout()[i], custom_call, i));
+        }
       }
     } else if (instruction->opcode() == HloOpcode::kSend ||
                instruction->opcode() == HloOpcode::kRecv) {
@@ -1353,8 +1373,8 @@ Status LayoutAssignment::PropagateOperandConstraint(
 
   // Only try to choose a low cost layout if the instruction 'user' defines its
   // output (ie, doesn't forward a buffer from elsewhere).
-  if (constraints->OperandBufferForwarded(user,
-                                          operand_constraint.operand_no())) {
+  if (constraints->AnyOperandBufferForwarded(user,
+                                             operand_constraint.operand_no())) {
     return Status::OK();
   }
 
@@ -1580,7 +1600,7 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
     // Only add an operand constraint if the user does not forward the buffer
     // because this case is not handled is SetOperandLayout.
     if (constraints->OperandLayout(user, operand_no) == nullptr &&
-        !constraints->OperandBufferForwarded(user, operand_no)) {
+        !constraints->AnyOperandBufferForwarded(user, operand_no)) {
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
           buffer_constraint.layout(), user, operand_no, /*mandatory=*/false));
     }

@@ -1818,7 +1818,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
         "@com_google_absl//absl/base",
     ],
 )
@@ -2172,7 +2171,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2195,7 +2193,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2233,7 +2230,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -3340,9 +3336,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cast_op",
-    copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]),
+    copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "cast_op",
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cast_op",
@@ -4001,8 +3999,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "relu_op",
+    copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "relu_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:relu_op",
+    ],
 )
 
 tf_kernel_library(
@@ -5754,10 +5759,6 @@ cc_library(
 )
 
 # Android libraries -----------------------------------------------------------
-
-# Changes to the Android srcs here should be replicated in
-# tensorflow/contrib/makefile/tf_op_files.txt
-# LINT.IfChange
 filegroup(
     name = "mobile_srcs",
     srcs = [
@@ -5795,7 +5796,7 @@ alias(
 # Core kernels we want on Android. Only a subset of kernels to keep
 # base library small.
 filegroup(
-    name = "android_core_ops",
+    name = "portable_core_ops",
     srcs = [
         "aggregate_ops.cc",
         "aggregate_ops.h",
@@ -5908,7 +5909,7 @@ filegroup(
         "variable_ops.cc",
         "variable_ops.h",
     ] + [
-        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",
     ],
@@ -5922,17 +5923,17 @@ filegroup(
 # organizational reasons; you should not depend on any
 # of those groups independently.
 filegroup(
-    name = "android_extended_ops",
+    name = "portable_extended_ops",
     srcs = [
-        ":android_extended_ops_group1",
-        ":android_extended_ops_group2",
-        ":android_quantized_ops",
+        ":portable_extended_ops_group1",
+        ":portable_extended_ops_group2",
+        ":portable_quantized_ops",
     ],
     visibility = ["//visibility:public"],
 )
 
 filegroup(
-    name = "android_extended_ops_headers",
+    name = "portable_extended_ops_headers",
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
@@ -6011,21 +6012,25 @@ filegroup(
         "where_op.h",
         "xent_op.h",
     ] + [
+        "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:rewrite_utils.h",
+        "//tensorflow/core/data:root_dataset.h",
+        "//tensorflow/core/data:split_utils.h",
+        "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
+        "//tensorflow/core/kernels/data:finalize_dataset_op.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
-        "//tensorflow/core/kernels/data:split_utils.h",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
-        "//tensorflow/core/kernels/data:dataset_utils.h",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data:model_dataset_op.h",
         "//tensorflow/core/kernels/data:optimize_dataset_op.h",
-        "//tensorflow/core/kernels/data:name_utils.h",
         "//tensorflow/core/kernels/data:optional_ops.h",
-        "//tensorflow/core/kernels/data:stats_utils.h",
-        "//tensorflow/core/kernels/data:captured_function.h",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
+        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.h",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
         "//tensorflow/core/kernels/image:adjust_saturation_op.h",
@@ -6046,9 +6051,9 @@ filegroup(
 )
 
 filegroup(
-    name = "android_extended_ops_group1",
+    name = "portable_extended_ops_group1",
     srcs = [
-        ":android_extended_ops_headers",
+        ":portable_extended_ops_headers",
         "argmax_op.cc",
         "avgpooling_op.cc",
         "batch_norm_op.cc",
@@ -6187,9 +6192,10 @@ filegroup(
 )
 
 filegroup(
-    name = "android_extended_ops_group2",
+    name = "portable_extended_ops_group2",
     srcs = [
-        ":android_extended_ops_headers",
+        ":portable_extended_ops_headers",
+        "as_string_op.cc",
         "base64_ops.cc",
         "batchtospace_op.cc",
         "bincount_op.cc",
@@ -6344,20 +6350,26 @@ filegroup(
         "xent_op.cc",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
+        "//tensorflow/core/data:captured_function.cc",
+        "//tensorflow/core/data:dataset_utils.cc",
+        "//tensorflow/core/data:name_utils.cc",
+        "//tensorflow/core/data:rewrite_utils.cc",
+        "//tensorflow/core/data:root_dataset.cc",
+        "//tensorflow/core/data:split_utils.cc",
+        "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
+        "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
-        "//tensorflow/core/kernels/data:split_utils.cc",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:model_dataset_op.cc",
         "//tensorflow/core/kernels/data:optimize_dataset_op.cc",
-        "//tensorflow/core/kernels/data:dataset_utils.cc",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
-        "//tensorflow/core/kernels/data:stats_utils.cc",
-        "//tensorflow/core/kernels/data:name_utils.cc",
         "//tensorflow/core/kernels/data:optional_ops.cc",
-        "//tensorflow/core/kernels/data:captured_function.cc",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
+        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
+        # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
+        "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.cc",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
         "//tensorflow/core/kernels/image:adjust_saturation_op.cc",
@@ -6386,7 +6398,7 @@ filegroup(
 )
 
 filegroup(
-    name = "android_quantized_ops",
+    name = "portable_quantized_ops",
     srcs = [
         "dequantize_op.cc",
         "meta_support.cc",
@@ -6427,15 +6439,15 @@ ANDROID_TEXTUAL_HDRS = [
 ]
 
 # A file group which contains nearly all available operators which
-# may work on Android. This is intended to be used with selective
+# may work on mobile environment. This is intended to be used with selective
 # registration.
 filegroup(
-    name = "android_all_ops",
+    name = "portable_all_ops",
     srcs = [
-        "//tensorflow/c/kernels:android_all_op_kernels",
-        "//tensorflow/core/kernels/data:android_all_op_kernels",
-        "//tensorflow/core/kernels/image:android_all_op_kernels",
-        "//tensorflow/core/kernels/linalg:android_all_op_kernels",
+        "//tensorflow/c/kernels:portable_all_op_kernels",
+        "//tensorflow/core/kernels/data:portable_all_op_kernels",
+        "//tensorflow/core/kernels/image:portable_all_op_kernels",
+        "//tensorflow/core/kernels/linalg:portable_all_op_kernels",
     ] + glob(
         [
             "*.cc",
@@ -6502,21 +6514,30 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "android_all_ops",
+    actual = ":portable_all_ops",
+)
+
 filegroup(
-    name = "android_all_ops_textual_hdrs",
+    name = "portable_all_ops_textual_hdrs",
     srcs = ANDROID_TEXTUAL_HDRS + [
-        "//tensorflow/core/kernels/image:android_all_ops_textual_hdrs",
+        "//tensorflow/core/kernels/image:portable_all_ops_textual_hdrs",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
     visibility = ["//visibility:public"],
 )
-# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
+
+alias(
+    name = "android_all_ops_textual_hdrs",
+    actual = "portable_all_ops_textual_hdrs",
+)
 
 cc_library(
     name = "portable_tensorflow_kernels",
     srcs = if_mobile([
-        "//tensorflow/core/kernels:android_core_ops",
-        "//tensorflow/core/kernels:android_extended_ops",
+        "//tensorflow/core/kernels:portable_core_ops",
+        "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
     linkopts = if_android(["-ldl"]),

@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -33,7 +34,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.layers.experimental.preprocessing.CategoryCrossing')
-class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
+class CategoryCrossing(base_layer.Layer):
   """Category crossing layer.
 
   This layer concatenates multiple categorical inputs into a single categorical

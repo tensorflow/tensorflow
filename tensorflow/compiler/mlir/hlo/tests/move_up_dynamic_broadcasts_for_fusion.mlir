@@ -292,6 +292,39 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
 
 // -----
 
+// Do not merge assuming ops if witness will not dominate use.
+// CHECK: @do_not_merge_assuming_ops
+func @do_not_merge_assuming_ops() {
+  // CHECK: shape.assuming
+  // CHECK: shape.assuming
+  %0 = "some.witness"() : () -> !shape.witness
+  %1 = shape.assuming %0 -> (!shape.witness) {
+    %2 = "some.witness"() : () -> !shape.witness
+    shape.assuming_yield %2 : !shape.witness
+  }
+  shape.assuming %1 {
+    "some.op"() : () -> ()
+    shape.assuming_yield
+  }
+  return
+}
+
+// -----
+
+// CHECK:      @eliminate_extent_tensor_cast
+// CHECK-SAME: (%[[ARG:.*]]: tensor<2x?x4xf32>)
+func @eliminate_extent_tensor_cast(%arg : tensor<2x?x4xf32>) {
+  // CHECK-NOT:  shape_of
+  // CHECK:      %[[RESULT:.*]] = shape.shape_of %[[ARG]] : tensor<2x?x4xf32> -> tensor<3xindex>
+  // CHECK-NEXT: "use"(%[[RESULT]]) : (tensor<3xindex>) -> ()
+  %0 = shape.shape_of %arg : tensor<2x?x4xf32> -> tensor<?xindex>
+  %1 = tensor.cast %0 : tensor<?xindex> to tensor<3xindex>
+  "use"(%1) : (tensor<3xindex>) -> ()
+  return
+}
+
+// -----
+
 // Exemplary IR as it appears in the lowering of two subsequent `tf.Sub` ops.
 // CHECK-LABEL: @sub_sub
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)

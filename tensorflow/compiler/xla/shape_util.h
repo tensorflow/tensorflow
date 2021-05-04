@@ -81,6 +81,7 @@ class ShapeIndex {
 
   // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
+  void pop_front() { indices_.erase(indices_.begin()); }
 
   using container_type = absl::InlinedVector<int64, 2>;
 
@@ -93,6 +94,9 @@ class ShapeIndex {
 
   int64 back() const { return indices_.back(); }
   int64& back() { return indices_.back(); }
+
+  int64 front() const { return indices_.front(); }
+  int64& front() { return indices_.front(); }
 
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }

@@ -369,6 +369,48 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
   EXPECT_THAT(output->operand(0), op::Parameter());
 }
 
+TEST_F(DynamicPadderTest, VariadicReduceWindowNoPadForTrivialWindow) {
+  const string hlo_text = R"(
+HloModule VariadicReduceWindowNoPadForTrivialWindow
+
+add_f32 (a: f32[], b: s32[], c: f32[], d: s32[]) -> (f32[], s32[]) {
+  a = f32[] parameter(0)
+  b = s32[] parameter(1)
+  c = f32[] parameter(2)
+  d = s32[] parameter(3)
+  add.0 = f32[] add(a, c)
+  add.1 = s32[] add(b, d)
+  ROOT out = tuple(add.0, add.1)
+}
+
+ENTRY main {
+  input.0 = f32[4, 5] parameter(0)
+  input.1 = s32[4, 5] parameter(1)
+  size_param.0 = s32[] parameter(2)
+  size_param.1 = s32[] parameter(3)
+  init.0 = f32[] constant(0.0)
+  init.1 = s32[] constant(0)
+  ROOT output = (f32[3, 5], s32[3, 5]) reduce-window(input.0, input.1, init.0, init.1), window={size=2x1 pad=0_0x0_0}, to_apply=add_f32
+}
+)";
+
+  const int kNumParams = 2;
+  module_ = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  // Set up dynamic parameter binding.
+  for (int i = 0; i < kNumParams; ++i) {
+    TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+        DynamicParameterBinding::DynamicParameter{2, {}},
+        DynamicParameterBinding::DynamicDimension{i, {}, 1}));
+  }
+
+  TF_ASSERT_OK(RunPadder().status());
+
+  for (int i = 0; i < kNumParams; ++i) {
+    EXPECT_THAT(module_->entry_computation()->root_instruction()->operand(i),
+                op::Parameter());
+  }
+}
+
 // Test that dynamic padder has the same result as if not padded.
 class ExecutionTest : public HloTestBase {
  protected:

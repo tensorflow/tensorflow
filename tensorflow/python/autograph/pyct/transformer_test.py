@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -180,10 +181,10 @@ class TransformerTest(test.TestCase):
     node = tr.visit(node)
 
     self.assertEqual(len(node.body), 2)
-    self.assertTrue(isinstance(node.body[0], gast.Assign))
-    self.assertTrue(isinstance(node.body[1], gast.If))
-    self.assertTrue(isinstance(node.body[1].body[0], gast.Assign))
-    self.assertTrue(isinstance(node.body[1].body[1], gast.Return))
+    self.assertIsInstance(node.body[0], gast.Assign)
+    self.assertIsInstance(node.body[1], gast.If)
+    self.assertIsInstance(node.body[1].body[0], gast.Assign)
+    self.assertIsInstance(node.body[1].body[1], gast.Return)
 
   def test_robust_error_on_list_visit(self):
 
@@ -244,7 +245,7 @@ class TransformerTest(test.TestCase):
     # The message should reference the exception actually raised, not anything
     # from the exception handler.
     expected_substring = 'I blew up'
-    self.assertTrue(expected_substring in obtained_message, obtained_message)
+    self.assertIn(expected_substring, obtained_message)
 
   def test_origin_info_propagated_to_new_nodes(self):
 
@@ -347,20 +348,19 @@ class CodeGeneratorTest(test.TestCase):
     origin_info.resolve(node, source, 'test_file', 100, 0)
     tg.visit(node)
 
-    self.assertEqual(
-        tg.code_buffer, '\n'.join([
-            'x = 1',
-            'if (x > 0) {',
-            'x = 2',
-            'if (x > 1) {',
-            'x = 3',
-            '} else {',
-            '}',
-            '} else {',
-            '}',
-            'return x',
-            '',
-        ]))
+    r = re.compile('.*'.join([
+        r'x = 1',
+        r'if \(?x > 0\)? {',
+        r'x = 2',
+        r'if \(?x > 1\)? {',
+        r'x = 3',
+        r'} else {',
+        r'}',
+        r'} else {',
+        r'}',
+        r'return x']), re.DOTALL)
+
+    self.assertRegex(tg.code_buffer, r)
     # TODO(mdan): Test the source map.
 
 

@@ -84,114 +84,127 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
           to_merge->tile_assignment().num_elements()) {
     return IsShardingMoreSpecific(*to_merge, old);
   }
-  // Combine the tile dimension sizes from new and old.
-  int64 num_devices = old.tile_assignment().num_elements();
-  std::vector<int64> new_tile_dims;
+
+  if (MergeShardingIfCompatible(
+          old,
+          /*minimum_tiles=*/std::max(old.NumTiles(), to_merge->NumTiles()) + 1,
+          to_merge)) {
+    return true;
+  }
+  return IsShardingMoreSpecific(*to_merge, old);
+}
+
+bool MergeShardingIfCompatible(const HloSharding& to_merge, int64 minimum_tiles,
+                               HloSharding* dst) {
+  // Combine the tile dimension sizes from dst and to_merge.
+  int64 num_devices = to_merge.tile_assignment().num_elements();
+  std::vector<int64> merged_tile_dims;
   bool compatible = true;
-  new_tile_dims.reserve(to_merge->tile_assignment().num_dimensions());
-  for (int64 i = 0; i < to_merge->tile_assignment().num_dimensions() - 1; ++i) {
-    int64 new_dim = to_merge->tile_assignment().dim(i);
-    int64 old_dim = old.tile_assignment().dim(i);
-    if (new_dim == 1) {
-      new_tile_dims.push_back(old_dim);
-    } else if (old_dim == 1) {
-      new_tile_dims.push_back(new_dim);
-    } else if (new_dim == old_dim) {
-      new_tile_dims.push_back(new_dim);
+  merged_tile_dims.reserve(dst->tile_assignment().num_dimensions());
+  for (int64 i = 0; i < dst->tile_assignment().num_dimensions() - 1; ++i) {
+    int64 dst_dim = dst->tile_assignment().dim(i);
+    int64 merge_dim = to_merge.tile_assignment().dim(i);
+    if (dst_dim == 1) {
+      merged_tile_dims.push_back(merge_dim);
+    } else if (merge_dim == 1) {
+      merged_tile_dims.push_back(dst_dim);
+    } else if (dst_dim == merge_dim) {
+      merged_tile_dims.push_back(dst_dim);
     } else {
       compatible = false;
       break;
     }
   }
-  int64 replication = num_devices / Product(new_tile_dims);
-  if (!compatible || num_devices % Product(new_tile_dims) != 0 ||
-      replication >= old.tile_assignment().dimensions().back()) {
-    return IsShardingMoreSpecific(*to_merge, old);
+  int64 merged_tiles = Product(merged_tile_dims);
+  if (!compatible || num_devices % Product(merged_tile_dims) != 0 ||
+      merged_tiles < minimum_tiles) {
+    return false;
   }
-  new_tile_dims.push_back(replication);
-  Array<int64> new_tile(new_tile_dims);
+  int64 replication = num_devices / merged_tiles;
+  merged_tile_dims.push_back(replication);
+  Array<int64> merged_tile(merged_tile_dims);
   // Maps from replication group ID to sorted members.
-  absl::flat_hash_map<int64, std::set<int64>> old_group_members;
-  absl::flat_hash_map<int64, std::set<int64>> new_group_members;
+  absl::flat_hash_map<int64, std::set<int64>> merge_group_members;
+  absl::flat_hash_map<int64, std::set<int64>> dst_group_members;
   auto get_group_index = [&](absl::Span<const int64> tile_indices,
                              const HloSharding& sharding) {
     int64 group_id = 0;
     for (int64 i = 0; i < tile_indices.size() - 1; ++i) {
-      group_id *= to_merge->tile_assignment().dim(i);
+      group_id *= dst->tile_assignment().dim(i);
       group_id += tile_indices[i];
     }
     return group_id;
   };
-  old.tile_assignment().Each(
+  to_merge.tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 device) {
-        old_group_members[get_group_index(indices, old)].insert(device);
+        merge_group_members[get_group_index(indices, to_merge)].insert(device);
       });
-  to_merge->tile_assignment().Each(
+  dst->tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 device) {
-        new_group_members[get_group_index(indices, *to_merge)].insert(device);
+        dst_group_members[get_group_index(indices, *dst)].insert(device);
       });
-  // Try to find the intersection of old and new replication groups, in
+  // Try to find the intersection of to_merge and dst replication groups, in
   // order to determine the merged tile assignment.
-  new_tile.Each([&](absl::Span<const int64> indices, int64* device) {
+  merged_tile.Each([&](absl::Span<const int64> indices, int64* device) {
     if (!compatible) {
       return;
     }
-    std::vector<int64> old_index(indices.begin(), indices.end());
-    std::vector<int64> new_index = old_index;
+    std::vector<int64> to_merge_index(indices.begin(), indices.end());
+    std::vector<int64> dst_index = to_merge_index;
     for (int64 i = 0; i < indices.size() - 1; ++i) {
-      if (old.tile_assignment().dim(i) == 1) {
-        old_index[i] = 0;
+      if (to_merge.tile_assignment().dim(i) == 1) {
+        to_merge_index[i] = 0;
       }
-      if (to_merge->tile_assignment().dim(i) == 1) {
-        new_index[i] = 0;
+      if (dst->tile_assignment().dim(i) == 1) {
+        dst_index[i] = 0;
       }
     }
-    int64 old_group_id = get_group_index(old_index, old);
-    int64 new_group_id = get_group_index(new_index, *to_merge);
-    if (old_group_members[old_group_id].empty() ||
-        new_group_members[new_group_id].empty()) {
+    int64 to_merge_group_id = get_group_index(to_merge_index, to_merge);
+    int64 dst_group_id = get_group_index(dst_index, *dst);
+    if (merge_group_members[to_merge_group_id].empty() ||
+        dst_group_members[dst_group_id].empty()) {
       compatible = false;
       return;
     }
 
-    int64 smallest_old = *old_group_members[old_group_id].begin();
-    int64 smallest_new = *new_group_members[new_group_id].begin();
-    if (smallest_old < smallest_new) {
-      if (old_group_members[old_group_id].count(smallest_new) == 0) {
+    int64 smallest_to_merge = *merge_group_members[to_merge_group_id].begin();
+    int64 smallest_dst = *dst_group_members[dst_group_id].begin();
+    if (smallest_to_merge < smallest_dst) {
+      if (merge_group_members[to_merge_group_id].count(smallest_dst) == 0) {
         compatible = false;
         return;
       }
-      *device = smallest_new;
+      *device = smallest_dst;
     } else {
-      if (new_group_members[new_group_id].count(smallest_old) == 0) {
+      if (dst_group_members[dst_group_id].count(smallest_to_merge) == 0) {
         compatible = false;
         return;
       }
-      *device = smallest_old;
+      *device = smallest_to_merge;
     }
-    old_group_members[old_group_id].erase(*device);
-    new_group_members[new_group_id].erase(*device);
+    merge_group_members[to_merge_group_id].erase(*device);
+    dst_group_members[dst_group_id].erase(*device);
   });
-  if (compatible) {
-    std::vector<OpMetadata> merged_metadata(std::move(to_merge->metadata()));
-    merged_metadata.reserve(merged_metadata.size() + old.metadata().size());
-    const absl::flat_hash_set<OpMetadata, protobuf_util::ProtobufHashWrapper,
-                              protobuf_util::ProtobufEqualsWrapper>
-        metadata_set(merged_metadata.begin(), merged_metadata.end());
-    absl::c_copy_if(old.metadata(), std::back_inserter(merged_metadata),
-                    [&metadata_set](const OpMetadata& data) {
-                      return !ContainsKey(metadata_set, data);
-                    });
-    if (replication == 1) {
-      new_tile_dims.pop_back();
-      new_tile.Reshape(new_tile_dims);
-      *to_merge = HloSharding::Tile(new_tile, merged_metadata);
-    } else {
-      *to_merge = HloSharding::PartialTile(new_tile, merged_metadata);
-    }
-    return true;
+  if (!compatible) {
+    return false;
   }
-  return IsShardingMoreSpecific(*to_merge, old);
+  std::vector<OpMetadata> merged_metadata(std::move(dst->metadata()));
+  merged_metadata.reserve(merged_metadata.size() + to_merge.metadata().size());
+  const absl::flat_hash_set<OpMetadata, protobuf_util::ProtobufHashWrapper,
+                            protobuf_util::ProtobufEqualsWrapper>
+      metadata_set(merged_metadata.begin(), merged_metadata.end());
+  absl::c_copy_if(to_merge.metadata(), std::back_inserter(merged_metadata),
+                  [&metadata_set](const OpMetadata& data) {
+                    return !ContainsKey(metadata_set, data);
+                  });
+  if (replication == 1) {
+    merged_tile_dims.pop_back();
+    merged_tile.Reshape(merged_tile_dims);
+    *dst = HloSharding::Tile(merged_tile, merged_metadata);
+  } else {
+    *dst = HloSharding::PartialTile(merged_tile, merged_metadata);
+  }
+  return true;
 }
 
 absl::optional<int64> SelectDominantDevice(
@@ -1254,6 +1267,42 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
              : HloSharding::Tile(reshape_tiles, source.metadata());
 }
 
+absl::optional<int64> GetDimensionForIota(const HloInstruction* maybe_iota) {
+  if (auto* iota = DynCast<HloIotaInstruction>(maybe_iota)) {
+    return iota->iota_dimension();
+  }
+
+  if (maybe_iota->shape().element_type() != S32) {
+    return absl::nullopt;
+  }
+  if (maybe_iota->IsConstant()) {
+    std::vector<bool> is_iota_dim(maybe_iota->shape().rank(), true);
+    maybe_iota->literal().EachCell<int32>(
+        [&](absl::Span<const int64> indices, int32 val) {
+          for (int64 i = 0; i < indices.size(); ++i) {
+            if (val != indices[i]) {
+              is_iota_dim[i] = false;
+            }
+          }
+        });
+    for (int64 i = 0; i < is_iota_dim.size(); ++i) {
+      if (is_iota_dim[i] && maybe_iota->shape().dimensions(i) > 1) {
+        return i;
+      }
+    }
+    return absl::nullopt;
+  }
+
+  if (maybe_iota->opcode() == HloOpcode::kBroadcast) {
+    auto operand_dim = GetDimensionForIota(maybe_iota->operand(0));
+    if (operand_dim) {
+      return maybe_iota->dimensions(*operand_dim);
+    }
+    return absl::nullopt;
+  }
+  return absl::nullopt;
+}
+
 absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
     const HloInstruction& hlo) {
   const auto& dnums = hlo.gather_dimension_numbers();
@@ -1282,25 +1331,24 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
           op->shape().dimensions_size() > index_dim
               ? op->shape().dimensions(index_dim)
               : 1;
-      if (auto* iota = DynCast<HloIotaInstruction>(op)) {
-        if (iota->iota_dimension() != index_dim) {
+      if (absl::optional<int64> maybe_iota_dim = GetDimensionForIota(op)) {
+        if (*maybe_iota_dim != index_dim) {
           for (int j = 0; j < num_indices_from_element; ++j) {
-            index_parallel_in_dim[concatenated_dims + j] =
-                iota->iota_dimension();
+            index_parallel_in_dim[concatenated_dims + j] = *maybe_iota_dim;
           }
         }
       }
       concatenated_dims += num_indices_from_element;
     }
-  } else if (auto* iota = DynCast<HloIotaInstruction>(indices)) {
-    if (iota->iota_dimension() != index_dim) {
+  } else if (absl::optional<int64> maybe_iota_dim =
+                 GetDimensionForIota(indices)) {
+    if (*maybe_iota_dim != index_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64 num_indices_from_element =
-          iota->shape().dimensions_size() > index_dim
-              ? iota->shape().dimensions(index_dim)
+          indices->shape().dimensions_size() > index_dim
+              ? indices->shape().dimensions(index_dim)
               : 1;
-      index_parallel_in_dim.assign(num_indices_from_element,
-                                   iota->iota_dimension());
+      index_parallel_in_dim.assign(num_indices_from_element, *maybe_iota_dim);
     }
   }
   absl::InlinedVector<int64, 1> indices_parallel_dims;

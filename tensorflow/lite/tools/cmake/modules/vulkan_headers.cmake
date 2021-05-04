@@ -22,7 +22,7 @@ include(FetchContent)
 OverridableFetchContent_Declare(
   vulkan_headers
   GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers
-  # GIT_TAG must keep in sync with tensorflow/third_party/vulkan_headers/workspace.bzl
+  # Sync with tensorflow/third_party/vulkan_headers/workspace.bzl
   GIT_TAG 0e57fc1cfa56a203efe43e4dfb9b3c9e9b105593
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"

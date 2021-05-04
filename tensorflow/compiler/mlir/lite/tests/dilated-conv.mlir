@@ -510,3 +510,21 @@ func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x1920x128
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) {device = "", squeeze_dims = [2]} : (tensor<2x1920x1x128xf32>) -> tensor<2x1920x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<2x1920x128xf32>
 }
+
+func @testDilatedConvInterleaved(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> (tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>) {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = constant dense<4> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
+  %1 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
+  %2 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
+  %3 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
+  %4 = "tf.BatchToSpaceND"(%2, %cst, %cst_0) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
+  %5 = "tf.BatchToSpaceND"(%3, %cst, %cst_0) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
+  return %4, %5: tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
+
+  // CHECK-LABEL: testDilatedConvInterleaved
+  // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
+  // CHECK-NEXT: [[RESULT0:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: [[RESULT1:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: return [[RESULT0]], [[RESULT1]] : tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
+}

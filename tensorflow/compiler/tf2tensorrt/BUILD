@@ -33,7 +33,10 @@ load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
     licenses = ["notice"],
 )
 

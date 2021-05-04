@@ -233,6 +233,9 @@ class SignatureRunner(object):
     for input_name, value in kwargs.items():
       self._interpreter._set_input_tensor(
           input_name, value=value, method_name=self._signature_def_name)
+
+    # TODO(b/184696047): Needs to invoke the actual subgraph instead of main
+    #                    graph.
     self._interpreter.invoke()
     result = {}
     for output_name, output_index in self._outputs:
@@ -881,29 +884,18 @@ class InterpreterWithCustomOps(Interpreter):
   and add a custom op.
   """
 
-  def __init__(self,
-               model_path=None,
-               model_content=None,
-               experimental_delegates=None,
-               custom_op_registerers=None):
+  def __init__(self, custom_op_registerers=None, **kwargs):
     """Constructor.
 
     Args:
-      model_path: Path to TF-Lite Flatbuffer file.
-      model_content: Content of model.
-      experimental_delegates: Experimental. Subject to change. List of
-        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
-          objects returned by lite.load_delegate().
       custom_op_registerers: List of str (symbol names) or functions that take a
         pointer to a MutableOpResolver and register a custom op. When passing
         functions, use a pybind function that takes a uintptr_t that can be
         recast as a pointer to a MutableOpResolver.
+      **kwargs: Additional arguments passed to Interpreter.
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
     self._custom_op_registerers = custom_op_registerers or []
-    super(InterpreterWithCustomOps, self).__init__(
-        model_path=model_path,
-        model_content=model_content,
-        experimental_delegates=experimental_delegates)
+    super(InterpreterWithCustomOps, self).__init__(**kwargs)

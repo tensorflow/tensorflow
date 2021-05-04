@@ -704,8 +704,7 @@ TfLiteStatus QuantizeOpInput(
         return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
                                                      error_reporter);
       } else {
-        // Only 8, 16, 32, 10 are supported.
-        // TODO(jianlijianli): extend this to support arbitrary bits.
+        // Currently supports only 8, 16, 32, 10 bits.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "Unable to quantize buffer or min/max value for input %d "
@@ -888,9 +887,9 @@ TfLiteStatus QuantizeOpOutput(
   return kTfLiteOk;
 }
 
-TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
-                                        TensorType activations_type,
-                                        ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeIntermediateTensors(ModelT* model,
+                                         TensorType activations_type,
+                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -955,7 +954,7 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
   return kTfLiteOk;
 }
 
-// Quantize tensros that have shared range. For example, in LSTM, the output
+// Quantize tensors that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
 // We have to model this explicitly because the output is modeled as an extra
@@ -976,14 +975,13 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
           if (input.empty()) {
             continue;
           }
-          // Currently only support pair of twos.
-          // TODO(b/174534943): extend to arbitrary number of tensors.
+          // Currently only support two values. The first one for input and
+          // the second one for output.
           if (input.size() != 2) {
             return kTfLiteError;
           }
           const int index_1 = input[0];
           const int index_2 = input[1];
-          // TODO(jianlijianli): model input/output.
           TensorT* tensor_1 = subgraph->tensors[op->inputs[index_1]].get();
           TensorT* tensor_2 = subgraph->tensors[op->outputs[index_2]].get();
           const float min_of_min = std::min(tensor_1->quantization->min[0],
@@ -1448,7 +1446,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
       model, operator_names, real_value_op_set, activations_type,
       disable_per_channel, error_reporter));
   TF_LITE_ENSURE_STATUS(
-      QuantizeIntemediateTensors(model, activations_type, error_reporter));
+      QuantizeIntermediateTensors(model, activations_type, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeSharedRange(model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeWeightsInputOutput(
       model, allow_float, operator_names, real_value_op_set, activations_type,

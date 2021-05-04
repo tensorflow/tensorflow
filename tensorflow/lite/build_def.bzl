@@ -425,8 +425,12 @@ def generated_test_models_failing(conversion_mode):
       List of failing test models for the conversion mode.
     """
     if conversion_mode == "toco-flex":
+        # These tests mean to fuse multiple TF ops to TFLite fused RNN & LSTM
+        # ops (e.g. LSTM, UnidirectionalSequentceLSTM) with some semantic
+        # changes (becoming stateful). We have no intention to make these
+        # work in Flex.
         return [
-            "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
+            "lstm",
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
@@ -833,7 +837,6 @@ def tflite_custom_cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
-            # TODO(b/161323860) replace this by generated header.
             "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),

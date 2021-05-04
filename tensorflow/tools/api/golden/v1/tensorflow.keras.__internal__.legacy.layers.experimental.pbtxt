@@ -1,0 +1,11 @@
+path: "tensorflow.keras.__internal__.legacy.layers.experimental"
+tf_module {
+  member_method {
+    name: "keras_style_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_keras_style"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

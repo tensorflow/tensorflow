@@ -57,7 +57,11 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          TypeConverter &typeConverter,
                                           OwningRewritePatternList *patterns);
+
+// Converter to signless intergers to be used with linalg conversion patterns.
+std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,

@@ -509,6 +509,7 @@ cc_library(
         "reference/quantize.h",
         "reference/reduce.h",
         "reference/requantize.h",
+        "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",

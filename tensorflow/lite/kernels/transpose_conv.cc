@@ -591,6 +591,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<TfLiteTransposeConvParams*>(node->builtin_data);
 
+  // Prevent divisions by 0
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
   // Resize any deferred dynamic tensors
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeTensor(context, output_shape, output));

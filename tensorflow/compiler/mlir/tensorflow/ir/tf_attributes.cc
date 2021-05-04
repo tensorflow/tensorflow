@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 #define GET_ATTRDEF_CLASSES
@@ -28,35 +29,6 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
-
-namespace detail {
-
-// The storage class for ShapeAttr.
-struct ShapeAttrStorage : public AttributeStorage {
-  using KeyTy = std::pair<ArrayRef<int64_t>, bool>;
-
-  explicit ShapeAttrStorage(ArrayRef<int64_t> shape, bool unranked = false)
-      : shape(shape), unranked(unranked) {}
-
-  bool operator==(const KeyTy& key) const {
-    return key == KeyTy(shape, unranked);
-  }
-  static unsigned hashKey(const KeyTy& key) {
-    return llvm::hash_combine(key.first, static_cast<char>(key.second));
-  }
-
-  // NOLINTNEXTLINE
-  static ShapeAttrStorage* construct(mlir::AttributeStorageAllocator& allocator,
-                                     const KeyTy& key) {
-    return new (allocator.allocate<ShapeAttrStorage>())
-        ShapeAttrStorage(allocator.copyInto(key.first), key.second);
-  }
-
-  ArrayRef<int64_t> shape;
-  bool unranked = false;
-};
-
-}  // namespace detail
 
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(mlir::MLIRContext* context,
@@ -84,11 +56,6 @@ bool ShapeAttr::hasRank() const { return !getImpl()->unranked; }
 int64_t ShapeAttr::getRank() const {
   assert(hasRank());
   return getImpl()->shape.size();
-}
-
-ArrayRef<int64_t> ShapeAttr::getShape() const {
-  assert(hasRank());
-  return getImpl()->shape;
 }
 
 bool ShapeAttr::hasStaticShape() const {
@@ -175,14 +142,79 @@ Attribute PlaceholderAttr::parse(MLIRContext* context, DialectAsmParser& parser,
   return PlaceholderAttr::get(context, content);
 }
 
-OptionalParseResult ParseTensorFlowAttribute(MLIRContext* context,
-                                             DialectAsmParser& parser,
-                                             StringRef mnemonic, Type type,
-                                             Attribute& value) {
-  return generatedAttributeParser(context, parser, mnemonic, type, value);
+void ShapeAttr::print(DialectAsmPrinter& os) const {
+  os << "shape<";
+  if (hasRank()) {
+    auto print_dim = [&](int64_t dim) {
+      if (dim > -1)
+        os << dim;
+      else
+        os << "?";
+    };
+    llvm::interleave(getShape(), os, print_dim, "x");
+  } else {
+    os << "*";
+  }
+  os << ">";
 }
 
-void printTensorFlowAttribute(Attribute attr, DialectAsmPrinter& os) {
+Attribute ShapeAttr::parse(MLIRContext* context, DialectAsmParser& parser,
+                           Type type) {
+  if (failed(parser.parseLess())) return {};
+
+  if (succeeded(parser.parseOptionalStar())) {
+    if (failed(parser.parseGreater())) {
+      parser.emitError(parser.getCurrentLocation())
+          << "expected `>` after `*` when parsing a tf.shape "
+             "attribute";
+      return {};
+    }
+    return mlir::TF::ShapeAttr::get(context, llvm::None);
+  }
+
+  SmallVector<int64_t> shape;
+  if (failed(parser.parseOptionalGreater())) {
+    auto parse_element = [&]() {
+      shape.emplace_back();
+      llvm::SMLoc loc = parser.getCurrentLocation();
+      if (succeeded(parser.parseOptionalQuestion())) {
+        shape.back() = -1;
+      } else if (failed(parser.parseInteger(shape.back())) ||
+                 shape.back() < 0) {
+        parser.emitError(loc) << "expected a positive integer or `?` when "
+                                 "parsing a tf.shape attribute";
+        return failure();
+      }
+      return success();
+    };
+    if (failed(parse_element())) return {};
+    while (failed(parser.parseOptionalGreater())) {
+      if (failed(parser.parseXInDimensionList()) || failed(parse_element()))
+        return {};
+    }
+  }
+  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(shape));
+}
+
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser& parser,
+                                            Type type) const {
+  auto spec = parser.getFullSymbolSpec();
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
+
+  {
+    StringRef attrTag;
+    if (failed(parser.parseKeyword(&attrTag))) return Attribute();
+    Attribute attr;
+    OptionalParseResult parseResult =
+        generatedAttributeParser(getContext(), parser, attrTag, type, attr);
+    if (parseResult.hasValue()) return attr;
+  }
+
+  return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
+}
+
+void TensorFlowDialect::printAttribute(Attribute attr,
+                                       DialectAsmPrinter& os) const {
   (void)generatedAttributePrinter(attr, os);
 }
 

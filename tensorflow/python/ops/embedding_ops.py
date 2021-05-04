@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -557,12 +556,8 @@ def embedding_lookup_sparse(params,
       else:
         assert False, "Unrecognized combiner"
     else:
-      if compat.forward_compatible(2020, 5, 14):
-        if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-      else:
-        if segment_ids.dtype != dtypes.int32:
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+      if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
       assert idx is not None
       if combiner == "sum":
         embeddings = math_ops.sparse_segment_sum(

@@ -219,6 +219,11 @@ HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
       HloInstruction::CreateBroadcast(base->shape(), scalar, {}));
 }
 
+// Creates a fusion instruction and fuses `fused` into the created fusion
+// instruction.
+StatusOr<HloInstruction*> MakeFusionInstruction(
+    HloInstruction* fused, HloInstruction::FusionKind kind);
+
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of
 // these add all the instructions they generate into the computation containing

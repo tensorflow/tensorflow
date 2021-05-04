@@ -31,14 +31,14 @@ OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
       source_slices_(std::move(source_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
-  auto& buffer_allocations = *params.buffer_allocations;
+  se::Stream& stream = *params.stream;
+  const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Outfeeding from GPU";
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
-  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(stream.parent());
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();
 

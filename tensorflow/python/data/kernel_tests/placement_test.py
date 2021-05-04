@@ -249,6 +249,23 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = comp()
     self.assertEqual(result.numpy(), 45)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFunctionInliningColocation(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @def_function.function
+    def f(ds):
+      return next(iter(ds))
+
+    @def_function.function
+    def g():
+      dataset = dataset_ops.Dataset.range(10)
+      return f(dataset)
+
+    with ops.device("/gpu:0"):
+      self.assertEqual(self.evaluate(g()), 0)
+
 
 if __name__ == "__main__":
   test.main()

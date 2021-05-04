@@ -206,7 +206,9 @@ llvm::Optional<Value> convertReduceMeanOp(
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                       RankedTensorType output_type,
-                                      Value input_value, StringRef mode);
+                                      Value input_value, StringRef mode,
+                                      bool align_corners,
+                                      bool half_pixel_centers);
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
@@ -236,6 +238,24 @@ llvm::Optional<Value> convertTFConv2DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref);
+
+// Lowers Gather operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value params_value,
+                                      Value indices_value, int32_t batch_dims,
+                                      int32_t axis);
+
+// Lowers GatherNd operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
+                                        Operation* op, Value result_value,
+                                        Value params_value,
+                                        Value indices_value);
+
+// Lowers OneHot operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value indices_value,
+                                      Value on_value, Value off_value,
+                                      int32_t depth, int32_t axis);
 
 };  // namespace tosa
 };  // namespace mlir

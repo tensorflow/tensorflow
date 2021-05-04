@@ -97,10 +97,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
+}  // namespace
+
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
-Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
-                     StringRef platform_name) {
+Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
+                                    ModuleOp module, StringRef platform_name) {
   auto platform = xla::se::MultiPlatformManager::PlatformWithName(
       StringRefToView(platform_name));
   if (!platform.ok()) {
@@ -149,6 +151,7 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   return Status::OK();
 }
 
+namespace {
 // This pass takes an MLIR HLO module, converts it to XLA to perform the HLO
 // optimization pipeline for the required platform, and then converts it back to
 // MLIR LHLO.
@@ -188,7 +191,8 @@ class XlaHloToLhloPass
       std::unique_ptr<HloModule> hlo_module =
           std::move(statusOrHloModule.ValueOrDie());
 
-      return ConvertModule(std::move(hlo_module), module, platform_);
+      return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
+                                          platform_);
     }();
     if (!status.ok()) {
       module.emitError() << status.ToString();
@@ -1790,8 +1794,8 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
 
   OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(
-      ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));
+  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
+                                           module.get(), "Host"));
 
   return module;
 }

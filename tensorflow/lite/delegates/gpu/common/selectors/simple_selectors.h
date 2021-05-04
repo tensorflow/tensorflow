@@ -88,6 +88,10 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
                         const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
+void SelectDepthToSpace(const SpaceToDepthAttributes& attr,
+                        const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr);
+
 void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr);
 

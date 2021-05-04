@@ -575,7 +575,8 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   //                   InputIntegerBits - z_b_headroom - 0.25);
   const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
+          static_cast<int32_t>(InputIntegerBits - z_a_headroom_plus_1),
+          31 - kAccumIntegerBits)),
       shifted_quarter);
 
   // z_b is treated like z_a, but premultiplying by sqrt(0.5).
@@ -585,7 +586,8 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
       SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
   const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
+          static_cast<int32_t>(InputIntegerBits - z_b_headroom),
+          31 - kAccumIntegerBits)),
       shifted_quarter);
 
   const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));

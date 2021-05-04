@@ -57,8 +57,8 @@ class MakeSaveableFromIteratorTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=1, mode=["graph"]))
   def testConcurrentSaves(self):
-    num_pipelines = 100
-    num_outputs = 100
+    num_pipelines = 10
+    num_outputs = 10
     break_point = 10
     all_outputs = [[] for _ in range(num_pipelines)]
     with ops.Graph().as_default() as g:

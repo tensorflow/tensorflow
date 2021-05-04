@@ -2134,33 +2134,37 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int32* input1_data,
-                const RuntimeShape& input2_shape, const int32* input2_data,
-                const RuntimeShape& output_shape, int32* output_data) {
-  ruy::profiler::ScopeLabel label("Add/int32");
+template <typename T>
+inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Add/int32or64");
+
+  T activation_min, activation_max;
+  GetActivationParams(params, &activation_min, &activation_max);
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   if (input1_shape == input2_shape) {
     output_map.array() = (input1_map.array() + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input2_shape.FlatSize() == 1) {
     auto scalar = input2_data[0];
     output_map.array() = (input1_map.array() + scalar)
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input1_shape.FlatSize() == 1) {
     auto scalar = input1_data[0];
     output_map.array() = (scalar + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else {
-    reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
-                                      input2_shape, input2_data, output_shape,
-                                      output_data);
+    reference_ops::BroadcastAdd4DSlow<T>(params, input1_shape, input1_data,
+                                         input2_shape, input2_data,
+                                         output_shape, output_data);
   }
 }
 
@@ -2659,7 +2663,7 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, div_func);
 }
 
-// TODO: BroadcastDiv is intentionally duplicated from reference_ops.h.
+// BroadcastDiv is intentionally duplicated from reference_ops.h.
 // For more details see the comment above the generic version of
 // BroadcastDivSlow.
 template <int N = 5>
@@ -4122,10 +4126,6 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
   const int32_t clamp_max = std::numeric_limits<T>::max();
   const int32_t clamp_min = std::numeric_limits<T>::min();
 
-  int32_t zero_point_offset = 0;
-  if (std::is_same<T, int8_t>::value) {
-    zero_point_offset = 128;
-  }
   for (int i = 0; i < excluding_last_dim; ++i) {
     T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
@@ -4134,10 +4134,10 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_q8 = std::numeric_limits<T>::max();
+    const int32_t max_uint8 = std::numeric_limits<uint8>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_q8 - max_val];
+    const float* table_offset = &params.table[max_uint8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4147,8 +4147,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
-        params.scale;
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.

@@ -119,8 +119,8 @@ def tflite_flex_cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
                 clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
-                clean_dep("//tensorflow/core/kernels:android_core_ops"),
-                clean_dep("//tensorflow/core/kernels:android_extended_ops"),
+                clean_dep("//tensorflow/core/kernels:portable_core_ops"),
+                clean_dep("//tensorflow/core/kernels:portable_extended_ops"),
             ]) + [CUSTOM_KERNEL_HEADER.header],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
             defines = [
@@ -136,7 +136,7 @@ def tflite_flex_cc_library(
                 CUSTOM_KERNEL_HEADER.include_path,
             ],
             textual_hdrs = [
-                clean_dep("//tensorflow/core/kernels:android_all_ops_textual_hdrs"),
+                clean_dep("//tensorflow/core/kernels:portable_all_ops_textual_hdrs"),
             ],
             visibility = visibility,
             deps = flex_portable_tensorflow_deps() + [

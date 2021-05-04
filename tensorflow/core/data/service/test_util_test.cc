@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/test_util.h"
 
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"

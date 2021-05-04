@@ -40,6 +40,10 @@ KernelThunk::KernelThunk(ThunkInfo thunk_info,
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name) {}
 
+std::string KernelThunk::ToStringExtra(int indent) const {
+  return " ,kernel = " + kernel_name_;
+}
+
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);

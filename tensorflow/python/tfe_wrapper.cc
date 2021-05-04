@@ -335,7 +335,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
     } else {
       ThrowValueError(
           absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
-                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
+                          "'hlo', 'hlo_serialized', 'optimized_hlo', "
+                          "'optimized_hlo_serialized', 'optimized_hlo_dot'",
                           s_stage)
               .c_str());
     }
@@ -1049,6 +1050,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
+  m.def("TFE_ContextOptionsSetTfrtDistributedRuntime",
+        &TFE_ContextOptionsSetTfrtDistributedRuntime);
+  // Experimental feature, intentionally not exposed as a C API yet.
+  m.def("TFE_ContextOptionsSetRunEagerOpAsFunction",
+        [](TFE_ContextOptions* options, bool run_eager_op_as_function) {
+          options->run_eager_op_as_function = run_eager_op_as_function;
+        });
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);

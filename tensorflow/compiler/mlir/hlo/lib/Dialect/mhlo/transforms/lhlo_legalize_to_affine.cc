@@ -98,6 +98,84 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
   }
 };
 
+/// Concat Operation Example (2D):
+/// Given inpA[2][1], inpB[2][2], concat_dimension = 1.
+/// Compute output[x1][x2].
+/// Implementation Pseudocode:
+/// s = 0
+/// for a in range(0, 2):
+///   for b in range(0, 1):
+///     output[a][b] = inpA[a][b - s]
+/// s = 1
+/// for a in range(0, 2):
+///   for b in range(1, 3):
+///     output[a][b] = inpB[a][b - s]
+///
+/// Concatenate composes an array from multiple array operands. The array is of
+/// the same rank as each of the input array operands (which must be of the same
+/// rank as each other) and contains the arguments in the order that they were
+/// specified.
+struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
+  using OpRewritePattern<ConcatenateOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value output = op.output();
+    MemRefType outputType = output.getType().cast<MemRefType>();
+    unsigned outputRank = outputType.getRank();
+    ArrayRef<int64_t> outputShape = outputType.getShape();
+
+    ValueRange operands = op.val();
+    uint64_t concatDim = op.dimension();
+    int64_t prevBound = 0;
+
+    for (Value operand : operands) {
+      MemRefType operandType = operand.getType().cast<MemRefType>();
+      ArrayRef<int64_t> operandShape = operandType.getShape();
+
+      // TODO(pashu123): Extend support for dynamic dimensions.
+      if (!operandType.hasStaticShape()) return failure();
+
+      // Only for the concatenation dimension, the value is dimension -
+      // prevBound.
+      SmallVector<AffineExpr, 4> expr;
+      for (unsigned i = 0; i < outputRank; i++) {
+        AffineExpr d0 = (i == concatDim)
+                            ? rewriter.getAffineDimExpr(concatDim) - prevBound
+                            : rewriter.getAffineDimExpr(i);
+
+        expr.push_back(d0);
+      }
+      AffineMap map =
+          AffineMap::get(outputRank, 0, expr, rewriter.getContext());
+
+      // Create multiple for loop nests iterating along the concatenation
+      // dimension.
+      OpBuilder::InsertionGuard guard(rewriter);
+      SmallVector<Value, 3> indices;
+      AffineForOp forOp;
+      for (unsigned i = 0; i < outputRank; i++) {
+        if (i == concatDim) {
+          forOp = rewriter.create<AffineForOp>(loc, prevBound,
+                                               prevBound + operandShape[i]);
+          prevBound += operandShape[i];
+          indices.push_back(forOp.getInductionVar());
+        } else {
+          forOp = rewriter.create<AffineForOp>(loc, 0, outputShape[i]);
+          indices.push_back(forOp.getInductionVar());
+        }
+        rewriter.setInsertionPointToStart(forOp.getBody());
+      }
+      Value storeVal =
+          rewriter.create<AffineLoadOp>(loc, operand, map, indices);
+      rewriter.create<AffineStoreOp>(loc, storeVal, output, indices);
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 template <typename LhloOpTy>
 struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
   using OpRewritePattern<LhloOpTy>::OpRewritePattern;
@@ -145,6 +223,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
       BinaryOpConverter<lmhlo::MinOp>,
       BinaryOpConverter<lmhlo::MulOp>,
       BinaryOpConverter<lmhlo::SubOp>,
+      ConcatOpConverter,
       DotOpConverter>(context);
   // clang-format on
 }

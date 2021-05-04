@@ -23,6 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -33,9 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -515,11 +515,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatResponse resp;
       Status s = dispatcher_->ClientHeartbeat(req, resp);
       if (!s.ok()) {
-        LOG(WARNING) << "Failed to heartbeat to dispatcher from job client id "
-                     << job_client_id_
-                     << ". Dispatcher address: " << dataset()->address_
-                     << ". Error: " << s;
-        return;
+        if (errors::IsAborted(s) || errors::IsUnavailable(s) ||
+            errors::IsCancelled(s)) {
+          LOG(WARNING)
+              << "Failed to heartbeat to dispatcher from job client id "
+              << job_client_id_
+              << ". Dispatcher address: " << dataset()->address_
+              << ". Error: " << s;
+          return;
+        }
+        mutex_lock l(mu_);
+        status_ = s;
+        get_next_cv_.notify_all();
       }
       mutex_lock l(mu_);
       UpdateJobFinished(resp.job_finished());

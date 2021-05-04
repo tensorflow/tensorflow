@@ -35,7 +35,19 @@ for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly_gpu*dev*cp3*-cp3*-win_amd64.whl);
   copy_to_new_project_name "${f}" tf_nightly python
 done
 
+OVERALL_RETVAL=0
 # Upload the built packages to pypi.
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly*dev*cp3*-cp3*-win_amd64.whl); do
-  python -m twine upload -r pypi-warehouse "$f" || echo
+  test_tf_whl_size $f
+  RETVAL=$?
+
+  # Upload the PIP package if whl test passes.
+  if [ ${RETVAL} -eq 0 ]; then
+    python -m twine upload -r pypi-warehouse "$f"
+  else
+    echo "Unable to upload package $f. Size check failed."
+    OVERALL_RETVAL=1
+  fi
 done
+
+exit $OVERALL_RETVAL

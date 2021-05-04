@@ -151,12 +151,21 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+  // TF_AcquireFlexDelegate isn't defined on Android, and the following block of
+  // code would have no effect if TF_AcquireFlexDelegate isn't defined, so we
+  // only enable that block for non-Android platforms.  Also, on Android 4.4
+  // (Kitkat), the dlsym() implementation has a bug where dlsym() of an unknown
+  // name will result in a SIGFPE, which would crash the process, so it's
+  // important that on Android 4.4 we *don't* call SharedLibrary::GetSymbol
+  // unless the symbol is sure to exist.
+#if !defined(__ANDROID__)
   auto acquire_flex_delegate_func =
       reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
           SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
   if (acquire_flex_delegate_func) {
     return acquire_flex_delegate_func();
   }
+#endif
 
 #if !defined(TFLITE_IS_MOBILE_PLATFORM)
   // Load TF_AcquireFlexDelegate() from _pywrap_tensorflow_internal.so if it is

@@ -109,7 +109,7 @@ struct gemm_pack_colmajor_block<
           unpacket_traits<Packet>::masked_store_available>;
 
   EIGEN_DONT_INLINE
-  void operator()(Scalar* block, const DataMapper rhs, StorageIndex rows,
+  void operator()(Scalar* block, const DataMapper& rhs, StorageIndex rows,
                   StorageIndex cols) {
     const bool standard_patches = !rhs.nonStandardPatches();
 
@@ -170,7 +170,7 @@ struct gemm_pack_colmajor_block<
   //   padded region of original input.
   template <bool patch_depth_is_multiple_of_packet_size, bool has_padding>
   EIGEN_ALWAYS_INLINE void packStandardPatches(Scalar* block,
-                                               const DataMapper rhs,
+                                               const DataMapper& rhs,
                                                StorageIndex rows,
                                                StorageIndex cols) {
     eigen_assert(!rhs.nonStandardPatches());
@@ -350,7 +350,7 @@ struct gemm_pack_colmajor_block<
 
   template <bool patch_depth_is_multiple_of_packet_size>
   EIGEN_ALWAYS_INLINE void packNonStandardPatches(Scalar* block,
-                                                  const DataMapper rhs,
+                                                  const DataMapper& rhs,
                                                   StorageIndex rows,
                                                   StorageIndex cols) {
     eigen_assert(rhs.nonStandardPatches());

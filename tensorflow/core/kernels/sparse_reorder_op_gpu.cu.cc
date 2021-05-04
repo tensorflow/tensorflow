@@ -78,7 +78,11 @@ struct SparseReorderFunctor<GPUDevice, T> {
     auto values = input_val.template flat<T>().data();
     auto dims = input_shape_in.template flat<int64>().data();
 
-    if (num_elems == 0) return;
+    if (num_elems == 0) {
+      c->set_output(0, input_ind);
+      c->set_output(1, input_val);
+      return;
+    }
 
     Tensor flat_indices_tensor;
     OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({num_elems}),

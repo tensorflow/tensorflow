@@ -91,7 +91,7 @@ cc_library(
 tf_cc_test(
     name = "graph_properties_test",
     srcs = ["graph_properties_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     data = [":graph_properties_testdata"],
     tags = [
         "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
@@ -136,7 +136,7 @@ cc_library(
 tf_cc_test(
     name = "graph_memory_test",
     srcs = ["graph_memory_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     deps = [
         ":graph_memory",
         "//tensorflow/cc:cc_ops",

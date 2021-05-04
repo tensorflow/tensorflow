@@ -285,8 +285,8 @@ TfLiteStatus ComputeDepthMultiplier(TfLiteContext* context,
                                     int16* depth_multiplier) {
   int num_filter_channels = SizeOfDimension(filter, 3);
   int num_input_channels = SizeOfDimension(input, 3);
+  TF_LITE_ENSURE(context, num_input_channels != 0);
   TF_LITE_ENSURE_EQ(context, num_filter_channels % num_input_channels, 0);
-
   *depth_multiplier = num_filter_channels / num_input_channels;
   return kTfLiteOk;
 }
@@ -455,8 +455,9 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
   TfLiteTensor* input_quantized;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, data->input_quantized_index,

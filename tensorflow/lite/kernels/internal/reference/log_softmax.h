@@ -16,8 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_LOG_SOFTMAX_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 
+#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
@@ -56,12 +58,14 @@ inline void LogSoftmax(const SoftmaxParams& params,
 }
 
 inline void LogSoftmax(const SoftmaxParams& params,
-                       const RuntimeShape& input_shape, const uint8* input_data,
-                       const RuntimeShape& output_shape, uint8* output_data) {
-  const int32 input_multiplier = params.input_multiplier;
-  const int32 input_left_shift = params.input_left_shift;
-  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
-  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
+                       const RuntimeShape& input_shape,
+                       const uint8_t* input_data,
+                       const RuntimeShape& output_shape, uint8_t* output_data) {
+  const int32_t input_multiplier = params.input_multiplier;
+  const int32_t input_left_shift = params.input_left_shift;
+  const int32_t reverse_scaling_divisor = params.reverse_scaling_divisor;
+  const int32_t reverse_scaling_right_shift =
+      params.reverse_scaling_right_shift;
   const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large
@@ -72,8 +76,9 @@ inline void LogSoftmax(const SoftmaxParams& params,
   static constexpr int kAccumulationIntegerBits = 12;
   static constexpr int kOutputIntegerBits = 4;
   using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+  using FixedPointAccum =
+      gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -82,17 +87,17 @@ inline void LogSoftmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    uint8 max_in_row = 0;
+    uint8_t max_in_row = 0;
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
 
     FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_multiplier, input_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
@@ -102,7 +107,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
       }
     }
 
-    const int32 fixed_log_sum_of_exps =
+    const int32_t fixed_log_sum_of_exps =
         log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
             sum_of_exps)
             .raw();
@@ -113,28 +118,30 @@ inline void LogSoftmax(const SoftmaxParams& params,
     //
     // The thresholds diff_min, etc are negative.
     const int rescaled_diff_min =
-        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
+        fixed_log_sum_of_exps + std::numeric_limits<int32_t>::lowest();
     const int adjusted_diff_min =
-        std::max(diff_min - 1,  // Note use of > below instead of >= above.
+        std::max(static_cast<int32_t>(
+                     diff_min - 1),  // Note use of > below instead of >= above.
                  MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
                      -reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff > adjusted_diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_multiplier, input_left_shift);
-        int32 unsat_output =
+        int32_t unsat_output =
             gemmlowp::RoundingDivideByPOT(
                 (input_diff_rescaled - fixed_log_sum_of_exps),
                 31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
             255;
 
-        output_data[i * depth + c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
+        output_data[i * depth + c] = static_cast<uint8_t>(
+            std::max(std::min(unsat_output, static_cast<int32_t>(255)),
+                     static_cast<int32_t>(0)));
       } else {
         // Set output to smallest value.
         output_data[i * depth + c] = 0;
@@ -145,6 +152,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 
 template <typename T>
 inline void LogSoftmaxQuantized(const SoftmaxParams& params,
+                                const size_t outer_size, const size_t depth,
                                 const RuntimeShape& input_shape,
                                 const T* input_data,
                                 const RuntimeShape& output_shape,
@@ -160,34 +168,24 @@ inline void LogSoftmaxQuantized(const SoftmaxParams& params,
   static constexpr T kMaxT8 = std::numeric_limits<T>::max();
   static constexpr int32_t kMinInt32 = std::numeric_limits<int32_t>::min();
 
-  // zero-point is set by Prepare function.
-  // value 127 for int8_t
-  // value 255 for uint8_t
-
   // All IntegerBits must agree with Prepare function.
   // Input is chosen as Q5.26 so exp(-1 * 2^5 * 2^-1) = exp(-16) is negligible.
   static constexpr int kInputIntegerBits = 5;
   static constexpr int kAccumulationIntegerBits = 12;
   static constexpr int kOutputIntegerBits = 4;
-  using F5 = gemmlowp::FixedPoint<int32, kInputIntegerBits>;
-  using F12 = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  using F5 = gemmlowp::FixedPoint<int32_t, kInputIntegerBits>;
+  using F12 = gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
 
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-
-  for (int outer_index = 0; outer_index < outer_size; ++outer_index) {
+  for (size_t outer_index = 0; outer_index < outer_size; ++outer_index) {
     T max_in_row = kMinT8;
-    for (int inner_index = 0; inner_index < depth; ++inner_index) {
+    for (size_t inner_index = 0; inner_index < depth; ++inner_index) {
       max_in_row =
           std::max(max_in_row, input_data[outer_index * depth + inner_index]);
     }
 
     // Accumulator "sum_of_exps_in_q12" is safe from overflowing in 2^12 steps.
     F12 sum_of_exps_in_q12 = F12::FromRaw(0);
-    for (int inner_index = 0; inner_index < depth; ++inner_index) {
+    for (size_t inner_index = 0; inner_index < depth; ++inner_index) {
       int32_t input_diff =
           static_cast<int32_t>(input_data[outer_index * depth + inner_index]) -
           max_in_row;
@@ -211,12 +209,12 @@ inline void LogSoftmaxQuantized(const SoftmaxParams& params,
     const int32_t shifted_log_sum_of_exps_in_q5 =
         log_sum_of_exps_in_q5 + kMinInt32;
     const int32_t adjusted_diff_min =
-        std::max(diff_min - 1,
+        std::max(static_cast<int32_t>(diff_min - 1),
                  MultiplyByQuantizedMultiplier(shifted_log_sum_of_exps_in_q5,
                                                reverse_scaling_divisor,
                                                -reverse_scaling_right_shift));
 
-    for (int inner_index = 0; inner_index < depth; ++inner_index) {
+    for (size_t inner_index = 0; inner_index < depth; ++inner_index) {
       int32_t input_diff =
           static_cast<int32_t>(input_data[outer_index * depth + inner_index]) -
           max_in_row;
@@ -230,7 +228,7 @@ inline void LogSoftmaxQuantized(const SoftmaxParams& params,
             gemmlowp::RoundingDivideByPOT(
                 (input_diff_in_q5 - log_sum_of_exps_in_q5),
                 31 - kInputIntegerBits - kOutputIntegerBits) +
-            params.zero_point;
+            kMaxT8;
 
         output_in_q27 =
             std::max(std::min(output_in_q27, static_cast<int32_t>(kMaxT8)),
@@ -244,12 +242,12 @@ inline void LogSoftmaxQuantized(const SoftmaxParams& params,
   }
 }
 
-inline void LogSoftmax(const SoftmaxParams& params,
-                       const RuntimeShape& input_shape,
+inline void LogSoftmax(const SoftmaxParams& params, const size_t outer_size,
+                       const size_t depth, const RuntimeShape& input_shape,
                        const int8_t* input_data,
                        const RuntimeShape& output_shape, int8_t* output_data) {
-  LogSoftmaxQuantized(params, input_shape, input_data, output_shape,
-                      output_data);
+  LogSoftmaxQuantized(params, outer_size, depth, input_shape, input_data,
+                      output_shape, output_data);
 }
 
 }  // namespace reference_ops

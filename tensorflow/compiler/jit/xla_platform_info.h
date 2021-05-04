@@ -81,8 +81,14 @@ class XlaPlatformInfo {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
 };
 
+// Returns a set containing the device ids contained in visible_device_list or
+// nullopt if it is empty. It returns error in case of malformed configuration
+// string.
+StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+    absl::string_view visible_device_list);
+
 // Returns created XLA compilation cache.
-Status BuildXlaCompilationCache(DeviceBase* dev,
+Status BuildXlaCompilationCache(DeviceBase* dev, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache);
 

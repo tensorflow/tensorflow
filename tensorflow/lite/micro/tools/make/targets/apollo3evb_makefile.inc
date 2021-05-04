@@ -36,9 +36,7 @@ PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -D __FPU_PRESENT=1 \
   -DARM_MATH_CM4 \
-  -fno-rtti \
   -fmessage-length=0 \
-  -fno-exceptions \
   -fno-unwind-tables \
   -ffunction-sections \
   -fdata-sections \
@@ -48,24 +46,30 @@ PLATFORM_FLAGS = \
   -mthumb \
   -mfpu=fpv4-sp-d16 \
   -mfloat-abi=hard \
-  -std=gnu++11 \
   -Wvla \
   -Wall \
   -Wextra \
+  -Wno-implicit-fallthrough \
   -Wno-missing-field-initializers \
+  -Wno-return-type \
+  -Wno-sign-compare \
   -Wno-strict-aliasing \
   -Wno-type-limits \
   -Wno-unused-function \
   -Wno-unused-parameter \
   -fno-delete-null-pointer-checks \
-  -fno-threadsafe-statics \
   -fomit-frame-pointer \
-  -fno-use-cxa-atexit \
   -nostdlib \
   -ggdb \
   -O3
-CXXFLAGS += $(PLATFORM_FLAGS)
-CCFLAGS += $(PLATFORM_FLAGS)
+
+CXXFLAGS += \
+  $(PLATFORM_FLAGS) \
+  -fno-use-cxa-atexit
+
+CCFLAGS += $(PLATFORM_FLAGS) \
+  -Wno-int-conversion
+
 LDFLAGS += \
   -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
   -nostartfiles -static \

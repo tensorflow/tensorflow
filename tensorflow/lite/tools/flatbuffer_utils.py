@@ -118,7 +118,6 @@ def strip_strings(model):
 
   Args:
     model: The model from which to remove nonessential strings.
-
   """
 
   model.description = None
@@ -136,7 +135,6 @@ def randomize_weights(model, random_seed=0):
   Args:
     model: The model in which to randomize weights.
     random_seed: The input to the random number generator (default value is 0).
-
   """
 
   # The input to the random seed generator. The default value is 0.
@@ -156,6 +154,20 @@ def randomize_weights(model, random_seed=0):
     # end up as denormalized or NaN/Inf floating point numbers.
     for j in range(buffer_i_size):
       buffer_i_data[j] = random.randint(0, 255)
+
+
+def rename_custom_ops(model, map_custom_op_renames):
+  """Rename custom ops so they use the same naming style as builtin ops.
+
+  Args:
+    model: The input tflite model.
+    map_custom_op_renames: A mapping from old to new custom op names.
+  """
+  for op_code in model.operatorCodes:
+    if op_code.customCode:
+      op_code_str = op_code.customCode.decode('ascii')
+      if op_code_str in map_custom_op_renames:
+        op_code.customCode = map_custom_op_renames[op_code_str].encode('ascii')
 
 
 def xxd_output_to_bytes(input_cc_file):

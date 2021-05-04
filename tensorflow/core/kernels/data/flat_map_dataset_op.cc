@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -160,6 +160,44 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
       } while (true);
+    }
+
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence, int* num_skipped) override {
+      mutex_lock l(mu_);
+      *num_skipped = 0;
+      while (*num_skipped < num_to_skip) {
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+        if (!current_element_iterator_) {
+          // Get the next element from the input dataset.
+          captured_func_inputs_.clear();
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &captured_func_inputs_,
+                                                  end_of_sequence));
+          if (*end_of_sequence) {
+            input_impl_.reset();
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(
+              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+        }
+        bool end_of_element;
+        int last_num_skipped;
+        TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
+            ctx, num_to_skip - *num_skipped, &end_of_element,
+            &last_num_skipped));
+        *num_skipped += last_num_skipped;
+        if (end_of_element) {
+          // We have reached the end of the current element, so maybe move on
+          // to the next element.
+          current_element_iterator_.reset();
+        }
+      }
+      *end_of_sequence = false;
+      return Status::OK();
     }
 
    protected:

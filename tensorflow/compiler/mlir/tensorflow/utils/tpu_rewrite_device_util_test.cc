@@ -624,23 +624,25 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
             "bad 'device_assignment' attribute at index 0, not an int");
 }
 
-TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
+TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismFalse) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
+
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
-  mlir::TF::RuntimeDevices devices;
-  std::string host_device;
-  EXPECT_TRUE(mlir::failed(
-      GetHostDeviceOutsideComputation(devices, cluster, &host_device)));
+  EXPECT_FALSE(HasModelParallelism(cluster));
 }
 
-TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
+TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismTrue) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
@@ -655,10 +657,40 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
-  mlir::TF::RuntimeDevices runtime_devices;
+  EXPECT_TRUE(HasModelParallelism(cluster));
+}
+
+TEST(TPURewriteDeviceUtilTest,
+     TestHasModelParallelismFalseMissingCoresPerReplicaAttr) {
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
+  mlir::OwningModuleRef module_ref =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  mlir::OpBuilder builder(module_ref->getBodyRegion());
+
+  llvm::SmallVector<mlir::Type, 8> result_types;
+  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
+      mlir::UnknownLoc::get(&context), result_types);
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+
+  EXPECT_FALSE(HasModelParallelism(cluster));
+}
+
+TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
+  mlir::OwningModuleRef module_ref =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  mlir::OpBuilder builder(module_ref->getBodyRegion());
+  llvm::SmallVector<mlir::Type, 8> result_types;
+  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
+      mlir::UnknownLoc::get(&context), result_types);
+
+  mlir::TF::RuntimeDevices devices;
   std::string host_device;
   EXPECT_TRUE(mlir::failed(
-      GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
+      GetHostDeviceOutsideComputation(devices, cluster, &host_device)));
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {

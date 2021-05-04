@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -266,6 +267,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.depthwise_conv2d_grad_filter =
         "DepthwiseConv2dNativeBackpropFilter";
     csinfo_.dequantize = "Dequantize";
+    csinfo_.einsum = "Einsum";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_batch_norm_ex = "_FusedBatchNormEx";
@@ -399,6 +401,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
+                      CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.einsum,
+                      mkl_op_registry::GetMklOpName(csinfo_.einsum),
                       CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.batch_matmul_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul_v2),
@@ -925,6 +930,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string depthwise_conv2d_grad_input;
     string depthwise_conv2d_grad_filter;
     string dequantize;
+    string einsum;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string fused_batch_norm_ex;
@@ -3688,6 +3694,24 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   if (type_attrs_present) {
     for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
       if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
+        // Currently OneDNN optimization does not support int8 with native
+        // format.
+        if (NativeFormatEnabled()) {
+          static absl::once_flag once;
+          absl::call_once(once, [] {
+#if defined(ENABLE_MKL)
+            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
+                    << "data type for native format. Please set the environment"
+                    << " variable TF_ENABLE_MKL_NATIVE_FORMAT to false. ";
+#else
+            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
+                    << " data type for native format. Please switch to Intel "
+                    << "Optimized Tensorflow and set the environment variable "
+                    << "TF_ENABLE_MKL_NATIVE_FORMAT to false.";
+#endif  // defined(ENABLE_MKL)
+          });
+          return nullptr;
+        }
         return &*ri;
       }
     }

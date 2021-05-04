@@ -166,7 +166,7 @@ if (interpreter.Invoke() != kTfLiteOk) {
 }
 
 // Print out detailed allocation information:
-interpreter.PrintAllocations();
+interpreter.GetMicroAllocator().PrintAllocations();
 ```
 
 The output of this call will look something similar to this (output from the

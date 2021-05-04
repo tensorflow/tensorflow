@@ -140,7 +140,7 @@ Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
+Status DataServiceDispatcherClient::RegisterDataset(const GraphDef& dataset,
                                                     int64& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;

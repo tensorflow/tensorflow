@@ -133,6 +133,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["loss_scaling_gradient_tape_test.py"],
     shard_count = 2,
+    tags = ["no_oss"],
     deps = [
         ":loss_scale",
         ":loss_scaling_gradient_tape",

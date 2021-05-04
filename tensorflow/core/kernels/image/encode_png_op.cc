@@ -54,6 +54,8 @@ class EncodePngOp : public OpKernel {
     OP_REQUIRES(context, image.dims() == 3,
                 errors::InvalidArgument("image must be 3-dimensional",
                                         image.shape().DebugString()));
+    OP_REQUIRES(context, image.NumElements() > 0,
+                errors::Internal("Invalid image provided."));
     OP_REQUIRES(
         context,
         FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),

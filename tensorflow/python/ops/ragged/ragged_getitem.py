@@ -30,9 +30,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import dispatch
+from tensorflow.python.util.tf_export import tf_export
 
 
-def ragged_tensor_getitem(self, key):
+@tf_export("__operators__.ragged_getitem", v1=[])
+@dispatch.add_dispatch_support
+def ragged_tensor_getitem(rt_input, key):
   """Returns the specified piece of this RaggedTensor.
 
   Supports multidimensional indexing and slicing, with one restriction:
@@ -45,7 +49,7 @@ def ragged_tensor_getitem(self, key):
   guess"), we simply disallow this operation.
 
   Args:
-    self: The RaggedTensor to slice.
+    rt_input: The RaggedTensor to slice.
     key: Indicates which piece of the RaggedTensor to return, using standard
       Python semantics (e.g., negative values index from the end).  `key`
       may have any of the following types:
@@ -94,13 +98,15 @@ def ragged_tensor_getitem(self, key):
   >>> rt[:, -1:].to_list()          # Last item of each row (3-D RaggedTensor)
   [[[4]], [[6]], [[7]], [[10]]]
   """
-  scope_tensors = [self] + list(_tensors_in_key_list(key))
+  if not isinstance(rt_input, ragged_tensor.RaggedTensor):
+    raise TypeError("Ragged __getitem__ expects a ragged_tensor.")
+  scope_tensors = [rt_input] + list(_tensors_in_key_list(key))
   if isinstance(key, (list, tuple)):
     key = list(key)
   else:
     key = [key]
   with ops.name_scope(None, "RaggedGetItem", scope_tensors):
-    return _ragged_getitem(self, key)
+    return _ragged_getitem(rt_input, key)
 
 
 def _ragged_getitem(rt_input, key_list):

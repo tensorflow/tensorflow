@@ -24,10 +24,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_stats"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "experimental_threading"
     mtype: "<type \'property\'>"
   }

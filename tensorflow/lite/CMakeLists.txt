@@ -58,17 +58,14 @@ set(CMAKE_PREFIX_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
   ${CMAKE_PREFIX_PATH}
 )
-
+include(CMakeDependentOption)
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
 option(TFLITE_ENABLE_NNAPI "Enable NNAPI (Android only)." ON)
+cmake_dependent_option(TFLITE_ENABLE_NNAPI_VERBOSE_VALIDATION "Enable NNAPI verbose validation." OFF
+                       "TFLITE_ENABLE_NNAPI" ON)
 option(TFLITE_ENABLE_MMAP "Enable MMAP (unsupported on Windows)" ON)
 option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
-# This must be enabled when converting from TF models with SELECT_TF_OPS
-# enabled.
-# https://www.tensorflow.org/lite/guide/ops_select#converting_the_model
-# This is currently not supported.
-option(TFLITE_ENABLE_FLEX "Enable SELECT_TF_OPS" OFF) # TODO: Add support
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
@@ -196,15 +193,6 @@ populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
 populate_tflite_source_vars("delegates" TFLITE_DELEGATES_SRCS)
-if(TFLITE_ENABLE_FLEX)
-  message(FATAL_ERROR "TF Lite Flex delegate is currently not supported.")
-  populate_tflite_source_vars("delegates/flex" TFLITE_DELEGATES_FLEX_SRCS)
-  list(APPEND TFLITE_TARGET_DEPENDENCIES
-    absl::inlined_vector
-    absl::optional
-    absl::type_traits
-  )
-endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
@@ -298,6 +286,9 @@ if(_TFLITE_ENABLE_NNAPI)
   populate_tflite_source_vars(
     "nnapi" TFLITE_NNAPI_SRCS FILTER "(_disabled)\\.(cc|h)$"
   )
+  if(${TFLITE_ENABLE_NNAPI_VERBOSE_VALIDATION})
+    list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DNNAPI_VERBOSE_VALIDATION")
+  endif()
 else()
   set(TFLITE_DELEGATES_NNAPI_SRCS
     "${TFLITE_SOURCE_DIR}/delegates/nnapi/nnapi_delegate_disabled.cc"
@@ -337,7 +328,7 @@ if(TFLITE_ENABLE_RUY)
 endif()
 populate_tflite_source_vars("kernels"
   TFLITE_KERNEL_SRCS
-  FILTER "(.*_test_util_internal|test_.*)\\.(cc|h)"
+  FILTER "(.*_test_util_internal|test_.*|.*_ops_wrapper)\\.(cc|h)"
 )
 populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
 populate_tflite_source_vars("kernels/internal/optimized"

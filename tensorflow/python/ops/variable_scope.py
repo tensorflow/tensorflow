@@ -233,9 +233,7 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
-  # copybara:comment_begin(Reduce verbosity for OSS users)
-  logging.info("Enabling resource variables")
-  # copybara:comment_end
+  logging.vlog(1, "Enabling resource variables")
   _api_usage_gauge.get_cell().set(True)
 
 
@@ -270,9 +268,7 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
-  # copybara:comment_begin(Reduce verbosity for OSS users)
-  logging.info("Disabling resource variables")
-  # copybara:comment_end
+  logging.vlog(1, "Disabling resource variables")
   _api_usage_gauge.get_cell().set(False)
 
 

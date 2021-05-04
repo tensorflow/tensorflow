@@ -33,80 +33,74 @@ PYBIND11_MODULE(_math_ops, m) {
   m.def("add", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
     int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
+    AbstractTensorHandle* output;
     if (!name) {
       name = "Add";
     }
-    MaybeRaiseRegisteredFromStatus(
-        ops::AddV2(ctx, a, b, absl::MakeSpan(outputs), name));
-    return outputs[0];
+    MaybeRaiseRegisteredFromStatus(ops::AddV2(ctx, a, b, &output, name));
+    return output;
   });
   m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
                       AbstractTensorHandle* b, const char* name) {
     int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
+    AbstractTensorHandle* output;
     if (!name) {
       name = "MatMul";
     }
-    MaybeRaiseRegisteredFromStatus(
-        ops::MatMul(ctx, a, b, absl::MakeSpan(outputs), name,
-                    /*transpose_a=*/false, /*transpose_b=*/false));
-    return outputs[0];
+    MaybeRaiseRegisteredFromStatus(ops::MatMul(ctx, a, b, &output, name,
+                                               /*transpose_a=*/false,
+                                               /*transpose_b=*/false));
+    return output;
   });
   m.def("neg",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
           int num_outputs = 1;
-          std::vector<AbstractTensorHandle*> outputs(1);
+          AbstractTensorHandle* output;
           if (!name) {
             name = "Neg";
           }
-          MaybeRaiseRegisteredFromStatus(
-              ops::Neg(ctx, a, absl::MakeSpan(outputs), name));
-          return outputs[0];
+          MaybeRaiseRegisteredFromStatus(ops::Neg(ctx, a, &output, name));
+          return output;
         });
   m.def("sub", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
     int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
+    AbstractTensorHandle* output;
     if (!name) {
       name = "Sub";
     }
-    MaybeRaiseRegisteredFromStatus(
-        ops::Sub(ctx, a, b, absl::MakeSpan(outputs), name));
-    return outputs[0];
+    MaybeRaiseRegisteredFromStatus(ops::Sub(ctx, a, b, &output, name));
+    return output;
   });
   m.def("mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
     int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
+    AbstractTensorHandle* output;
     if (!name) {
       name = "Mul";
     }
-    MaybeRaiseRegisteredFromStatus(
-        ops::Mul(ctx, a, b, absl::MakeSpan(outputs), name));
-    return outputs[0];
+    MaybeRaiseRegisteredFromStatus(ops::Mul(ctx, a, b, &output, name));
+    return output;
   });
   m.def("log1p",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
           int num_outputs = 1;
-          std::vector<AbstractTensorHandle*> outputs(1);
+          AbstractTensorHandle* output;
           if (!name) {
             name = "Log1p";
           }
-          MaybeRaiseRegisteredFromStatus(
-              ops::Log1p(ctx, a, absl::MakeSpan(outputs), name));
-          return outputs[0];
+          MaybeRaiseRegisteredFromStatus(ops::Log1p(ctx, a, &output, name));
+          return output;
         });
   m.def("div_no_nan", [](AbstractContext* ctx, AbstractTensorHandle* a,
                          AbstractTensorHandle* b, const char* name) {
     int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
+    AbstractTensorHandle* output;
     if (!name) {
       name = "DivNoNan";
     }
-    MaybeRaiseRegisteredFromStatus(
-        ops::DivNoNan(ctx, a, b, absl::MakeSpan(outputs), name));
-    return outputs[0];
+    MaybeRaiseRegisteredFromStatus(ops::DivNoNan(ctx, a, b, &output, name));
+    return output;
   });
 }
 }  // namespace tensorflow

@@ -2369,8 +2369,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // TODO(ycling): Investigate if this copy can be avoided with the 5-inputs
-  // LSTM kernel.
   memcpy(prev_activation->data.raw, activation_out->data.raw,
          activation_out->bytes);
   memcpy(prev_state->data.raw, state_out->data.raw, state_out->bytes);

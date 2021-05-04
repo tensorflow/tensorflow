@@ -252,6 +252,7 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
+        ":cost_estimators",
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_structs_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -274,6 +275,34 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "variables_utils",
+    srcs = [
+        "utils/variables_utils.cc",
+    ],
+    hdrs = [
+        "utils/variables_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+    ],
+)
+
+cc_library(
+    name = "cost_estimators",
+    hdrs = [
+        "utils/arithmetic_count_util.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(
@@ -468,6 +497,7 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
+        "transforms/get_arithmetic_count.cc",
         "transforms/initialize_variables.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
@@ -492,6 +522,7 @@ cc_library(
     ],
     deps = [
         ":constant_utils",
+        ":cost_estimators",
         ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",
@@ -500,6 +531,7 @@ cc_library(
         ":tensorflow_lite",
         ":tftext_utils",
         ":validators",
+        ":variables_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -571,6 +603,7 @@ cc_library(
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/modify_io_nodes.cc",
+        "transforms/optimize_op_order.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",

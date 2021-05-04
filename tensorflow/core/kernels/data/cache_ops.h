@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_CACHE_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_CACHE_OPS_H_
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {

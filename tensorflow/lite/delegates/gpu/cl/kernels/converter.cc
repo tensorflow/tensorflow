@@ -467,6 +467,7 @@ class TrivialCopier : public OpenClConverterImpl {
 // Copies data from/to CPU into a tensor.
 class CpuCopier : public OpenClConverterImpl {
  public:
+  explicit CpuCopier(bool asynchronous = false) : async_(asynchronous) {}
   static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
     return input.data_type == output.data_type &&
            input.data_layout == output.data_layout &&
@@ -495,24 +496,26 @@ class CpuCopier : public OpenClConverterImpl {
       if (texture_output) {
         return queue_->EnqueueWriteImage(
             texture_output->memobj, int3(region_[0], region_[1], region_[2]),
-            cpu_input->data);
+            cpu_input->data, async_);
       }
       auto buffer_output = absl::get_if<OpenClBuffer>(&output_obj);
       if (buffer_output) {
-        return queue_->EnqueueWriteBuffer(
-            buffer_output->memobj, cpu_input->size_bytes, cpu_input->data);
+        return queue_->EnqueueWriteBuffer(buffer_output->memobj,
+                                          cpu_input->size_bytes,
+                                          cpu_input->data, async_);
       }
     } else if (cpu_output) {
       auto texture_input = absl::get_if<OpenClTexture>(&input_obj);
       if (texture_input) {
         return queue_->EnqueueReadImage(
             texture_input->memobj, int3(region_[0], region_[1], region_[2]),
-            cpu_output->data);
+            cpu_output->data, async_);
       }
       auto buffer_input = absl::get_if<OpenClBuffer>(&input_obj);
       if (buffer_input) {
-        return queue_->EnqueueReadBuffer(
-            buffer_input->memobj, cpu_output->size_bytes, cpu_output->data);
+        return queue_->EnqueueReadBuffer(buffer_input->memobj,
+                                         cpu_output->size_bytes,
+                                         cpu_output->data, async_);
       }
     }
     return absl::InternalError("Unexpected object");
@@ -520,6 +523,7 @@ class CpuCopier : public OpenClConverterImpl {
 
  private:
   std::array<size_t, 3> region_;
+  bool async_;
 };
 
 class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
@@ -550,7 +554,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     } else if (TensorToTensorConverter::IsSupported(input_def, output_def)) {
       impl = absl::make_unique<TensorToTensorConverter>();
     } else if (CpuCopier::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<CpuCopier>();
+      impl = absl::make_unique<CpuCopier>(/*asynchronous*/ true);
     } else if (TensorToBHWCBufferConverter::IsSupported(input_def,
                                                         output_def)) {
       impl = absl::make_unique<TensorToBHWCBufferConverter>();

@@ -57,7 +57,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // TODO(renjieliu): support multi-axis case.
+  // TODO(b/186320180): support multi-axis case.
   if (NumElements(axis) > 1) {
     context->ReportError(context, "Current does not support more than 1 axis.");
   }

@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -34,7 +35,7 @@ _DEFAULT_SALT_KEY = [0xDECAFCAFFE, 0xDECAFCAFFE]
 
 
 @keras_export('keras.layers.experimental.preprocessing.Hashing')
-class Hashing(base_preprocessing_layer.PreprocessingLayer):
+class Hashing(base_layer.Layer):
   """Implements categorical feature hashing, also known as "hashing trick".
 
   This layer transforms single or multiple categorical inputs to hashed output.

@@ -163,19 +163,20 @@ Status GpuExecutable::ExecuteThunks(
       [&] { return absl::StrCat(module_name_, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
+      thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk);
+    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
-    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
+    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk.get())) {
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
@@ -197,11 +198,11 @@ Status GpuExecutable::ExecuteThunks(
             ? &gpu_options->nccl_unique_id_callback()
             : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    if (thunk_schedule_->Depended(thunk)) {
+    if (thunk_schedule_->Depended(thunk.get())) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
-      thunk_to_finish_event[thunk] = std::move(finish_event);
+      thunk_to_finish_event[thunk.get()] = std::move(finish_event);
     }
   }
 
@@ -547,7 +548,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, buffer_allocations,

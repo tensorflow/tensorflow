@@ -50,11 +50,11 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
                       absl::Span<AbstractTensorHandle* const> inputs,
                       absl::Span<AbstractTensorHandle*> outputs,
                       bool use_function) {
-  std::vector<AbstractTensorHandle*> model_outputs(1);
+  AbstractTensorHandle* model_outputs[1];
 
   // Run the model.
-  TF_RETURN_IF_ERROR(RunModel(forward, ctx, inputs,
-                              absl::MakeSpan(model_outputs), use_function));
+  TF_RETURN_IF_ERROR(
+      RunModel(forward, ctx, inputs, model_outputs, use_function));
   AbstractTensorHandlePtr model_out(model_outputs[0]);
 
   TF_Tensor* model_out_tensor;
@@ -83,8 +83,8 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   }
 
   // Reduce sum the output on all dimensions.
-  TF_RETURN_IF_ERROR(
-      ops::Sum(ctx, model_out.get(), sum_dims.get(), outputs, "sum_output"));
+  TF_RETURN_IF_ERROR(ops::Sum(ctx, model_out.get(), sum_dims.get(), &outputs[0],
+                              "sum_output"));
   return Status::OK();
 }
 // ========================= End Helper Functions==============================
@@ -122,7 +122,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   // Initialize auxilary data structures.
   vector<float> thetaPlus_data(num_elems);
   vector<float> thetaMinus_data(num_elems);
-  std::vector<AbstractTensorHandle*> f_outputs(1);
+  AbstractTensorHandle* f_outputs[1];
 
   // Numerical Grad Check
   for (int i = 0; i < num_elems; i++) {
@@ -164,25 +164,25 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
     // Get f(theta + eps):
     theta_inputs[input_index] = thetaPlus.get();
-    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, theta_inputs,
-                                      absl::MakeSpan(f_outputs), use_function));
+    TF_RETURN_IF_ERROR(
+        RunAndMaybeSum(ctx, forward, theta_inputs, f_outputs, use_function));
     AbstractTensorHandlePtr fPlus(f_outputs[0]);
 
     // Get f(theta - eps):
     theta_inputs[input_index] = thetaMinus.get();
-    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, theta_inputs,
-                                      absl::MakeSpan(f_outputs), use_function));
+    TF_RETURN_IF_ERROR(
+        RunAndMaybeSum(ctx, forward, theta_inputs, f_outputs, use_function));
     AbstractTensorHandlePtr fMinus(f_outputs[0]);
 
     // Take Difference of both estimates: (f(theta + eps) - f(theta - eps)).
-    TF_RETURN_IF_ERROR(ops::Sub(ctx, fPlus.get(), fMinus.get(),
-                                absl::MakeSpan(f_outputs), "sub_top"));
+    TF_RETURN_IF_ERROR(
+        ops::Sub(ctx, fPlus.get(), fMinus.get(), f_outputs, "sub_top"));
     AbstractTensorHandlePtr fDiff(f_outputs[0]);
 
     // Calculate using the difference quotient definition:
     // (f(theta + eps) - f(theta - eps)) / (2 * eps).
-    TF_RETURN_IF_ERROR(ops::Div(ctx, fDiff.get(), two_eps.get(),
-                                absl::MakeSpan(f_outputs), "diff_quotient"));
+    TF_RETURN_IF_ERROR(
+        ops::Div(ctx, fDiff.get(), two_eps.get(), f_outputs, "diff_quotient"));
     AbstractTensorHandlePtr diff_quotient(f_outputs[0]);
 
     TF_Tensor* grad_tensor;

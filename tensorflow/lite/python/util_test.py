@@ -306,7 +306,6 @@ def _test_param_modify_integer_model_io_type():
   return params
 
 
-# TODO(b/161174063):  Merge tests for integer input/output type
 class UtilModifyIntegerQuantizedModelIOTypeTest(
     test_util.TensorFlowTestCase, parameterized.TestCase):
 

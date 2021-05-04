@@ -317,6 +317,19 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("result_shape", &ProgramShape::result)
       .def("__repr__", &ProgramShape::ToString);
 
+  py::class_<ShapeIndex>(m, "ShapeIndex")
+      .def(py::init([](const std::vector<int64>& v) {
+        return std::make_unique<ShapeIndex>(v.begin(), v.end());
+      }))
+      .def("__repr__", &ShapeIndex::ToString)
+      .def("__eq__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind == other; })
+      .def("__ne__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind != other; })
+      .def("__hash__", [](const ShapeIndex& shape_ind) {
+        return absl::Hash<ShapeIndex>()(shape_ind);
+      });
+
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);
@@ -547,6 +560,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_enable_fast_math",
                     &DebugOptions::xla_cpu_enable_fast_math,
                     &DebugOptions::set_xla_cpu_enable_fast_math)
+      .def_property("xla_cpu_enable_xprof_traceme",
+                    &DebugOptions::xla_cpu_enable_xprof_traceme,
+                    &DebugOptions::set_xla_cpu_enable_xprof_traceme)
       .def_property("xla_cpu_fast_math_honor_infs",
                     &DebugOptions::xla_cpu_fast_math_honor_infs,
                     &DebugOptions::set_xla_cpu_fast_math_honor_infs)
@@ -565,9 +581,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
-      .def_property("xla_cpu_enable_xprof_traceme",
-                    &DebugOptions::xla_cpu_enable_xprof_traceme,
-                    &DebugOptions::set_xla_cpu_enable_xprof_traceme)
+      .def_property("xla_gpu_cuda_data_dir",
+                    &DebugOptions::xla_gpu_cuda_data_dir,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_cuda_data_dir(value);
+                    })
       .def_property("xla_llvm_disable_expensive_passes",
                     &DebugOptions::xla_llvm_disable_expensive_passes,
                     &DebugOptions::set_xla_llvm_disable_expensive_passes)

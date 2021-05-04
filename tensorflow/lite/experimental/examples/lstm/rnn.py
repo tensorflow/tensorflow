@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TfLite LSTMCell wrapper.
-
-TODO(renjieliu): Find a better home for this one.
 """
 from __future__ import absolute_import
 from __future__ import division

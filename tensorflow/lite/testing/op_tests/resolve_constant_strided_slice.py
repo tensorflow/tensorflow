@@ -23,8 +23,6 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-# TODO(chaomei): refactor the test to cover more cases, like negative stride,
-# negative array index etc.
 @register_make_test_function()
 def make_resolve_constant_strided_slice_tests(options):
   """Make a set of tests to show strided_slice yields incorrect results."""

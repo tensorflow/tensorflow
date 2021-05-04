@@ -850,8 +850,8 @@ def decode_raw(input_bytes,
                name=None):
   r"""Convert raw bytes from input tensor into numeric tensors.
 
-  The input tensor is interpreted as a sequence of bytes. These bytes are then
-  decoded as numbers in the format specified by `out_type`.
+  Every component of the input tensor is interpreted as a sequence of bytes.
+  These bytes are then decoded as numbers in the format specified by `out_type`.
 
   >>> tf.io.decode_raw(tf.constant("1"), tf.uint8)
   <tf.Tensor: shape=(1,), dtype=uint8, numpy=array([49], dtype=uint8)>
@@ -909,22 +909,35 @@ def decode_raw(input_bytes,
   >>> tf.io.decode_raw(tf.constant(["1212"]), tf.uint16, fixed_length=4)
   <tf.Tensor: shape=(1, 2), dtype=uint16, numpy=array([[12849, 12849]], ...
 
-  Note: There is currently a bug in `fixed_length` that can result in data loss:
+  If the input value is larger than `fixed_length`, it is truncated:
 
-  >>> # truncated to length of type as it matches fixed_length
-  >>> tf.io.decode_raw(tf.constant(["1212"]), tf.uint16, fixed_length=2)
-  <tf.Tensor: shape=(1, 1), dtype=uint16, numpy=array([[12849]], dtype=uint16)>
-  >>> # ignores the second component
-  >>> tf.io.decode_raw(tf.constant(["12","34"]), tf.uint16, fixed_length=2)
-  <tf.Tensor: shape=(2, 1), dtype=uint16, numpy=
-  array([[12849],
-         [    0]], dtype=uint16)>
-  >>> tf.io.decode_raw(tf.constant(["12","34"]), tf.uint16, fixed_length=4)
-  <tf.Tensor: shape=(2, 2), dtype=uint16, numpy=
-  array([[12849,     0],
-         [    0,     0]], dtype=uint16)>
+  >>> x=''.join([chr(1), chr(2), chr(3), chr(4)])
+  >>> tf.io.decode_raw(x, tf.uint16, fixed_length=2)
+  <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([513], dtype=uint16)>
+  >>> hex(513)
+  '0x201'
 
-  This will be fixed on a future release of TensorFlow.
+  If `little_endian` and `fixed_length` are specified, truncation to the fixed
+  length occurs before endianness conversion:
+
+  >>> x=''.join([chr(1), chr(2), chr(3), chr(4)])
+  >>> tf.io.decode_raw(x, tf.uint16, fixed_length=2, little_endian=False)
+  <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([258], dtype=uint16)>
+  >>> hex(258)
+  '0x102'
+
+  If input values all have the same length, then specifying `fixed_length`
+  equal to the size of the strings should not change output:
+
+  >>> x = ["12345678", "87654321"]
+  >>> tf.io.decode_raw(x, tf.int16)
+  <tf.Tensor: shape=(2, 4), dtype=int16, numpy=
+  array([[12849, 13363, 13877, 14391],
+         [14136, 13622, 13108, 12594]], dtype=int16)>
+  >>> tf.io.decode_raw(x, tf.int16, fixed_length=len(x[0]))
+  <tf.Tensor: shape=(2, 4), dtype=int16, numpy=
+  array([[12849, 13363, 13877, 14391],
+         [14136, 13622, 13108, 12594]], dtype=int16)>
 
   Args:
     input_bytes:

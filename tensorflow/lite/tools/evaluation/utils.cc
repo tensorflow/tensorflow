@@ -93,7 +93,6 @@ TfLiteStatus GetSortedFileNames(
 }
 #endif
 
-// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return TfLiteDelegatePtr(
@@ -169,8 +168,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 }
 #endif
 
-// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
-#if defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+#if defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   return CreateNullDelegate();
 }

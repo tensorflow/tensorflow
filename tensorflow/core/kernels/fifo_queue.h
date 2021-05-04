@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
+class FIFOQueue : public TypedQueue<std::deque<Tensor> > {
  public:
   FIFOQueue(int32 capacity, const DataTypeVector& component_dtypes,
             const std::vector<TensorShape>& component_shapes,
@@ -64,7 +64,7 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
   static Status GetElementComponentFromBatch(const Tuple& tuple, int64 index,
                                              int component,
                                              OpKernelContext* ctx,
-                                             PersistentTensor* out_element);
+                                             Tensor* out_tensor);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueue);

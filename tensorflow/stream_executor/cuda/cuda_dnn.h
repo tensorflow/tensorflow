@@ -219,6 +219,15 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans)
       override;
 
+  port::Status GetFusedConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
+
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -261,22 +270,27 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<float>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::half>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
@@ -632,11 +646,14 @@ class CudnnSupport : public dnn::DnnSupport {
   port::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int cudnn_input_type, int cudnn_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-      const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
-      const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
+      const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
+      const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
-      DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
+      dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
+      DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
+      DeviceMemory<T>* side_input_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
 
   template <typename ElementType, typename BiasType, typename ScaleType,
@@ -655,6 +672,24 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<OutputType>* output_data, dnn::DataType accumulator_type,
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
+
+  template <typename ElementType, typename BiasType, typename ScaleType,
+            typename OutputType>
+  port::Status DoFusedConvolveWithExecutionPlanImpl(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<ElementType>& conv_input_data,
+      ScaleType conv_input_scale,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<ElementType>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<OutputType>& side_input_data,
+      ScaleType side_input_scale, const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<BiasType>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<OutputType>* output_data, dnn::DataType accumulator_type,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& plan_config,
       dnn::ProfileResult* output_profile_result);
 
   template <class T>

@@ -21,7 +21,6 @@ load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 package(
     default_visibility = [
         ":internal",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
     ],
     licenses = ["notice"],
@@ -152,6 +151,7 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        ":xla_device_no_jit_rewrite_registration",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -382,10 +382,7 @@ cc_library(
     hdrs = [
         "defs.h",
     ],
-    visibility = [
-        ":friends",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
-    ],
+    visibility = [":friends"],
 )
 
 # Internal targets below this point.

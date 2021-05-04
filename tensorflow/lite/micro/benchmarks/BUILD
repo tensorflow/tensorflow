@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:recording_allocators",
     ],
 )
 
