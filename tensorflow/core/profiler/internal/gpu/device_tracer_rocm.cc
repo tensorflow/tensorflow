@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if TENSORFLOW_USE_ROCM || 1
+#if TENSORFLOW_USE_ROCM
 
 #include <memory>
 #include <utility>

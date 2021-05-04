@@ -31,4 +31,4 @@ rm -f $TF_PKG_LOC/tensorflow*.whl
 yes "" | ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
 bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC &&
-pip3 install --upgrade --force-reinstall $TF_PKG_LOC/tensorflow*.whl
+pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
