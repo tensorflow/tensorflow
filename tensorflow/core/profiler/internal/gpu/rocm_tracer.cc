@@ -390,38 +390,38 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         // HIP runtime activity records, before exporting the trace data
         tracer_->AddToPendingActivityRecords(data->correlation_id);
         break;
-      case HIP_API_ID_hipMemcpy:  // TODO(reza): recently added *
+      case HIP_API_ID_hipMemcpy:
       case HIP_API_ID_hipMemcpyDtoH:
       case HIP_API_ID_hipMemcpyDtoHAsync:
       case HIP_API_ID_hipMemcpyHtoD:
       case HIP_API_ID_hipMemcpyHtoDAsync:
       case HIP_API_ID_hipMemcpyDtoD:
       case HIP_API_ID_hipMemcpyDtoDAsync:
-      case HIP_API_ID_hipMemcpyAsync:  // *
+      case HIP_API_ID_hipMemcpyAsync:
         this->AddNormalMemcpyEventUponApiExit(cbid, data, enter_time, exit_time);
         tracer_->AddToPendingActivityRecords(data->correlation_id);
         break;
-      case HIP_API_ID_hipMemset:       // TODO(reza): recently added
-      case HIP_API_ID_hipMemsetAsync:  // TODO(reza): recently added
+      case HIP_API_ID_hipMemset:
+      case HIP_API_ID_hipMemsetAsync:
       case HIP_API_ID_hipMemsetD32:
       case HIP_API_ID_hipMemsetD32Async:
-      case HIP_API_ID_hipMemsetD16:       // TODO(reza): recently added
-      case HIP_API_ID_hipMemsetD16Async:  // TODO(reza): recently added
+      case HIP_API_ID_hipMemsetD16:
+      case HIP_API_ID_hipMemsetD16Async:
       case HIP_API_ID_hipMemsetD8:
       case HIP_API_ID_hipMemsetD8Async:
         this->AddMemsetEventUponApiExit(cbid, data, enter_time, exit_time);
         break;
       case HIP_API_ID_hipMalloc:
-      case HIP_API_ID_hipMallocPitch:  // TODO(reza): recently added
-      case HIP_API_ID_hipHostMalloc:   // TODO(reza): recently added
+      case HIP_API_ID_hipMallocPitch:
+      case HIP_API_ID_hipHostMalloc:
       case HIP_API_ID_hipFree:
-      case HIP_API_ID_hipHostFree:  // TODO(reza): recently added
+      case HIP_API_ID_hipHostFree:
         this->AddMallocFreeEventUponApiExit(cbid, data, default_device, enter_time,
                                       exit_time);
         break;
       case HIP_API_ID_hipStreamSynchronize:
-      case HIP_API_ID_hipStreamWaitEvent:  // TODO(reza): recently added
-        // case HIP_API_ID_hipEventSynchronize: //TODO(reza): added recently
+      case HIP_API_ID_hipStreamWaitEvent:
+        // case HIP_API_ID_hipEventSynchronize:
         this->AddSynchronizeEventUponApiExit(cbid, data, enter_time, exit_time);
         break;
       case HIP_API_ID_hipSetDevice:
@@ -575,7 +575,6 @@ void RocmApiCallbackImpl::AddNormalMemcpyEventUponApiExit(
 
   RocmTracerEvent event;
   event.domain = RocmTracerEventDomain::HIP_API;
-  // TODO(reza): should we make this consistent with activity naming
   event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.source = RocmTracerEventSource::ApiCallback;
   event.thread_id = GetCachedTID();
@@ -672,7 +671,6 @@ void RocmApiCallbackImpl::AddMemcpyPeerEventUponApiExit(
   RocmTracerEvent event;
   event.type = RocmTracerEventType::MemcpyP2P;
   event.domain = RocmTracerEventDomain::HIP_API;
-  // TODO(reza): should we make this consistent with activity naming
   event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.source = RocmTracerEventSource::ApiCallback;
   event.thread_id = GetCachedTID();
@@ -843,7 +841,7 @@ void RocmApiCallbackImpl::AddMallocFreeEventUponApiExit(
 void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
     uint32_t cbid, const hip_api_data_t* data, uint64_t enter_time,
     uint64_t exit_time) {
-  // TODO(reza): neither GUDA and we capture annotaint for this event
+  // TODO(rocm-profiler): neither CUDA and nor we capture annotaint for this event
   /*
     misses: context_id
 
@@ -865,7 +863,6 @@ void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
       event.synchronization_info.sync_type =
           RocmTracerSyncTypes::StreamSynchronize;
       const hipStream_t& stream = data->args.hipStreamSynchronize.stream;
-      // TODO(reza): put the "hipGetStreamDeviceId" in the wrapper
       event.device_id = hipGetStreamDeviceId(stream);
     } break;
     case HIP_API_ID_hipStreamWaitEvent: {
@@ -916,9 +913,9 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
       case ACTIVITY_DOMAIN_HIP_API:
         switch (record->op) {
           case HIP_API_ID_hipModuleLaunchKernel:
-          case HIP_API_ID_hipExtModuleLaunchKernel:  // *
-          case HIP_API_ID_hipHccModuleLaunchKernel:  // *
-          case HIP_API_ID_hipLaunchKernel:           // *
+          case HIP_API_ID_hipExtModuleLaunchKernel:
+          case HIP_API_ID_hipHccModuleLaunchKernel:
+          case HIP_API_ID_hipLaunchKernel:
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddHipKernelActivityEvent(record);
             break;
@@ -928,17 +925,17 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
           case HIP_API_ID_hipMemcpyDtoHAsync:
           case HIP_API_ID_hipMemcpyHtoDAsync:
           case HIP_API_ID_hipMemcpyDtoDAsync:
-          case HIP_API_ID_hipMemcpyAsync:  // *
-          case HIP_API_ID_hipMemcpy:       // TODO(reza): recently *
+          case HIP_API_ID_hipMemcpyAsync:
+          case HIP_API_ID_hipMemcpy:
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddNormalHipMemcpyActivityEvent(record);
             break;
-          case HIP_API_ID_hipMemset:       // TODO(reza): recently added
-          case HIP_API_ID_hipMemsetAsync:  // TODO(reza): recently added
+          case HIP_API_ID_hipMemset:
+          case HIP_API_ID_hipMemsetAsync:
           case HIP_API_ID_hipMemsetD32:
           case HIP_API_ID_hipMemsetD32Async:
-          case HIP_API_ID_hipMemsetD16:       // TODO(reza): recently added
-          case HIP_API_ID_hipMemsetD16Async:  // TODO(reza): recently added
+          case HIP_API_ID_hipMemsetD16:
+          case HIP_API_ID_hipMemsetD16Async:
           case HIP_API_ID_hipMemsetD8:
           case HIP_API_ID_hipMemsetD8Async:
             DumpActivityRecord(record, std::to_string(__LINE__));
@@ -946,17 +943,16 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
             break;
 
           case HIP_API_ID_hipMalloc:
-          case HIP_API_ID_hipMallocPitch:  // TODO(reza): recently added
-          case HIP_API_ID_hipHostMalloc:   // TODO(reza): recently added
+          case HIP_API_ID_hipMallocPitch:
+          case HIP_API_ID_hipHostMalloc:
           case HIP_API_ID_hipFree:
-          case HIP_API_ID_hipHostFree:  // TODO(reza): recently added
+          case HIP_API_ID_hipHostFree:
             DumpActivityRecord(record, std::to_string(__LINE__));
-            // TODO(reza): G does not record these activities for CUDA
             AddHipMallocActivityEvent(record);
             break;
           case HIP_API_ID_hipStreamSynchronize:
-          case HIP_API_ID_hipStreamWaitEvent:  // TODO(reza): recently added
-            // case HIP_API_ID_hipStreamWaitEvent:  //TODO(reza): recently added
+          case HIP_API_ID_hipStreamWaitEvent:
+          // case HIP_API_ID_hipStreamWaitEvent:
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddHipStreamSynchronizeActivityEvent(record);
             break;
@@ -1049,8 +1045,7 @@ void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
   // event.name =  /* we use the API name instead*/
   //    wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
-  // TODO(reza): G uses device id and correlation ID for finding annotations. We
-  // don't
+  // TODO(rocm-profiler): CUDA uses device id and correlation ID for finding annotations.
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
 
   event.start_time_ns = record->begin_ns;
@@ -1254,11 +1249,10 @@ void RocmActivityCallbackImpl::AddHipStreamSynchronizeActivityEvent(
       event.synchronization_info.sync_type = RocmTracerSyncTypes::InvalidSync;
       break;
   }
-  // TODO(reza): we have auxiliary here
   collector_->AddEvent(std::move(event), false);
 }
 
-// TODO(reza): rename this function. this is HIP-OP
+// TODO(rocm-profiler): rename this function. this is HIP-OP
 void RocmActivityCallbackImpl::AddHccKernelActivityEvent(
     const roctracer_record_t* record) {
   /*

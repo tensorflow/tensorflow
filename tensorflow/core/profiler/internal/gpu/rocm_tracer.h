@@ -110,7 +110,7 @@ const char* GetRocmTracerEventSourceName(const RocmTracerEventSource& source);
 enum class RocmTracerEventDomain {
   InvalidDomain = 0,
   HIP_API,
-  HCC_OPS, //TODO(reza): renme this to HIP_OPS
+  HCC_OPS, //TODO(rocm-profiler): renme this to HIP_OPS
 };
 enum class RocmTracerSyncTypes{
   InvalidSync = 0,
@@ -157,9 +157,8 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64_t start_walltime_n
                          uint64_t start_gputime_ns, const string& message);
 
 struct RocmTracerOptions {
-  //TODO(reza): write comment here. (this is for tracing the api we actually track)
-  //TODO(reza): can you use an array instead?
-  std::set<uint32_t> api_tracking_set;
+
+  std::set<uint32_t> api_tracking_set; // actual api set we want to profile
 
   // map of domain --> ops for which we need to enable the API callbacks
   // If the ops vector is empty, then enable API callbacks for entire domain

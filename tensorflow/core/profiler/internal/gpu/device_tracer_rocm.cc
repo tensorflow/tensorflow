@@ -1092,7 +1092,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipHccModuleLaunchKernel,
       HIP_API_ID_hipLaunchKernel,
       // MEMCPY
-      HIP_API_ID_hipMemcpy,  //TODO(reza): added recently
+      HIP_API_ID_hipMemcpy,
       HIP_API_ID_hipMemcpyAsync,
       HIP_API_ID_hipMemcpyDtoD,
       HIP_API_ID_hipMemcpyDtoDAsync,
@@ -1100,22 +1100,22 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipMemcpyDtoHAsync,
       HIP_API_ID_hipMemcpyHtoD,
       HIP_API_ID_hipMemcpyHtoDAsync,
-      HIP_API_ID_hipMemcpyPeer,  //TODO(reza): added recently
-      HIP_API_ID_hipMemcpyPeerAsync,  //TODO(reza): added recently
+      HIP_API_ID_hipMemcpyPeer,
+      HIP_API_ID_hipMemcpyPeerAsync,
       
       // MEMSet
       HIP_API_ID_hipMemsetD32,
       HIP_API_ID_hipMemsetD32Async,
-      HIP_API_ID_hipMemsetD16,  //TODO(reza): recently added
-      HIP_API_ID_hipMemsetD16Async,  //TODO(reza): recently added
+      HIP_API_ID_hipMemsetD16,
+      HIP_API_ID_hipMemsetD16Async,
       HIP_API_ID_hipMemsetD8,
       HIP_API_ID_hipMemsetD8Async,
-      HIP_API_ID_hipMemset,  //TODO(reza): added recently
-      HIP_API_ID_hipMemsetAsync,  //TODO(reza): added recently
+      HIP_API_ID_hipMemset,
+      HIP_API_ID_hipMemsetAsync,
 
       // MEMAlloc
       HIP_API_ID_hipMalloc,
-      HIP_API_ID_hipMallocPitch,  //TODO(reza): added recently
+      HIP_API_ID_hipMallocPitch,
       // MEMFree
       HIP_API_ID_hipFree,
       // GENERIC
@@ -1130,12 +1130,12 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   // we only use them for filling the missing items in their corresponding
   // activity (using correlation id).
   std::vector<uint32_t> hip_api_aux_ops{
-    HIP_API_ID_hipStreamWaitEvent,  //TODO(reza): added recently
+    HIP_API_ID_hipStreamWaitEvent,
     //TODO(rocm-profiler): finding device ID from hipEventSynchronize need some extra work
     //we ignore it for now 
-    //HIP_API_ID_hipEventSynchronize, //TODO(reza): added recently
-    HIP_API_ID_hipHostFree,  //TODO(reza): added recently
-    HIP_API_ID_hipHostMalloc,  //TODO(reza): added recently
+    //HIP_API_ID_hipEventSynchronize,
+    HIP_API_ID_hipHostFree, 
+    HIP_API_ID_hipHostMalloc, 
     HIP_API_ID_hipSetDevice  //  added to track default device
   };
 
