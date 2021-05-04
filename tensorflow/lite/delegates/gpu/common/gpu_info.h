@@ -50,6 +50,7 @@ enum class AdrenoGpu {
   kAdreno685,
   kAdreno680,
   kAdreno675,
+  kAdreno660,
   kAdreno650,
   kAdreno640,
   kAdreno630,
