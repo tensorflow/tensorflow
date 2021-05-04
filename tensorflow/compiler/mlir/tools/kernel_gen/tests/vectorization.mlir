@@ -15,7 +15,6 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-DAG:       %[[CF0:.*]] = constant 0.000000e+00 : f64
 // CHECK-DAG:       %[[C4:.*]] = constant 4 : index
 // CHECK-DAG:       %[[C0:.*]] = constant 0 : index
-// The following alloction and operations should be removed.
 // CHECK-DAG:       %[[FULL_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
 // CHECK-NEXT:      %[[SIZE:.*]] = memref.dim %[[BUF]], %[[C0]] : memref<?xf64>
 // CHECK-NEXT:      %[[REM:.*]] = remi_unsigned %[[SIZE]], %[[C4]] : index
@@ -27,21 +26,12 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:        vector.transfer_write %[[ABS0]], %[[OUTPUT_FULL_TILE]]{{\[}}%[[C0]]] {in_bounds = [true]} : vector<4xf64>, memref<4xf64, #map0>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      scf.for %[[IV_LAST:.*]] = %[[SPLIT_POINT]] to %[[SIZE]] step %[[C4]] {
-// The following min can be replaced with the non-const value
 // CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.min #map1(%[[IV_LAST]]){{\[}}%[[SIZE]]]
 // CHECK-NEXT:        %[[SUBVIEW:.*]] = memref.subview %[[BUF]]{{\[}}%[[IV_LAST]]] {{\[}}%[[TILE_SIZE]]] [1] : memref<?xf64> to memref<?xf64, #map0>
-// CHECK-NEXT:        %[[COND:.*]] = cmpi sle, %[[C4]], %[[TILE_SIZE]] : index
-// The following if can be replaced with the false condition.
-// CHECK-NEXT:        %[[MASKED_VIEW:.*]] = scf.if %[[COND]] -> (memref<?xf64, #map0>) {
-// CHECK-NEXT:          scf.yield %[[SUBVIEW]] : memref<?xf64, #map0>
-// CHECK-NEXT:        } else {
-// CHECK-NEXT:          %[[VAL_20:.*]] = vector.transfer_read %[[SUBVIEW]]{{\[}}%[[C0]]], %[[CF0]] : memref<?xf64, #map0>, vector<4xf64>
-// CHECK-NEXT:          %[[VAL_21:.*]] = vector.type_cast %[[FULL_BUF]] : memref<4xf64> to memref<vector<4xf64>>
-// CHECK-NEXT:          memref.store %[[VAL_20]], %[[VAL_21]][] : memref<vector<4xf64>>
-// CHECK-NEXT:          %[[VAL_22:.*]] = memref.cast %[[FULL_BUF]] : memref<4xf64> to memref<?xf64, #map0>
-// CHECK-NEXT:          scf.yield %[[VAL_22]] : memref<?xf64, #map0>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        %[[INPUT_TILE:.*]] = vector.transfer_read %[[MASKED_VIEW:.*]]{{\[}}%[[C0]]], %[[CF0]] {in_bounds = [true]} : memref<?xf64, #map0>, vector<4xf64>
+// CHECK-NEXT:        %[[VAL_20:.*]] = vector.transfer_read %[[SUBVIEW]]{{\[}}%[[C0]]], %[[CF0]] : memref<?xf64, #map0>, vector<4xf64>
+// CHECK-NEXT:        %[[VAL_21:.*]] = vector.type_cast %[[FULL_BUF]] : memref<4xf64> to memref<vector<4xf64>>
+// CHECK-NEXT:        memref.store %[[VAL_20]], %[[VAL_21]][] : memref<vector<4xf64>>
+// CHECK-NEXT:        %[[INPUT_TILE:.*]] = vector.transfer_read %[[FULL_BUF:.*]]{{\[}}%[[C0]]], %[[CF0]] {in_bounds = [true]} : memref<4xf64>, vector<4xf64>
 // CHECK-NEXT:        %[[ABS1:.*]] = absf %[[INPUT_TILE]] : vector<4xf64>
 // CHECK-NEXT:        vector.transfer_write %[[ABS1]], %[[SUBVIEW]]{{\[}}%[[C0]]] : vector<4xf64>, memref<?xf64, #map0>
 // CHECK-NEXT:      }

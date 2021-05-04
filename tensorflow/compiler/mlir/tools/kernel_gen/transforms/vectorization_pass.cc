@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -39,10 +40,16 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-// This pattern takes ForOps that contain AffineMinOps and possibly peels off
+// This function takes ForOps that contain AffineMinOps and possibly peels off
 // the last iteration of the loop. This is done in cases where it is provable
 // that the AffineMinOp is deterministic in all cases except the possible last
-// iteration.
+// iteration. Some additional cleanup is done to simplify the IR that is correct
+// through knowledge of what this transformation is doing but would generally be
+// unwieldy in a canonicalization-like pattern.
+//
+// This pass is only necessary due to inefficiencies in VectorTransferSplit that
+// is unlikely to be fixed upstream. If that changes, this pass can be fully
+// removed.
 //
 // Example:
 // scf.for %i = %c0 to %c11 step %c2
@@ -57,6 +64,16 @@ namespace {
 // This is possible because we can determine that the min will always be 2
 // except for the last iteration.
 void SplitSCFForOp(scf::ForOp scf_for) {
+  // The set of following steps is:
+  // 1. Validate that there are min_ops to be modified in this function.
+  // 2. Create the boundary that decides whether the min_op evaluates to the
+  // loop's step value or to the computed value based upon the iteration value.
+  // 3. Create the primary loop that does all the work except for possibly the
+  // last iteration of the loop, and replace all relevant min_ops with the step.
+  // 4. Create the final iteration, remove the step from relevant min_ops, and
+  // additionally modify related if/else ops to have a constant condition based
+  // on what we know about this loop structure.
+
   // Match only when the lower bound is zero and the step is constant.
   // TODO(TPOPP): Requiring constant steps and lower bound simplifies things
   // but isn't necesarilly needed
@@ -147,6 +164,73 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   tail_mapper.map(scf_for.initArgs(), new_loop.results());
   auto tail_loop = llvm::cast<scf::ForOp>(b.clone(*scf_for, tail_mapper));
   tail_loop.setLowerBound(split_point);
+
+  tail_loop->walk([&](AffineMinOp min_op) {
+    SmallVector<AffineExpr> exprs;
+
+    if (!is_op_of_interest(min_op, tail_loop.getInductionVar())) return;
+
+    ImplicitLocOpBuilder::InsertionGuard g(b);
+    b.setInsertionPoint(min_op);
+
+    // This function is to be called on comparisons that use the min_ops of
+    // interest in the last loop iteration. Through loop splitting, we know that
+    // the min result is strictly less than the step value. Therefore, we can
+    // take the predicate and a statement regarding the location of the min_op
+    // (and the implied position of the step value) to evaluate the cmpi.
+    auto is_true_cmp = [](CmpIPredicate pred, bool min_is_op_0) {
+      switch (pred) {
+        // This loop splitting guarantees the step is not equal to the min on
+        // the last iteration.
+        case CmpIPredicate::eq:
+        case CmpIPredicate::ne:
+          return false;
+        case CmpIPredicate::sle:
+        case CmpIPredicate::slt:
+        case CmpIPredicate::ule:
+        case CmpIPredicate::ult:
+          return min_is_op_0;
+        case CmpIPredicate::sge:
+        case CmpIPredicate::sgt:
+        case CmpIPredicate::uge:
+        case CmpIPredicate::ugt:
+          return !min_is_op_0;
+      }
+    };
+
+    for (auto user : min_op->getUsers()) {
+      if (auto cmp = dyn_cast<CmpIOp>(user)) {
+        if (cmp.getOperand(0) == min_op.getResult() &&
+            cmp.getOperand(1) == step_bound_op) {
+          cmp.replaceAllUsesWith(
+              b.create<ConstantIntOp>(is_true_cmp(cmp.predicate(), true), 1)
+                  .getResult());
+          cmp.erase();
+        } else if (cmp.getOperand(0) == step_bound_op &&
+                   cmp.getOperand(1) == min_op.getResult()) {
+          cmp.replaceAllUsesWith(
+              b.create<ConstantIntOp>(is_true_cmp(cmp.predicate(), false), 1)
+                  .getResult());
+        }
+      }
+    }
+
+    // Replace the min_op with a simplified min_op that removes the constant
+    // step option. This will be further simplified after affine ops are
+    // lowered.
+    auto map = min_op.getAffineMap();
+    for (auto i : map.getResults()) {
+      if (i != b.getAffineConstantExpr(step_bound_value.getInt()))
+        exprs.push_back(i);
+    }
+
+    Value new_min = b.createOrFold<AffineMinOp>(
+        AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs,
+                       b.getContext()),
+        min_op.operands());
+
+    min_op->replaceAllUsesWith(llvm::makeArrayRef(new_min));
+  });
 
   scf_for->replaceAllUsesWith(tail_loop.results());
   scf_for.erase();
