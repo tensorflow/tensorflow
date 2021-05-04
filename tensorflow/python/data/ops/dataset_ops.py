@@ -34,9 +34,7 @@ from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import distribute_options
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import optimization_options
-from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
@@ -94,6 +92,12 @@ autograph_ctx = lazy_loader.LazyLoader(
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
     "tensorflow.python.autograph.impl.api")
+interleave_ops = lazy_loader.LazyLoader(
+    "interleave_ops", globals(),
+    "tensorflow.python.data.experimental.ops.interleave_ops")
+scan_ops = lazy_loader.LazyLoader(
+    "scan_ops", globals(),
+    "tensorflow.python.data.experimental.ops.scan_ops")
 random_ops = lazy_loader.LazyLoader(
     "random_ops", globals(),
     "tensorflow.python.ops.random_ops")
