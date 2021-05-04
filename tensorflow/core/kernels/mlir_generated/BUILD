@@ -339,6 +339,28 @@ tf_kernel_library(
     ]),
 )
 
+tf_kernel_library(
+    name = "gpu_relu_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_relu.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_relu_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "relu_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_relu_op",
+    ]),
+)
+
 cc_library(
     name = "base_ops_test",
     testonly = 1,
