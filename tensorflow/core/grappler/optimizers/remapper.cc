@@ -69,6 +69,7 @@ constexpr char kFusedConv2D[] = "_FusedConv2D";
 constexpr char kFusedMatMul[] = "_FusedMatMul";
 constexpr char kFusedDepthwiseConv2dNative[] = "_FusedDepthwiseConv2dNative";
 constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
+constexpr char kFusedBatchNormGradEx[] = "_FusedBatchNormGradEx";
 
 constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
@@ -76,16 +77,19 @@ constexpr char kIsTraining[] = "is_training";
 constexpr int kMissingIndex = -1;
 
 struct RemapperContext {
-  explicit RemapperContext(GrapplerItem* item, Status* status)
+  explicit RemapperContext(GrapplerItem* item, Status* status,
+                           bool xla_auto_clustering_on)
       : nodes_to_preserve(item->NodesToPreserve()),
         graph_view(&item->graph, status),
         graph_properties(*item),
-        inferred_graph_properties(false) {}
+        inferred_graph_properties(false),
+        xla_auto_clustering_on(xla_auto_clustering_on) {}
 
   std::unordered_set<string> nodes_to_preserve;
   utils::MutableGraphView graph_view;
   GraphProperties graph_properties;
   bool inferred_graph_properties;
+  bool xla_auto_clustering_on;
 };
 
 // FusedBatchNorm that can be replaced with a cheaper set of primitives.
@@ -106,6 +110,17 @@ struct FusedBatchNormEx {
   int activation = kMissingIndex;
   // Add node that will be invalidated by fusing side input and fused batch norm
   int invalidated = kMissingIndex;
+};
+
+// FusedBatchNormGrad with fused side output and/or activation.
+struct FusedBatchNormGradEx {
+  FusedBatchNormGradEx() = default;
+
+  int fused_batch_norm_grad = kMissingIndex;
+  int activation_grad = kMissingIndex;
+  int side_input_grad = kMissingIndex;
+  // Add node of the forward pass to access its "offset" input.
+  int fwd_fused_batch_norm = kMissingIndex;
 };
 
 // Contraction node followed by a BiasAdd.
@@ -229,16 +244,21 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-#if defined(INTEL_MKL)
-  if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-      IsMatMul(*contraction)) {
-    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+  // TODO(intel-tf): Clean up #ifdef.
+#ifdef INTEL_MKL
+  bool is_one_dnn_enabled = IsMKLEnabled();
 #else
+  bool is_one_dnn_enabled = false;
+#endif
+  if (is_one_dnn_enabled) {
+    return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
+            IsMatMul(*contraction)) &&
+           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+  }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
   } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT;
-#endif  // INTEL_MKL
   } else {
     return false;
   }
@@ -260,7 +280,7 @@ bool IsCpuCompatibleDataFormat(const NodeDef* conv2d) {
 #ifndef INTEL_MKL
   return data_format == "NHWC";
 #else
-  return data_format == "NHWC" || data_format == "NCHW";
+  return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW");
 #endif  // !INTEL_MKL
 }
 
@@ -301,7 +321,7 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return IsCpuCompatibleConv2D(&node);
   } else if (IsDepthwiseConv2dNative(node)) {
 #ifdef INTEL_MKL
-    if (DisableMKL()) {
+    if (!IsMKLEnabled()) {
       return false;
     }
     return IsCpuCompatibleDepthwiseConv2dNative(&node);
@@ -322,6 +342,12 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // ROCm does not support _FusedConv2D
   return false;
 #endif
+  // The TF->XLA bridge does not support `_FusedConv2D` so we avoid creating
+  // this op.  Furthermore, XLA already does this fusion internally so there
+  // is no true benefit from doing this optimization if XLA is going to compile
+  // the unfused operations anyway.
+  if (ctx.xla_auto_clustering_on) return false;
+
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
@@ -365,7 +391,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 bool IsSupportedActivation(const NodeDef& node) {
 #ifdef INTEL_MKL
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
-         IsTanh(node);
+         (IsMKLEnabled() && IsTanh(node));
 #else
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
 #endif
@@ -660,7 +686,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
-  if (DisableMKL()) return false;
+  if (!IsMKLEnabled()) return false;
   // Fusion with AddN is supported only when it has two inputs.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
@@ -706,7 +732,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
 bool FindContractionWithBiasAndAddActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAndAddActivation* matched) {
-  if (DisableMKL()) return false;
+  if (!IsMKLEnabled()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -827,18 +853,25 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
+      // TODO(intel-tf): Clean up #ifndef.
 #ifndef INTEL_MKL
-    // We fuse FusedBatchNorm on GPU or MKL CPU.
+    // We fuse FusedBatchNorm on GPU or oneDNN CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
-    if (DisableMKL()) return false;
+    if (!NodeIsOnGpu(fused_batch_norm_node_def) && !IsMKLEnabled())
+      return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
+    // Bfloat16 is available only with oneDNN.
+    // Half is not available with oneDNN
+    // TODO(intel-tf): Clean up #ifndef.
 #ifndef INTEL_MKL
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
 #else
-    if (t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16) return false;
+    if (t_dtype != DT_FLOAT && t_dtype != DT_HALF &&
+        (!IsMKLEnabled() || t_dtype != DT_BFLOAT16))
+      return false;
 #endif
 
     // Get the FusedBatchNorm training mode.
@@ -846,15 +879,17 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     if (!GetNodeAttr(*fused_batch_norm_node_def, kIsTraining, &is_training)
              .ok())
       return false;
+    string data_format;
+    if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
+             .ok())
+      return false;
+    if (data_format != "NHWC" && data_format != "NCHW") return false;
+
     // In training mode we rely on cuDNN for computing FusedBatchNorm with side
     // inputs and activation, and it has its own limitations. In inference mode
     // we have a custom CUDA kernel that doesn't not have these constraints.
     if (is_training && NodeIsOnGpu(fused_batch_norm_node_def)) {
       // cuDNN only supports NHWC data layout.
-      string data_format;
-      if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
-               .ok())
-        return false;
       if (data_format != "NHWC") return false;
 
       // Data type must be DT_HALF.
@@ -903,8 +938,9 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   if (IsAdd(*relu_fanin_0_node_def)) {
     // Currently no CPU implementation for "FusedBatchNorm + SideInput +
     // <Activation>""
+    // TODO(intel-tf): Clean up #ifdef.
 #ifdef INTEL_MKL
-    return false;
+    if (!NodeIsOnGpu(node_def)) return false;
 #endif
 
     // Check that only Relu node consumes the output of an Add node.
@@ -946,6 +982,113 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   return false;
 }
 
+bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
+                              FusedBatchNormGradEx* matched) {
+  // Root of the pattern must be a FusedBatchNormGrad.
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+
+  // Returns true iff the node is a compatible FusedBatchNormGrad node.
+  const auto valid_batch_norm_grad =
+      [&](const utils::MutableNodeView& fused_batch_norm_grad) -> bool {
+    const auto* node_def = fused_batch_norm_grad.node();
+    if (!IsFusedBatchNormGrad(*node_def) ||
+        HasControlFaninOrFanout(fused_batch_norm_grad))
+      return false;
+
+    // We fuse FusedBatchNormGrad on GPU.
+    if (!NodeIsOnGpu(node_def)) return false;
+
+    // Data type must be DT_HALF.
+    DataType t_dtype = GetDataTypeFromAttr(*node_def, "T");
+    if (t_dtype != DT_HALF) return false;
+
+    // We rely on cuDNN for computing FusedBatchNormGrad with side
+    // outputs and activation. cuDNN only supports NHWC data layout.
+    string data_format;
+    if (!GetNodeAttr(*node_def, kDataFormat, &data_format).ok()) return false;
+    if (data_format != "NHWC") return false;
+
+    // Channel dimension must be a multiple of 4.
+    const auto& props =
+        ctx.graph_properties.GetInputProperties(node_def->name());
+    const bool valid_channel_dim = !props.empty() &&
+                                   props[0].shape().dim_size() == 4 &&
+                                   props[0].shape().dim(3).size() % 4 == 0;
+    if (!valid_channel_dim) return false;
+
+    // cuDNN must support CUDNN_BATCHNORM_SPATIAL_PERSISTENT mode.
+    if (!BatchnormSpatialPersistentEnabled()) return false;
+
+    // FusedBatchNormV2 and V3 have an extra type parameter.
+    if (node_def->op() != "FusedBatchNorm" &&
+        !HasDataType(node_def, DT_FLOAT, "U"))
+      return false;
+
+    return true;
+  };
+
+  if (!valid_batch_norm_grad(*node_view)) return false;
+
+  if (node_view->NumRegularFanins() < 1) return false;
+
+  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+  const auto* relugrad_node_view = regular_fanin_0.node_view();
+  const auto* relugrad_node_def = relugrad_node_view->node();
+  bool is_relugrad = IsReluGrad(*relugrad_node_def);
+
+  if (!is_relugrad || HasControlFaninOrFanout(*relugrad_node_view) ||
+      IsInPreserveSet(ctx, relugrad_node_def))
+    return false;
+
+  if (relugrad_node_view->NumRegularFanins() < 1) return false;
+  // Find its corresponding forward node. We need the node to determine if the
+  // type is bn+add+act or bn+act. Also, we need to access its "offset" input.
+  const auto& fanin_1 = relugrad_node_view->GetRegularFanin(1);
+  const auto* fwd_node_view = fanin_1.node_view();
+  FusedBatchNormEx fwd_matched;
+  FindFusedBatchNormEx(ctx, fwd_node_view->node_index(), &fwd_matched);
+  bool fwd_bn_act_used = fwd_matched.activation != kMissingIndex &&
+                         fwd_matched.side_input == kMissingIndex;
+  bool fwd_bn_add_act_used = fwd_matched.activation != kMissingIndex &&
+                             fwd_matched.side_input != kMissingIndex;
+
+  // Check that only 1 node consumes the output of the ReluGrad node.
+  if (fwd_bn_act_used && relugrad_node_view->GetRegularFanout(0).size() == 1) {
+    matched->activation_grad = regular_fanin_0.node_index();
+    matched->fused_batch_norm_grad = node_index;
+    matched->fwd_fused_batch_norm = fwd_matched.fused_batch_norm;
+    return true;
+  }
+
+  // Check that only 2 nodes consume the output of the ReluGrad node.
+  if (fwd_bn_add_act_used &&
+      relugrad_node_view->GetRegularFanout(0).size() == 2) {
+    const auto& fanouts_at_port_0 = relugrad_node_view->GetRegularFanouts()[0];
+    const auto* fanout_0_node_view =
+        ctx.graph_view.GetNode(fanouts_at_port_0[0].node_view()->GetName());
+    const auto* fanout_1_node_view =
+        ctx.graph_view.GetNode(fanouts_at_port_0[1].node_view()->GetName());
+    const auto* fanout_0_node_def = fanout_0_node_view->node();
+    const auto* fanout_1_node_def = fanout_1_node_view->node();
+    const auto* node_def = node_view->node();
+
+    matched->activation_grad = regular_fanin_0.node_index();
+    matched->fused_batch_norm_grad = node_index;
+    matched->fwd_fused_batch_norm = fwd_matched.fused_batch_norm;
+
+    if (fanout_0_node_def == node_def) {
+      matched->side_input_grad = fanout_1_node_view->node_index();
+      return true;
+    }
+
+    if (fanout_1_node_def == node_def) {
+      matched->side_input_grad = fanout_0_node_view->node_index();
+      return true;
+    }
+  }
+
+  return false;
+}
 void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
                           const NodeDef* activation = nullptr) {
   DCHECK(IsConv2D(conv2d)) << "Input node must be a Conv2D";
@@ -1011,6 +1154,27 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
 #else
     SetAttrValue(DT_FLOAT, &(*attr)["U"]);
 #endif
+  }
+}
+
+void CopyFusedBatchNormGradAttributes(const NodeDef& fused_batch_norm_grad,
+                                      NodeDef* fused_batch_norm_grad_ex) {
+  DCHECK(IsFusedBatchNormGrad(fused_batch_norm_grad))
+      << "Input node must be a FusedBatchNormGrad";
+
+  auto* attr = fused_batch_norm_grad_ex->mutable_attr();
+  auto src_attr = fused_batch_norm_grad.attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["is_training"] = src_attr.at("is_training");
+  (*attr)["data_format"] = src_attr.at("data_format");
+  (*attr)["epsilon"] = src_attr.at("epsilon");
+
+  // FusedBatchNormV2 and V3 have an extra type parameter.
+  if (fused_batch_norm_grad.op() != "FusedBatchNormGrad") {
+    SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
+  } else {
+    SetAttrValue(DT_FLOAT, &(*attr)["U"]);
   }
 }
 
@@ -1425,6 +1589,79 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   return Status::OK();
 }
 
+Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
+                                   const FusedBatchNormGradEx& matched,
+                                   std::vector<bool>* invalidated_nodes,
+                                   std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& fused_batch_norm_grad =
+      graph->node(matched.fused_batch_norm_grad);
+  const NodeDef& activation_grad = graph->node(matched.activation_grad);
+  const NodeDef& fwd_fused_batch_norm =
+      graph->node(matched.fwd_fused_batch_norm);
+
+  VLOG(2) << "Fuse FusedBatchNormGrad with " << activation_grad.op() << ": "
+          << " fused_batch_norm_grad=" << fused_batch_norm_grad.name()
+          << " side_input="
+          << (matched.side_input_grad != kMissingIndex
+                  ? graph->node(matched.side_input_grad).name()
+                  : "<none>")
+          << " activation=" << activation_grad.name()
+          << " corresponding FusedBatchNorm=" << fwd_fused_batch_norm.name();
+
+  NodeDef fused_op;
+  fused_op.set_op(kFusedBatchNormGradEx);
+  fused_op.set_name(fused_batch_norm_grad.name());
+  fused_op.set_device(fused_batch_norm_grad.device());
+
+  fused_op.add_input(activation_grad.input(0));        // 0: y_backprop
+  fused_op.add_input(fused_batch_norm_grad.input(1));  // 1: x
+  fused_op.add_input(fused_batch_norm_grad.input(2));  // 2: scale
+  fused_op.add_input(fused_batch_norm_grad.input(3));  // 3: reserve_space_1
+  fused_op.add_input(fused_batch_norm_grad.input(4));  // 4: reserve_space_2
+  fused_op.add_input(fused_batch_norm_grad.input(5));  // 5: reserve_space_3
+  fused_op.add_input(fwd_fused_batch_norm.input(2));   // 6: offset
+  fused_op.add_input(activation_grad.input(1));        // 7: y
+
+  CopyFusedBatchNormGradAttributes(fused_batch_norm_grad, &fused_op);
+
+  auto* attrs = fused_op.mutable_attr();
+  // Only support Relu mode.
+  SetAttrValue("Relu", &(*attrs)["activation_mode"]);
+
+  if (matched.side_input_grad != kMissingIndex) {
+    SetAttrValue(1, &(*attrs)["num_side_inputs"]);
+  } else {
+    SetAttrValue(0, &(*attrs)["num_side_inputs"]);
+  }
+
+  NodeDef identity_op;
+  identity_op.set_op("Identity");
+  identity_op.set_name(activation_grad.name());
+  identity_op.set_device(fused_batch_norm_grad.device());
+  identity_op.add_input(absl::StrCat(fused_batch_norm_grad.name(), ":5"));
+  (*identity_op.mutable_attr())["T"] = attrs->at("T");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  if (matched.side_input_grad != kMissingIndex) {
+    mutation->AddNode(std::move(identity_op), &status);
+    TF_RETURN_IF_ERROR(status);
+  }
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched.fused_batch_norm_grad] = true;
+  if (matched.side_input_grad != kMissingIndex) {
+    (*invalidated_nodes)[matched.activation_grad] = true;
+  } else {
+    (*nodes_to_delete)[matched.activation_grad] = true;
+  }
+
+  return Status::OK();
+}
+
 Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& fused_node = graph->node(matched.fused_batch_norm);
@@ -1672,6 +1909,7 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
 //   (3) Fusing Conv2D biasadd and relu on GPU
 //   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
+//   (5) Fusing side output and/or activation into FusedBatchNormGrad.
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1742,13 +1980,37 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
+  // Candidate for a FusedBatchNormGrad fusion.
+  const auto is_batch_norm_grad_fusion_candidate = [&]() -> bool {
+    if (!IsFusedBatchNormGrad(*node_def)) return false;
+
+    if (node_view->NumRegularFanins() < 1) return false;
+    const auto& bn_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* bn_fanin_0_node_view = bn_fanin_0.node_view();
+    const auto* bn_fanin_0_node_def = bn_fanin_0_node_view->node();
+
+    if (IsReluGrad(*bn_fanin_0_node_def)) {
+      // ReluGrad + FusedBatchNormGrad.
+      return true;
+    }
+
+    return false;
+  };
+
+  // TODO(intel-tf): Clean up #ifdef.
 #ifdef INTEL_MKL
   (void)is_relu_biasadd_conv2d_candidate;  // To fix unused variable error.
-  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
-         IsContractionWithAdd(ctx, node_index);
+  if (IsMKLEnabled())
+    return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
+           IsContractionWithAdd(ctx, node_index);
+  else
+    return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
+           is_batch_norm_fusion_candidate() ||
+           is_batch_norm_grad_fusion_candidate();
 #else
   return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
-         is_batch_norm_fusion_candidate();
+         is_batch_norm_fusion_candidate() ||
+         is_batch_norm_grad_fusion_candidate();
 #endif  // INTEL_MKL
 }
 
@@ -1758,7 +2020,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
   Status status;
-  RemapperContext ctx(&mutable_item, &status);
+  RemapperContext ctx(&mutable_item, &status, xla_auto_clustering_on_);
   TF_RETURN_IF_ERROR(status);
   // Processing graph in reverse-topological sorted order allows to remap
   // longer chains of dependent ops in one pass.
@@ -1797,7 +2059,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
-    if (!item.optimization_options().is_eager_mode) {
+    if (IsMKLEnabled() && !item.optimization_options().is_eager_mode) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       if (FindContractionWithBiasAndAddActivation(
               ctx, i, &contract_with_bias_and_add_activation)) {
@@ -1816,7 +2078,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
     }
-#endif  //! INTEL_MKL
+#endif  // INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
@@ -1865,9 +2127,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-// TODO(intel-tf):
-// Remove this once TF-MKL supports _FusedConv2D with these operations.
-#ifndef INTEL_MKL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&
@@ -1889,7 +2148,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
-#endif  // !INTEL_MKL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;
@@ -1897,6 +2155,15 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         FindFusedBatchNormEx(ctx, i, &fused_batch_norm_ex)) {
       TF_RETURN_IF_ERROR(AddFusedBatchNormExNode(
           &ctx, fused_batch_norm_ex, &invalidated_nodes, &nodes_to_delete));
+      continue;
+    }
+
+    FusedBatchNormGradEx fused_batch_norm_grad_ex;
+    if (allow_non_differentiable_rewrites &&
+        FindFusedBatchNormGradEx(ctx, i, &fused_batch_norm_grad_ex)) {
+      TF_RETURN_IF_ERROR(
+          AddFusedBatchNormGradExNode(&ctx, fused_batch_norm_grad_ex,
+                                      &invalidated_nodes, &nodes_to_delete));
       continue;
     }
 

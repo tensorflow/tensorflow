@@ -118,7 +118,7 @@ class TfTypeConversionTarget : public ConversionTarget {
 class TfTypePattern : public ConversionPattern {
  public:
   TfTypePattern(MLIRContext *ctx, TypeConverter &converter)
-      : ConversionPattern(1, converter, MatchAnyOpTypeTag()) {}
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
   // The dialect conversion framework will call this matchAndRewrite on each
   // Operation in the IR tree. This call matchAndRewrite needs to update the
@@ -156,9 +156,9 @@ struct LegalizeTfTypesPass
 
 void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   patterns.insert<TfTypePattern>(&getContext(), converter);
-  populateFuncOpTypeConversionPattern(patterns, &getContext(), converter);
+  populateFuncOpTypeConversionPattern(patterns, converter);
   TfTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();

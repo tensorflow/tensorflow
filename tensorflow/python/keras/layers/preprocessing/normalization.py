@@ -14,16 +14,13 @@
 # ==============================================================================
 """Normalization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -33,7 +30,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.layers.experimental.preprocessing.Normalization', v1=[])
+@keras_export('keras.layers.experimental.preprocessing.Normalization')
 class Normalization(base_preprocessing_layer.PreprocessingLayer):
   """Feature-wise normalization of the data.
 
@@ -171,8 +168,7 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
     if (self.mean_val is not None and self.variance_val is not None):
       mean_val = self.mean_val * np.ones(mean_and_var_shape)
       variance_val = self.variance_val * np.ones(mean_and_var_shape)
-      self.mean.assign(mean_val)
-      self.variance.assign(variance_val)
+      self.set_weights([mean_val, variance_val])
 
     self.built = True
 
@@ -244,7 +240,7 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
     variance = array_ops.reshape(self.variance, self._broadcast_shape)
     return ((inputs - mean) /
-            math_ops.maximum(math_ops.sqrt(variance), K.epsilon()))
+            math_ops.maximum(math_ops.sqrt(variance), backend.epsilon()))
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -279,6 +275,6 @@ def convert_to_ndarray(values):
   if isinstance(values, np.ndarray):
     return values
   elif isinstance(values, ops.Tensor):
-    return K.get_value(values)
+    return backend.get_value(values)
   else:
     return np.array(values)

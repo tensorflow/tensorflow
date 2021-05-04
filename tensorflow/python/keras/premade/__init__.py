@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Premade Model API."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras.premade import linear
 from tensorflow.python.keras.premade import wide_deep

@@ -16,32 +16,67 @@
 """Python TFLite metrics helper."""
 from typing import Optional, Text
 
+from tensorflow.lite.python import metrics_interface
 from tensorflow.python.eager import monitoring
 
+_counter_debugger_creation = monitoring.Counter(
+    '/tensorflow/lite/quantization_debugger/created',
+    'Counter for the number of debugger created.')
 
-class TFLiteMetrics(object):
+_counter_interpreter_creation = monitoring.Counter(
+    '/tensorflow/lite/interpreter/created',
+    'Counter for number of interpreter created in Python.', 'language')
+
+# The following are conversion metrics. Attempt and success are kept separated
+# instead of using a single metric with a label because the converter may
+# raise exceptions if conversion failed. That may lead to cases when we are
+# unable to capture the conversion attempt. Increasing attempt count at the
+# beginning of conversion process and the success count at the end is more
+# suitable in these cases.
+_counter_conversion_attempt = monitoring.Counter(
+    '/tensorflow/lite/convert/attempt',
+    'Counter for number of conversion attempts.')
+
+_counter_conversion_success = monitoring.Counter(
+    '/tensorflow/lite/convert/success',
+    'Counter for number of successful conversions.')
+
+_gauge_conversion_params = monitoring.StringGauge(
+    '/tensorflow/lite/convert/params',
+    'Gauge for keeping conversion parameters.', 'name')
+
+
+class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
 
   Attributes:
-    md5: A string containing the MD5 hash of the model binary.
+    model_hash: A string containing the hash of the model binary.
     model_path: A string containing the path of the model for debugging
       purposes.
   """
 
-  _counter_interpreter_creation = monitoring.Counter(
-      '/tensorflow/lite/interpreter/created',
-      'Counter for number of interpreter created in Python.', 'python')
-
   def __init__(self,
-               md5: Optional[Text] = None,
+               model_hash: Optional[Text] = None,
                model_path: Optional[Text] = None) -> None:
     del self  # Temporarily removing self until parameter logic is implemented.
-    if md5 and not model_path or not md5 and model_path:
-      raise ValueError('Both model metadata(md5, model_path) should be given '
-                       'at the same time.')
-    if md5:
+    if model_hash and not model_path or not model_hash and model_path:
+      raise ValueError('Both model metadata(model_hash, model_path) should be '
+                       'given at the same time.')
+    if model_hash:
       # TODO(b/180400857): Create stub once the service is implemented.
       pass
 
+  def increase_counter_debugger_creation(self):
+    _counter_debugger_creation.get_cell().increase_by(1)
+
   def increase_counter_interpreter_creation(self):
-    self._counter_interpreter_creation.get_cell('python').increase_by(1)
+    _counter_interpreter_creation.get_cell('python').increase_by(1)
+
+  def increase_counter_converter_attempt(self):
+    _counter_conversion_attempt.get_cell().increase_by(1)
+
+  def increase_counter_converter_success(self):
+    _counter_conversion_success.get_cell().increase_by(1)
+
+  def set_converter_param(self, name, value):
+    _gauge_conversion_params.get_cell(name).set(value)

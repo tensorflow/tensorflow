@@ -111,12 +111,19 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
+# TODO(#47718): resolve warnings.
+OMIT_ERRORS = \
+  -Wno-implicit-fallthrough \
+  -Wno-strict-aliasing \
+  -Wno-unused-variable
+
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -mthumb \
   -mfloat-abi=$(FLOAT) \
   -funsigned-char \
   -mlittle-endian \
+   ${OMIT_ERRORS} \
   -Wno-type-limits \
   -Wno-unused-private-field \
   -fomit-frame-pointer \
@@ -127,3 +134,12 @@ PLATFORM_FLAGS = \
 # Common + C/C++ flags
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
+
+# Needed for the project generation interface.
+MICROLITE_CC_HDRS := \
+  tensorflow/lite/micro/cortex_m_generic/debug_log_callback.h
+
+EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/micro_speech/Makefile.inc
+MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+

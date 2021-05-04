@@ -60,6 +60,13 @@ class CpuExecutable : public Executable {
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
+  // Calls the generated function performing the computation with the given
+  // arguments using the supplied buffers.
+  Status ExecuteComputeFunction(
+      const ExecutableRunOptions* run_options,
+      absl::Span<MaybeOwningDeviceMemory const> buffers,
+      HloExecutionProfile* hlo_execution_profile);
+
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
 
@@ -104,13 +111,6 @@ class CpuExecutable : public Executable {
   StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
       se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
       absl::Span<ExecutionInput const> arguments);
-
-  // Calls the generated function performing the computation with the given
-  // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory const> buffers,
-      HloExecutionProfile* hlo_execution_profile);
 
   // Creates an Execution output holding ScopedShapedBuffer for holding the
   // result of the computation, moving buffers out of allocated_buffers and into

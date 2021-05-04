@@ -11,7 +11,7 @@ def repo():
             "//third_party/vulkan_headers:tensorflow/vulkan_hpp_dispatch_loader_dynamic.cc": "tensorflow/vulkan_hpp_dispatch_loader_dynamic.cc",
         },
         urls = [
-            "https://mirror.tensorflow.org/github.com/KhronosGroup/Vulkan-Headers/archive/ec2db85225ab410bc6829251bef6c578aaed5868.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/KhronosGroup/Vulkan-Headers/archive/ec2db85225ab410bc6829251bef6c578aaed5868.tar.gz",
             "https://github.com/KhronosGroup/Vulkan-Headers/archive/ec2db85225ab410bc6829251bef6c578aaed5868.tar.gz",
         ],
         build_file = "//third_party/vulkan_headers:BUILD.bazel",

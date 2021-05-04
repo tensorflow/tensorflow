@@ -809,6 +809,10 @@ class Literal : public MutableLiteralBase {
   // this Literal is set to a nil shape (empty tuple)
   std::vector<Literal> DecomposeTuple();
 
+  // Returns a subliteral specified by given shape_index. No data is copied, the
+  // current literal becomes invalid after this function call.
+  Literal SubLiteral(ShapeIndexView shape_index);
+
  private:
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();

@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -52,6 +52,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
               errors::InvalidArgument(kProtocol, " must be non-empty."));
 
   SerializationContext::Params params;
+  params.resource_mgr = ctx->resource_manager();
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;

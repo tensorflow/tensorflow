@@ -35,6 +35,7 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
     // If the input tensor is a compile time constant build a kConstant type
     // argument.
     if (should_resolve_constant(i)) {
+      VLOG(1) << "Trying to resolve constant " << i;
       // NOTE: We can not simply check that this is Kind::kConstant because
       // this could be the output of a MetadataOnly op e.g. Size.
       xla::StatusOr<absl::optional<Tensor>> maybe_constant =

@@ -74,7 +74,7 @@ constexpr uint64 HTTP_CODE_PRECONDITION_FAILED = 412;
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that overrides the maximum age of entries in the
-// Stat cache. A value of 0 (the default) means nothing is cached.
+// Stat cache. A value of 0 means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
 constexpr uint64 kStatCacheDefaultMaxAge = 5;
 // The environment variable that overrides the maximum number of entries in the
@@ -770,6 +770,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   uint64 value;
   block_size_ = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
+
   uint64 max_staleness = kDefaultMaxStaleness;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
@@ -959,12 +960,7 @@ Status GcsFileSystem::NewRandomAccessFile(
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
-  bool cache_enabled;
-  {
-    mutex_lock l(block_cache_lock_);
-    cache_enabled = file_block_cache_->IsCacheEnabled();
-  }
-  if (cache_enabled) {
+  if (cache_enabled_) {
     result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
                                                      const string& fname,
                                                      uint64 offset, size_t n,
@@ -1037,6 +1033,9 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
         return LoadBufferFromGCS(filename, offset, n, buffer,
                                  bytes_transferred);
       }));
+
+  // Check if cache is enabled here to avoid unnecessary mutex contention.
+  cache_enabled_ = file_block_cache->IsCacheEnabled();
   return file_block_cache;
 }
 
@@ -2135,4 +2134,4 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 // system is a child of gcs file system with TPU-pod on GCS optimizations.
 // This option is set ON/OFF in the GCP TPU tensorflow config.
 // Initialize gcs_file_system
-REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

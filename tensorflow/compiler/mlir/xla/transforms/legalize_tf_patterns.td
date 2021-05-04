@@ -98,6 +98,7 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
                          [TF_MinimumOp, HLOClient_BroadcastMinOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
+                         [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
                          [TF_PowOp, HLOClient_BroadcastPowOp],
                          [TF_RealDivOp, HLOClient_BroadcastDivOp],
                          [TF_SubOp, HLOClient_BroadcastSubOp],
@@ -759,3 +760,22 @@ def : Pat<(TF_XlaGatherOp $operand, $start_indices, (ConstantLikeMatcher Element
                         (CastElementsToI64Elements $slice_sizes),
                         $indices_are_sorted),
           [(HasValidGatherDims $dimension_numbers)]>;
+
+
+def ToDotDimNumsAttr : NativeCodeCall<"GetDotDimNumsAttr($0, &$_builder)">;
+
+def ToPrecisionConfigsAttr : NativeCodeCall<"GetPrecisionConfigAttr($0, &$_builder)">;
+
+def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
+
+def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
+
+//===----------------------------------------------------------------------===//
+// XlaDotV2Op op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
+          (HLO_DotGeneralOp $lhs, $rhs,
+                            (ToDotDimNumsAttr $dimension_numbers),
+                            (ToPrecisionConfigsAttr $precision_config)),
+          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for LSTM layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl.testing import parameterized
@@ -46,10 +42,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Double type is yet not supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Double type is yet not supported in ROCm')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -143,10 +140,10 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
   @parameterized.parameters([True, False])
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input.')
   def test_with_masking_layer_LSTM(self, unroll):
-    if test.is_built_with_rocm():
-      self.skipTest(
-          'Skipping the test as ROCm MIOpen does not support padded input.')
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -385,10 +382,10 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input.')
   def test_statefulness_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest(
-          'Skipping the test as ROCm MIOpen does not support padded input.')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4

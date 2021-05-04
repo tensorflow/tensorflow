@@ -1148,6 +1148,12 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 }
 
+TEST_F(InterpreterTest, SetNumThreadsSucceedsWithZero) {
+  ASSERT_EQ(interpreter_.SetNumThreads(0), kTfLiteOk);
+  // num_threads == 0 has the same effect as num_threads == 1.
+  EXPECT_EQ(interpreter_.subgraph(0)->context()->recommended_num_threads, 1);
+}
+
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {
   // Count the number of calls to ClearCaches for the backend context.
   void ClearCaches() override { ++num_calls; }
@@ -1605,15 +1611,28 @@ TEST_F(TestCustomAllocation, InvalidAlignment) {
   VerifyInvoke();
 }
 
+TEST_F(TestCustomAllocation, InvalidAlignment_SkipCheck) {
+  const TfLiteTensor* input_tensor =
+      interpreter_->tensor(interpreter_->inputs()[0]);
+  const int required_alignment = kDefaultTensorAlignment - 1;
+  auto tensor_alloc = NewCustomAlloc(input_tensor->bytes, required_alignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], tensor_alloc,
+                /**flags**/ kTfLiteCustomAllocationFlagsSkipAlignCheck),
+            kTfLiteOk);
+
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_F(TestCustomAllocation, InsufficientBytes) {
   auto input_alloc = NewCustomAlloc(4, kDefaultTensorAlignment);
+
+  // Setting the custom alloc works, but AllocateTensors doesn't.
   ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
                 interpreter_->inputs()[0], input_alloc),
-            kTfLiteError);
-
-  // Allocate tensors & Invoke should still work.
-  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
-  VerifyInvoke();
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteError);
 }
 
 TEST_F(TestCustomAllocation, CustomInputAlloc) {
@@ -1698,7 +1717,7 @@ TEST_F(TestCustomAllocation, CustomAlloc_VariableTensor) {
   }
 }
 
-TEST_F(TestCustomAllocation, ResizeTensorsWithoutEnoughMemory) {
+TEST_F(TestCustomAllocation, ResizeInputsWithoutEnoughMemory) {
   // Set custom allocations for all input tensors.
   AssignCustomAllocForTensor(interpreter_->inputs()[0],
                              /*required_alignment=*/kDefaultTensorAlignment);
@@ -1720,7 +1739,7 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithoutEnoughMemory) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteError);
 }
 
-TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
+TEST_F(TestCustomAllocation, ResizeInputsWithEnoughMemory) {
   // Set custom allocations for all input tensors, with double the required
   // memory.
   const TfLiteTensor* input0_tensor =
@@ -1765,6 +1784,62 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Verify typical use-cases where tensors are resized & custom allocs need to be
+// set for every Invoke().
+TEST_F(TestCustomAllocation, ResizeAndAllocateForEveryInvoke) {
+  // First assign exactly sized allocs for all IO tensors.
+  AssignCustomAllocForTensor(interpreter_->inputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->inputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  // Now resize inputs to a smaller: {3, 1} to {1, 1}.
+  // Total alloc sized required now: 1 float == 4 bytes.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1, 1}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 1}),
+            kTfLiteOk);
+  // Assign allocs for all I/O tensors.
+  // Even though the smaller output tensor sizes have not been propagated yet,
+  // custom allocation works because verification of allocs happens after
+  // preparing all ops & tensors.
+  auto input0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], input0_alloc),
+            kTfLiteOk);
+  auto input1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[1], input1_alloc),
+            kTfLiteOk);
+  auto output0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[0], output0_alloc),
+            kTfLiteOk);
+  auto output1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[1], output1_alloc),
+            kTfLiteOk);
+  // AllocateTensors works.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input = {2.0f};
+  std::vector<float> expected_output = {4.0f};
+  TfLiteTensor* tensor = interpreter_->tensor(interpreter_->outputs()[0]);
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), sizeof(float));
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  EXPECT_EQ(tensor->data.f[0], expected_output[0]);
 }
 
 // Tests related to lazy delegate providers that are primarily used for applying

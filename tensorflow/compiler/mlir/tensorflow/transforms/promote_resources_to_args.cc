@@ -58,6 +58,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -140,6 +141,15 @@ mlir::LogicalResult ValidateResourceArgument(FuncOp function,
   return success();
 }
 
+bool VariableIsInitialized(TF::VarHandleOp var_handle_op) {
+  auto is_variable_initialized =
+      var_handle_op->getAttrOfType<BoolAttr>("_is_initialized");
+  // Assume variable is initialized if attribute is not set.
+  // There are paths that doesn't mark the variables. All variables
+  // that doesn't have the attribute will be promoted.
+  return !is_variable_initialized || is_variable_initialized.getValue();
+}
+
 // Adds resource arguments for every unique (name) variable handle. Associated
 // `tf.VarHandleOp` are removed from the function. Variable shared names are
 // returned in `var_handle_shared_names` based on the ordering of added resource
@@ -156,6 +166,9 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
        llvm::make_early_inc_range(block.getOps<TF::VarHandleOp>())) {
     if (add_validation && failed(ValidateVarHandle(var_handle_op)))
       return failure();
+    // In the case of variables that are not initialized at graph creation
+    // then we keep them as VarHandleOps.
+    if (!VariableIsInitialized(var_handle_op)) continue;
 
     llvm::StringRef name = var_handle_op.shared_nameAttr().getValue();
     auto it = var_arg_index_by_name.insert({name, func_arg_types.size()});

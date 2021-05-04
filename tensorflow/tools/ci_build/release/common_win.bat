@@ -53,13 +53,13 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PY_EXE% -m pip install --upgrade "tb-nightly ~= 2.4.0.a"
 %PY_EXE% -m pip install --upgrade "tensorflow_estimator ~= 2.4.0"
 @REM Test dependencies
-%PY_EXE% -m pip install "grpcio ~= 1.34.0"
+%PY_EXE% -m pip install "grpcio >= 1.37.0, < 2.0"
 %PY_EXE% -m pip install "portpicker ~= 1.3.1"
 %PY_EXE% -m pip install "scipy ~= 1.5.2"
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=11.0
+  SET TF_CUDA_VERSION=11.2
 )
 IF NOT DEFINED TF_CUDNN_VERSION (
   SET TF_CUDNN_VERSION=8

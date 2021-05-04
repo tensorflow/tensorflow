@@ -23,6 +23,7 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -272,6 +273,44 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+
+class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
+
+  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+    components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(tensor_slice_len))
+
+    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+    tensor_slice_len = 8
+    batch_size = 2
+    num_outputs = tensor_slice_len // batch_size
+    self.run_core_tests(
+        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+        num_outputs)
+
+  def _sparse(self, i):
+    return sparse_tensor.SparseTensorValue(
+        indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+  def _build_dataset_sparse(self, batch_size=5):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSparseCore(self):
+    self.run_core_tests(self._build_dataset_sparse, 2)
+
+  def _build_dataset_nested_sparse(self):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedSparseCore(self):
+    self.run_core_tests(self._build_dataset_nested_sparse, 1)
 
 
 if __name__ == '__main__':

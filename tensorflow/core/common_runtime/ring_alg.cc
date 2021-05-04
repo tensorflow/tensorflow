@@ -48,10 +48,11 @@ limitations under the License.
 // dynamically so that the resulting chunk size does not exceed
 // kMaxChunkSizeBytes, empirically set at 4 MiB.
 constexpr size_t kMaxChunkSizeBytes = (4 * 1024 * 1024);
-// kMaxSubdivsPerDev is used to give an upper bound on the number of
-// subdivisions dynamically generated.  A reasonable value would be a small
+// kMaxSubdivsPerDeviceDefault is used to give an upper bound on the number of
+// subdivisions dynamically generated when user does not provide the parameter
+// through the collectives API. A reasonable value would be a small
 // multiple of the number of NICs adjacent to each device.
-constexpr int kMaxSubdivsPerDevice = 2;
+constexpr int kMaxSubdivsPerDeviceDefault = 2;
 
 namespace tensorflow {
 namespace {
@@ -107,12 +108,26 @@ RingAlg::RingAlg(CollectiveType type, const string& name)
 
 namespace {
 Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
+  // This function generates subdivision_offsets. Expect it to be empty when
+  // called.
+  DCHECK(col_params->instance.impl_details.subdiv_offsets.empty());
+
+  if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
+    col_params->instance.impl_details.subdiv_offsets = {0};
+    VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
+    return Status::OK();
+  }
+
   if (col_params->instance.shape.num_elements() == 0) {
     return errors::Internal("shape in CollectiveParams should be non-empty");
   }
   const int kAvgDevPerTask =
       col_params->group.group_size / col_params->group.num_tasks;
-  const int kMaxNumSubdivs = kMaxSubdivsPerDevice * kAvgDevPerTask;
+  const int max_subdivs_per_device =
+      (col_params->instance.impl_details.max_subdivs_per_device > 0)
+          ? col_params->instance.impl_details.max_subdivs_per_device
+          : kMaxSubdivsPerDeviceDefault;
+  const int kMaxNumSubdivs = max_subdivs_per_device * kAvgDevPerTask;
   if (kMaxNumSubdivs <= 0) {
     return errors::Internal("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs,
                             " in ",

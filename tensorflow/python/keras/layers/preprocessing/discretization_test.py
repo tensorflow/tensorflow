@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras discretization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 import numpy as np
@@ -25,23 +21,14 @@ import numpy as np
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import discretization
-from tensorflow.python.keras.layers.preprocessing import discretization_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return discretization.Discretization
-  else:
-    return discretization_v1.Discretization
 
 
 @keras_parameterized.run_all_keras_modes
@@ -55,7 +42,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, 4]
 
     input_data = keras.Input(shape=(4,))
-    layer = discretization.Discretization(bins=[0., 1., 2.])
+    layer = discretization.Discretization(bin_boundaries=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -70,7 +57,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, 4]
 
     input_data = keras.Input(shape=(4,), dtype=dtypes.int64)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -84,7 +71,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
         indices=indices, values=[-1.5, 1.0, 3.4], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.float32, sparse=True)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
@@ -100,7 +87,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True)
-    layer = discretization.Discretization(bins=[0., 1., 2.])
+    layer = discretization.Discretization(bin_boundaries=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -116,7 +103,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=bucket_data)
@@ -129,13 +116,34 @@ class DiscretizationTest(keras_parameterized.TestCase,
         indices=indices, values=[-1, 1, 3], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32, sparse=True)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
     output_dataset = model.predict(input_array, steps=1)
     self.assertAllEqual(indices, output_dataset.indices)
     self.assertAllEqual(expected_output, output_dataset.values)
+
+  def test_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
+    output = layer(input_data)
+    self.assertAllEqual(output.shape.as_list(), [16, 4])
+
+  def test_num_bins_negative_fails(self):
+    with self.assertRaisesRegex(ValueError, "`num_bins` must be.*num_bins=-7"):
+      _ = discretization.Discretization(num_bins=-7)
+
+  def test_num_bins_and_bins_set_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`num_bins` and `bin_boundaries` should not be set.*5.*\[1, 2\]"):
+      _ = discretization.Discretization(num_bins=5, bins=[1, 2])
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class DiscretizationAdaptTest(keras_parameterized.TestCase,
+                              preprocessing_test_utils.PreprocessingLayerTest):
 
   @parameterized.named_parameters([
       {
@@ -202,8 +210,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
       test_data = dataset_ops.Dataset.from_tensor_slices(test_data).batch(
           test_data.shape[0] // 2)
 
-    cls = get_layer_class()
-    layer = cls(epsilon=epsilon, bins=num_bins)
+    layer = discretization.Discretization(epsilon=epsilon, num_bins=num_bins)
     layer.adapt(adapt_data)
 
     input_data = keras.Input(shape=input_shape)
@@ -213,34 +220,43 @@ class DiscretizationTest(keras_parameterized.TestCase,
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
 
-  @parameterized.named_parameters(
-      {
-          "num_bins": 5,
-          "data": np.array([[1.], [2.], [3.], [4.], [5.]]),
-          "expected": {
-              "bins": np.array([1., 2., 3., 4., np.Inf])
-          },
-          "testcase_name": "2d_single_element_all_bins"
-      }, {
-          "num_bins": 5,
-          "data": np.array([[1., 6.], [2., 7.], [3., 8.], [4., 9.], [5., 10.]]),
-          "expected": {
-              "bins": np.array([2., 4., 6., 8., np.Inf])
-          },
-          "testcase_name": "2d_multi_element_all_bins",
-      }, {
-          "num_bins": 3,
-          "data": np.array([[0.], [1.], [2.], [3.], [4.], [5.]]),
-          "expected": {
-              "bins": np.array([1., 3., np.Inf])
-          },
-          "testcase_name": "2d_single_element_3_bins"
-      })
-  def test_combiner_computation(self, num_bins, data, expected):
-    epsilon = 0.01
-    combiner = discretization.Discretization.DiscretizingCombiner(epsilon,
-                                                                  num_bins)
-    self.validate_accumulator_extract(combiner, data, expected)
+  def test_merge_state(self):
+    data = np.arange(300)
+    partial_ds_1 = dataset_ops.Dataset.from_tensor_slices(data[:100])
+    partial_ds_2 = dataset_ops.Dataset.from_tensor_slices(data[100:200])
+    partial_ds_3 = dataset_ops.Dataset.from_tensor_slices(data[200:])
+    full_ds = partial_ds_1.concatenate(partial_ds_2).concatenate(partial_ds_3)
+
+    # Use a higher epsilon to avoid any discrepencies from the quantile
+    # approximation.
+    full_layer = discretization.Discretization(num_bins=3, epsilon=0.001)
+    full_layer.adapt(full_ds.batch(2))
+
+    partial_layer_1 = discretization.Discretization(num_bins=3, epsilon=0.001)
+    partial_layer_1.adapt(partial_ds_1.batch(2))
+    partial_layer_2 = discretization.Discretization(num_bins=3, epsilon=0.001)
+    partial_layer_2.adapt(partial_ds_2.batch(2))
+    partial_layer_3 = discretization.Discretization(num_bins=3, epsilon=0.001)
+    partial_layer_3.adapt(partial_ds_3.batch(2))
+    partial_layer_1.merge_state([partial_layer_2, partial_layer_3])
+    merged_layer = partial_layer_1
+
+    data = np.arange(300)
+    self.assertAllClose(full_layer(data), merged_layer(data))
+
+  def test_merge_with_stateless_layers_fails(self):
+    layer1 = discretization.Discretization(num_bins=2, name="layer1")
+    layer1.adapt([1, 2, 3])
+    layer2 = discretization.Discretization(bin_boundaries=[0, 1], name="layer2")
+    with self.assertRaisesRegex(ValueError, "Cannot merge.*layer2"):
+      layer1.merge_state([layer2])
+
+  def test_merge_with_unadapted_layers_fails(self):
+    layer1 = discretization.Discretization(num_bins=2, name="layer1")
+    layer1.adapt([1, 2, 3])
+    layer2 = discretization.Discretization(num_bins=2, name="layer2")
+    with self.assertRaisesRegex(ValueError, "Cannot merge.*layer2"):
+      layer1.merge_state([layer2])
 
 if __name__ == "__main__":
   test.main()

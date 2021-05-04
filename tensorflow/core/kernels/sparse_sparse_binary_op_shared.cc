@@ -180,6 +180,11 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                           " for dimension ", i));
     }
 
+    OP_REQUIRES(
+        ctx, a_indices_t->dim_size(1) == b_indices_t->dim_size(1),
+        errors::InvalidArgument(
+            "Indices' dimensions do not match: got ", a_indices_t->dim_size(1),
+            " and ", b_indices_t->dim_size(1), " for the second dimension."));
     const int num_dims = a_indices_t->dim_size(1);
     const auto a_indices_mat = a_indices_t->matrix<int64>();
     const auto b_indices_mat = b_indices_t->matrix<int64>();

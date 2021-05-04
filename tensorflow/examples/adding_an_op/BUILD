@@ -10,7 +10,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_custom_op_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_custom_op_library(

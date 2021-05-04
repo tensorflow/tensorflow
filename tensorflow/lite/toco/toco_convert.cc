@@ -54,7 +54,6 @@ void CheckFrozenModelPermissions(const Arg<std::string>& input_file) {
 // ModelFlags and TocoFlags accordingly.
 void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
                    const ParsedModelFlags& parsed_model_flags,
-                   TocoFlags* toco_flags, ModelFlags* model_flags,
                    std::string* graph_def_contents) {
   port::CheckInitGoogleIsDone("InitGoogle is not done yet.\n");
 
@@ -96,8 +95,7 @@ tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,
   ReadTocoFlagsFromCommandLineFlags(parsed_toco_flags, &toco_flags);
 
   std::string graph_def_contents;
-  ReadInputData(parsed_toco_flags, parsed_model_flags, &toco_flags,
-                &model_flags, &graph_def_contents);
+  ReadInputData(parsed_toco_flags, parsed_model_flags, &graph_def_contents);
   CheckOutputFilePermissions(parsed_toco_flags.output_file);
 
   std::string output_file_contents;

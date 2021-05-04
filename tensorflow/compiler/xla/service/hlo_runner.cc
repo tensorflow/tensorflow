@@ -40,6 +40,9 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  device_shape_representation_fn_ = [this](const Shape& shape) {
+    return backend_->compiler()->DeviceShapeRepresentation(shape);
+  };
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
@@ -47,10 +50,11 @@ HloRunner::~HloRunner() {}
 
 StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal) {
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                      backend().transfer_manager()->AllocateScopedShapedBuffer(
-                          literal.shape(), backend().memory_allocator(),
-                          backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          literal.shape(), backend().memory_allocator(),
+          backend().default_device_ordinal(), device_shape_representation_fn_));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -92,6 +96,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      absl::Span<const Literal* const> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
+  UpdateEntryComputationLayout(module.get(), device_shape_representation_fn_);
+
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -200,6 +206,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     DeviceAssignment* device_assignment) {
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
+  int64 num_partitions = device_assignment->computation_count();
 
   std::vector<ScopedShapedBuffer> argument_buffers;
   // This reserve() call is necessary for correctness, because
@@ -222,7 +229,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   int64 index = 0;
   RunId run_id;
   for (int64 i = 0; i < options.num_replicas; ++i) {
-    int64 device = (*device_assignment)(i, 0);
+    int64 device = (*device_assignment)(i / num_partitions, i % num_partitions);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
     streams.push_back(absl::make_unique<se::Stream>(executor));
@@ -238,7 +245,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
-              argument->shape(), backend().memory_allocator(), device));
+              argument->shape(), backend().memory_allocator(), device,
+              device_shape_representation_fn_));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
@@ -249,7 +257,9 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   }
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  int64 num_threads = (options.infeed != nullptr) ? options.num_replicas : 0;
+  TF_RET_CHECK(options.infeed_values.empty() ||
+               options.infeed_values.size() == options.num_replicas);
+  int64 num_threads = options.infeed_values.size();
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
     num_threads += options.num_replicas;
   }
@@ -258,17 +268,18 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         tensorflow::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
-  if (options.infeed != nullptr) {
+  if (!options.infeed_values.empty()) {
     for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device = (*device_assignment)(i, 0);
-      pool->Schedule([this, device, &options]() {
+      int64 device =
+          (*device_assignment)(i / num_partitions, i % num_partitions);
+      pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting infeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
-              executor, *options.infeed));
+              executor, *options.infeed_values[i]));
           if (step % 100 == 0) {
             VLOG(1) << "Infeed step " << step;
           }
@@ -277,9 +288,13 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     }
   }
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
+    if (options.outfeed_values) {
+      options.outfeed_values->resize(options.num_replicas);
+    }
     for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device = (*device_assignment)(i, 0);
-      pool->Schedule([this, device, &options]() {
+      int64 device =
+          (*device_assignment)(i / num_partitions, i % num_partitions);
+      pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting outfeed on device " << device;
@@ -288,8 +303,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
               executor, &literal));
-          if (options.outfeed_values != nullptr) {
-            options.outfeed_values->push_back(std::move(literal));
+          if (options.outfeed_values) {
+            options.outfeed_values->at(i) = std::move(literal);
           }
           if (step % 100 == 0) {
             VLOG(1) << "Outfeed step " << step;

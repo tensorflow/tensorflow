@@ -956,7 +956,7 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64 op_handle,
+  void IsConstantVisitor(const int64 op_handle, int depth,
                          absl::flat_hash_set<int64>* visited,
                          bool* is_constant) const;
 
@@ -1002,6 +1002,15 @@ class XlaBuilder {
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
   absl::flat_hash_map<int64, int64> handle_to_index_;
+
+  // Track imported instructions by their computation id and the position in
+  // their computation's instruction list.
+  struct ImportedInstruction {
+    int64 computation_id;
+    int64 instruction_index;
+  };
+
+  absl::flat_hash_map<int64, ImportedInstruction> handle_to_imported_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of
@@ -1273,6 +1282,15 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+  friend XlaOp ReduceWindowWithGeneralPadding(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
+
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllGather(XlaOp operand, int64 all_gather_dimension,
@@ -1436,6 +1454,14 @@ class XlaBuilder {
       int64 handle) const {
     auto it = handle_to_index_.find(handle);
     if (it == handle_to_index_.end()) {
+      // Try look for the instruction in the imported instructions.
+      auto imported_it = handle_to_imported_index_.find(handle);
+      if (imported_it != handle_to_imported_index_.end()) {
+        ImportedInstruction imported = imported_it->second;
+        return const_cast<InstructionType>(
+            &embedded_.at(imported.computation_id)
+                 .instructions(imported.instruction_index));
+      }
       return InvalidArgument("No XlaOp with handle %d", handle);
     }
     return const_cast<InstructionType>(&instructions_.at(it->second));
@@ -2161,6 +2187,14 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64> base_dilations,
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
 // replicas supply one input to the sum and all replicas receive the resulting
@@ -2394,7 +2428,7 @@ XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
 
 // Enqueues a B(initial_state) random bit generation instruction onto the
-// computation. Resturns the new key and random bits with the specified shape.
+// computation. Returns the new key and random bits with the specified shape.
 XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                       const Shape& shape);
 

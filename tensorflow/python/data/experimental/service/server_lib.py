@@ -24,6 +24,7 @@ import collections
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
+from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -38,8 +39,8 @@ class DispatcherConfig(
   Fields:
     port: Specifies the port to bind to. A value of 0 indicates that the server
       may bind to any available port.
-    protocol: The protocol to use for communicating with the tf.data service.
-      Defaults to `"grpc"`.
+    protocol: The protocol to use for communicating with the tf.data service,
+      e.g. "grpc".
     work_dir: A directory to store dispatcher state in. This
       argument is required for the dispatcher to be able to recover from
       restarts.
@@ -63,11 +64,13 @@ class DispatcherConfig(
 
   def __new__(cls,
               port=0,
-              protocol="grpc",
+              protocol=None,
               work_dir=None,
               fault_tolerant_mode=False,
               job_gc_check_interval_ms=None,
               job_gc_timeout_ms=None):
+    if protocol is None:
+      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     if job_gc_check_interval_ms is None:
       job_gc_check_interval_ms = 10 * 60 * 1000  # 10 minutes.
     if job_gc_timeout_ms is None:
@@ -229,8 +232,8 @@ class WorkerConfig(
       connect to this worker.
     port: Specifies the port to bind to. A value of 0 indicates that the worker
       can bind to any available port.
-    protocol: (Optional.) Specifies the protocol to be used by the server.
-      Defaults to `"grpc"`.
+    protocol: (Optional.) Specifies the protocol to be used by the server, e.g.
+      "grpc".
     heartbeat_interval_ms: How often the worker should heartbeat to the
       dispatcher, in milliseconds. If not set, the runtime will select a
       reasonable default. A higher value will reduce the load on the dispatcher,
@@ -244,11 +247,13 @@ class WorkerConfig(
               dispatcher_address,
               worker_address=None,
               port=0,
-              protocol="grpc",
+              protocol=None,
               heartbeat_interval_ms=None,
               dispatcher_timeout_ms=None):
     if worker_address is None:
       worker_address = "localhost:%port%"
+    if protocol is None:
+      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     if heartbeat_interval_ms is None:
       heartbeat_interval_ms = 30 * 1000  # 30 seconds
     if dispatcher_timeout_ms is None:
@@ -285,7 +290,7 @@ class WorkerServer(object):
 
   ```
   worker = tf.data.experimental.service.WorkerServer(
-      port=5051, dispatcher_address="grpc://localhost:5050")
+      port=5051, dispatcher_address="localhost:5050")
   worker.join()
   ```
   """
@@ -332,7 +337,7 @@ class WorkerServer(object):
 
     ```
     worker_server = tf.data.experimental.service.WorkerServer(
-        port=5051, dispatcher_address="grpc://localhost:5050")
+        port=5051, dispatcher_address="localhost:5050")
     worker_server.join()
     ```
 

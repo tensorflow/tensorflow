@@ -157,6 +157,15 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   { 3, 4 }
 })";
   EXPECT_EQ(expected, literal.ToString());
+
+  // A Less trivial case where the memory layout is not consecutive.
+  auto literal2 = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
+  literal2.SetDynamicSize(1, {}, 2);
+  const string expected2 = R"(s32[2,<=3](2,2) {
+  { 1, 2 },
+  { 4, 5 }
+})";
+  EXPECT_EQ(expected2, literal2.ToString());
 }
 
 TEST_F(LiteralUtilTest, R3ToString) {

@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FTRL"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FeatureConfig"
     mtype: "<type \'type\'>"
   }

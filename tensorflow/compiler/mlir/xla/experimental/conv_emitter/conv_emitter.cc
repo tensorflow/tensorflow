@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -155,7 +156,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
         ancestor.getUpperBoundMap().getSingleConstantResult());
   }
 
-  if (auto alloc = mlir::dyn_cast<mlir::AllocOp>(begin_op)) {
+  if (auto alloc = mlir::dyn_cast<mlir::memref::AllocOp>(begin_op)) {
     CHECK(std::next(begin_op) == end_op)
         << "alloc() needs to be hoisted by its own";
 
@@ -166,8 +167,8 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
         mlir::MemRefType::get(ancestor_dimensions, type.getElementType());
-    auto new_alloc =
-        builder.create<mlir::AllocOp>(builder.getUnknownLoc(), new_type);
+    auto new_alloc = builder.create<mlir::memref::AllocOp>(
+        builder.getUnknownLoc(), new_type);
 
     std::vector<mlir::Value> indvars;
     for (auto ancestor : ancestors) {
@@ -232,7 +233,7 @@ mlir::Operation* HoistAndFix(mlir::Operation* op, mlir::AffineForOp where) {
 struct InitialMlirConvAnchors {
   std::vector<mlir::AffineForOp> cartesian_product_loops;
   std::vector<mlir::AffineForOp> reduction_loops;
-  mlir::AllocOp output_acc;
+  mlir::memref::AllocOp output_acc;
 };
 
 // Return the following IR with the anchors set to corresponding operations.
@@ -261,7 +262,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   builder =
       OpBuilder::atBlockTerminator(cartesian_product_loops.back().getBody());
 
-  mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
+  auto output_acc = builder.create<mlir::memref::AllocOp>(
       location, mlir::MemRefType::get({}, builder.getF32Type()));
 
   builder.create<mlir::AffineStoreOp>(
@@ -397,7 +398,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   std::vector<mlir::AffineForOp> cartesian_product_loops =
       anchors.cartesian_product_loops;
   std::vector<mlir::AffineForOp> reduction_loops = anchors.reduction_loops;
-  mlir::AllocOp output_acc = anchors.output_acc;
+  mlir::memref::AllocOp output_acc = anchors.output_acc;
 
   // TODO(timshen): consider using pattern matchers for transformations
   //
@@ -444,7 +445,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   //       output[...] = output_acc[...]
   //     }
   //   }
-  output_acc = llvm::cast<mlir::AllocOp>(
+  output_acc = llvm::cast<mlir::memref::AllocOp>(
       HoistAndFix(output_acc, tiled_cartesian_loops.front()));
 
   // Hoist everything before reduction loops (aka zero initializations of

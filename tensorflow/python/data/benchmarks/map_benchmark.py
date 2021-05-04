@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
-from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
@@ -109,25 +108,6 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
           label="_short_circuit",
           benchmark_id=6)
 
-  def benchmark_stats(self):
-    for stats in [True, False]:
-      dataset = dataset_ops.Dataset.range(1000).repeat()
-      dataset = dataset.map(lambda x: x + 1, num_parallel_calls=32)
-      options = dataset_ops.Options()
-      options.experimental_deterministic = False
-      if stats:
-        aggregator = stats_aggregator.StatsAggregator()
-        options.experimental_stats.aggregator = aggregator
-      dataset = dataset.with_options(options)
-      self.run_and_report_benchmark(
-          dataset,
-          num_elements=10000,
-          extras={
-              "model_name": "map.benchmark.7",
-              "parameters": "%s" % stats,
-          },
-          name="stats_%s" % stats)
-
   def benchmark_sequential_control_flow(self):
     dataset = dataset_ops.Dataset.from_tensors(100000)
 
@@ -139,12 +119,14 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
 
       return control_flow_ops.while_loop(math_ops.less, body, [i, x])
 
+    num_elements = 1
     dataset = dataset.map(fn)
     self.run_and_report_benchmark(
         dataset,
-        num_elements=1,
+        num_elements=num_elements,
         extras={
             "model_name": "map.benchmark.8",
+            "parameters": "%d" % num_elements,
         },
         name="sequential_control_flow",
         apply_default_optimizations=True)
@@ -157,12 +139,14 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
       return map_fn.map_fn(
           lambda y: y * array_ops.transpose(y), x, parallel_iterations=10)
 
+    num_elements = 1
     dataset = dataset.map(fn)
     self.run_and_report_benchmark(
         dataset,
         num_elements=1,
         extras={
             "model_name": "map.benchmark.9",
+            "parameters": "%d" % num_elements,
         },
         name="parallel_control_flow",
         apply_default_optimizations=True)

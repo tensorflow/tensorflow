@@ -53,7 +53,7 @@ namespace {
 Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
     Padding padding, int64 padding_before, int64 padding_after, int spatial_dim,
     int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);
@@ -127,6 +127,10 @@ Status ConvBackpropComputeDimensionsV2(
   // dimensions of the filter Tensor.
   VLOG(2) << "input vs filter_in depth " << dims->in_depth << " "
           << filter_shape.dim_size(num_dims - 2);
+  if (filter_shape.dim_size(num_dims - 2) <= 0) {
+    return errors ::InvalidArgument(
+        label, ": filter depth must be strictly greated than zero");
+  }
   if (dims->in_depth % filter_shape.dim_size(num_dims - 2)) {
     return errors::InvalidArgument(
         label, ": input depth must be evenly divisible by filter depth");

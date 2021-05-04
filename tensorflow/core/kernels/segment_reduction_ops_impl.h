@@ -206,6 +206,7 @@ class SegmentReductionOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 //  SegmentReductionGPUOp is a segment reduction operator implemented for GPU
 //  only.
 //  TODO: This implementation of SegmentReductionGPUOp is sometimes slower than
@@ -291,6 +292,20 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(0, output_shape, &output), done);
+
+      // The determinism check is here, rather than inside the functor (as it is
+      // for the unsorted segment reduction ops) because the done callback
+      // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
+      bool determinism_requirement_met =
+          SegmentReductionFunctor::atomic_reduction_is_associative ||
+          !RequireDeterminism() ||
+          DisableSegmentReductionOpDeterminismExceptions();
+      OP_REQUIRES_ASYNC(
+          context, determinism_requirement_met,
+          errors::Unimplemented(
+              "Deterministic GPU implementation of sorted segment reduction op"
+              " not available."),
+          done);
 
       auto output_flat = output->flat_outer_dims<T>();
       auto data_ptr = input.template flat<T>().data();
