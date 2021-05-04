@@ -152,6 +152,42 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   scf_for.erase();
 }
 
+// A pass to remove memref::AllocOps and other ops interacting with the memrefs
+// if it is provable that this will not change the results of the program. This
+// is determined by confirming all consumers of all aliases are only creating an
+// alias or writing data to an alias but never reading from or interacting with
+// the memref in other ways.
+void RemoveDeadMemrefCode(FuncOp func) {
+  BufferAliasAnalysis baa(func);
+  llvm::SmallSet<Operation *, 8> to_remove;
+
+  // Gather all operations interacting with memrefs guaranteed to never be read
+  // from.
+  func->walk([&](memref::AllocOp op) {
+    llvm::SmallVector<Operation *> maybe_to_remove;
+    for (auto &alias : baa.resolve(op.getResult())) {
+      for (auto user : alias.getUsers()) {
+        if (!(isa<ViewLikeOpInterface>(user) || isa<memref::DeallocOp>(user) ||
+              (isa<linalg::CopyOp>(user) &&
+               alias == cast<linalg::CopyOp>(user).output()) ||
+              (isa<linalg::FillOp>(user) &&
+               alias == cast<linalg::FillOp>(user).output()))) {
+          return;
+        }
+        maybe_to_remove.push_back(user);
+      }
+    }
+    to_remove.insert(maybe_to_remove.begin(), maybe_to_remove.end());
+    to_remove.insert(op);
+  });
+
+  // Erase after the walk to avoid corrupting data being traversed.
+  for (auto *op : to_remove) {
+    op->dropAllUses();
+    op->erase();
+  }
+}
+
 struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<vector::VectorDialect, memref::MemRefDialect,
@@ -195,6 +231,8 @@ struct VectorizationCleanupPass
 
   void runOnFunction() override {
     getFunction().walk([](scf::ForOp op) { SplitSCFForOp(op); });
+
+    RemoveDeadMemrefCode(getFunction());
   }
 };
 
