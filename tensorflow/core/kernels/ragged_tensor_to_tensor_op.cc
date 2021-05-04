@@ -313,6 +313,12 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
             output_index_multiplier, output_size, result);
         return tensorflow::Status::OK();
       case RowPartitionType::ROW_SPLITS:
+        if (row_partition_tensor.size() - 1 > parent_output_index.size()) {
+          return errors::InvalidArgument(
+              "Row partition size is greater than output size: ",
+              row_partition_tensor.size() - 1, " > ",
+              parent_output_index.size());
+        }
         CalculateOutputIndexRowSplit(
             context, row_partition_tensor, parent_output_index,
             output_index_multiplier, output_size, result);
