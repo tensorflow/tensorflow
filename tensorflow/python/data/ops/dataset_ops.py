@@ -1544,6 +1544,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     batches having the same outer dimension, you should set the `drop_remainder`
     argument to `True` to prevent the smaller batch from being produced.
 
+    Note: If your program requires data to have a statically known shape (e.g.,
+    when using XLA), you should use `drop_remainder=True`. Without
+    `drop_remainder=True` the shape of the output dataset will have an unknown
+    leading dimension due to the possibility of a smaller final batch.
+
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
