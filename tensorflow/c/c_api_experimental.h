@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/kernels.h"
 
 // --------------------------------------------------------------------------
 // Experimental C API for TensorFlow.
@@ -324,6 +325,7 @@ TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
 // Does NOT unload the library.
 TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
     TF_Library* lib_handle);
+
 
 #ifdef __cplusplus
 } /* end extern "C" */

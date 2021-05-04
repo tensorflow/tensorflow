@@ -3839,6 +3839,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/py/numpy:headers",
+        "//tensorflow/c:kernels_hdrs",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3887,6 +3888,7 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",

@@ -49,6 +49,7 @@ namespace tensorflow {
 class Device;
 class DeviceMgr;
 class ServerInterface;
+class Var;
 }  // namespace tensorflow
 
 // Internal structures used by the C API. These are likely to change and should
@@ -111,6 +112,19 @@ struct TF_OperationDescription {
   tensorflow::NodeBuilder node_builder;
   TF_Graph* graph;
   std::set<tensorflow::string> colocation_constraints;
+};
+
+struct TF_VariableInputLockHolder {
+  TF_VariableInputLockHolder(
+      std::vector<tensorflow::Var*> vars, std::unique_ptr<std::vector<tensorflow::mutex_lock>> locks,
+      std::unique_ptr<std::vector<tensorflow::tf_shared_lock>> shared_locks)
+      : vars_(std::move(vars)),
+        locks_(std::move(locks)),
+        shared_locks_(std::move(shared_locks)) {}
+
+  std::vector<tensorflow::Var*> vars_;
+  std::unique_ptr<std::vector<tensorflow::mutex_lock>> locks_;
+  std::unique_ptr<std::vector<tensorflow::tf_shared_lock>> shared_locks_;
 };
 
 struct TF_Operation {
