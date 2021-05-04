@@ -82,7 +82,7 @@ struct OptimizationProfileConfig {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
-      const nvinfer1::ITensor* input = network->getInput(i);
+      const ITensorProxyPtr input = network->getInput(i);
       const char* name = input->getName();
       if (input->isShapeTensor()) {
         int idx = i + n_inputs;

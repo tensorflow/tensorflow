@@ -2,35 +2,35 @@
 
 extern "C" {
 
-void* createInferBuilder_INTERNAL(void* logger, int version) {
+void* createInferBuilder_INTERNAL(void* logger, int version) noexcept {
   using FuncPtr = void * (*)(void *, int);
   static auto func_ptr = LoadSymbol<FuncPtr>("createInferBuilder_INTERNAL");
   if (!func_ptr) LogFatalSymbolNotFound("createInferBuilder_INTERNAL");
   return func_ptr(logger, version);
 }
 
-void* createInferRuntime_INTERNAL(void* logger, int version) {
+void* createInferRuntime_INTERNAL(void* logger, int version) noexcept {
   using FuncPtr = void * (*)(void *, int);
   static auto func_ptr = LoadSymbol<FuncPtr>("createInferRuntime_INTERNAL");
   if (!func_ptr) LogFatalSymbolNotFound("createInferRuntime_INTERNAL");
   return func_ptr(logger, version);
 }
 
-nvinfer1::ILogger* getLogger() {
+nvinfer1::ILogger* getLogger() noexcept {
   using FuncPtr = nvinfer1::ILogger * (*)();
   static auto func_ptr = LoadSymbol<FuncPtr>("getLogger");
   if (!func_ptr) LogFatalSymbolNotFound("getLogger");
   return func_ptr();
 }
 
-int getInferLibVersion() {
+int getInferLibVersion() noexcept {
   using FuncPtr = int (*)();
   static auto func_ptr = LoadSymbol<FuncPtr>("getInferLibVersion");
   if (!func_ptr) LogFatalSymbolNotFound("getInferLibVersion");
   return func_ptr();
 }
 
-nvinfer1::IPluginRegistry* getPluginRegistry() {
+nvinfer1::IPluginRegistry* getPluginRegistry() noexcept {
   using FuncPtr = nvinfer1::IPluginRegistry * (*)();
   static auto func_ptr = LoadSymbol<FuncPtr>("getPluginRegistry");
   if (!func_ptr) LogFatalSymbolNotFound("getPluginRegistry");
