@@ -57,6 +57,14 @@ static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
 static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
 
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
+static constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
+  switch (type) {
+    case kStreamExecutor:
+      return "stream_executor";
+    case kTfrt:
+      return "tfrt";
+  }
+}
 
 class PjRtClient;
 
@@ -184,6 +192,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  // Returns a string containing human-readable, platform-specific version info
+  // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
   // Returns an enum that identifies the type of runtime being used under this

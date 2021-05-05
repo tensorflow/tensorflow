@@ -27,12 +27,16 @@ namespace tensorflow {
 
 class TestCollectiveExecutor : public CollectiveExecutor {
  public:
-  explicit TestCollectiveExecutor(CollectiveExecutorMgrInterface* cem)
-      : CollectiveExecutor(cem) {}
+  explicit TestCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
+                                  CollectiveRemoteAccess* rma = nullptr)
+      : CollectiveExecutor(cem), rma_(rma) {}
 
-  void RunClosure(std::function<void()>) override {
-    LOG(FATAL) << "Unimplemented";
-  }
+  void RunClosure(std::function<void()> fn) override { fn(); }
+
+  CollectiveRemoteAccess* remote_access() override { return rma_; }
+
+ private:
+  CollectiveRemoteAccess* rma_;
 };
 
 class TestParamResolver : public ParamResolverInterface {
@@ -61,7 +65,8 @@ class TestParamResolver : public ParamResolverInterface {
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
-  TestCollectiveExecutorMgr() {}
+  TestCollectiveExecutorMgr(CollectiveRemoteAccess* rma = nullptr)
+      : rma_(rma) {}
 
   ~TestCollectiveExecutorMgr() override {
     for (auto& iter : table_) {
@@ -76,7 +81,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
     if (iter != table_.end()) {
       ce = iter->second;
     } else {
-      ce = new TestCollectiveExecutor(this);
+      ce = new TestCollectiveExecutor(this, rma_);
       table_[step_id] = ce;
     }
     ce->Ref();
@@ -125,6 +130,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   mutex mu_;
   gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
   mutable TestParamResolver param_resolver_;
+  CollectiveRemoteAccess* rma_;
 };
 
 }  // namespace tensorflow

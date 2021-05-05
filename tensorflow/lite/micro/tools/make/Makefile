@@ -282,6 +282,7 @@ tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/floor_div_test.cc \
 tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
+tensorflow/lite/micro/kernels/gather_nd_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
 tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
@@ -349,6 +350,7 @@ tensorflow/lite/micro/kernels/floor_div.cc \
 tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
+tensorflow/lite/micro/kernels/gather_nd.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
@@ -582,7 +584,10 @@ ifneq ($(DISABLE_DOWNLOADS), true)
   $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
   $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
   $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-  $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
+  RESULT := $(shell $(MAKEFILE_DIR)/person_detection_int8_download.sh ${MAKEFILE_DIR}/downloads $(CO_PROCESSOR))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Something went wrong with the person detection int8 model download: $(RESULT))
+  endif
 endif
 
 # The target-specific makefile must have a name that is exactly

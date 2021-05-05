@@ -311,8 +311,9 @@ def _convert_tensor_spec(value, expected_type, path, for_spec):
     try:
       value = ops.convert_to_tensor(value, expected_type.dtype)
     except (ValueError, TypeError):
-      value = None
-  if value is None or not expected_type.is_compatible_with(value):
+      raise TypeError(f'{"".join(path)}: expected a {expected_type.dtype!r} '
+                      f'Tensor, got {value!r}')
+  if not expected_type.is_compatible_with(value):
     raise TypeError(f'{"".join(path)}: expected a Tensor compatible with '
                     f'{expected_type}, got {value!r}')
   return value

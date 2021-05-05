@@ -330,6 +330,36 @@ struct CanonicalizeCastedShapeOfOpPattern
   }
 };
 
+// TODO(frgossen): Remove this once it has landed upstream.
+struct CanonicalizeBroadcastPattern
+    : public OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern<shape::BroadcastOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(shape::BroadcastOp op,
+                                PatternRewriter &rewriter) const override {
+    // Only concretize dynamic extent tensor result types.
+    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+    if (!resultTy || !resultTy.isDynamicDim(0)) return failure();
+
+    // Infer resulting shape rank if possible.
+    int64_t maxRank = 0;
+    for (Value shape : op.shapes()) {
+      if (auto extentTensorTy = shape.getType().dyn_cast<RankedTensorType>()) {
+        // Cannot infer resulting shape rank if any operand is dynamically
+        // ranked.
+        if (extentTensorTy.isDynamicDim(0)) return failure();
+        maxRank = std::max(maxRank, extentTensorTy.getDimSize(0));
+      }
+    }
+
+    auto newOp = rewriter.create<shape::BroadcastOp>(
+        op.getLoc(), RankedTensorType::get({maxRank}, rewriter.getIndexType()),
+        op.shapes());
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), newOp);
+    return success();
+  }
+};
+
 // TODO(frgossen): Only move up broadcasting operations if there is a consumer.
 struct MoveUpBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
@@ -401,6 +431,7 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      CanonicalizeBroadcastPattern,
       CanonicalizeCastedShapeOfOpPattern,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
@@ -411,6 +442,7 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
       MoveUpBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on
+  tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
 std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass() {

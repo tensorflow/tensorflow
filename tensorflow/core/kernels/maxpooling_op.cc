@@ -1014,6 +1014,9 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
         const int input_start = start * input_size_per_batch;
         const int input_end = limit * input_size_per_batch;
         for (int64 index = input_start; index < input_end; index++) {
+          if (index >= argmax.NumElements()) {
+            break;
+          }
           int64 grad_out_index = argmax_flat(index);
           if (!include_batch_in_index) {
             const int64 cur_batch = index / input_size_per_batch;

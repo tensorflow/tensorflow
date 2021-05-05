@@ -90,8 +90,9 @@ CLANG_FORMAT_RESULT=$?
 #############################################################################
 
 CHECK_CONTENTS_PATHSPEC=\
-"micro "\
-":(exclude)micro/tools/ci_build/test_code_style.sh"
+"micro"\
+" :(exclude)micro/tools/ci_build/test_code_style.sh"\
+" :(exclude)*\.md"
 
 # See https://github.com/tensorflow/tensorflow/issues/46297 for more context.
 check_contents "gtest|gmock" "${CHECK_CONTENTS_PATHSPEC}" \

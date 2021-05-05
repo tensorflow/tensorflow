@@ -69,7 +69,8 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
         context->recommended_num_threads);
   }
 
-  auto status = delegate_data_.Prepare(session_options);
+  auto status = delegate_data_.Prepare(
+      session_options, reinterpret_cast<Subgraph*>(context->impl_));
   if (!status.ok()) {
     context->ReportError(context, "Failed to initialize TensorFlow context: %s",
                          status.error_message().c_str());

@@ -542,7 +542,7 @@ PyTpuExecutable::PyTpuExecutable(
 }
 
 PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
-    absl::Span<const std::vector<PyTpuBuffer*>> all_core_arguments,
+    absl::Span<const std::vector<PyTpuBuffer*>> maybe_tupled_args,
     absl::Span<PyTpuBuffer* const> this_core_arguments, int replica,
     int partition, const RunId& run_id) {
   const int device_id = device_assignment_(replica, partition);
@@ -570,7 +570,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
     inputs.push_back(input_handle->DeviceBuffer()->handle.get());
   }
 
-  for (const auto& core_args : all_core_arguments) {
+  for (const auto& core_args : maybe_tupled_args) {
     for (const auto* handle : core_args) {
       for (const auto& pending_event : handle->DeviceBuffer()->wait_for_use) {
         ready_to_execute.push_back(pending_event.get());
@@ -631,20 +631,19 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
         num_partitions());
   }
 
-  std::vector<PyTpuBuffer*> all_core_arguments;
-
+  std::vector<PyTpuBuffer*> maybe_tupled_args;
   std::unique_ptr<PyTpuBuffer> tupled_arguments;
   if (tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tupled_arguments,
                         PyTpuBuffer::MakeTuple(argument_handles, client_,
                                                local_devices_.front()));
-    all_core_arguments = {tupled_arguments.get()};
+    maybe_tupled_args = {tupled_arguments.get()};
   } else {
-    all_core_arguments = std::vector<PyTpuBuffer*>(argument_handles.begin(),
-                                                   argument_handles.end());
+    maybe_tupled_args = std::vector<PyTpuBuffer*>(argument_handles.begin(),
+                                                  argument_handles.end());
   }
   ExecuteResult result =
-      ExecuteHelper(absl::MakeSpan(&all_core_arguments, 1), argument_handles,
+      ExecuteHelper(absl::MakeSpan(&maybe_tupled_args, 1), maybe_tupled_args,
                     /*replica=*/0, /*partition=*/0, RunId());
 
   Status status = WaitForExecuteEvent(result.on_execute_finished.get());

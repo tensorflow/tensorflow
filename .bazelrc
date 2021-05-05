@@ -142,6 +142,10 @@ build --config=short_logs
 
 build --config=v2
 
+# Disable AWS/HDFS support by default
+build --define=no_aws_support=true
+build --define=no_hdfs_support=true
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
@@ -387,7 +391,7 @@ build:rbe --spawn_strategy=remote,worker,standalone,local
 test:rbe --test_env=USER=anon
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
-build:rbe --remote_download_minimal
+build:rbe --remote_download_toplevel
 
 build:rbe_linux --config=rbe
 build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
@@ -505,6 +509,7 @@ build:rbe_win --define=override_eigen_strong_inline=true
 build:rbe_win --jobs=100
 
 # Don't build the python zip archive in the RBE build.
+build:rbe_win --remote_download_minimal
 build:rbe_win --enable_runfiles
 build:rbe_win --nobuild_python_zip
 

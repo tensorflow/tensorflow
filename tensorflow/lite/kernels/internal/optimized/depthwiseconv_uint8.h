@@ -955,9 +955,9 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
       for (; ic <= input_depth - 16; ic += 16) {
 #ifdef __AVX2__
         // Load the filters, add filter_offset.
-        __m128i filter_u8_0 = _mm_loadu_si64(
+        __m128i filter_u8_0 = _mm_loadl_epi64(
             reinterpret_cast<const __m128i*>(local_filter_ptr + 8 * 0));
-        __m128i filter_u8_1 = _mm_loadu_si64(
+        __m128i filter_u8_1 = _mm_loadl_epi64(
             reinterpret_cast<const __m128i*>(local_filter_ptr + 8 * 1));
         local_filter_ptr += 16;
         __m256i filter_0 = _mm256_cvtepu8_epi32(filter_u8_0);
@@ -966,9 +966,9 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
         filter_0 = _mm256_add_epi32(filter_0, filter_offset_vec);
         filter_1 = _mm256_add_epi32(filter_1, filter_offset_vec);
         // Load the inputs, add input_offset.
-        __m128i input_u8_0 = _mm_loadu_si64(
+        __m128i input_u8_0 = _mm_loadl_epi64(
             reinterpret_cast<const __m128i*>(local_input_ptr + 8 * 0));
-        __m128i input_u8_1 = _mm_loadu_si64(
+        __m128i input_u8_1 = _mm_loadl_epi64(
             reinterpret_cast<const __m128i*>(local_input_ptr + 8 * 1));
         local_input_ptr += 16;
         __m256i input_0 = _mm256_cvtepu8_epi32(input_u8_0);

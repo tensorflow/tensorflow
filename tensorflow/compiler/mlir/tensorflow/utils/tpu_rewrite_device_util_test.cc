@@ -624,7 +624,7 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
             "bad 'device_assignment' attribute at index 0, not an int");
 }
 
-TEST(TPURewriteDeviceUtilTest, TestCheckNoModelParallelismSuccess) {
+TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismFalse) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
@@ -639,10 +639,10 @@ TEST(TPURewriteDeviceUtilTest, TestCheckNoModelParallelismSuccess) {
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
-  EXPECT_TRUE(mlir::succeeded(CheckNoModelParallelism(cluster)));
+  EXPECT_FALSE(HasModelParallelism(cluster));
 }
 
-TEST(TPURewriteDeviceUtilTest, TestCheckNoModelParallelismFailCoresPerReplica) {
+TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismTrue) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
@@ -657,11 +657,11 @@ TEST(TPURewriteDeviceUtilTest, TestCheckNoModelParallelismFailCoresPerReplica) {
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
-  EXPECT_TRUE(mlir::failed(CheckNoModelParallelism(cluster)));
+  EXPECT_TRUE(HasModelParallelism(cluster));
 }
 
 TEST(TPURewriteDeviceUtilTest,
-     TestCheckNoModelParallelismFailMissingCoresPerReplicaAttr) {
+     TestHasModelParallelismFalseMissingCoresPerReplicaAttr) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
@@ -674,7 +674,7 @@ TEST(TPURewriteDeviceUtilTest,
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
-  EXPECT_TRUE(mlir::failed(CheckNoModelParallelism(cluster)));
+  EXPECT_FALSE(HasModelParallelism(cluster));
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {

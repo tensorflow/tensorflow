@@ -2151,6 +2151,24 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
       imported = load.load_partial(save_dir, ["root.adder"])
 
+  def test_load_partial_checkpoint(self):
+    root = module.Module()
+    root.variables_holder = module.Module()
+    root.variables_holder.v = variables.Variable(1.)
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    loaded = module.Module()
+    loaded.v = variables.Variable(2.)
+
+    load.load_partial(
+        save_dir, {"root": loaded},
+        options=load_options.LoadOptions(allow_partial_checkpoint=True))
+    self.assertEqual(loaded.variables_holder.v.numpy(), 1)
+    with self.assertRaisesRegex(AssertionError, "were not bound"):
+      load.load_partial(save_dir, {"root": loaded})
+
   def test_call_untraced_function_raises_error(self):
 
     class ObjWithFunction(module.Module):

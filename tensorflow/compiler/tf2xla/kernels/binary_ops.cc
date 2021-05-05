@@ -64,7 +64,7 @@ XLA_MAKE_BINARY(Mul, xla::Mul(lhs, rhs, extend_dimensions));
 REGISTER_XLA_OP(Name("Div"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(Atan2, xla::Atan2(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("Complex"), MlirXlaOpKernel);
 
 // Implementation of DivNoNan. Pseudo-code:
 // if (y == 0) {
@@ -192,7 +192,7 @@ XLA_MAKE_BINARY(RightShift,
                      : xla::ShiftRightArithmetic(lhs, rhs, extend_dimensions)));
 
 XLA_MAKE_BINARY(LogicalAnd, xla::And(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(LogicalOr, xla::Or(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("LogicalOr"), MlirXlaOpKernel);
 XLA_MAKE_BINARY(Mod, xla::Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, xla::Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, xla::Min(lhs, rhs, extend_dimensions));
@@ -215,9 +215,9 @@ XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Equal, xla::Eq(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(NotEqual, xla::Ne(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Greater, xla::Gt(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(GreaterEqual, xla::Ge(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("GreaterEqual"), MlirXlaOpKernel);
 XLA_MAKE_BINARY(Less, xla::Lt(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(LessEqual, xla::Le(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("LessEqual"), MlirXlaOpKernel);
 
 // Non-linear ops
 XLA_MAKE_BINARY(SigmoidGrad,
@@ -232,9 +232,7 @@ XLA_MAKE_BINARY(SoftsignGrad,
                          xla::Square(xla::Add(XlaHelpers::One(b, input_type(0)),
                                               xla::Abs(rhs)))));
 
-XLA_MAKE_BINARY(TanhGrad,
-                xla::Mul(rhs, xla::Sub(XlaHelpers::One(b, input_type(0)),
-                                       xla::Mul(lhs, lhs))));
+REGISTER_XLA_OP(Name("TanhGrad"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
 
