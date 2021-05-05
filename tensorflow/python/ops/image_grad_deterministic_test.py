@@ -1,4 +1,4 @@
-# Copyright 2020, 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020-2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,8 +41,8 @@ from tensorflow.python.platform import test
 class ResizeBilinearOpDeterministicTest(test_base.ResizeBilinearOpTestBase):
   """Test that ResizeBilinearGrad operates reproducibly.
 
-  Inheriting from the base test ensures that regular op functionality is correct
-  the deterministic code-path is selected.
+  Inheriting from test_base.ResizeBilinearOpTestBase ensures that regular op
+  functionality is correct when the deterministic code-path is selected.
   """
 
   def _randomNDArray(self, shape):
@@ -142,9 +142,9 @@ class CropAndResizeOpDeterminismExceptionsTest(test.TestCase):
   appropriate, by the GPU code-paths for CropAndResizeBackprop{Image|Boxes} when
   deterministic ops are enabled.
 
-  This test assumes that the base op test runs all the same test cases when
-  deterministic ops are not enabled and will therefore detect erroneous
-  exception throwing in those cases.
+  This test assumes that test_base.CropAndResizeOpTestBase runs all the same
+  test cases when deterministic ops are not enabled and will therefore detect
+  erroneous exception throwing in those cases.
   """
 
   def _genParams(self, dtype=dtypes.float32):
@@ -160,14 +160,6 @@ class CropAndResizeOpDeterminismExceptionsTest(test.TestCase):
     crop_size = constant_op.constant([3, 3], dtype=dtypes.int32)
     return image, boxes, box_indices, crop_size
 
-  def _imageErrorMessage(self):
-    return ("Deterministic GPU implementation of" +
-            " CropAndResizeBackpropImage not available")
-
-  def _boxesErrorMessage(self):
-    return ("Deterministic GPU implementation of" +
-            " CropAndResizeBackpropBoxes not available.")
-
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_gpu_only
   def testExceptionThrowing(self):
@@ -178,15 +170,18 @@ class CropAndResizeOpDeterminismExceptionsTest(test.TestCase):
         tape.watch(boxes)
         op_output = image_ops.crop_and_resize_v2(
             image, boxes, box_indices, crop_size)
+      image_error_message = ("Deterministic GPU implementation of" +
+                             " CropAndResizeBackpropImage not available")
       with self.assertRaisesRegex(errors_impl.UnimplementedError,
-                                  self._imageErrorMessage()):
+                                  image_error_message):
         result = tape.gradient(op_output, image)
         self.evaluate(result)
-      expected_error_message = self._boxesErrorMessage()
+      expected_error_message = ("Deterministic GPU implementation of" +
+                                " CropAndResizeBackpropBoxes not available")
       if (context.executing_eagerly()):
         # With eager execution, the backprop-to-image code is apparently
         # executed (first), even when its output is never used.
-        expected_error_message = self._imageErrorMessage()
+        expected_error_message = image_error_message
       with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                   expected_error_message):
         result = tape.gradient(op_output, boxes)
@@ -196,8 +191,8 @@ class CropAndResizeOpDeterminismExceptionsTest(test.TestCase):
 class CropAndResizeOpDeterministicTest(test_base.CropAndResizeOpTestBase):
   """Test that CropAndResizeBackprop{Image|Boxes} operates reproducibly.
 
-  Inheriting from the base test ensures that regular op functionality is correct
-  when the deterministic code-path is selected.
+  Inheriting from test_base.CropAndResizeOpTestBase ensures that regular op
+  functionality is correct when the deterministic code-path is selected.
   """
 
   def _randomFloats(self, shape, low=0.0, high=1.0, dtype=dtypes.float32):

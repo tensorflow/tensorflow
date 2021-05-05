@@ -41,8 +41,8 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(
   appropriate, by the GPU code-paths for SparseSoftmaxCrossEntropyWithLogits
   when deterministic ops are enabled.
 
-  This test assumes that the base op test runs all the same test cases when
-  deterministic ops are not enabled and will therefore detect erroneous
+  This test assumes that sparse_xent_op_test.py runs all the same test cases
+  when deterministic ops are not enabled and will therefore detect erroneous
   exception throwing in those cases.
   """
 
@@ -69,8 +69,9 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
   Note that the deterministic functionality currently tested by this class is
   always activated (not enabled by TF_DETERMINISTIC_OPS), so this class does not
-  currently need to inherit from a base op test class (to ensure that the op
-  still functions correctly when determinism is enabled).
+  currently need to inherit from a base op test class derived from
+  sparse_xent_op_test.py (to ensure that the op still functions correctly when
+  determinism is enabled).
   """
 
   def _randomInts(self, shape, high, dtype):
