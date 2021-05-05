@@ -159,7 +159,7 @@ class LocallyConnected1DLayersTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_locallyconnected1d_invalid_output_shapes(self):
-    kwargs = {'filters': 2 , 'kernel_size': 10}
+    kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
         keras.layers.LocallyConnected1D(**kwargs)
 
@@ -271,7 +271,7 @@ class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_locallyconnected2d_invalid_output_shapes(self):
-    kwargs = {'filters': 2 , 'kernel_size': 10}
+    kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
         keras.layers.LocallyConnected2D(**kwargs)
 
