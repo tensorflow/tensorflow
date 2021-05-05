@@ -326,6 +326,15 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, output_shape, &output));
 
+    // Given access patterns in SpatialMaxPoolWithArgMaxHelper, these tensors
+    // must have elements.
+    OP_REQUIRES(
+        context, tensor_out_arg_max.NumElements() > 0,
+        errors::InvalidArgument("tensor_out_arg_max must not be empty, got ",
+                                tensor_out_arg_max.DebugString()));
+    OP_REQUIRES(context, out_backprop.NumElements() > 0,
+                errors::InvalidArgument("out_backprop must not be empty, got ",
+                                        out_backprop.DebugString()));
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T, int64>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
         out_backprop, params, true);
