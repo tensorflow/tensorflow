@@ -7691,6 +7691,19 @@ ENTRY entry {
   EXPECT_THAT(root, scatter);
 }
 
+bool IsTrivialCollectivePermute(HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kCollectivePermute) {
+    return false;
+  }
+  if (hlo->source_target_pairs().empty()) {
+    return true;
+  }
+  return absl::c_all_of(hlo->source_target_pairs(),
+                        [](const std::pair<int64, int64>& pair) {
+                          return pair.first == pair.second;
+                        });
+}
+
 TEST_F(SpmdPartitioningTest, CollectivePermuteSimplifyIdentity) {
   absl::string_view hlo_string = R"(
 HloModule test
@@ -7714,11 +7727,7 @@ ENTRY entry {
   // permute (which would degenerate to a copy).
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->opcode() != HloOpcode::kCollectivePermute) continue;
-      auto* cp = DynCast<HloCollectivePermuteInstruction>(hlo);
-      for (const std::pair<int64, int64>& pair : cp->source_target_pairs()) {
-        EXPECT_NE(pair.first, pair.second);
-      }
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
     }
   }
 }
@@ -7738,15 +7747,38 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  std::cerr << module->ToString();
 
   // Check that the partitioned code does not have a collective permute with an
   // empty source_target_pair list.
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->opcode() != HloOpcode::kCollectivePermute) continue;
-      auto* cp = DynCast<HloCollectivePermuteInstruction>(hlo);
-      EXPECT_TRUE(!cp->source_target_pairs().empty());
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+    }
+  }
+}
+
+TEST_F(SpmdPartitioningTest, PadWithWrapPattern) {
+  absl::string_view hlo_string = R"(
+HloModule xla_computation_apply_fn__4.61
+
+ENTRY %xla_computation_apply_fn__4.61 (parameter.7: f32[3,16,16,16,16,132]) -> f32[3,18,16,16,16,132] {
+  %parameter.7 = f32[3,16,16,16,16,132]{5,4,3,2,1,0} parameter(0), sharding={devices=[1,2,1,1,1,1]0,1}
+  %slice.2 = f32[3,1,16,16,16,132]{5,4,3,2,1,0} slice(f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter.7), slice={[0:3], [15:16], [0:16], [0:16], [0:16], [0:132]}, sharding={devices=[1,2,1,1,1,1]0,1}
+  %slice.3 = f32[3,1,16,16,16,132]{5,4,3,2,1,0} slice(f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter.7), slice={[0:3], [0:1], [0:16], [0:16], [0:16], [0:132]}, sharding={devices=[1,2,1,1,1,1]0,1}
+  ROOT %concatenate.3 = f32[3,18,16,16,16,132]{5,4,3,2,1,0} concatenate(f32[3,1,16,16,16,132]{5,4,3,2,1,0} %slice.2, f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter.7, f32[3,1,16,16,16,132]{5,4,3,2,1,0} %slice.3), dimensions={1}, sharding={devices=[1,2,1,1,1,1]0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  // Check that the partitioned code does not have all-reduce and two
+  // non-trivial collective permute instructions.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+      EXPECT_NE(hlo->opcode(), HloOpcode::kAllReduce) << hlo->ToString();
     }
   }
 }
