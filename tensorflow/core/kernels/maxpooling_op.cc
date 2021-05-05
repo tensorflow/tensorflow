@@ -1088,6 +1088,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, out_shape, &grad_out));
 
+    if (out_shape.num_elements() == 0) return;  // nothing to be done
+
     LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);
   }
