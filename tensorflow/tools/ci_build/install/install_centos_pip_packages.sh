@@ -54,8 +54,8 @@ pip3 install --upgrade markdown==2.6.8
 pip2 install --upgrade protobuf==3.6.1
 pip3 install --upgrade protobuf==3.6.1
 
-pip2 install --upgrade numpy==1.14.5
-pip3 install --upgrade numpy ~= 1.20.0
+pip2 install --upgrade numpy~=1.14.5
+pip3 install --upgrade numpy~=1.20.0
 
 pip2 install scipy==1.2.2
 pip3 install scipy==1.4.1
