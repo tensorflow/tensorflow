@@ -20,9 +20,6 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -30,6 +27,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_occupancy.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -486,12 +486,10 @@ class PerDeviceCollector {
 
   void GetDeviceCapabilities(int32 device_ordinal,
                              XPlaneBuilder* device_plane) {
-
     std::string device_manfacturer = "Nvidia";
-      device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevManufacturer)),
-            device_manfacturer);
+    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(StatType::kDevManufacturer)),
+                               device_manfacturer);
 
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;

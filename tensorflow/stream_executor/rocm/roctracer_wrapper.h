@@ -61,7 +61,6 @@ namespace wrap {
 
 #endif  // PLATFORM_GOOGLE
 
-//BUG(rocm-profiler): roctracer_enable_op_activity does not exist in rocm > 4.0.1
 #define FOREACH_ROCTRACER_API(DO_FUNC)           \
   DO_FUNC(roctracer_default_pool_expl)           \
   DO_FUNC(roctracer_disable_domain_activity)     \
@@ -70,7 +69,6 @@ namespace wrap {
   DO_FUNC(roctracer_disable_op_callback)         \
   DO_FUNC(roctracer_enable_domain_activity_expl) \
   DO_FUNC(roctracer_enable_domain_callback)      \
-  DO_FUNC(roctracer_enable_op_activity)          \
   DO_FUNC(roctracer_enable_op_activity_expl)     \
   DO_FUNC(roctracer_enable_op_callback)          \
   DO_FUNC(roctracer_error_string)                \
