@@ -2316,24 +2316,30 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # streaming restore for any variables created in the future.
         trackable_utils.streaming_restore(status=status, session=session)
       status.assert_nontrivial_match()
-      return status
-    if h5py is None:
-      raise ImportError(
-          '`load_weights` requires h5py when loading weights from HDF5.')
-    if not self._is_graph_network and not self.built:
-      raise ValueError(
-          'Unable to load weights saved in HDF5 format into a subclassed '
-          'Model which has not created its variables yet. Call the Model '
-          'first, then load the weights.')
-    self._assert_weights_created()
-    with h5py.File(filepath, 'r') as f:
-      if 'layer_names' not in f.attrs and 'model_weights' in f:
-        f = f['model_weights']
-      if by_name:
-        hdf5_format.load_weights_from_hdf5_group_by_name(
-            f, self.layers, skip_mismatch=skip_mismatch)
-      else:
-        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+    else:
+      status = None
+      if h5py is None:
+        raise ImportError(
+            '`load_weights` requires h5py when loading weights from HDF5.')
+      if not self._is_graph_network and not self.built:
+        raise ValueError(
+            'Unable to load weights saved in HDF5 format into a subclassed '
+            'Model which has not created its variables yet. Call the Model '
+            'first, then load the weights.')
+      self._assert_weights_created()
+      with h5py.File(filepath, 'r') as f:
+        if 'layer_names' not in f.attrs and 'model_weights' in f:
+          f = f['model_weights']
+        if by_name:
+          hdf5_format.load_weights_from_hdf5_group_by_name(
+              f, self.layers, skip_mismatch=skip_mismatch)
+        else:
+          hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+
+    # Perform any layer defined finalization of the layer state.
+    for layer in self.layers:
+      layer.finalize_state()
+    return status
 
   def _updated_config(self):
     """Util shared between different serialization methods.
