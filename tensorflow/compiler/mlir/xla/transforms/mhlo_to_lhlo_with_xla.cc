@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
@@ -96,10 +95,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
-}
-
-bool AllocationShouldLowerToTypedArg(const BufferAllocation* alloc) {
-  return alloc->is_entry_computation_parameter() && !alloc->maybe_live_out();
 }
 
 }  // namespace
@@ -1518,42 +1513,39 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, shape_index));
   Value alloc = allocations_[slice.allocation()];
+  if (alloc.getType() == out_type && slice.offset() == 0) {
+    return cached_value = alloc;
+  }
+
+  auto out_memref_type = out_type.dyn_cast<MemRefType>();
+  if (!out_memref_type)
+    return tensorflow::errors::Internal(
+        "Expected memref type when creating a view for leaf type of a "
+        "tuple.");
+
+  Value byte_shift =
+      builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
+
+  xla::Shape physical_shape =
+      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          static_shape);
+  TF_ASSIGN_OR_RETURN(
+      Type physical_out_type,
+      xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
 
   // TODO(timshen): revisit location handling.
   Location loc = builder_.getUnknownLoc();
 
-  Value result;
-  if (AllocationShouldLowerToTypedArg(slice.allocation())) {
-    TF_RET_CHECK(slice.offset() == 0);
-    TF_RET_CHECK(slice.size() == slice.allocation()->size());
-    result = alloc;
-  } else {
-    Value byte_shift =
-        builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
-
-    xla::Shape physical_shape =
-        xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-            static_shape);
-    TF_ASSIGN_OR_RETURN(
-        Type physical_out_type,
-        xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
-
-    // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp
-    // produce the physical shape (where dimensions are ordered in major to
-    // minor) first, then follow up with a MemRefReinterpretCast to cast the
-    // resulting memref to the original layout.
-    result = builder_.create<memref::ViewOp>(loc, physical_out_type, alloc,
-                                             byte_shift,
-                                             /*sizes=*/ValueRange{});
-  }
-  if (result.getType() != out_type) {
+  // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp produce
+  // the physical shape (where dimensions are ordered in major to minor) first,
+  // then follow up with a MemRefReinterpretCast to cast the resulting memref to
+  // the original layout.
+  Value result =
+      builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
+                                      /*sizes=*/ValueRange{});
+  if (physical_out_type != out_type) {
     int64_t out_offset;
     SmallVector<int64_t, 4> out_strides;
-    auto out_memref_type = out_type.dyn_cast<MemRefType>();
-    if (!out_memref_type)
-      return tensorflow::errors::Internal(
-          "Expected memref type when creating a view for leaf type of a "
-          "tuple.");
     if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
       return tensorflow::errors::Internal(
           "Failed to get strides and offset from the output type.");
@@ -1696,7 +1688,7 @@ Status LhloDialectEmitter::Initialize() {
 
     NamedAttrList arg_attr_list;
     mlir::Type arg_type;
-    if (AllocationShouldLowerToTypedArg(alloc)) {
+    if (alloc->is_entry_computation_parameter() && !alloc->maybe_live_out()) {
       xla::Shape buffer_shape = xla::ShapeUtil::GetSubshape(
           computation_.parameter_instruction(alloc->parameter_number())
               ->shape(),
@@ -1790,9 +1782,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   if (!schedule)
     return xla::Unimplemented("Missing sequential order for the computation");
   const std::vector<HloInstruction*>& ordering = schedule->instructions();
-  TF_RETURN_IF_ERROR(computation->AcceptOrdered(&emitter, ordering));
-  TF_RET_CHECK(succeeded(mlir::verify(module)));
-  return Status::OK();
+  return computation->AcceptOrdered(&emitter, ordering);
 }
 
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
