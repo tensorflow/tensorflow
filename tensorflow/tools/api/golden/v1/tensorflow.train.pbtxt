@@ -18,7 +18,7 @@ tf_module {
   }
   member {
     name: "BytesList"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Checkpoint"
@@ -46,7 +46,7 @@ tf_module {
   }
   member {
     name: "ClusterDef"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "ClusterSpec"
@@ -58,7 +58,7 @@ tf_module {
   }
   member {
     name: "Example"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "ExponentialMovingAverage"
@@ -66,19 +66,19 @@ tf_module {
   }
   member {
     name: "Feature"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FeatureList"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FeatureLists"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Features"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FeedFnHook"
@@ -90,7 +90,7 @@ tf_module {
   }
   member {
     name: "FloatList"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FtrlOptimizer"
@@ -106,11 +106,11 @@ tf_module {
   }
   member {
     name: "Int64List"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "JobDef"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "LoggingTensorHook"
@@ -166,7 +166,7 @@ tf_module {
   }
   member {
     name: "SaverDef"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Scaffold"
@@ -178,7 +178,7 @@ tf_module {
   }
   member {
     name: "SequenceExample"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Server"
@@ -186,7 +186,7 @@ tf_module {
   }
   member {
     name: "ServerDef"
-    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "SessionCreator"
