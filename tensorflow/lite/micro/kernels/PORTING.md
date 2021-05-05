@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 <!-- Define reference-style links used throughout the document -->
 [small PRs]: https://google.github.io/eng-practices/review/developer/small-cls.html
 [Micro Contributing Guidelines]: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/CONTRIBUTING.md
