@@ -195,9 +195,10 @@ class Dropout(Layer):
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
-    if isinstance(rate, (int, float)) and rate < 0:
-      raise ValueError("Invalid value received for `rate`, expected "
-                       "a value between 0 and 1.")
+    if isinstance(rate, (int, float)) and not 0 <= rate <= 1:
+      raise ValueError(f"Invalid value {rate} received for "
+                       f"`rate`, expected a value " 
+                       "between 0 and 1.")
     self.rate = rate
     if isinstance(rate, (int, float)) and not rate:
       keras_temporary_dropout_rate.get_cell().set(True)
@@ -743,7 +744,8 @@ class RepeatVector(Layer):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
     if not isinstance(n, int):
-      raise TypeError("Expected an integer value for `n`.")
+      raise TypeError(
+          f"Expected an integer value for `n`, got {type(n)}.")
     self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
