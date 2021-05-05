@@ -204,7 +204,7 @@ TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
   std::vector<HloInstruction*> var_outs;
   for (int64 i = 0; i < 128; ++i) {
     // For shapes {1, 1024}, {2, 1024}, ..., {128, 1024}
-    auto shape = ShapeUtil::MakeShape(F32, {i + 1, 1024});
+    Shape shape = ShapeUtil::MakeShape(F32, {i + 1, 1024});
     HloInstruction* param_var_in = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 3 + 0, shape, "var.in"));
     HloInstruction* param_alpha =
@@ -212,12 +212,14 @@ TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
             i * 3 + 1, ShapeUtil::MakeShape(F32, {}), "alpha"));
     HloInstruction* param_delta = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 3 + 2, shape, "delta"));
-    auto alpha_broadcasted = builder.AddInstruction(
+    HloInstruction* alpha_broadcasted = builder.AddInstruction(
         HloInstruction::CreateBroadcast(shape, param_alpha, {}));
-    auto alpha_delta = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, alpha_broadcasted, param_delta));
-    auto var_out = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kSubtract, param_var_in, alpha_delta));
+    HloInstruction* alpha_delta =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kMultiply, alpha_broadcasted, param_delta));
+    HloInstruction* var_out =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kSubtract, param_var_in, alpha_delta));
     var_outs.push_back(var_out);
   }
   builder.AddInstruction(HloInstruction::CreateTuple(var_outs));
@@ -294,7 +296,7 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
 
   std::vector<HloInstruction*> all_outputs;
   for (int64 i = 0; i < 48; ++i) {
-    auto shape = ShapeUtil::MakeShape(F32, {2, 1024 + i});
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 1024 + i});
     // ms <- grad**2 (1 - rho) + ms * rho
     HloInstruction* grad = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 9 + 0, shape, "grad"));
@@ -306,18 +308,21 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
     HloInstruction* one_minus_rho =
         builder.AddInstruction(HloInstruction::CreateParameter(
             i * 9 + 3, ShapeUtil::MakeShape(F32, {}), "one_minus_rho"));
-    auto rho_broadcasted =
+    HloInstruction* rho_broadcasted =
         builder.AddInstruction(HloInstruction::CreateBroadcast(shape, rho, {}));
-    auto one_mins_rho_broadcasted = builder.AddInstruction(
+    HloInstruction* one_mins_rho_broadcasted = builder.AddInstruction(
         HloInstruction::CreateBroadcast(shape, one_minus_rho, {}));
-    auto grad_squared = builder.AddInstruction(
+    HloInstruction* grad_squared = builder.AddInstruction(
         HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, grad, grad));
-    auto ms_1st_term = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, grad_squared, one_mins_rho_broadcasted));
-    auto ms_2nd_term = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, ms, rho_broadcasted));
-    auto ms_out = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kAdd, ms_1st_term, ms_2nd_term));
+    HloInstruction* ms_1st_term = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, grad_squared,
+                                     one_mins_rho_broadcasted));
+    HloInstruction* ms_2nd_term =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kMultiply, ms, rho_broadcasted));
+    HloInstruction* ms_out =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kAdd, ms_1st_term, ms_2nd_term));
 
     // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
     HloInstruction* momentum = builder.AddInstruction(
@@ -329,28 +334,34 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
     HloInstruction* epsilon =
         builder.AddInstruction(HloInstruction::CreateParameter(
             i * 9 + 7, ShapeUtil::MakeShape(F32, {}), "epsilon"));
-    auto lr_broadcasted =
+    HloInstruction* lr_broadcasted =
         builder.AddInstruction(HloInstruction::CreateBroadcast(shape, lr, {}));
-    auto epsilon_broadcasted = builder.AddInstruction(
+    HloInstruction* epsilon_broadcasted = builder.AddInstruction(
         HloInstruction::CreateBroadcast(shape, epsilon, {}));
-    auto mom_1st_term = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, momentum, mom));
-    auto ms_eps = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kAdd, ms_out, epsilon_broadcasted));
-    auto ms_eps_rsq = builder.AddInstruction(
+    HloInstruction* mom_1st_term =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kMultiply, momentum, mom));
+    HloInstruction* ms_eps =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kAdd, ms_out, epsilon_broadcasted));
+    HloInstruction* ms_eps_rsq = builder.AddInstruction(
         HloInstruction::CreateUnary(shape, HloOpcode::kRsqrt, ms_eps));
-    auto grad_ms_eps_rsq = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, grad, ms_eps_rsq));
-    auto mom_2nd_term = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, lr_broadcasted, grad_ms_eps_rsq));
-    auto mom_out = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kAdd, mom_1st_term, mom_2nd_term));
+    HloInstruction* grad_ms_eps_rsq =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kMultiply, grad, ms_eps_rsq));
+    HloInstruction* mom_2nd_term =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kMultiply, lr_broadcasted, grad_ms_eps_rsq));
+    HloInstruction* mom_out =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kAdd, mom_1st_term, mom_2nd_term));
 
     // var <- var - mom
     HloInstruction* var = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 9 + 8, shape, "var"));
-    auto var_out = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kSubtract, var, mom_out));
+    HloInstruction* var_out =
+        builder.AddInstruction(HloInstruction::CreateBinary(
+            shape, HloOpcode::kSubtract, var, mom_out));
 
     all_outputs.push_back(ms_out);
     all_outputs.push_back(mom_out);
@@ -497,7 +508,8 @@ TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
   // Verify that the total number of fusion instructions is 2 so that we
   // know sqrt.0 and sqrt.1 are fused.
   size_t total_fusion_instrs = 0;
-  for (auto instr : module->entry_computation()->instructions()) {
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kFusion) {
       ++total_fusion_instrs;
     }
@@ -564,7 +576,8 @@ TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
   // traverse from def-to-use (i.e., top-to-down) instead of use-to-def, we
   // will end up having 3 fusions instead of 2.
   size_t total_fusion_instrs = 0;
-  for (auto instr : module->entry_computation()->instructions()) {
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kFusion) {
       ++total_fusion_instrs;
     }

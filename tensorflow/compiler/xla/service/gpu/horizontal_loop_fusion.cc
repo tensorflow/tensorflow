@@ -487,7 +487,7 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
       computation_->MakeInstructionPostOrder();
   absl::c_reverse(use_to_def_order);
   for (size_t i = 0; i < use_to_def_order.size(); ++i) {
-    auto consumer = use_to_def_order[i];
+    HloInstruction* consumer = use_to_def_order[i];
     HorizontalLoopFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusibles = fusion_candidates.GetNextSpanOfFusions();
