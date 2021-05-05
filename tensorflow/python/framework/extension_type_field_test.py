@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.framework.struct_field."""
+"""Tests for tf.framework.extension_type_field."""
 
 import typing
 from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type_field
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import struct_field
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -30,7 +30,8 @@ from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class StructFieldTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
+                             parameterized.TestCase):
 
   @parameterized.parameters([
       # Without default values:
@@ -48,14 +49,15 @@ class StructFieldTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('seq', typing.Tuple[typing.Union[int, float],
                            ...], [33, 12.8, 9, 0], (33, 12.8, 9, 0)),
   ])
-  def testStructFieldConstruction(self,
-                                  name,
-                                  value_type,
-                                  default=struct_field.StructField.NO_DEFAULT,
-                                  converted_default=None):
+  def testConstruction(
+      self,
+      name,
+      value_type,
+      default=extension_type_field.ExtensionTypeField.NO_DEFAULT,
+      converted_default=None):
     if callable(default):
       default = default()  # deferred construction (contains tensor)
-    field = struct_field.StructField(name, value_type, default)
+    field = extension_type_field.ExtensionTypeField(name, value_type, default)
     if converted_default is not None:
       default = converted_default
     self.assertEqual(field.name, name)
@@ -85,27 +87,27 @@ class StructFieldTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('z', typing.Mapping[ops.Tensor,
                            int], {}, "In field 'z': Key must be hashable."),
   ])
-  def testStructFieldConstructionError(self, name, value_type, default, error):
+  def testConstructionError(self, name, value_type, default, error):
     if callable(default):
       default = default()  # deferred construction (contains tensor)
     with self.assertRaisesRegex(TypeError, error):
-      struct_field.StructField(name, value_type, default)
+      extension_type_field.ExtensionTypeField(name, value_type, default)
 
   @parameterized.parameters([
-      ("StructField(name='i', value_type=<class 'int'>, "
-       'default=StructField.NO_DEFAULT)', 'i', int),
-      ("StructField(name='x', value_type=typing.Tuple"
-       '[typing.Union[str, int], ...], default=StructField.NO_DEFAULT)', 'x',
-       typing.Tuple[typing.Union[str, int], ...]),
-      ("StructField(name='j', value_type=<class 'int'>, default=3)", 'j', int,
-       3),
+      ("ExtensionTypeField(name='i', value_type=<class 'int'>, "
+       'default=ExtensionTypeField.NO_DEFAULT)', 'i', int),
+      ("ExtensionTypeField(name='x', value_type=typing.Tuple"
+       '[typing.Union[str, int], ...], default=ExtensionTypeField.NO_DEFAULT)',
+       'x', typing.Tuple[typing.Union[str, int], ...]),
+      ("ExtensionTypeField(name='j', value_type=<class 'int'>, default=3)", 'j',
+       int, 3),
   ])
-  def testStructFieldRepr(self,
-                          expected,
-                          name,
-                          value_type,
-                          default=struct_field.StructField.NO_DEFAULT):
-    field = struct_field.StructField(name, value_type, default)
+  def testRepr(self,
+               expected,
+               name,
+               value_type,
+               default=extension_type_field.ExtensionTypeField.NO_DEFAULT):
+    field = extension_type_field.ExtensionTypeField(name, value_type, default)
     self.assertEqual(repr(field), expected)
 
   @parameterized.parameters([
@@ -113,10 +115,12 @@ class StructFieldTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('_type_spec', True),
       ('self', True),
       ('x', False),
-      ('_tf_struct_foo_bar', True),
+      ('_tf_extension_type_foo_bar', True),
   ])
   def testIsReservedName(self, name, expected):
-    self.assertEqual(struct_field.StructField.is_reserved_name(name), expected)
+    self.assertEqual(
+        extension_type_field.ExtensionTypeField.is_reserved_name(name),
+        expected)
 
 
 class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
@@ -146,7 +150,7 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
       dict(tp=typing.Union[int, typing.Tuple[typing.Tuple[int, int], ...]]),
   ])
   def testValidPytype(self, tp, allow_forward_references=False):
-    struct_field.validate_field_value_type(
+    extension_type_field.validate_field_value_type(
         tp, allow_forward_references=allow_forward_references)
 
   @parameterized.parameters([
@@ -167,7 +171,7 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
   ])
   def testInvalidPytype(self, tp, error):
     with self.assertRaisesRegex(TypeError, error):
-      struct_field.validate_field_value_type(tp)
+      extension_type_field.validate_field_value_type(tp)
 
 
 class FieldValueConverterTest(test_util.TensorFlowTestCase,
@@ -185,11 +189,11 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
   ])
   def testConvertFieldsMismatch(self, field_values, error):
     fields = [
-        struct_field.StructField('x', int),
-        struct_field.StructField('y', float)
+        extension_type_field.ExtensionTypeField('x', int),
+        extension_type_field.ExtensionTypeField('y', float)
     ]
     with self.assertRaisesRegex(ValueError, error):
-      struct_field.convert_fields(fields, field_values)
+      extension_type_field.convert_fields(fields, field_values)
 
   @parameterized.parameters([
       (12, int),
@@ -217,7 +221,7 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       value = value()  # deferred construction (contains tensor)
     if expected is None:
       expected = value
-    converted = struct_field._convert_value(value, value_type, ('x',))
+    converted = extension_type_field._convert_value(value, value_type, ('x',))
     if isinstance(converted, (ops.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(converted, expected)
     else:
@@ -248,7 +252,7 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       value = value()  # deferred construction (contains tensor)
     if expected is None:
       expected = value
-    converted = struct_field._convert_value(
+    converted = extension_type_field._convert_value(
         value, value_type, ('x',), for_spec=True)
     if isinstance(converted, (ops.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(converted, expected)
@@ -264,17 +268,17 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
     if callable(value):
       value = value()  # deferred construction (contains tensor)
     with self.assertRaisesRegex(TypeError, error):
-      struct_field._convert_value(value, value_type, ('x',))
+      extension_type_field._convert_value(value, value_type, ('x',))
 
   def testConvertFields(self):
     fields = [
-        struct_field.StructField('x', int),
-        struct_field.StructField('y', typing.Tuple[typing.Union[int, bool],
-                                                   ...]),
-        struct_field.StructField('z', ops.Tensor)
+        extension_type_field.ExtensionTypeField('x', int),
+        extension_type_field.ExtensionTypeField(
+            'y', typing.Tuple[typing.Union[int, bool], ...]),
+        extension_type_field.ExtensionTypeField('z', ops.Tensor)
     ]
     field_values = {'x': 1, 'y': [1, True, 3], 'z': [[1, 2], [3, 4], [5, 6]]}
-    struct_field.convert_fields(fields, field_values)
+    extension_type_field.convert_fields(fields, field_values)
     self.assertEqual(set(field_values), set(['x', 'y', 'z']))
     self.assertEqual(field_values['x'], 1)
     self.assertEqual(field_values['y'], (1, True, 3))
@@ -283,17 +287,17 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
 
   def testConvertFieldsForSpec(self):
     fields = [
-        struct_field.StructField('x', int),
-        struct_field.StructField('y', typing.Tuple[typing.Union[int, bool],
-                                                   ...]),
-        struct_field.StructField('z', ops.Tensor)
+        extension_type_field.ExtensionTypeField('x', int),
+        extension_type_field.ExtensionTypeField(
+            'y', typing.Tuple[typing.Union[int, bool], ...]),
+        extension_type_field.ExtensionTypeField('z', ops.Tensor)
     ]
     field_values = {
         'x': 1,
         'y': [1, True, 3],
         'z': tensor_spec.TensorSpec([5, 3])
     }
-    struct_field.convert_fields_for_spec(fields, field_values)
+    extension_type_field.convert_fields_for_spec(fields, field_values)
     self.assertEqual(set(field_values), set(['x', 'y', 'z']))
     self.assertEqual(field_values['x'], 1)
     self.assertEqual(field_values['y'], (1, True, 3))
@@ -316,9 +320,12 @@ class TypingUtilsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (12, None),
   ])
   def testGenericTypePredicates(self, tp, expected):
-    self.assertEqual(struct_field.is_generic_union(tp), expected == 'Union')
-    self.assertEqual(struct_field.is_generic_tuple(tp), expected == 'Tuple')
-    self.assertEqual(struct_field.is_generic_mapping(tp), expected == 'Mapping')
+    self.assertEqual(
+        extension_type_field.is_generic_union(tp), expected == 'Union')
+    self.assertEqual(
+        extension_type_field.is_generic_tuple(tp), expected == 'Tuple')
+    self.assertEqual(
+        extension_type_field.is_generic_mapping(tp), expected == 'Mapping')
 
   @parameterized.parameters([
       (typing.Union[int, float], (int, float)),
@@ -335,13 +342,13 @@ class TypingUtilsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                                                          ...])),
   ])
   def testGetGenericTypeArgs(self, tp, expected):
-    self.assertEqual(struct_field.get_generic_type_args(tp), expected)
+    self.assertEqual(extension_type_field.get_generic_type_args(tp), expected)
 
   def testIsForwardRef(self):
     tp = typing.Union['B', int]
-    tp_args = struct_field.get_generic_type_args(tp)
-    self.assertTrue(struct_field.is_forward_ref(tp_args[0]))
-    self.assertFalse(struct_field.is_forward_ref(tp_args[1]))
+    tp_args = extension_type_field.get_generic_type_args(tp)
+    self.assertTrue(extension_type_field.is_forward_ref(tp_args[0]))
+    self.assertFalse(extension_type_field.is_forward_ref(tp_args[1]))
 
 
 if __name__ == '__main__':

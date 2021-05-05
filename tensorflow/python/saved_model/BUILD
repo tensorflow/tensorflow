@@ -587,7 +587,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/distribute:values",
-        "//tensorflow/python/framework:tensor_struct",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
