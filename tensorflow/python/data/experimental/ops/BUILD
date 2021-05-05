@@ -6,8 +6,8 @@ package(
 exports_files(["LICENSE"])
 
 py_library(
-    name = "pd_as_numpy",
-    srcs = ["pd_as_numpy.py"],
+    name = "as_pd_dataframe",
+    srcs = ["as_pd_dataframe.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:dtypes",
@@ -512,7 +512,7 @@ py_library(
 py_library(
     name = "dataset_ops",
     deps = [
-        ":pd_as_numpy",
+        ":as_pd_dataframe",
         ":batching",
         ":cardinality",
         ":compression_ops",
