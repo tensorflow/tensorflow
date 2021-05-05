@@ -222,6 +222,9 @@ class FFTCPU : public FFTBase {
       input_slice_sizes[i] = fft_shape[i - 1];
       temp_shape.AddDim(fft_shape[i - 1]);
     }
+    OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
+                errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
+                                        temp_shape.DebugString()));
 
     auto output = out->flat_inner_dims<ComplexT, FFTRank + 1>();
     const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> zero_start_indices;
