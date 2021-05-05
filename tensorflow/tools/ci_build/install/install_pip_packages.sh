@@ -60,9 +60,9 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
 if $(cat /etc/*-release | grep -q 14.04); then
-  pip3 install --no-binary=:all: --upgrade numpy==1.14.5
+  pip3 install --no-binary=:all: --upgrade numpy ~= 1.20.0
 else
-  pip3 install --upgrade numpy==1.14.5
+  pip3 install --upgrade numpy ~= 1.20.0
 fi
 
 pip3 install scipy==1.4.1

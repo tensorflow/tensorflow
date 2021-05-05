@@ -88,7 +88,7 @@ RUN python3 -m pip --no-cache-dir install \
     h5py \
     matplotlib \
     mock \
-    'numpy<1.19.0' \
+    'numpy ~= 1.20.0' \
     scipy \
     sklearn \
     pandas \
