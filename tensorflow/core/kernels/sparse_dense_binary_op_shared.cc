@@ -78,6 +78,11 @@ class SparseDenseBinaryOpShared : public OpKernel {
                     "but received shapes: ",
                     values_t->shape().DebugString(), " and ",
                     shape_t->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, values_t->dim_size(0) == indices_t->dim_size(0),
+        errors::InvalidArgument(
+            "The first dimension of values and indices should match. (",
+            values_t->dim_size(0), " vs. ", indices_t->dim_size(0), ")"));
 
     const auto indices_mat = indices_t->matrix<int64>();
     const auto shape_vec = shape_t->vec<int64>();
