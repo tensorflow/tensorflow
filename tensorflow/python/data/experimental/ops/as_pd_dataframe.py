@@ -131,7 +131,7 @@ def _nested_to_numpy_graph(ds_nested: Tree[TensorflowElem]) -> Tree[NumpyElem]:
   ])
 
 
-def pd_as_numpy(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
+def as_pd_dataframe(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
   """Converts a `tf.data.Dataset` to an iterable of Pandas dataFrame.
 
   `pd_as_numpy` converts a possibly nested structure of `tf.data.Dataset`s
