@@ -446,10 +446,15 @@ inline bool IsPowerOfTwo(T x) {
   return x != 0 && (x & (x - 1)) == 0;
 }
 
-// Returns a mask with "bits" number of least significant bits set.
-inline uint32 LsbMaskU32(int bits) {
-  CHECK_GE(bits, 0);
-  return (1U << bits) - 1;
+// Returns a mask with "width" number of least significant bits set.
+template <typename T>
+inline T LsbMask(int width) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  CHECK_GE(width, 0) << "Unsupported width " << width;
+  CHECK_LE(width, std::numeric_limits<T>::digits)
+      << "Unsupported width " << width;
+  return static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
 }
 
 // Utility for performing a static_cast<> on a std::unique_ptr<>.

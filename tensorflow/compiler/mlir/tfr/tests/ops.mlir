@@ -74,15 +74,14 @@ func @get_shape(%arg0: !tfr.tensor) -> (!shape.shape, !shape.shape) {
 
 // CHECK-LABEL: get_real_shape
 // CANON-LABEL: get_real_shape
-func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<1xindex> {
+func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x2xf32>) -> !tfr.tensor
   %1 = tfr.get_shape %0 -> !shape.shape
-  %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<1xindex>
-  return %2 : tensor<1xindex>
+  %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<2xindex>
+  return %2 : tensor<2xindex>
 
-// CANON-NEXT: %[[s:.*]] = shape.const_shape [1, 2] : tensor<?xindex>
-// CANON-NEXT: %[[e:.*]] = shape.to_extent_tensor %[[s]] : tensor<?xindex> -> tensor<1xindex>
-// CANON-NEXT: return %[[e]] : tensor<1xindex>
+// CANON-NEXT: %[[e:.*]] = shape.const_shape [1, 2] : tensor<2xindex>
+// CANON-NEXT: return %[[e]] : tensor<2xindex>
 }
 
 // -----

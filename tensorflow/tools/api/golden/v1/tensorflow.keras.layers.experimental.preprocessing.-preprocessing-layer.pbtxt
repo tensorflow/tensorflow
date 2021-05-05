@@ -137,7 +137,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'stateful\', \'streaming\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'True\'], "
+    argspec: "args=[\'self\', \'streaming\'], varargs=None, keywords=kwargs, defaults=[\'True\'], "
   }
   member_method {
     name: "adapt"

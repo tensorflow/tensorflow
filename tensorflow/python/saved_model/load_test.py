@@ -51,6 +51,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -62,6 +63,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.tracking import tracking
@@ -69,7 +71,7 @@ from tensorflow.python.training.tracking import util
 from tensorflow.python.util import tf_inspect
 
 
-def cycle(obj, cycles, signatures=None):
+def cycle(obj, cycles, signatures=None, options=None):
   to_save = obj
   # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
   # point w.r.t. saving/restoring, ideally after 2nd saving.
@@ -79,7 +81,7 @@ def cycle(obj, cycles, signatures=None):
     # just makes sure we aren't throwing errors and have enough
     # device("CPU") blocks to satisfy the placer.
     with test_util.use_gpu():
-      save.save(to_save, path, signatures)
+      save.save(to_save, path, signatures, options=options)
       loaded = load.load(path)
       signatures = loaded.signatures
     to_save = loaded
@@ -1990,6 +1992,55 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
 
+  def test_custom_gradients(self, cycles):
+
+    @custom_gradient.custom_gradient
+    def log1pexp(x):
+      e = math_ops.exp(x)
+
+      def grad(dy):
+        return dy * e  # incorrect to check the custom gradients is respected.
+
+      return math_ops.log(1 + e), grad
+
+    @def_function.function
+    def g(x):
+      y = log1pexp(x)
+
+      @def_function.function
+      def g_nest():
+        return log1pexp(y)
+
+      return g_nest()
+
+    @def_function.function
+    def f(x):
+      return log1pexp(g(x * x))
+
+    v = variables.Variable(1.)
+
+    with backprop.GradientTape() as tape2:
+      with backprop.GradientTape() as tape:
+        tape.watch(v)
+        y = f(v)
+        expected_grads = tape.gradient(y, v)
+      expected_grad_grads = tape2.gradient(expected_grads, v)
+
+    root = tracking.AutoTrackable()
+    root.f = f
+    loaded = cycle(
+        root, cycles, options=save_options.SaveOptions(
+            experimental_custom_gradients=True))
+    with backprop.GradientTape() as tape2:
+      with backprop.GradientTape() as tape:
+        tape.watch(v)
+        y = loaded.f(v)
+        grads = tape.gradient(y, v)
+      grad_grads = tape2.gradient(grads, v)
+
+    self.assertAllClose(grads, expected_grads)
+    self.assertAllClose(grad_grads, expected_grad_grads)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2040,7 +2091,6 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         [[-3.]],
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
-
 
   def test_object_with_extra_dependencies(self):
 
@@ -2150,6 +2200,24 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
       imported = load.load_partial(save_dir, ["root.adder"])
+
+  def test_load_partial_checkpoint(self):
+    root = module.Module()
+    root.variables_holder = module.Module()
+    root.variables_holder.v = variables.Variable(1.)
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    loaded = module.Module()
+    loaded.v = variables.Variable(2.)
+
+    load.load_partial(
+        save_dir, {"root": loaded},
+        options=load_options.LoadOptions(allow_partial_checkpoint=True))
+    self.assertEqual(loaded.variables_holder.v.numpy(), 1)
+    with self.assertRaisesRegex(AssertionError, "were not bound"):
+      load.load_partial(save_dir, {"root": loaded})
 
   def test_call_untraced_function_raises_error(self):
 

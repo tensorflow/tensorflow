@@ -539,6 +539,13 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    for (const auto& output : outputs_) {
+      if (output->def().external_def.object_def.object_type ==
+          ObjectType::CPU_MEMORY) {
+        clFinish(queue_->queue());
+        break;
+      }
+    }
     return absl::OkStatus();
   }
 

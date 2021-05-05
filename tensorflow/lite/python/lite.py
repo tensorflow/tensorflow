@@ -305,16 +305,16 @@ class QuantizationMode(object):
                 self.post_training_fp16())
 
   def activations_type(self):
-    return _dtypes.int16 if self._is_int16x8_target_required() \
-      else _dtypes.int8
+    return (_dtypes.int16 if self._is_int16x8_target_required()
+            else _dtypes.int8)
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
 
     if self.is_integer_quantize():
       return {
-          "inference_type": inference_ty if inference_ty else \
-            self.activations_type(),
+          "inference_type": (
+              inference_ty if inference_ty else self.activations_type()),
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": False,  # disable dynamic range quantization
           "quantize_to_float16": False  # disable float16 quantization
@@ -349,8 +349,8 @@ class QuantizationMode(object):
     inference_input_type = input_ty if input_ty else _dtypes.float32
     inference_output_type = output_ty if output_ty else _dtypes.float32
 
-    if self.post_training_int8_no_float() \
-      or self.post_training_int16x8_no_float():
+    if (self.post_training_int8_no_float()
+        or self.post_training_int16x8_no_float()):
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
@@ -358,8 +358,8 @@ class QuantizationMode(object):
           "allow_float": False,
           "disable_per_channel": self._disable_per_channel,
       }
-    elif self.post_training_int8_allow_float() \
-      or self.post_training_int16x8_allow_float():
+    elif (self.post_training_int8_allow_float()
+          or self.post_training_int16x8_allow_float()):
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
@@ -706,13 +706,13 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         all_types = default_types + [_dtypes.int16]
       else:
         all_types = default_types + [_dtypes.int8, _dtypes.uint8]
-      if self.inference_input_type not in all_types or \
-          self.inference_output_type not in all_types:
+      if (self.inference_input_type not in all_types or
+          self.inference_output_type not in all_types):
         all_types_names = ["tf." + t.name for t in all_types]
         raise ValueError("The inference_input_type and inference_output_type "
                          "must be in {}.".format(all_types_names))
-    elif self.inference_input_type not in default_types or \
-        self.inference_output_type not in default_types:
+    elif (self.inference_input_type not in default_types or
+          self.inference_output_type not in default_types):
       raise ValueError("The inference_input_type and inference_output_type "
                        "must be tf.float32.")
 

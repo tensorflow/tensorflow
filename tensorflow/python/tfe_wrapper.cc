@@ -335,7 +335,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
     } else {
       ThrowValueError(
           absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
-                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
+                          "'hlo', 'hlo_serialized', 'optimized_hlo', "
+                          "'optimized_hlo_serialized', 'optimized_hlo_dot'",
                           s_stage)
               .c_str());
     }

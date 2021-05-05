@@ -26,9 +26,10 @@ namespace tensorflow {
 namespace profiler {
 
 enum class ContextType : int {
-  kGeneric,
+  kGeneric = 0,
   kLegacy,
   kTfExecutor,
+  kTfrtExecutor,
   kSharedBatchScheduler,
   kPjRt,
   kAdaptiveSharedBatchScheduler,

@@ -23,10 +23,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.TFRecordWriter")
+@deprecation.deprecated(
+    None, "To write TFRecords to disk, use `tf.io.TFRecordWriter`. To save "
+    "and load the contents of a dataset, use `tf.data.experimental.save` "
+    "and `tf.data.experimental.load`")
 class TFRecordWriter(object):
   """Writes a dataset to a TFRecord file.
 
@@ -62,6 +67,10 @@ class TFRecordWriter(object):
   dataset = dataset.apply(tf.data.experimental.group_by_window(
     lambda i, _: i % NUM_SHARDS, reduce_func, tf.int64.max
   ))
+
+  # Iterate through the dataset to trigger data writing.
+  for _ in dataset:
+    pass
   ```
   """
 
@@ -111,5 +120,7 @@ class TFRecordWriter(object):
           "produces shape {0} and types {1}".format(
               dataset_ops.get_legacy_output_shapes(dataset),
               dataset_ops.get_legacy_output_types(dataset)))
+    # pylint: disable=protected-access
+    dataset = dataset._apply_debug_options()
     return gen_experimental_dataset_ops.dataset_to_tf_record(
-        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+        dataset._variant_tensor, self._filename, self._compression_type)

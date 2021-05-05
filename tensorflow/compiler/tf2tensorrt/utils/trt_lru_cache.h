@@ -176,7 +176,7 @@ class CalibrationContext {
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
 
   // Temporary staging areas for calibration inputs.
-  std::vector<PersistentTensor> device_tensors_;
+  std::vector<Tensor> device_tensors_;
 
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;

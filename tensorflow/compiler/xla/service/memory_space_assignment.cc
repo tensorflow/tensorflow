@@ -1814,8 +1814,8 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
-  // Go through the parameters and outputs and pin them to the corresponding
-  // memory by adding a required assignment.
+  // Go through the parameters, outputs, and constants and pin them to the
+  // corresponding memory by adding a required assignment.
   const HloModule& module = alias_analysis_.dataflow_analysis().module();
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   HloComputation* entry_computation = module.entry_computation();
@@ -1867,6 +1867,33 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
           }
         }
       });
+
+  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        auto constant_instruction_it = instruction_schedule.find(instruction);
+        if (constant_instruction_it == instruction_schedule.end()) {
+          continue;
+        }
+        int64_t constant_instruction_time = constant_instruction_it->second;
+        for (const auto& indexed_shape :
+             ShapeUtil::GetLeafShapes(instruction->shape())) {
+          const ShapeIndex& index = indexed_shape.index;
+          for (const HloBuffer* buffer :
+               alias_analysis_.ComputeBuffersAt(instruction, index)) {
+            for (const HloValue* value : buffer->values()) {
+              VLOG(3) << "Adding required assignment for constant value = "
+                      << value->ToShortString()
+                      << " time = " << constant_instruction_time
+                      << " space = def";
+              required_assignments_[value].push_back(
+                  {MemorySpace::kDefault, /*time=*/constant_instruction_time});
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
@@ -2794,6 +2821,7 @@ Status MemorySpaceAssignment::FindAllocationSequence(
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
+  heap_simulator_options.alloc_constants = true;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
                                         module_->schedule(), alias_analysis,
                                         options_.size_fn,

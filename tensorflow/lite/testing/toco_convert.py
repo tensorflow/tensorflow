@@ -50,8 +50,6 @@ def toco_options(data_types,
 
   shape_str = ":".join([",".join(str(y) for y in x) for x in shapes if x])
   inference_type = "FLOAT"
-  # TODO(ahentz): if we get multi-input quantization to work we need this
-  # to change
   if data_types[0] == "QUANTIZED_UINT8":
     inference_type = "QUANTIZED_UINT8"
   s = (" --input_data_types=%s" % ",".join(data_types) +

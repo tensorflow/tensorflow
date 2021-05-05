@@ -70,10 +70,15 @@ void HostLaunchToOutsideCompiledPass::runOnOperation() {
 
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     std::string host_device;
-    // TODO(kfranko): Propagate this error once GetHostDeviceOutsideCompilation
-    // doesn't fail for model parallelism.
-    (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                      &host_device);
+    // If there is model parallelism, we return early since
+    // GetHostDeviceOutsideComputation will fail and an error should have been
+    // returned in an earlier pass.
+    // TODO(b/186420116): Remove this check once outside compilation and model
+    // parallelism work together.
+    if (tensorflow::HasModelParallelism(tpu_cluster)) return;
+    if (failed(tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                           &host_device)))
+      return signalPassFailure();
     tpu_cluster.walk([&](tf_device::LaunchOp launch) {
       StringAttr device_attr = launch->getAttrOfType<StringAttr>(kDeviceAttr);
       if (!device_attr) return;

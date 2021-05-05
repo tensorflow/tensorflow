@@ -643,6 +643,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/unsupported_recursion.bin",
         "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [
@@ -762,6 +763,9 @@ cc_test(
     size = "small",
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
+    tags = [
+        "nomsan",  # TODO(b/186359792)
+    ],
     deps = [
         ":framework",
         ":optional_debug_tools",
