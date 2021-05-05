@@ -169,7 +169,6 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<AllToAllDecomposer>();
-    pipeline.AddPass<RealImagExpander>();
 
     pipeline.AddPass<OperandUpcaster>();
     pipeline.AddPass<ResultCaster>();
@@ -269,6 +268,7 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
+      pipeline.AddPass<RealImagExpander>();
     }
 
     pipeline.AddPass<TransposeFolding>(
