@@ -138,7 +138,7 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
         return "AMD GPU";
     }
   } else {
-    LOG(ERROR) << "Unknown GPU manufacturer " << device_cap.dev_manufacturer();
+    LOG(ERROR) << "Unknown device manufacturer " << device_cap.dev_manufacturer();
     return {};
   }
 }
