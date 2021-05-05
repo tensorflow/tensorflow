@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
 // See docs in ../ops/fft_ops.cc.
@@ -261,6 +262,9 @@ class FFTCPU : public FFTBase {
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
       full_fft_shape.AddDim(fft_shape[i - 1]);
     }
+    OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
+                errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
+                                        full_fft_shape.DebugString()));
 
     Tensor temp;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<ComplexT>::v(),
