@@ -33,10 +33,6 @@
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
-* `tf.saved_model`:
-    *   SavedModels can now save custom gradients. Use the option
-        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature.
 
 ## Bug Fixes and Other Changes
 

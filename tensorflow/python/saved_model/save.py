@@ -27,7 +27,6 @@ import sys
 from absl import logging
 import numpy
 
-from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -39,7 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function as framework_fn
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -78,9 +76,6 @@ _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 # Graph.
 _CapturedConstant = collections.namedtuple("_CapturedConstant",
                                            ["eager_tensor", "graph_tensor"])
-# Container for tensors captured from external functions.
-_CapturedTensor = collections.namedtuple("_CapturedTensor",
-                                         ["name", "concrete_function"])
 
 # Number of untraced functions to display to user in warning message.
 _NUM_DISPLAY_UNTRACED_FUNCTIONS = 5
@@ -217,8 +212,6 @@ class _SaveableView(object):
     """
     self.nodes = list(self._trackable_objects)
     self.concrete_functions = []
-    self.gradient_functions = []
-    self.gradient_defs = []
     self._seen_function_names = set()
     self._untraced_functions = []
     # Maps node -> local name -> (save function, restore function)
@@ -248,10 +241,6 @@ class _SaveableView(object):
           ", ".join(self._untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
           min(_NUM_DISPLAY_UNTRACED_FUNCTIONS, len(self._untraced_functions)),
           len(self._untraced_functions))
-
-  @property
-  def concrete_and_gradient_functions(self):
-    return self.concrete_functions + self.gradient_functions
 
   def _add_function_to_graph(self, function):
     """Adds function to serialize to graph."""
@@ -299,8 +288,7 @@ class _SaveableView(object):
       object_proto.slot_variables.extend(self._slot_variables.get(node, ()))
       if isinstance(
           node,
-          (def_function.Function, defun.ConcreteFunction, _CapturedConstant,
-           _CapturedTensor)):
+          (def_function.Function, defun.ConcreteFunction, _CapturedConstant)):
         continue
       for child in self.checkpoint_view.list_dependencies(node):
         child_proto = object_proto.children.add()
@@ -401,10 +389,13 @@ class _SaveableView(object):
                 shape=capture.shape)
           else:
             copied_tensor = constant_op.constant(capture_constant_value)
-
+          node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)
-          self.add_capture_and_node(capture, node)
+          self.nodes.append(node)
+          self._node_ids[capture] = node_id
+          self._node_ids[node] = node_id
+          self.captured_tensor_node_ids[capture] = node_id
           resource_map[capture] = copied_tensor
 
     self.concrete_functions = [
@@ -412,14 +403,6 @@ class _SaveableView(object):
         if x not in bad_functions
     ]
     return object_map, resource_map, asset_info
-
-  def add_capture_and_node(self, capture, node):
-    node_id = len(self.nodes)
-    self.nodes.append(node)
-    self._node_ids[capture] = node_id
-    self._node_ids[node] = node_id
-    self.captured_tensor_node_ids[capture] = node_id
-    return node_id
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
@@ -671,117 +654,8 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   resource_map[original_path_tensor] = asset_variable
 
 
-def _iterate_op_types(fn):
-  """Iterates through each op in the function and returns the op type and op."""
-  if isinstance(fn, framework_fn._DefinedFunction):  # pylint: disable=protected-access
-    for node in fn.definition.node_def:
-      op_type = node.attr["_gradient_op_type"].s
-      if op_type:
-        raise ValueError(
-            "Unable to save gradient functions when exporting a "
-            "_DefinedFunction (generally created through graph freezing utils "
-            "or through V1 graph importers). Please save with "
-            "`options=tf.SaveOptions(experimental_custom_gradients=False)`")
-  else:
-    for op in fn.graph.get_operations():
-      try:
-        op_type = op.get_attr("_gradient_op_type")
-      except ValueError:
-        continue
-      yield op_type, op
-
-
-def _get_outer_most_capture(fn, capture, func_graph_map):
-  """Tries to find the original captured tensor if capture more than once."""
-  outer_fn = fn
-  while outer_fn is not None and not isinstance(capture, ops.EagerTensor):
-    if capture.graph is not outer_fn.graph:
-      outer_fn = func_graph_map.get(outer_fn.graph.outer_graph)
-    else:
-      try:
-        capture_index = outer_fn.graph.internal_captures.index(capture)
-      except ValueError:
-        break  # Capture is a tensor inside function, and not captured from
-        # another external function
-      capture = outer_fn.graph.external_captures[capture_index]
-      outer_fn = func_graph_map.get(outer_fn.graph.outer_graph)
-  return outer_fn, capture
-
-
-def _trace_gradient_functions(graph, saveable_view):
-  """Traces gradient functions and records them in the SaveableView."""
-  functions = list(graph._functions.values())  # pylint: disable=protected-access
-  func_graph_map = {f.graph: f for f in functions if hasattr(f, "graph")}
-  seen_op_types = set()
-
-  for fn in functions:
-    for op_type, op in _iterate_op_types(fn):
-      if op_type in seen_op_types:
-        continue
-      seen_op_types.add(op_type)
-
-      try:
-        custom_gradient = ops.gradient_registry.lookup(op_type)
-      except LookupError:
-        continue
-
-      try:
-        grad_fn = (
-            def_function.function(custom_gradient).get_concrete_function(
-                None, *op.inputs))
-      except Exception as exc:
-        raise ValueError(
-            "Error when tracing gradients for SavedModel.\n\n"
-            "See the stack trace above to see the error that was raised when "
-            "converting a gradient function to tf.function. You may need to "
-            "update the custom gradient, or disable saving gradients with the "
-            "option tf.saved_model.SaveOptions(custom_gradients=False).\n"
-            "\tProblematic op name: {}\n\tGradient inputs: {}".format(
-                op.name, op.inputs)) from exc
-
-      # The gradient function will capture all intermediate values. These
-      # captures be serialized so that they can be re-bound to the function when
-      # loading.
-      bad_captures = []
-      for capture in grad_fn.captured_inputs:
-        if capture.dtype in _UNCOPIABLE_DTYPES:
-          continue
-        # Tries to find the outermost capture in case the tensor is a constant
-        # or not actually captured in the current function (this could happen if
-        # the function is a while loop body, in which case the captured input
-        # is not the internal captured tensor).
-        outer_fn, outer_capture = _get_outer_most_capture(
-            fn, capture, func_graph_map)
-        if outer_fn is None or isinstance(outer_capture, ops.EagerTensor):
-          if outer_capture not in saveable_view.captured_tensor_node_ids:
-            raise ValueError("Error when saving custom gradients: "
-                             "invalid capture {}".format(outer_capture))
-          saveable_view.captured_tensor_node_ids[capture] = (
-              saveable_view.captured_tensor_node_ids[outer_capture])
-        elif outer_capture.graph is outer_fn.graph:
-          node = _CapturedTensor(outer_capture.name, outer_fn.name)
-          saveable_view.add_capture_and_node(capture, node)
-        else:
-          bad_captures.append(capture.name)
-      if not bad_captures:
-        grad_fn.add_to_graph(graph)
-      else:
-        raise ValueError(
-            "Can't save custom gradient {} called in function {} because "
-            "SavedModel is not yet able to serialize the captured inputs: {}"
-            .format(op_type, fn, bad_captures))
-
-      saveable_view.gradient_functions.append(grad_fn)
-      func_graph_map[grad_fn.graph] = grad_fn
-
-      grad_def = function_pb2.RegisteredGradient()
-      grad_def.gradient_func = grad_fn.name
-      grad_def.registered_op_type = op_type
-      saveable_view.gradient_defs.append(grad_def)
-
-
 def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
-                         namespace_whitelist, save_custom_gradients):
+                         namespace_whitelist):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -790,7 +664,6 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     signature_functions: A dictionary mapping signature keys to concrete
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
-    save_custom_gradients: Whether to save custom gradients.
 
   Returns:
     A tuple of (_AssetInfo, Graph) containing the captured assets and
@@ -844,24 +717,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     signatures = _generate_signatures(signature_functions, resource_map)
     for concrete_function in saveable_view.concrete_functions:
       concrete_function.add_to_graph()
-    if save_custom_gradients:
-      _trace_gradient_functions(exported_graph, saveable_view)
-    else:
-      # Trace anyways to warn the user if there are any issues with the custom
-      # gradients.
-      try:
-        _trace_gradient_functions(exported_graph, saveable_view)
-      except Exception:  # pylint: disable=broad-except
-        tf_logging.warning(
-            "Your model contains untraceable custom gradients. This warning "
-            "may become an error in the future. Please set the option "
-            "tf.saved_model.SaveOption(experimental_custom_gradients=True) "
-            "to get the full error message.")
-
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
-  graph_def.library.registered_gradients.extend(saveable_view.gradient_defs)
   _verify_ops(graph_def, namespace_whitelist)
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
@@ -917,7 +775,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
   saveable_view.fill_object_graph_proto(proto)
 
   coder = nested_structure_coder.StructureCoder()
-  for concrete_function in saveable_view.concrete_and_gradient_functions:
+  for concrete_function in saveable_view.concrete_functions:
     name = compat.as_text(concrete_function.name)
     name = saveable_view.function_name_map.get(name, name)
     serialized = function_serialization.serialize_concrete_function(
@@ -951,9 +809,6 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
             obj, function_name_map))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
-  elif isinstance(obj, _CapturedTensor):
-    proto.captured_tensor.name = obj.name
-    proto.captured_tensor.concrete_function = obj.concrete_function
   elif isinstance(obj, tracking.CapturableResource):
     proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
@@ -1348,9 +1203,9 @@ def _build_meta_graph_impl(obj,
   saveable_view = _SaveableView(checkpoint_graph_view, options,
                                 wrapped_functions)
   object_saver = util.TrackableSaver(checkpoint_graph_view)
-  asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def, saveable_view, signatures,
-      options.namespace_whitelist, options.experimental_custom_gradients)
+  asset_info, exported_graph = _fill_meta_graph_def(meta_graph_def,
+                                                    saveable_view, signatures,
+                                                    options.namespace_whitelist)
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
     for alias, func in options.function_aliases.items():
