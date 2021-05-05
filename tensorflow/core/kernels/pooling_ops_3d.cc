@@ -698,6 +698,19 @@ class MaxPooling3dGradGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {2}, 0, tensor_out.shape(), &output));
 
+    // Given access patterns in LaunchMaxPooling3dGradGradOp, these tensors must
+    // have elements.
+    OP_REQUIRES(context, tensor_in.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor tensor_in: ",
+                                        tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_out.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor tensor_out: ",
+                                        tensor_out.DebugString()));
+    OP_REQUIRES(
+        context, out_grad_backprop.NumElements() > 0,
+        errors::InvalidArgument("received empty tensor out_grad_backprop: ",
+                                out_grad_backprop.DebugString()));
+
     LaunchMaxPooling3dGradGradOp<Device, T>::launch(
         context, params, tensor_in, tensor_out, out_grad_backprop, output);
   }
