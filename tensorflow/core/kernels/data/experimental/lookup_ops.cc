@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -59,8 +61,13 @@ class DatasetIterator
         absl::make_unique<CancellationManager>(ctx->cancellation_manager());
     params.cancellation_manager = cancellation_manager_.get();
     iterator_ctx_ = absl::make_unique<data::IteratorContext>(std::move(params));
-    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(), nullptr,
-                                              "LookupTable", &iterator_));
+
+    DatasetBase* finalized_dataset;
+    TF_RETURN_IF_ERROR(
+        data::FinalizeDataset(ctx, dataset_, &finalized_dataset));
+    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
+        iterator_ctx_.get(), nullptr, "LookupTable", &iterator_));
+    core::ScopedUnref unref(finalized_dataset);
     Next();
     return Status::OK();
   }
@@ -91,7 +98,7 @@ class DatasetIterator
   }
 
  private:
-  data::DatasetBase* dataset_;  // not owned.
+  data::DatasetBase* dataset_;  // owned.
   std::unique_ptr<data::IteratorContext> iterator_ctx_;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
