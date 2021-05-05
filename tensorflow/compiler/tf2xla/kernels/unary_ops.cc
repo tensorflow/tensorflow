@@ -66,15 +66,15 @@ XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
-XLAJIT_MAKE_UNARY(Floor, xla::Floor(x));
+REGISTER_XLA_OP(Name("Floor"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
-XLAJIT_MAKE_UNARY(IsInf, xla::IsInf(x));
+REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
 XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);
 XLAJIT_MAKE_UNARY(Log, xla::Log(x));
-XLAJIT_MAKE_UNARY(Log1p, xla::Log1p(x));
+REGISTER_XLA_OP(Name("Log1p"), MlirXlaOpKernel);
 
 XLAJIT_MAKE_UNARY(Invert, xla::Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, xla::Not(x));
@@ -115,13 +115,12 @@ XLAJIT_MAKE_UNARY(Softplus, Softplus(b, x));
 
 // softsign(x) = x / (abs(x) + 1)
 XLAJIT_MAKE_UNARY(Softsign, x / (xla::Abs(x) + xla::ScalarLike(x, 1.0)));
-XLAJIT_MAKE_UNARY(Sqrt, xla::Sqrt(x));
+REGISTER_XLA_OP(Name("Sqrt"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Square, x* x);
 XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
-XLAJIT_MAKE_UNARY(Tanh, xla::Tanh(x));
-
+REGISTER_XLA_OP(Name("Tanh"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Real, xla::Real(x));
-XLAJIT_MAKE_UNARY(Imag, xla::Imag(x));
+REGISTER_XLA_OP(Name("Imag"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
 XLAJIT_MAKE_UNARY(Erfinv, xla::ErfInv(x));
