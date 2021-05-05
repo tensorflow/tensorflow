@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -1188,6 +1189,8 @@ void RocmActivityCallbackImpl::AddHipMallocActivityEvent(
   // similar to CUDA we set this to the default stream
   event.stream_id = 0;
   event.start_time_ns = record->begin_ns;
+  // making sure it does not have 0ns duration. Otherwise, it may not show up in
+  // the trace view
   event.end_time_ns = std::max(record->end_ns, record->begin_ns + 1);
 
   collector_->AddEvent(std::move(event), false);
@@ -1574,7 +1577,7 @@ Status RocmTracer::DisableActivityTracing() {
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";
-    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
+    tensorflow::profiler::SleepForMillis(duration_ms);
   }
   ClearPendingActivityRecordsCount();
 
