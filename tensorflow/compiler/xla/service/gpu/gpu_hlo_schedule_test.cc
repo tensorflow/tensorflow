@@ -368,7 +368,7 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
           /*custom_call_target=*/"nonblocking-call-start",
           /*opaque=*/""));
   static_cast<HloCustomCallInstruction*>(nonblocking_call)
-      ->set_custom_call_schedule(EARLY_AS_POSSIBLE);
+      ->set_custom_call_schedule(EARLIEST);
   // In addition, add control_depedency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
   // Blocking call, which only add4 depends on.
@@ -378,7 +378,7 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
           /*custom_call_target=*/"blocking-call-done",
           /*opaque=*/""));
   static_cast<HloCustomCallInstruction*>(blocking_call)
-      ->set_custom_call_schedule(LATE_AS_POSSIBLE);
+      ->set_custom_call_schedule(LATEST);
   HloInstruction* add3 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
   HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -398,13 +398,13 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   // Order constrained by control dependency.
   EXPECT_TRUE(order->ExecutesBefore(add1, nonblocking_call));
   // Test that nonblocking_call is scheduled before add2, so that we know
-  // EARLY_AS_POSSIBLE is in effect.
+  // EARLIEST is in effect.
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add2));
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add3));
   EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add4));
 
   // Test that blocking_call is scheduled after add3, so that we know
-  // LATE_AS_POSSIBLE is in effect.
+  // LATEST is in effect.
   EXPECT_TRUE(order->ExecutesBefore(add3, blocking_call));
   EXPECT_TRUE(order->ExecutesBefore(blocking_call, add4));
 }

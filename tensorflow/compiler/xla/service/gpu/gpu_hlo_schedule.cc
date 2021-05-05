@@ -192,17 +192,17 @@ bool CustomCallWithSchedule(const HloInstruction* instr,
                  ->custom_call_schedule() == schedule;
 }
 
-// Schedules EARLY_AS_POSSIBLE and LATE_AS_POSSIBLE custom-calls. This supports
-// a custom-call use case, where a logical operation is lowered into two HLOs
-// (e.g., PerformX and PerformXDone). We utilize this mechanism to either hide
-// host latencies between the pair of the custom-calls or more accurately
-// identify the def-use relationship of the two calls (typically PerformX is
-// scheduled right after all of its producers have been scheduled and
-// PerformXDone is scheduled right before its first consumer.)
+// Schedules EARLIEST and LATEST custom-calls. This supports a custom-call use
+// case, where a logical operation is lowered into two HLOs (e.g., PerformX and
+// PerformXDone). We utilize this mechanism to either hide host latencies
+// between the pair of the custom-calls or more accurately identify the def-use
+// relationship of the two calls (typically PerformX is scheduled right after
+// all of its producers have been scheduled and PerformXDone is scheduled right
+// before its first consumer.)
 HloInstructionSequence postprocessor_to_custom_schedule(
     const HloInstructionSequence& input) {
-  // Schedule `EARLY_AS_POSSIBLE`.
-  std::deque<HloInstruction*> early_as_possible_sched;
+  // Schedule `EARLIEST`.
+  std::deque<HloInstruction*> earliest_scheduled;
   {
     absl::flat_hash_set<HloInstruction*> scheduled;
     auto is_scheduled = [&](const HloInstruction* instr) -> bool {
@@ -214,47 +214,45 @@ HloInstructionSequence postprocessor_to_custom_schedule(
         continue;
       }
 
-      early_as_possible_sched.push_back(instr);
+      earliest_scheduled.push_back(instr);
       scheduled.insert(instr);
 
       for (HloInstruction* user : instr->users()) {
-        // Schedule any user who has the attribute `early_as_possible` and all
+        // Schedule any user who has the attribute `EARLIEST` and all
         // of its producers and control_predecessors have been scheduled.
-        if (CustomCallWithSchedule(user,
-                                   CustomCallSchedule::EARLY_AS_POSSIBLE) &&
+        if (CustomCallWithSchedule(user, CustomCallSchedule::EARLIEST) &&
             absl::c_all_of(user->operands(), is_scheduled) &&
             absl::c_all_of(user->control_predecessors(), is_scheduled)) {
-          early_as_possible_sched.push_back(user);
+          earliest_scheduled.push_back(user);
           scheduled.insert(user);
         }
       }
     }
   }
 
-  // Schedule `LATE_AS_POSSIBLE`.
-  std::deque<HloInstruction*> late_as_possible_sched;
+  // Schedule `LATEST`.
+  std::deque<HloInstruction*> latest_scheduled;
   {
     absl::flat_hash_set<HloInstruction*> scheduled;
     auto is_scheduled = [&](const HloInstruction* instr) -> bool {
       return scheduled.contains(instr);
     };
-    for (auto it = early_as_possible_sched.rbegin();
-         it != early_as_possible_sched.rend(); it++) {
+    for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
+         it++) {
       if (scheduled.contains(*it)) {
         continue;
       }
 
-      late_as_possible_sched.push_front(*it);
+      latest_scheduled.push_front(*it);
       scheduled.insert(*it);
 
       for (HloInstruction* opnd : (*it)->unique_operands()) {
-        // Schedule any opnd who has the attribute `late_as_possible` if all of
+        // Schedule any opnd who has the attribute `LATEST` if all of
         // its users and control_successors have been scheduled.
-        if (CustomCallWithSchedule(opnd,
-                                   CustomCallSchedule::LATE_AS_POSSIBLE) &&
+        if (CustomCallWithSchedule(opnd, CustomCallSchedule::LATEST) &&
             absl::c_all_of(opnd->users(), is_scheduled) &&
             absl::c_all_of(opnd->control_successors(), is_scheduled)) {
-          late_as_possible_sched.push_front(opnd);
+          latest_scheduled.push_front(opnd);
           scheduled.insert(opnd);
         }
       }
@@ -262,7 +260,7 @@ HloInstructionSequence postprocessor_to_custom_schedule(
   }
 
   HloInstructionSequence result;
-  absl::c_for_each(late_as_possible_sched,
+  absl::c_for_each(latest_scheduled,
                    [&](HloInstruction* i) { result.push_back(i); });
   return result;
 }

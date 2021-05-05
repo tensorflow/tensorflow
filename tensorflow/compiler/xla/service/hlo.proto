@@ -36,8 +36,8 @@ option cc_enable_arenas = true;
 
 enum CustomCallSchedule {
   NONE = 0;
-  LATE_AS_POSSIBLE = 1;
-  EARLY_AS_POSSIBLE = 2;
+  LATEST = 1;
+  EARLIEST = 2;
 }
 
 // Serialization of HloInstruction.
