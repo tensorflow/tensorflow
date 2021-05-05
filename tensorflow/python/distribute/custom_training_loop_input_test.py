@@ -724,7 +724,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       # reshape4: [-1, <=3, 2]
       reshape4 = array_ops.reshape(reshape1,
                                    [-1, array_ops.shape(example)[0], 2])
-      return [reshape1, reshape2, reshape3, reshape4]
+      # Reshape1 is duplicated in order to test dynamic dimension on copies.
+      return [reshape1, reshape2, reshape3, reshape4, reshape1]
 
     # This assumes that there are exactly 2 replicas
     outputs = distribution.experimental_local_results(
@@ -733,11 +734,13 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     self.assertAllEqual((3, 3, 2), outputs[0][1].shape)
     self.assertAllEqual((3, 3, 2), outputs[0][2].shape)
     self.assertAllEqual((3, 3, 2), outputs[0][3].shape)
+    self.assertAllEqual((9, 2), outputs[0][4].shape)
 
     self.assertAllEqual((4, 2), outputs[1][0].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][1].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][2].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][3].shape)
+    self.assertAllEqual((4, 2), outputs[1][4].shape)
 
   @combinations.generate(
       combinations.combine(
