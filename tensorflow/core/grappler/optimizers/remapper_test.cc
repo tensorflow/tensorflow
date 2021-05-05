@@ -218,7 +218,6 @@ TEST_F(RemapperTest, FuseBatchNormWithRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
-  GTEST_SKIP() << "No CUDA, skip FuseBatchNormGradWithReluGrad on GPU";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -455,7 +454,6 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
-  GTEST_SKIP() << "No CUDA, skip FuseBatchNormGradWithReluGrad on GPU";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -485,7 +483,17 @@ TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
       ops::FusedBatchNormV3::IsTraining(is_training)
           .Epsilon(epsilon)
           .DataFormat("NHWC"));
-  auto add = ops::Add(s.WithOpName("add"), fbn.y, side_input_cast);
+  auto fbn_side_input =
+      ops::FusedBatchNormV3(s.WithOpName("fused_batch_norm_side_input"),
+                            side_input_cast, scale, offset, mean, var,
+                            ops::FusedBatchNormV3::IsTraining(is_training)
+                                .Epsilon(epsilon)
+                                .DataFormat("NHWC"));
+  // Since fbn.y is the first argument of "add" op, "fused_batch_norm" will be
+  // fused (not "fused_batch_norm_side_input"). Correspondingly,
+  // "fused_batch_norm_grad" will be fused (not
+  // "fused_batch_norm_side_input_grad").
+  auto add = ops::Add(s.WithOpName("add"), fbn.y, fbn_side_input.y);
   auto relu = ops::Relu(s.WithOpName("relu"), add);
 
   // Backward pass.
@@ -496,18 +504,28 @@ TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
       ops::Cast(s.WithOpName("output_grad_cast"), output_grad, DT_HALF);
   auto relu_grad = ops::internal::ReluGrad(s.WithOpName("relu_grad"),
                                            output_grad_cast, relu);
-  auto side_input_grad =
-      ops::Identity(s.WithOpName("side_input_grad"), relu_grad);
   auto fbn_grad = ops::FusedBatchNormGradV3(
       s.WithOpName("fused_batch_norm_grad"), relu_grad, input_cast, scale,
       fbn.reserve_space_1, fbn.reserve_space_2, fbn.reserve_space_3,
       ops::FusedBatchNormGradV3::IsTraining(is_training)
           .Epsilon(epsilon)
           .DataFormat("NHWC"));
+  auto fbn_side_input_grad = ops::FusedBatchNormGradV3(
+      s.WithOpName("fused_batch_norm_side_input_grad"), relu_grad,
+      side_input_cast, scale, fbn_side_input.reserve_space_1,
+      fbn_side_input.reserve_space_2, fbn_side_input.reserve_space_3,
+      ops::FusedBatchNormGradV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
   auto fetch0 = ops::Identity(s.WithOpName("fetch0"), fbn_grad.x_backprop);
   auto fetch1 = ops::Identity(s.WithOpName("fetch1"), fbn_grad.scale_backprop);
   auto fetch2 = ops::Identity(s.WithOpName("fetch2"), fbn_grad.offset_backprop);
-  auto fetch3 = ops::Identity(s.WithOpName("fetch3"), side_input_grad);
+  auto fetch3 =
+      ops::Identity(s.WithOpName("fetch3"), fbn_side_input_grad.x_backprop);
+  auto fetch4 =
+      ops::Identity(s.WithOpName("fetch4"), fbn_side_input_grad.scale_backprop);
+  auto fetch5 = ops::Identity(s.WithOpName("fetch5"),
+                              fbn_side_input_grad.offset_backprop);
 
   auto input_t = GenerateRandomTensor<DT_FLOAT>(input_shape);
   auto scale_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
@@ -518,7 +536,7 @@ TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
   auto output_grad_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
 
   GrapplerItem item;
-  item.fetch = {"fetch0", "fetch1", "fetch2", "fetch3"};
+  item.fetch = {"fetch0", "fetch1", "fetch2", "fetch3", "fetch4", "fetch5"};
   item.feed = {{"input", input_t},
                {"scale", scale_t},
                {"offset", offset_t},
@@ -553,7 +571,7 @@ TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
       EXPECT_EQ(node.input(2), "offset");
       EXPECT_EQ(node.input(3), "mean");
       EXPECT_EQ(node.input(4), "var");
-      EXPECT_EQ(node.input(5), "side_input_cast");
+      EXPECT_EQ(node.input(5), "fused_batch_norm_side_input");
 
       auto attr = node.attr();
       EXPECT_EQ(attr["num_side_inputs"].i(), 1);
@@ -590,13 +608,15 @@ TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
 
   if (GetNumAvailableGPUs() > 0) {
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-    ASSERT_EQ(tensors_expected.size(), 4);
+    ASSERT_EQ(tensors_expected.size(), 6);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    ASSERT_EQ(tensors.size(), 4);
+    ASSERT_EQ(tensors.size(), 6);
     test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, /*rtol=*/1e-2);
     test::ExpectClose(tensors[1], tensors_expected[1], 1e-2, /*rtol=*/1e-2);
     test::ExpectClose(tensors[2], tensors_expected[2], 1e-2, /*rtol=*/1e-2);
     test::ExpectClose(tensors[3], tensors_expected[3], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[4], tensors_expected[4], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[5], tensors_expected[5], 1e-2, /*rtol=*/1e-2);
   }
 }
 #endif
