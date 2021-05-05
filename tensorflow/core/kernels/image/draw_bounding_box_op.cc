@@ -73,6 +73,12 @@ class DrawBoundingBoxesOp : public OpKernel {
         errors::InvalidArgument("Channel depth should be either 1 (GRY), "
                                 "3 (RGB), or 4 (RGBA)"));
 
+    OP_REQUIRES(
+        context, boxes.dim_size(2) == 4,
+        errors::InvalidArgument(
+            "The size of the third dimension of the box must be 4. Received: ",
+            boxes.dim_size(2)));
+
     const int64 batch_size = images.dim_size(0);
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
