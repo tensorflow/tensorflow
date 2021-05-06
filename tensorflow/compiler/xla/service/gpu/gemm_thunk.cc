@@ -132,10 +132,10 @@ static bool DoGemmWithAlgorithm(
             lhs_transpose, rhs_transpose, output_matrix.num_rows,
             output_matrix.num_cols,
             /*size of reduce dim=*/k,
-            /*alpha=*/se::HostOrDeviceScalar<Element>(alpha), lhs_data,
+            /*alpha=*/alpha, lhs_data,
             /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
             /*leading dim of RHS=*/rhs_matrix.num_rows,
-            /*beta=*/se::HostOrDeviceScalar<Element>(beta), &output_data,
+            /*beta=*/beta, &output_data,
             /*leading dim of output=*/output_matrix.num_rows, computation_type,
             *algorithm, output_profile_result)
         .ok();

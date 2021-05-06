@@ -1480,12 +1480,10 @@ class Stream {
   template <typename InputType, typename OutputType, typename ConstantType>
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<ConstantType> &alpha,
-      const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb,
-      const HostOrDeviceScalar<ConstantType> &beta, DeviceMemory<OutputType> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
+      uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
+      const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
+      DeviceMemory<OutputType> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
     static_assert(std::is_same<InputType, Eigen::half>::value ||
                       std::is_same<InputType, float>::value ||
@@ -1501,7 +1499,9 @@ class Stream {
              std::is_same<OutputType, int32>::value),
         "Input and output buffer types should be the same unless input is "
         "int8 and output is int32");
-    static_assert(std::is_same<ConstantType, OutputType>::value,
+    static_assert(std::is_same<ConstantType, OutputType>::value ||
+                      (std::is_same<ConstantType, float>::value &&
+                       std::is_same<OutputType, Eigen::half>::value),
                   "Constant and output types should match");
     blas::ComputationType expected_computation_type =
         blas::ToComputationType<ConstantType>::value;
@@ -1525,12 +1525,15 @@ class Stream {
                               "StreamExecutor without BLAS support"));
       return *this;
     }
-    bool ok = blas->DoBlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        computation_type, algorithm, output_profile_result);
+    port::Status st = blas->DoBlasGemmWithAlgorithm(
+        this, transa, transb, m, n, k, &alpha, a,
+        blas::ToDataType<InputType>::value, lda, b,
+        blas::ToDataType<InputType>::value, ldb, &beta, c,
+        blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
+        output_profile_result);
     if (!output_profile_result) {
       // Otherwise the error is recorded in the profile.
-      CheckError(ok);
+      CheckStatus(st);
     }
     return *this;
   }

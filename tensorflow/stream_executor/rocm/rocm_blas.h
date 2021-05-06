@@ -169,21 +169,6 @@ class ROCMBlas : public blas::BlasSupport {
       T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator);
 
-  // Helper function for implementing DoBlasGemmWithAlgorithm.
-  //
-  // We take alpha and beta by const reference because T might be Eigen::half,
-  // and we want to avoid pulling in a dependency on Eigen.  When we pass the
-  // references to rocBLAS, we essentially reinterpret_cast to __half, which is
-  // safe because Eigen::half inherits from __half.
-  template <typename InT, typename OutT, typename CompT>
-  bool DoBlasGemmWithAlgorithmImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a,
-      int lda, const DeviceMemory<InT> &b, int ldb, const CompT &beta,
-      DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>
   bool DoBlasGemmWithProfilingImpl(

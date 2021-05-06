@@ -121,16 +121,6 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
 
-  // Helper function for implementing DoBlasGemmWithAlgorithm.
-  template <typename InT, typename OutT, typename CompT>
-  bool DoBlasGemmWithAlgorithmImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const HostOrDeviceScalar<CompT> &alpha,
-      const DeviceMemory<InT> &a, int lda, const DeviceMemory<InT> &b, int ldb,
-      const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>
   bool DoBlasGemmWithProfilingImpl(
