@@ -32,6 +32,16 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // -----
 
+// CHECK-LABEL: func @mixed_types_allgather
+func @mixed_types_allgather(%a0: memref<1x1xf32>, %a1:memref<1x1xi32>) {
+  "lmhlo.all_gather"(%a0, %a1, %a0, %a1) {all_gather_dimension = 0 : i64,
+    constrain_layout = false, replica_groups = dense<0> : tensor<1x1xi64>,
+    use_global_device_ids = false} : (memref<1x1xf32>, memref<1x1xi32>, memref<1x1xf32>, memref<1x1xi32>) -> ()
+  return
+}
+
+// -----
+
 func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
   // expected-error@+1 {{replica id #1 seen more than once}}
   "lmhlo.all_gather"(%input0, %output)
