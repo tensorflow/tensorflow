@@ -24,6 +24,15 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 pwd
 
+# Clean up the intermediate files to avoid errors with Kokoro.
+# See http://b/186570469 for additional context.
+function cleanup() {
+  cd "${ROOT_DIR}"
+  echo "Cleaning up to prevent Kokoro errors (see http://b/186570469)"
+  make -f tensorflow/lite/micro/tools/make/Makefile clean clean_downloads DISABLE_DOWNLOADS=true
+}
+trap cleanup EXIT
+
 echo "Starting to run micro tests at `date`"
 
 make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true

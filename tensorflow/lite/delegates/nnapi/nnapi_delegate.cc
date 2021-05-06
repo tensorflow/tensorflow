@@ -57,6 +57,9 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #include "tensorflow/lite/util.h"
+#ifdef NNAPI_VERBOSE_VALIDATION
+#include "tensorflow/lite/schema/schema_generated.h"
+#endif
 #include <farmhash.h>
 
 namespace tflite {
@@ -5217,6 +5220,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(
       delegate_options, nnapi, /*exclude_nnapi_reference=*/true);
+  std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
   for (int node_index : TfLiteIntArrayView(plan)) {
     TfLiteNode* node;
     TfLiteRegistration* registration;
@@ -5224,9 +5228,20 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, node_index, &node, &registration));
     if (NNAPIDelegateKernel::Validate(context, registration->builtin_code,
                                       registration->version, target_sdk_version,
-                                      node, is_accelerator_specified)) {
+                                      node, is_accelerator_specified,
+                                      &map_failures)) {
       supported_nodes.push_back(node_index);
     }
+#ifdef NNAPI_VERBOSE_VALIDATION
+    for (auto& failure : map_failures) {
+      TFLITE_LOG_PROD(
+          TFLITE_LOG_WARNING, "Operator %s (v%d) refused by NNAPI delegate: %s",
+          tflite::EnumNameBuiltinOperator(
+              static_cast<BuiltinOperator>(registration->builtin_code)),
+          registration->version, failure.message.c_str());
+    }
+    map_failures.clear();
+#endif
   }
 
   // If there are no delegated nodes, short-circuit node replacement.

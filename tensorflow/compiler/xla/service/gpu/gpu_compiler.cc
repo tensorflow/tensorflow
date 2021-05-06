@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -120,7 +121,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
-#include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -296,11 +296,9 @@ Status GpuCompiler::OptimizeHloModule(
 
   if (use_spmd) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    spmd_pipeline.AddPass<ShardingPropagation>(true);
-    spmd::SpmdPartitionerOptions default_options;
-    default_options.allow_module_signature_change = true;
-    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count(), default_options);
+    spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+    spmd_pipeline.AddPass<GpuSpmdPartitioner>(
+        num_partitions, hlo_module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
 
@@ -861,6 +859,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
             }
             llvm::SMDiagnostic err;
             new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+            if (!new_llvm_module) {
+              std::string err_string;
+              llvm::raw_string_ostream os(err_string);
+              err.print(/*ProgName=*/nullptr, os, /*ShowColors=*/false);
+              LOG(FATAL) << "Failed to parse IR: " << err_string;
+            }
           }
 
           compile_results[i] = compile_single_module(

@@ -256,8 +256,8 @@ data::CompilerOptions ToFB(CompilerOptions type) {
       return data::CompilerOptions::ADRENO_FULL_SIMD_LINE;
     case CompilerOptions::kAdrenoMoreWaves:
       return data::CompilerOptions::ADRENO_MORE_WAVES;
-    case CompilerOptions::kClPowervrFp16:
-      return data::CompilerOptions::POWERVR_FP16;
+    case CompilerOptions::kClFastRelaxedMath:
+      return data::CompilerOptions::CL_FAST_RELAXED_MATH;
     case CompilerOptions::kClDisableOptimizations:
       return data::CompilerOptions::CL_OPT_DISABLE;
     case CompilerOptions::kCl20:
@@ -299,8 +299,8 @@ CompilerOptions ToEnum(data::CompilerOptions type) {
       return CompilerOptions::kAdrenoFullSimd;
     case data::CompilerOptions::ADRENO_MORE_WAVES:
       return CompilerOptions::kAdrenoMoreWaves;
-    case data::CompilerOptions::POWERVR_FP16:
-      return CompilerOptions::kClPowervrFp16;
+    case data::CompilerOptions::CL_FAST_RELAXED_MATH:
+      return CompilerOptions::kClFastRelaxedMath;
     case data::CompilerOptions::CL_OPT_DISABLE:
       return CompilerOptions::kClDisableOptimizations;
     case data::CompilerOptions::CL_2_0:

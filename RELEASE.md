@@ -40,8 +40,6 @@
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
-    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
-        creation of custom wrapper objects for resource tensors.
     *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
         generic mutable hash table implementation.
         *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
@@ -51,7 +49,17 @@
    *    Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+   *   SavedModel
+        *   Added `tf.saved_model.experimental.TrackableResource`, which allows
+            the creation of custom wrapper objects for resource tensors.
+        *   Added a SavedModel load option to allow restoring partial
+            checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
+  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
+            for details.
 *   `tf.data`:
+    *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
+        `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
+        experimental endpoint.
     *   Promoting `tf.data.experimental.get_single_element` API to
         `tf.data.Dataset.get_single_element` and deprecating the experimental
         endpoint.
@@ -65,11 +73,23 @@
         skipping over exhausted datasets, until all datasets are exhausted. By
         default, the original behavior (`stop_on_empty_dataset=False`) is
         preserved.
+    *   Removed previously deprecated tf.data statistics related APIs:
+        *   `tf.data.Options.experimental_stats`
+        *   `tf.data.experimental.StatsAggregator`
+        *   `tf.data.experimental.StatsOptions.*`
+        *   `tf.data.experimental.bytes_produced_stats`
+        *   `tf.data.experimental.latency_stats`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
+    *   Add `keepdims` argument to all `GlobalPooling` layers.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+*   `Grappler`:
+    *   Disable default Grappler optimization timeout to make the optimization
+        pipeline deterministic. This may lead to increased model loading time,
+        because time spent in graph optimizations is now unbounded (was 20
+        minutes).
 
 ## Thanks to our Contributors
 
@@ -146,11 +166,11 @@ This release contains contributions from many people at Google, as well as:
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
       * Register custom graph optimization passes with
-        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
-* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md).
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN)
   CPU performance optimizations from
   [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
-  are now available in the official x86-64 Linux and Windows builds. 
+  are now available in the official x86-64 Linux and Windows builds.
     * They are off by default. Enable them by setting the environment variable
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been

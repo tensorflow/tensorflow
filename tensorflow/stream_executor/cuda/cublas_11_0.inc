@@ -39,6 +39,16 @@ size_t CUBLASWINAPI cublasGetCudartVersion(void) {
   return func_ptr();
 }
 
+cublasStatus_t CUBLASWINAPI cublasSetWorkspace_v2(cublasHandle_t handle,
+                                                  void *workspace,
+                                                  size_t workspaceSizeInBytes) {
+  using FuncPtr =
+      cublasStatus_t(CUBLASWINAPI *)(cublasHandle_t, void *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasSetWorkspace_v2");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, workspace, workspaceSizeInBytes);
+}
+
 cublasStatus_t CUBLASWINAPI cublasSetStream_v2(cublasHandle_t handle,
                                                cudaStream_t streamId) {
   using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(cublasHandle_t, cudaStream_t);

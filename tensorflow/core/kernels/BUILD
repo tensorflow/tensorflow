@@ -1818,7 +1818,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
         "@com_google_absl//absl/base",
     ],
 )
@@ -2172,7 +2171,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2195,7 +2193,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2233,7 +2230,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -3340,9 +3336,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cast_op",
-    copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]),
+    copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "cast_op",
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cast_op",
@@ -4001,8 +3999,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "relu_op",
+    copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "relu_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:relu_op",
+    ],
 )
 
 tf_kernel_library(
@@ -6007,21 +6012,25 @@ filegroup(
         "where_op.h",
         "xent_op.h",
     ] + [
+        "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:rewrite_utils.h",
+        "//tensorflow/core/data:root_dataset.h",
+        "//tensorflow/core/data:split_utils.h",
+        "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
+        "//tensorflow/core/kernels/data:finalize_dataset_op.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
-        "//tensorflow/core/kernels/data:split_utils.h",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
-        "//tensorflow/core/kernels/data:dataset_utils.h",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data:model_dataset_op.h",
         "//tensorflow/core/kernels/data:optimize_dataset_op.h",
-        "//tensorflow/core/kernels/data:name_utils.h",
         "//tensorflow/core/kernels/data:optional_ops.h",
-        "//tensorflow/core/kernels/data:stats_utils.h",
-        "//tensorflow/core/kernels/data:captured_function.h",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
+        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.h",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
         "//tensorflow/core/kernels/image:adjust_saturation_op.h",
@@ -6341,22 +6350,26 @@ filegroup(
         "xent_op.cc",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
-        # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
-        "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
+        "//tensorflow/core/data:captured_function.cc",
+        "//tensorflow/core/data:dataset_utils.cc",
+        "//tensorflow/core/data:name_utils.cc",
+        "//tensorflow/core/data:rewrite_utils.cc",
+        "//tensorflow/core/data:root_dataset.cc",
+        "//tensorflow/core/data:split_utils.cc",
+        "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
+        "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
-        "//tensorflow/core/kernels/data:split_utils.cc",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:model_dataset_op.cc",
         "//tensorflow/core/kernels/data:optimize_dataset_op.cc",
-        "//tensorflow/core/kernels/data:dataset_utils.cc",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
-        "//tensorflow/core/kernels/data:stats_utils.cc",
-        "//tensorflow/core/kernels/data:name_utils.cc",
         "//tensorflow/core/kernels/data:optional_ops.cc",
-        "//tensorflow/core/kernels/data:captured_function.cc",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
+        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
+        # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
+        "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.cc",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
         "//tensorflow/core/kernels/image:adjust_saturation_op.cc",

@@ -579,7 +579,6 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
         "tflite_smoke_test",
     ],
     deps = [
@@ -644,6 +643,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/unsupported_recursion.bin",
         "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [
@@ -763,6 +763,9 @@ cc_test(
     size = "small",
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
+    tags = [
+        "nomsan",  # TODO(b/186359792)
+    ],
     deps = [
         ":framework",
         ":optional_debug_tools",
@@ -872,9 +875,6 @@ cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
-    ],
     deps = [
         ":minimal_logging",
         "@com_google_googletest//:gtest",

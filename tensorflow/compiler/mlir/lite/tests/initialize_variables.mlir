@@ -42,7 +42,7 @@ module attributes {tf_saved_model.semantics} {
 // Test for case with existing session initialize op.
 module attributes {tf_saved_model.semantics} {
   func @init_all_tables()
-  attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_1"]} {
     %cst = constant dense<[1, 2, 3, 4]> : tensor<4xi64>
     %cst_0 = constant dense<["a", "b", "c", "d"]> : tensor<4x!tf.string>
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_dba2ccaa-f1b1-46d6-b276-98008f69da71", use_node_name_sharing = false, value_dtype = !tf.string} : () -> tensor<!tf.resource>

@@ -38,6 +38,10 @@ tf_class {
     argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
   }
   member_method {
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'self\', \'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
     name: "cache"
     argspec: "args=[\'self\', \'filename\'], varargs=None, keywords=None, defaults=[\'\'], "
   }

@@ -46,8 +46,8 @@ class DatasetCreator(object):
   input_options = tf.distribute.InputOptions(
       experimental_fetch_to_device=True,
       experimental_per_replica_buffer_size=2)
-  model.fit(DatasetCreator(dataset_fn, input_options=input_options),
-      epochs=10, steps_per_epoch=10)
+  model.fit(tf.keras.utils.experimental.DatasetCreator(
+      dataset_fn, input_options=input_options), epochs=10, steps_per_epoch=10)
   ```
 
   `Model.fit` usage with `DatasetCreator` is intended to work across all

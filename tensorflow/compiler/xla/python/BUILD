@@ -323,6 +323,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -430,22 +431,6 @@ cc_library(
 )
 
 cc_library(
-    name = "py_traceback",
-    srcs = ["py_traceback.cc"],
-    hdrs = ["py_traceback.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":traceback",
-        "@com_google_absl//absl/strings:str_format",
-        "@pybind11",
-    ],
-)
-
-cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
@@ -531,7 +516,7 @@ pybind_extension(
         ":py_client",
         ":pytree",
         ":python_ref_manager",
-        ":py_traceback",
+        ":traceback",
         ":outfeed_receiver_py",
         ":types",
         ":xla_compiler",

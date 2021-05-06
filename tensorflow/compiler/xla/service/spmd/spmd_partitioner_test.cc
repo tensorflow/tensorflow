@@ -7691,6 +7691,66 @@ ENTRY entry {
   EXPECT_THAT(root, scatter);
 }
 
+TEST_F(SpmdPartitioningTest, CollectivePermuteSimplifyIdentity) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY entry {
+  %parameter.7 = f32[3,16] parameter(0), sharding={devices=[1,2]0,1}
+  %constant.7 = f32[] constant(0)
+  %pad.3 = f32[3,18] pad(f32[3,16] %parameter.7, f32[] %constant.7), padding=0_0x1_1, sharding={devices=[1,2]0,1}
+  // Shift right by 16.
+  %slice.8 = f32[3,16] slice(f32[3,18] %pad.3), slice={[0:3], [2:18]}, sharding={devices=[1,2]0,1}
+  %slice.9 = f32[3,2] slice(f32[3,18] %pad.3), slice={[0:3], [0:2]}, sharding={devices=[1,2]0,1}
+  ROOT %concatenate.6 = f32[3,18] concatenate(f32[3,16] %slice.8, f32[3,2] %slice.9), dimensions={1}, sharding={devices=[1,2]0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  // Check that the partitioned code does not have a "trivial" collective
+  // permute (which would degenerate to a copy).
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      if (hlo->opcode() != HloOpcode::kCollectivePermute) continue;
+      auto* cp = DynCast<HloCollectivePermuteInstruction>(hlo);
+      for (const std::pair<int64, int64>& pair : cp->source_target_pairs()) {
+        EXPECT_NE(pair.first, pair.second);
+      }
+    }
+  }
+}
+
+TEST_F(SpmdPartitioningTest, CollectivePermuteSimplifyZero) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY entry {
+  %parameter = f32[3,16,16,16,16,132]{5,4,3,2,1,0} parameter(0), sharding={devices=[1,2,1,1,1,1]0,1}
+  %slice = f32[3,1,16,16,16,132]{5,4,3,2,1,0} slice(f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter), slice={[0:3], [15:16], [0:16], [0:16], [0:16], [0:132]}, sharding={devices=[1,2,1,1,1,1]0,1}
+  %c0 = f32[] constant(0)
+  ROOT %pad = f32[3,18,16,16,16,132]{5,4,3,2,1,0} pad(f32[3,1,16,16,16,132]{5,4,3,2,1,0} %slice, f32[] %c0), padding=0_0x0_17x0_0x0_0x0_0x0_0, sharding={devices=[1,2,1,1,1,1]0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  std::cerr << module->ToString();
+
+  // Check that the partitioned code does not have a collective permute with an
+  // empty source_target_pair list.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      if (hlo->opcode() != HloOpcode::kCollectivePermute) continue;
+      auto* cp = DynCast<HloCollectivePermuteInstruction>(hlo);
+      EXPECT_TRUE(!cp->source_target_pairs().empty());
+    }
+  }
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
