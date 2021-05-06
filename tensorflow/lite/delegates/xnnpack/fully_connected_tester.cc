@@ -229,7 +229,8 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
       operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
       const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
-      const std::array<int32_t, 1> dequantize_filter_outputs{{3}};
+      const std::array<int32_t, 1> dequantize_filter_outputs{
+          {2 + static_cast<int32_t>(HasBias())}};
       operators.emplace_back(CreateOperator(
           builder, /*opcode_index=*/1,
           builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
@@ -292,9 +293,9 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
               builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
               TensorType_INT8, /*buffer=*/2, /*name=*/0,
               CreateQuantizationParameters(
-                      builder, /*min=*/0, /*max=*/0,
-                      builder.CreateVector<float>({bias_scale}),
-                      builder.CreateVector<int64_t>({0}))));
+                  builder, /*min=*/0, /*max=*/0,
+                  builder.CreateVector<float>({bias_scale}),
+                  builder.CreateVector<int64_t>({0}))));
     }
   }
   tensors.emplace_back(CreateTensor(
