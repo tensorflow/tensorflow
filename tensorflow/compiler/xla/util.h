@@ -457,6 +457,12 @@ inline T LsbMask(int width) {
   return static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
 }
 
+// Returns the value with every bit except the lower 'width' bits set to zero.
+template <typename T>
+inline T ClearUpperBits(T value, int width) {
+  return value & LsbMask<T>(width);
+}
+
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
 std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
