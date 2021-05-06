@@ -96,6 +96,18 @@ class DequantizeOp : public OpKernel {
     if (axis_ > -1) {
       num_slices = input.dim_size(axis_);
     }
+    OP_REQUIRES(ctx, input_min_tensor.NumElements() == num_slices,
+                errors::InvalidArgument(
+                    "input_min_tensor must have as many elements as input on "
+                    "the dequantization axis (",
+                    axis_, "), got ", input_min_tensor.NumElements(),
+                    ", expected ", num_slices));
+    OP_REQUIRES(ctx, input_max_tensor.NumElements() == num_slices,
+                errors::InvalidArgument(
+                    "input_max_tensor must have as many elements as input on "
+                    "the dequantization axis (",
+                    axis_, "), got ", input_max_tensor.NumElements(),
+                    ", expected ", num_slices));
 
     Tensor* output = nullptr;
     Tensor float_output = tensorflow::Tensor(DT_FLOAT, input.shape());
