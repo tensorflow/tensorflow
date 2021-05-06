@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.
 //
@@ -130,7 +131,7 @@ XlaOp Hypot(XlaOp x, XlaOp y) {
 //   same_sign = (same_sign == which_max_abs)
 //   cosine, sine = (np.where(same_sign, -sine, cosine),
 //                   np.where(same_sign, cosine, sine))
-//   return rt1, rt2, cosine, sine
+//   return rt1, rt2, cosine, -sine
 StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
                                                  XlaOp w_br) {
   TF_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
@@ -408,7 +409,9 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
                          "EighJacobiSweeps", builder);
 }
 
-StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
+}  // namespace
+
+Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
@@ -427,10 +430,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return std::make_pair(v, w);
+  return Status::OK();
 }
-
-}  // namespace
 
 // This is the cyclic Jacobi iteration.
 //
@@ -586,7 +587,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
 
-    TF_ASSIGN_OR_RETURN(std::tie(v, w), SortByEigenvalues(v, w));
+    TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
     return Tuple(builder, {v, w});
   });
 }
