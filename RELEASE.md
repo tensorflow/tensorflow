@@ -11,6 +11,12 @@
   recommended to use the
   [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
   instead.
+
+* `tf.lite`:
+  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
+  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
+  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
