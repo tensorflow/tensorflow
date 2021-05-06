@@ -315,7 +315,9 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     self.assertAllClose(expected_output, output_data)
 
   def test_scalar_input_int_mode_no_len_limit(self):
-    vocab_data = ["fire earth earth", "earth earth", "wind wind", "and wind and"]
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
     input_data = "earth wind and fire fire and earth michigan"
     layer = text_vectorization.TextVectorization()
     layer.adapt(vocab_data)
@@ -328,7 +330,9 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
       self.assertAllClose(out.numpy(), [2, 3, 4, 5, 5, 4, 2, 1])
 
   def test_scalar_input_int_mode_trim_to_len_limit(self):
-    vocab_data = ["fire earth earth", "earth earth", "wind wind", "and wind and"]
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
     input_data = "earth wind and fire fire and earth michigan"
     layer = text_vectorization.TextVectorization(output_sequence_length=3)
     layer.adapt(vocab_data)
@@ -341,7 +345,9 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
       self.assertAllClose(out.numpy(), [2, 3, 4])
 
   def test_scalar_input_int_pad_to_len_limit(self):
-    vocab_data = ["fire earth earth", "earth earth", "wind wind", "and wind and"]
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
     input_data = "earth wind and fire fire and earth michigan"
     layer = text_vectorization.TextVectorization(output_sequence_length=10)
     layer.adapt(vocab_data)
