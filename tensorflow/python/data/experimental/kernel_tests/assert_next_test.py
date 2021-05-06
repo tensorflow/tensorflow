@@ -52,10 +52,7 @@ class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testAssertNextInvalid(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        testing.assert_next(["Whoops"])).map(lambda x: x)
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    dataset = dataset.with_options(options)
+        testing.assert_next(["Whoops"]))
     self.assertDatasetProduces(
         dataset,
         expected_error=(errors.InvalidArgumentError,
@@ -64,11 +61,7 @@ class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testAssertNextShort(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        testing.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
-    dataset = dataset.with_options(options)
+        testing.assert_next(["Root", "Whoops"]))
     self.assertDatasetProduces(
         dataset,
         expected_error=(

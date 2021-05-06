@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data.model;
 
 option cc_enable_arenas = true;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/model_go_proto";
 
 // Class of a node in the performance model.
 enum NodeClass {

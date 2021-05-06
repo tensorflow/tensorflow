@@ -13,14 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef ETHOS_U
+#include "ethosu_driver.h"
+
+// This is set in micro/tools/make/targets/cortex_m_corstone_300_makefile.inc.
+// It is needed for the calls to NVIC_SetVector()/NVIC_EnableIR().
+#include CMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE
+#endif
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/system_setup.h"
 
 namespace tflite {
+
+#ifdef ETHOS_U
+void ethosuIrqHandler0() { ethosu_irq_handler(); }
+#endif
 
 extern "C" {
 void uart_init(void);
 }
 
-void InitializeTarget() { uart_init(); }
+void InitializeTarget() {
+  uart_init();
+
+#ifdef ETHOS_U
+  constexpr int ethosu_base_address = 0x48102000;
+  constexpr int ethosu_irq = 56;
+
+  // Initialize Ethos-U NPU driver.
+  if (ethosu_init(reinterpret_cast<void*>(ethosu_base_address))) {
+    MicroPrintf("Failed to initialize Ethos-U driver");
+  }
+  NVIC_SetVector(static_cast<IRQn_Type>(ethosu_irq),
+                 (uint32_t)&ethosuIrqHandler0);
+  NVIC_EnableIRQ(static_cast<IRQn_Type>(ethosu_irq));
+#endif
+}
 
 }  // namespace tflite

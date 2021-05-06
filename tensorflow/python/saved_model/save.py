@@ -1219,7 +1219,7 @@ def _build_meta_graph_impl(obj,
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
 
   if saved_object_metadata and raise_metadata_warning:
-    tf_logging.warn(
+    tf_logging.warning(
         'FOR KERAS USERS: The object that you are saving contains one or more '
         'Keras models or layers. If you are loading the SavedModel with '
         '`tf.keras.models.load_model`, continue reading (otherwise, you may '

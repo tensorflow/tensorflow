@@ -62,8 +62,6 @@ upper_tabs:
         path: /lite/guide
 
       - heading: "Get started"
-      - title: "Overview"
-        path: /lite/guide/get_started
       - title: "Android quickstart"
         path: /lite/guide/android
       - title: "iOS quickstart"

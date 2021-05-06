@@ -69,8 +69,6 @@ namespace TFL {
 // The actual LegalizeTF Pass.
 namespace {
 
-using xla::StatusOr;
-
 constexpr char kUnidirectionalSequenceLstm[] = "tf.UnidirectionalSequenceLstm";
 constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";

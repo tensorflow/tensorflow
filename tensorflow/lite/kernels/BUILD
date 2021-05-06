@@ -2,7 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
     default_visibility = [
@@ -495,6 +495,7 @@ cc_test(
         ":kernel_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -709,7 +710,9 @@ cc_library(
     srcs = [
         "assign_variable.cc",
         "read_variable.cc",
+        "variable_ops.cc",
     ],
+    hdrs = ["variable_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
@@ -732,6 +735,24 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+pybind_extension(
+    name = "pywrap_variable_ops",
+    srcs = [
+        "variable_ops_wrapper.cc",
+    ],
+    hdrs = ["variable_ops.h"],
+    additional_exported_symbols = ["VariableOpsRegisterer"],
+    link_in_framework = True,
+    module_name = "pywrap_variable_ops",
+    deps = [
+        ":variable_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

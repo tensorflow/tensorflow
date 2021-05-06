@@ -18,12 +18,12 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/philox_random.h"

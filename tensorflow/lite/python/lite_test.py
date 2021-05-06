@@ -346,7 +346,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -357,7 +357,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -951,14 +951,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('UseTfliteBuiltinsIntDisableMLIR',
        [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
       # Quantize model to Int16: with disable mlir
-      ('UseTfliteBuiltinsInt16DisableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       False),
-      ('UseTfliteBuiltinsInt16EnableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       True))
+      ('UseTfliteBuiltinsInt16DisableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], False),
+      ('UseTfliteBuiltinsInt16EnableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], True))
   def testQuantizeInt8And16x8(self, supported_ops, enable_mlir_converter):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()

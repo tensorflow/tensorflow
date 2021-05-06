@@ -50,6 +50,7 @@ enum class AdrenoGpu {
   kAdreno685,
   kAdreno680,
   kAdreno675,
+  kAdreno660,
   kAdreno650,
   kAdreno640,
   kAdreno630,
@@ -283,6 +284,7 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+  uint64_t image_pitch_alignment;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -301,6 +303,8 @@ struct OpenClInfo {
   bool supports_rg_f32_tex2d = false;
   bool supports_rgb_f32_tex2d = false;
   bool supports_rgba_f32_tex2d = false;
+
+  bool IsImage2dFromBufferSupported() const;
 };
 
 enum class MetalLanguageVersion {

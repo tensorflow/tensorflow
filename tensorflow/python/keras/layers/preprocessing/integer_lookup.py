@@ -41,9 +41,9 @@ class IntegerLookup(index_lookup.IndexLookup):
   create the vocabulary and all others will be treated as OOV.
 
   There are two possible output modes for the layer.
-  When `output_mode` is "int",
+  When `output_mode` is `"int"`,
   input integers are converted to their index in the vocabulary (an integer).
-  When `output_mode` is "binary", "count", or "tf-idf", input integers
+  When `output_mode` is `"multi_hot"`, `"count"`, or `"tf_idf"`, input integers
   are encoded into an array where each dimension corresponds to an element in
   the vocabulary.
 
@@ -51,10 +51,10 @@ class IntegerLookup(index_lookup.IndexLookup):
   (which can optionally occupy multiple indices in the vocabulary, as set
   by `num_oov_indices`).
   The position of these tokens in the vocabulary is fixed. When `output_mode` is
-  "int", the vocabulary will begin with the mask token at index 0, followed by
+  `"int"`, the vocabulary will begin with the mask token at index 0, followed by
   OOV indices, followed by the rest of the vocabulary. When `output_mode` is
-  "binary", "count", or "tf-idf" the vocabulary will begin with OOV indices and
-  instances of the mask token will be dropped.
+  `"multi_hot"`, `"count"`, or `"tf_idf"` the vocabulary will begin with OOV
+  indices and instances of the mask token will be dropped.
 
   Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
@@ -63,10 +63,10 @@ class IntegerLookup(index_lookup.IndexLookup):
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are modulated to determine their OOV
       value. If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      "int" and are dropped otherwise. Defaults to 1.
+      `"int"` and are dropped otherwise. Defaults to 1.
     mask_token: An integer token that represents masked inputs. When
-      `output_mode` is "int", the token is included in vocabulary and mapped to
-      index 0. In other output modes, the token will not appear in the
+      `output_mode` is `"int"`, the token is included in vocabulary and mapped
+      to index 0. In other output modes, the token will not appear in the
       vocabulary and instances of the mask token in the input will be dropped.
       If set to None, no mask term will be added. Defaults to 0.
     oov_token: Only used when `invert` is True. The token to return for OOV
@@ -75,28 +75,29 @@ class IntegerLookup(index_lookup.IndexLookup):
       containing a vocabulary to load into this layer. The file should contain
       one integer token per line. If the list or file contains the same token
       multiple times, an error will be thrown.
-    invert: Only valid when `output_mode` is "int". If True, this layer will map
-      indices to vocabulary items instead of mapping vocabulary items to
+    invert: Only valid when `output_mode` is `"int"`. If True, this layer will
+      map indices to vocabulary items instead of mapping vocabulary items to
       indices. Default to False.
-    output_mode: Specification for the output of the layer. Defaults to "int".
-      Values can be "int", "binary", "count", or "tf-idf" configuring the layer
-      as follows:
-        "int": Return the vocabulary indices of the input tokens.
-        "binary": Outputs a single int array per sample, of either vocabulary
-          size or `max_tokens` size, containing 1s in all elements where the
-          token mapped to that index exists at least once in the sample.
-        "count": Like "binary", but the int array contains a count of the number
-          of times the token at that index appeared in the sample.
-        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
-          value in each token slot.
-    pad_to_max_tokens: Only applicable when `output_mode` is "binary", "count",
-      or "tf-idf". If True, the output will have its feature axis padded to
-      `max_tokens` even if the number of unique tokens in the vocabulary is less
-      than max_tokens, resulting in a tensor of shape [batch_size, max_tokens]
-      regardless of vocabulary size. Defaults to False.
-    sparse: Boolean. Only applicable when `output_mode` is "binary", "count",
-      or "tf-idf". If True, returns a `SparseTensor` instead of a dense
-      `Tensor`. Defaults to False.
+    output_mode: Specification for the output of the layer. Defaults to `"int"`.
+      Values can be `"int"`, `"multi_hot"`, `"count"`, or `"tf_idf"` configuring
+      the layer as follows:
+        - `"int"`: Return the vocabulary indices of the input tokens.
+        - `"multi_hot"`: Outputs a single int array per sample, of either
+          vocabulary size or `max_tokens` size, containing 1s in all elements
+          where the token mapped to that index exists at least once in the
+          sample.
+        - `"count"`: As `"multi_hot"`, but the int array contains a count of the
+          number of times the token at that index appeared in the sample.
+        - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
+          find the value in each token slot.
+    pad_to_max_tokens: Only applicable when `output_mode` is `"multi_hot"`,
+      `"count"`, or `"tf_idf"`. If True, the output will have its feature axis
+      padded to `max_tokens` even if the number of unique tokens in the
+      vocabulary is less than max_tokens, resulting in a tensor of shape
+      [batch_size, max_tokens] regardless of vocabulary size. Defaults to False.
+    sparse: Boolean. Only applicable when `output_mode` is `"multi_hot"`,
+      `"count"`, or `"tf_idf"`. If True, returns a `SparseTensor` instead of a
+      dense `Tensor`. Defaults to False.
 
   Examples:
 
@@ -158,12 +159,12 @@ class IntegerLookup(index_lookup.IndexLookup):
 
   **Multi-hot output**
 
-  Configure the layer with `output_mode='binary'`. Note that the first
-  `num_oov_indices` dimensions in the binary encoding represent OOV tokens
+  Configure the layer with `output_mode='multi_hot'`. Note that the first
+  `num_oov_indices` dimensions in the multi_hot encoding represent OOV tokens
 
   >>> vocab = [12, 36, 1138, 42]
   >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV tokens
-  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='binary')
+  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='multi_hot')
   >>> layer(data)
   <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
     array([[0., 1., 0., 1., 1.],
@@ -171,7 +172,7 @@ class IntegerLookup(index_lookup.IndexLookup):
 
   **Token count output**
 
-  Configure the layer with `output_mode='count'`. As with binary output, the
+  Configure the layer with `output_mode='count'`. As with multi_hot output, the
   first `num_oov_indices` dimensions in the output represent OOV tokens.
 
   >>> vocab = [12, 36, 1138, 42]
@@ -184,7 +185,7 @@ class IntegerLookup(index_lookup.IndexLookup):
 
   **TF-IDF output**
 
-  Configure the layer with `output_mode='tf-idf'`. As with binary output, the
+  Configure the layer with `output_mode='tf_idf'`. As with multi_hot output, the
   first `num_oov_indices` dimensions in the output represent OOV tokens.
 
   Each token bin will output `token_count * idf_weight`, where the idf weights
@@ -195,7 +196,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> vocab = [12, 36, 1138, 42]
   >>> idf_weights = [0.25, 0.75, 0.6, 0.4]
   >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV tokens
-  >>> layer = IntegerLookup(output_mode='tf-idf')
+  >>> layer = IntegerLookup(output_mode='tf_idf')
   >>> layer.set_vocabulary(vocab, idf_weights=idf_weights)
   >>> layer(data)
   <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
@@ -208,14 +209,14 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> vocab = [-1, 12, 36, 1138, 42]
   >>> idf_weights = [0.9, 0.25, 0.75, 0.6, 0.4]
   >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV tokens
-  >>> layer = IntegerLookup(output_mode='tf-idf')
+  >>> layer = IntegerLookup(output_mode='tf_idf')
   >>> layer.set_vocabulary(vocab, idf_weights=idf_weights)
   >>> layer(data)
   <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
     array([[0.  , 0.25, 0.  , 0.6 , 0.8 ],
            [1.8 , 0.  , 0.75, 0.  , 0.4 ]], dtype=float32)>
 
-  When adapting the layer in tf-idf mode, each input sample will be considered a
+  When adapting the layer in tf_idf mode, each input sample will be considered a
   document, and idf weight per token will be calculated as
   `log(1 + num_documents / (1 + token_document_count))`.
 
@@ -275,15 +276,20 @@ class IntegerLookup(index_lookup.IndexLookup):
 
     # Support deprecated args for this layer.
     if "max_values" in kwargs:
-      logging.warning("max_values is deprecated, use max_tokens instead.")
+      logging.log_first_n(logging.WARN,
+                          "max_values is deprecated, use max_tokens instead.",
+                          1)
       max_tokens = kwargs["max_values"]
       del kwargs["max_values"]
     if "mask_value" in kwargs:
-      logging.warning("mask_value is deprecated, use mask_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "mask_value is deprecated, use mask_token instead.",
+                          1)
       mask_token = kwargs["mask_value"]
       del kwargs["mask_value"]
     if "oov_value" in kwargs:
-      logging.warning("oov_value is deprecated, use oov_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "oov_value is deprecated, use oov_token instead.", 1)
       oov_token = kwargs["oov_value"]
       del kwargs["oov_value"]
 
@@ -320,7 +326,7 @@ class IntegerLookup(index_lookup.IndexLookup):
 
   def set_vocabulary(self, vocabulary, idf_weights=None):
     if isinstance(vocabulary, str):
-      if self.output_mode == index_lookup.TFIDF:
+      if self.output_mode == index_lookup.TF_IDF:
         raise RuntimeError(
             "Setting vocabulary directly from a file is not "
             "supported in TF-IDF mode, since this layer cannot "

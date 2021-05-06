@@ -108,6 +108,12 @@ def _call_location(outer=False):
   return '{}:{}'.format(f.f_code.co_filename, f.f_lineno)
 
 
+def _safe_eq(a, b):
+  if a is None or b is None:
+    return a is None and b is None
+  return a == b
+
+
 def _wrap_decorator(wrapped_function):
   """Indicate that one function wraps another.
 
@@ -589,7 +595,8 @@ def deprecated_arg_values(date, instructions, warn_once=True,
       if _PRINT_DEPRECATION_WARNINGS:
         named_args = tf_inspect.getcallargs(func, *args, **kwargs)
         for arg_name, arg_value in deprecated_kwargs.items():
-          if arg_name in named_args and named_args[arg_name] == arg_value:
+          if arg_name in named_args and _safe_eq(named_args[arg_name],
+                                                 arg_value):
             if (func, arg_name) not in _PRINTED_WARNING:
               if warn_once:
                 _PRINTED_WARNING[(func, arg_name)] = True

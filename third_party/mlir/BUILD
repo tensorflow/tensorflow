@@ -1,3 +1,7 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
@@ -58,6 +62,24 @@ filegroup(
         "SymbolInterfaces",
     ]
 ]
+
+gentbl(
+    name = "TensorEncodingIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-attr-interface-decls",
+            "include/mlir/IR/TensorEncInterfaces.h.inc",
+        ),
+        (
+            "-gen-attr-interface-defs",
+            "include/mlir/IR/TensorEncInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/TensorEncoding.td",
+    deps = [":TensorOpsTdFiles"],
+)
 
 td_library(
     name = "BuiltinDialectTdFiles",
@@ -195,6 +217,7 @@ cc_library(
         ":SideEffectInterfacesIncGen",
         ":Support",
         ":SymbolInterfacesIncGen",
+        ":TensorEncodingIncGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -286,6 +309,25 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPIAsync",
+    srcs = [
+        "lib/CAPI/Dialect/Async.cpp",
+        "lib/CAPI/Dialect/AsyncPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/Async.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Async",
+        ":AsyncPassIncGen",
+        ":AsyncTransforms",
+        ":CAPIIR",
+        ":Pass",
+    ],
+)
+
+cc_library(
     name = "CAPILinalg",
     srcs = [
         "lib/CAPI/Dialect/Linalg.cpp",
@@ -300,6 +342,25 @@ cc_library(
         ":LinalgOps",
         ":LinalgPassIncGen",
         ":LinalgTransforms",
+        ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIGPU",
+    srcs = [
+        "lib/CAPI/Dialect/GPU.cpp",
+        "lib/CAPI/Dialect/GPUPasses.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/GPU.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":GPUDialect",
+        ":GPUPassIncGen",
+        ":GPUTransforms",
         ":Pass",
     ],
 )
@@ -360,15 +421,6 @@ cc_library(
 )
 
 cc_library(
-    name = "MLIRBindingsPythonExtension",
-    hdrs = ["include/mlir-c/Bindings/Python/Interop.h"],
-    deps = [
-        ":CAPIIR",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
     name = "CAPIRegistration",
     srcs = ["lib/CAPI/Registration/Registration.cpp"],
     hdrs = ["include/mlir-c/Registration.h"],
@@ -380,6 +432,76 @@ cc_library(
     ],
 )
 
+##---------------------------------------------------------------------------##
+# Sources of Python bindings.
+#----------------------------------------------------------------------------##
+
+cc_library(
+    name = "MLIRBindingsPythonExtension",
+    hdrs = ["include/mlir-c/Bindings/Python/Interop.h"],
+    deps = [
+        ":CAPIIR",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+exports_files(["lib/Bindings/Python/MainModule.cpp"])
+
+cc_library(
+    name = "MLIRBindingsPythonCore",
+    srcs = glob(
+        include = ["lib/Bindings/Python/*.cpp"],
+        exclude = ["lib/Bindings/Python/MainModule.cpp"],
+    ),
+    hdrs = glob(["lib/Bindings/Python/*.h"]),
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
+    ],
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
+    ],
+    includes = [
+        "include",
+        "lib/Bindings/Python",
+    ],
+    deps = [
+        ":CAPIAsync",
+        ":CAPIDebug",
+        ":CAPIExecutionEngine",
+        ":CAPIGPU",
+        ":CAPIIR",
+        ":CAPILinalg",
+        ":CAPIRegistration",
+        ":MLIRBindingsPythonExtension",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# Dynamic library with the MLIR Python extension.
+cc_binary(
+    name = "_mlir.so",
+    srcs = ["lib/Bindings/Python/MainModule.cpp"],
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
+    ],
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
+    ],
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [":MLIRBindingsPythonCore"],
+)
+
+##---------------------------------------------------------------------------##
+
 td_library(
     name = "OpBaseTdFiles",
     srcs = [
@@ -387,6 +509,7 @@ td_library(
         "include/mlir/IR/OpBase.td",
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/IR/TensorEncoding.td",
     ],
     includes = ["include"],
 )
@@ -597,6 +720,14 @@ gentbl(
         (
             "-gen-pass-decls -name Async",
             "include/mlir/Dialect/Async/Passes.h.inc",
+        ),
+        (
+            "-gen-pass-capi-header --prefix Async",
+            "include/mlir/Dialect/Async/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Async",
+            "include/mlir/Dialect/Async/Passes.capi.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -1010,6 +1141,119 @@ cc_library(
     ],
 )
 
+##---------------------------------------------------------------------------##
+# SparseTensor dialect.
+##---------------------------------------------------------------------------##
+
+td_library(
+    name = "SparseTensorTdFiles",
+    srcs = [
+        "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td",
+        "include/mlir/Dialect/SparseTensor/IR/SparseTensorBase.td",
+        "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":OpBaseTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SparseTensorAttrDefsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td",
+    deps = [":SparseTensorTdFiles"],
+)
+
+gentbl(
+    name = "SparseTensorOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=sparse_tensor",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorOpsDialect.h.inc",
+        ),
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/SparseTensor/SparseTensor.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.td",
+    deps = [":SparseTensorTdFiles"],
+)
+
+gentbl(
+    name = "SparseTensorPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name SparseTensor",
+            "include/mlir/Dialect/SparseTensor/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/Transforms/Passes.td",
+    deps = [":PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "SparseTensor",
+    srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/SparseTensor/IR/SparseTensor.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":SideEffectInterfaces",
+        ":SparseTensorAttrDefsIncGen",
+        ":SparseTensorOpsIncGen",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SparseTensorTransforms",
+    srcs = glob(["lib/Dialect/SparseTensor/Transforms/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Passes.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":LinalgOps",
+        ":LinalgTransforms",
+        ":MemRefDialect",
+        ":Pass",
+        ":SCFDialect",
+        ":SparseTensor",
+        ":SparseTensorPassIncGen",
+        ":StandardOps",
+        ":StandardOpsTransforms",
+        ":Transforms",
+        ":VectorOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 td_library(
     name = "StdOpsTdFiles",
     srcs = [
@@ -1177,6 +1421,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":Analysis",
         ":IR",
         ":Support",
         ":TransformUtils",
@@ -1253,6 +1498,7 @@ cc_library(
         ":AffineToStandard",
         ":AsyncToLLVM",
         ":ComplexToLLVM",
+        ":ComplexToStandard",
         ":ConversionPassIncGen",
         ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
@@ -1725,6 +1971,28 @@ cc_library(
 )
 
 cc_library(
+    name = "MlirLspServerLib",
+    srcs = glob(
+        [
+            "lib/Tools/mlir-lsp-server/*.cpp",
+            "lib/Tools/mlir-lsp-server/*.h",
+            "lib/Tools/mlir-lsp-server/lsp/*.cpp",
+            "lib/Tools/mlir-lsp-server/lsp/*.h",
+        ],
+    ),
+    hdrs = glob(
+        ["include/mlir/Tools/mlir-lsp-server/*.h"],
+    ),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ParserTokenKinds",
     # strip_include_prefix does not apply to textual_hdrs.
     hdrs = ["lib/Parser/TokenKinds.def"],
@@ -1738,7 +2006,11 @@ cc_library(
         "lib/Parser/*.cpp",
         "lib/Parser/*.h",
     ]),
-    hdrs = ["include/mlir/Parser.h"],
+    hdrs = glob([
+        "include/mlir/Parser/*.h",
+    ]) + [
+        "include/mlir/Parser.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -1976,6 +2248,14 @@ gentbl(
         (
             "-gen-pass-decls -name GPU",
             "include/mlir/Dialect/GPU/Passes.h.inc",
+        ),
+        (
+            "-gen-pass-capi-header --prefix GPU",
+            "include/mlir/Dialect/GPU/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix GPU",
+            "include/mlir/Dialect/GPU/Passes.capi.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -3017,23 +3297,13 @@ td_library(
 )
 
 gentbl(
-    name = "TensorBaseIncGen",
+    name = "TensorOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-dialect-decls -dialect=tensor",
             "include/mlir/Dialect/Tensor/IR/TensorOpsDialect.h.inc",
         ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Tensor/IR/TensorBase.td",
-    deps = [":TensorOpsTdFiles"],
-)
-
-gentbl(
-    name = "TensorOpsIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
         (
             "-gen-op-decls",
             "include/mlir/Dialect/Tensor/IR/TensorOps.h.inc",
@@ -3064,7 +3334,6 @@ cc_library(
         ":IR",
         ":SideEffectInterfaces",
         ":Support",
-        ":TensorBaseIncGen",
         ":TensorOpsIncGen",
         "@llvm-project//llvm:Support",
     ],
@@ -3345,6 +3614,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         ":TransformUtils",
         ":TransformsPassIncGen",
         "@llvm-project//llvm:Support",
@@ -4112,6 +4382,8 @@ cc_library(
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
+        ":SparseTensor",
+        ":SparseTensorTransforms",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",
@@ -4136,6 +4408,17 @@ alias(
     name = "AllPassesAndDialectsNoRegistration",
     actual = ":AllPassesAndDialects",
     deprecation = "Use AllPassesAndDialects instead",
+)
+
+cc_binary(
+    name = "mlir-lsp-server",
+    srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialects",
+        ":IR",
+        ":MlirLspServerLib",
+    ],
 )
 
 cc_binary(
@@ -4828,34 +5111,6 @@ gentbl(
     deps = [":LinalgStructuredOpsTdFiles"],
 )
 
-td_library(
-    name = "LinalgSparseOpsTdFiles",
-    srcs = ["include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td"],
-    includes = ["include"],
-    deps = [
-        ":LinalgOpsTdFiles",
-        ":SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl(
-    name = "LinalgSparseOpsIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
-    deps = [":LinalgSparseOpsTdFiles"],
-)
-
 gentbl(
     name = "LinalgInterfacesIncGen",
     strip_include_prefix = "include",
@@ -5005,7 +5260,6 @@ cc_library(
         ":LinalgNamedStructuredOpsTcIncGen",
         ":LinalgNamedStructuredOpsYamlIncGen",
         ":LinalgOpsIncGen",
-        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":MemRefDialect",
         ":Parser",
@@ -5066,13 +5320,13 @@ cc_library(
         ":AffineToStandard",
         ":AffineUtils",
         ":Analysis",
+        ":ComplexDialect",
         ":DialectUtils",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LinalgOps",
         ":LinalgPassIncGen",
-        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":MathDialect",
         ":MemRefDialect",
@@ -5080,6 +5334,7 @@ cc_library(
         ":SCFDialect",
         ":SCFToStandard",
         ":SCFTransforms",
+        ":SparseTensor",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardToLLVM",
@@ -5477,6 +5732,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ComplexToStandard",
+    srcs = glob([
+        "lib/Conversion/ComplexToStandard/*.cpp",
+        "lib/Conversion/ComplexToStandard/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/ComplexToStandard/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ComplexDialect",
+        ":ConversionPassIncGen",
+        ":IR",
+        ":MathDialect",
+        ":Pass",
+        ":StandardOps",
+        ":Transforms",
+    ],
+)
+
 exports_files(
     [
         "include/mlir/Bindings/Python/Attributes.td",
@@ -5503,6 +5779,7 @@ exports_files(
         "include/mlir/IR/OpBase.td",
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/IR/TensorEncoding.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = [":friends"],
@@ -5729,6 +6006,7 @@ cc_library(
     hdrs = glob(["include/mlir/Dialect/MemRef/Transforms/*.h"]),
     includes = ["include"],
     deps = [
+        ":Affine",
         ":IR",
         ":MemRefDialect",
         ":MemRefPassIncGen",

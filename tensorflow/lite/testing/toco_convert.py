@@ -50,8 +50,6 @@ def toco_options(data_types,
 
   shape_str = ":".join([",".join(str(y) for y in x) for x in shapes if x])
   inference_type = "FLOAT"
-  # TODO(ahentz): if we get multi-input quantization to work we need this
-  # to change
   if data_types[0] == "QUANTIZED_UINT8":
     inference_type = "QUANTIZED_UINT8"
   s = (" --input_data_types=%s" % ",".join(data_types) +
@@ -180,7 +178,6 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       graphdef_file.write(graph_def_str)
       graphdef_file.flush()
 
-      # TODO(aselle): Switch this to subprocess at some point.
       if options.run_with_flex:
         opts += " --enable_select_tf_ops --force_select_tf_ops"
       cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %

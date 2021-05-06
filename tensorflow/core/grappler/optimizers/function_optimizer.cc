@@ -1419,7 +1419,7 @@ void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
 
       auto mapping = ctx.tensor_mapping().find(input_tensor);
       if (mapping != ctx.tensor_mapping().end()) {
-        node.set_input(idx, mapping->second.ToString());
+        node.set_input(idx, TensorIdToString(mapping->second));
       }
     }
   }

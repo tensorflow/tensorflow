@@ -22,7 +22,6 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
-// TODO(jsimsa): Provide class-level documentation for this and the other ops.
 class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType =
@@ -30,10 +29,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kDatasetOp =
       "MaxIntraOpParallelismDatasetOp";
 
-  // Creates and returns a MaxIntraOpParallelismDatasetOp::Dataset in output,
-  // given the input dataset, and max_intra_op_parallelism parameters. This
-  // method is used to create the dataset without explicitly using the
-  // MaxIntraOpParallelismDatasetOp.
+  // Executes the logic of the MaxIntraOpParallelismDatasetOp directly (as
+  // opposed to through executing the MaxIntraOpParallelismDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
                                      int32 max_intra_op_parallelism,
                                      DatasetBase** output);
@@ -49,15 +46,13 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
 };
 
-// TODO(jsimsa): Provide class-level documentation for this and the other ops.
 class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "PrivateThreadPoolDataset";
   static constexpr const char* const kDatasetOp = "PrivateThreadPoolDatasetOp";
 
-  // Creates and returns a PrivateThreadPoolDatasetOp::Dataset in output, given
-  // the input and number of threads. This method is used to create the dataset
-  // without explicitly using the PrivateThreadPoolDatasetOp.
+  // Executes the logic of the PrivateThreadpoolDatasetOp directly (as
+  // opposed to through executing the PrivateThreadpoolDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
                                      int32 num_threads, DatasetBase** output);
 

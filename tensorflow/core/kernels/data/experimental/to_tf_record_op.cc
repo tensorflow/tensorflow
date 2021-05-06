@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -83,12 +84,15 @@ class ToTFRecordOp : public AsyncOpKernel {
     params.cancellation_manager = &cancellation_manager;
 
     IteratorContext iter_ctx(std::move(params));
+    DatasetBase* finalized_dataset;
+    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(dataset->MakeIterator(
+    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         &iter_ctx, /*parent=*/nullptr, "ToTFRecordOpIterator", &iterator));
 
     std::vector<Tensor> components;
-    components.reserve(dataset->output_dtypes().size());
+    components.reserve(finalized_dataset->output_dtypes().size());
     bool end_of_sequence;
     do {
       TF_RETURN_IF_ERROR(

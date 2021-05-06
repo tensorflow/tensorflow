@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -2999,6 +3000,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
   // Set benefit of this pattern to zero to prefer the fallback pattern when
   // available and applicable. That pattern avoids broadcast on operands and is
   // therefore faster.
+  //
+  // Native legalization for BatchMatMulV3 needs to be added as well.
   explicit ConvertBatchMatMulV2Op(MLIRContext *context)
       : OpRewritePattern<TF::BatchMatMulV2Op>(context, /*benefit=*/0) {}
 

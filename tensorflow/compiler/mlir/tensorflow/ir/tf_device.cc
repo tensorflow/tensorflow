@@ -706,8 +706,19 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
     bool is_used_for_resource_write = llvm::any_of(
         op.getResult(operand.getOperandNumber()).getUsers(),
         [](Operation* user) { return isa<TF::AssignVariableOp>(user); });
+
+    // TODO(b/186717563): Eliminate all pass through results once XLA correctly
+    // handles empty computations. Another approach could be to drop empty
+    // clusters within MLIR but that seems to trigger other failures but can be
+    // considered again.
+    // Old bridge only removes unsupported TPU types (only string for now)
+    // during outside compilation extraction so this should be enough for
+    // the parity.
+    bool is_unsupported_type = getElementTypeOrSelf(operand.get().getType())
+                                   .isa<mlir::TF::StringType>();
     Value result = operand.get();
-    if (result.getParentBlock() != &body && !is_used_for_resource_write) {
+    if (is_unsupported_type && result.getParentBlock() != &body &&
+        !is_used_for_resource_write) {
       // Pass through result.
       new_results.push_back(result);
     } else {

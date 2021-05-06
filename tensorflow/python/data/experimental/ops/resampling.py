@@ -101,7 +101,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
       return interleave_ops.sample_from_datasets(
           [dataset.map(add_class_value), filtered_ds],
           weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
-          seed=seed)
+          seed=seed, stop_on_empty_dataset=True)
 
   return _apply_fn
 

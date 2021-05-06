@@ -121,6 +121,33 @@ enum class Epilogue {
 // Converts a ComputationType to a string.
 std::string ComputationTypeString(ComputationType ty);
 
+template <typename T>
+struct ToComputationType;
+template <>
+struct ToComputationType<float> {
+  static constexpr ComputationType value = ComputationType::kF32;
+};
+template <>
+struct ToComputationType<double> {
+  static constexpr ComputationType value = ComputationType::kF64;
+};
+template <>
+struct ToComputationType<Eigen::half> {
+  static constexpr ComputationType value = ComputationType::kF16;
+};
+template <>
+struct ToComputationType<tensorflow::int32> {
+  static constexpr ComputationType value = ComputationType::kI32;
+};
+template <>
+struct ToComputationType<std::complex<float>> {
+  static constexpr ComputationType value = ComputationType::kComplexF32;
+};
+template <>
+struct ToComputationType<std::complex<double>> {
+  static constexpr ComputationType value = ComputationType::kComplexF64;
+};
+
 std::ostream &operator<<(std::ostream &os, ComputationType ty);
 
 using dnn::DataType;
