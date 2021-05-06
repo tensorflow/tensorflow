@@ -23,8 +23,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-//TODO(mconley): Should the below code be wrapped in the above checks?
 namespace tensorflow {
 
 namespace tensorrt {
@@ -596,5 +594,6 @@ struct ITensorProxyHash
 
 } // namespace tensorrt
 } // namespace tensorflow
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_TENSOR_PROXY_H
