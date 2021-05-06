@@ -163,7 +163,7 @@ Status ControlFlowDepsToChainsPass::Run(
     for (int i = 0; i < num_new_chains; i++) {
       // Input loop vars.
       // TODO(mdan): Double check that this doesn't clash with names in body.
-      string c_name = g->NewName("acd__chain");
+      string c_name = g->NewName("acd__chainv");
       std::replace(c_name.begin(), c_name.end(), '/', '_');
       auto* new_arg = modified_body.mutable_signature()->add_input_arg();
       new_arg->set_name(c_name);
@@ -196,7 +196,8 @@ Status ControlFlowDepsToChainsPass::Run(
       attr_val.mutable_list()->mutable_shape();
       FunctionDef_ArgAttrs arg_attrs;
       arg_attrs.mutable_attr()->insert({"_output_shapes", attr_val});
-      modified_body.mutable_arg_attr()->insert({i + num_loop_vars, arg_attrs});
+      modified_body.mutable_arg_attr()->insert(
+          {static_cast<uint32_t>(i + num_loop_vars), arg_attrs});
     }
 
     // Wire chain loop vars to the ops they need to condition.

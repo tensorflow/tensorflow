@@ -954,7 +954,7 @@ TfLiteStatus QuantizeIntermediateTensors(ModelT* model,
   return kTfLiteOk;
 }
 
-// Quantize tensros that have shared range. For example, in LSTM, the output
+// Quantize tensors that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
 // We have to model this explicitly because the output is modeled as an extra

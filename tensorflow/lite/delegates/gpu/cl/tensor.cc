@@ -231,8 +231,12 @@ absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
   desc.image_width = width;
   desc.image_height = height;
   desc.image_depth = 0;
-  const size_t bytes_per_row = width * channels * SizeOf(data_type);
-  desc.image_row_pitch = AlignByN(bytes_per_row, row_bytes_alignment);
+  if (row_bytes_alignment == 0) {
+    desc.image_row_pitch = 0;
+  } else {
+    const size_t bytes_per_row = width * channels * SizeOf(data_type);
+    desc.image_row_pitch = AlignByN(bytes_per_row, row_bytes_alignment);
+  }
   desc.image_slice_pitch = 0;
   desc.num_mip_levels = 0;
   desc.num_samples = 0;
@@ -406,12 +410,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   resources->ints.push_back(
       {"slice_stride", tensor_desc->GetSliceStrideSize(shape_)});
   if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources->ints.push_back({"width", Width()});
-    resources->ints.push_back({"width_div2", Width() / 2});
-    resources->ints.push_back({"width_div4", Width() / 4});
-    resources->ints.push_back({"width_batched", Width() * Batch()});
-    resources->ints.push_back({"width_batched_div2", Width() * Batch() / 2});
-    resources->ints.push_back({"width_batched_div4", Width() * Batch() / 4});
+    resources->ints.push_back({"width", tensor_desc->GetWidthSize(shape_)});
   }
   if (descriptor_.HasAxis(Axis::HEIGHT)) {
     resources->ints.push_back({"height", Height()});

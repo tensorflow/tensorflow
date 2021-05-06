@@ -11,6 +11,12 @@
   recommended to use the
   [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
   instead.
+
+* `tf.lite`:
+  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
+  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
+  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -40,8 +46,6 @@
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
-    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
-        creation of custom wrapper objects for resource tensors.
     *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
         generic mutable hash table implementation.
         *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
@@ -51,6 +55,13 @@
    *    Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+   *   SavedModel
+        *   Added `tf.saved_model.experimental.TrackableResource`, which allows
+            the creation of custom wrapper objects for resource tensors.
+        *   Added a SavedModel load option to allow restoring partial
+            checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
+  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
+            for details.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
@@ -61,6 +72,8 @@
     *   Promoting `tf.data.experimental.group_by_window` API to
         `tf.data.Dataset.group_by_window` and deprecating the experimental
         endpoint.
+    *   Promoting `tf.data.experimental.RandomDataset` API to
+        `tf.data.Dataset.random` and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
@@ -68,12 +81,23 @@
         skipping over exhausted datasets, until all datasets are exhausted. By
         default, the original behavior (`stop_on_empty_dataset=False`) is
         preserved.
+    *   Removed previously deprecated tf.data statistics related APIs:
+        *   `tf.data.Options.experimental_stats`
+        *   `tf.data.experimental.StatsAggregator`
+        *   `tf.data.experimental.StatsOptions.*`
+        *   `tf.data.experimental.bytes_produced_stats`
+        *   `tf.data.experimental.latency_stats`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+*   `Grappler`:
+    *   Disable default Grappler optimization timeout to make the optimization
+        pipeline deterministic. This may lead to increased model loading time,
+        because time spent in graph optimizations is now unbounded (was 20
+        minutes).
 
 ## Thanks to our Contributors
 

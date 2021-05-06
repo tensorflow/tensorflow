@@ -403,8 +403,6 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unfused_gru",
-        "unidirectional_sequence_lstm",
-        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",

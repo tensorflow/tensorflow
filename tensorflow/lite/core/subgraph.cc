@@ -156,6 +156,42 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
 }
 
+// An utility test to detect if the subgraph is abused:
+// 1. Detects if recursion exists in the graph (recursion is not currently
+//    supported.
+// 2. Detects if the interpreter / subgraph is used in multiple subgraphs.
+//    Note: It's clearly documented that the interpreter / subgraph are not
+//    thread-safe. This serves as a check with possible false negatives
+//    unless we switch to atomic boolean flags.
+class SubgraphGuard {
+ public:
+  SubgraphGuard(TfLiteContext* context, bool* is_subgraph_in_use)
+      : is_subgraph_in_use_(is_subgraph_in_use) {
+    if (*is_subgraph_in_use_) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Subgraph is already in use. Using an interpreter or a subgraph in "
+          "multiple threads is not supported. Recursion in the graph is not "
+          "supported.");
+      status_ = kTfLiteError;
+    } else {
+      *is_subgraph_in_use_ = true;
+    }
+  }
+  ~SubgraphGuard() {
+    // If tht original status was OK, recover the boolean flag.
+    if (status_ == kTfLiteOk) {
+      *is_subgraph_in_use_ = false;
+    }
+  }
+
+  TfLiteStatus status() const { return status_; }
+
+ private:
+  TfLiteStatus status_ = kTfLiteOk;
+  bool* is_subgraph_in_use_;
+};
+
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -378,12 +414,26 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
+#ifdef __ANDROID__
+  // On Android the log message below is used for diagnosing delegation success
+  // also in production builds. Delegation happens sufficiently rarely that the
+  // message isn't spammy.
   TFLITE_LOG_PROD(
       tflite::TFLITE_LOG_INFO,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
+#else   // !__ANDROID__
+  // Server-side, delegation may happen so often as to make logging spammy + we
+  // don't have a clear need for the diagnostic in production builds.
+  TFLITE_LOG(
+      tflite::TFLITE_LOG_INFO,
+      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
+      nodes_to_replace->size,
+      registration.custom_name ? registration.custom_name : "unknown",
+      node_subsets.size());
+#endif  // __ANDROID__
 
   execution_plan_.clear();
 
@@ -655,6 +705,7 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 
 TfLiteStatus Subgraph::AllocateTensors() {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
+
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -677,6 +728,12 @@ TfLiteStatus Subgraph::AllocateTensors() {
     }
     return kTfLiteOk;
   }
+
+  // Note `AllocateTensors` sometimes calls itself recursively above
+  // for delegates. Therefore only the logic below need to be guarded
+  // by `SubgraphGuard`.
+  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
+  TF_LITE_ENSURE_OK(&context_, guard.status());
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
@@ -1014,6 +1071,9 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Subgraph::Invoke() {
+  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
+  TF_LITE_ENSURE_OK(&context_, guard.status());
+
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;

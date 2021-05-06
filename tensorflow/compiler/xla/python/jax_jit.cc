@@ -327,6 +327,10 @@ struct CacheEntry {
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
+
+  // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
+  // in CompiledFunction::Call before calling into compiled computation.
+  absl::optional<std::vector<bool>> kept_var_bitvec;
   xla::PjRtDevice* sticky_device;
 
   // Fallback to Python happens:
@@ -660,12 +664,14 @@ void CompiledFunction::PopulateCacheEntry(
 
   py::tuple executable_handlers_out_tree =
       py::cast<py::tuple>(out_and_fastpath_data[1]);
-  if (executable_handlers_out_tree.size() != 5) {
+  // TODO(zhangqiaorjc): Lookup NamedTuple by name after min jax version bump.
+  size_t arity = executable_handlers_out_tree.size();
+  if (arity != 5 && !py::hasattr(executable_handlers_out_tree, "_fields")) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (jaxlib is too recent "
         "compared to Jax. Upgrade Jax is advised. The C++ code expects "
-        "5 arguments but ",
-        executable_handlers_out_tree.size(), " where provided: ",
+        "5 or 6 arguments but ",
+        arity, " were provided: ",
         py::cast<std::string>(
             py::str(py::repr(executable_handlers_out_tree)))));
   }
@@ -698,6 +704,17 @@ void CompiledFunction::PopulateCacheEntry(
     cache_entry->out_weak_types.push_back(
         py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
+  }
+  auto kept_var_bitvec_attr =
+      py::getattr(executable_handlers_out_tree, "kept_var_bitvec", py::none());
+  if (!kept_var_bitvec_attr.is_none()) {
+    auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
+    cache_entry->kept_var_bitvec =
+        absl::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
+    for (int i = 0; i < kept_var_bitvec.size(); ++i) {
+      cache_entry->kept_var_bitvec.value()[i] =
+          py::cast<bool>(kept_var_bitvec[i]);
+    }
   }
 }
 
@@ -829,10 +846,31 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        cache_entry->executable->mutable_pjrt_executable()->Execute(
-            {arguments.arg_buffers}, cache_entry->executable->options()));
+    // TODO(zhangqiaorjc): Refactor ConvertArgsToBuffers. Split out the part
+    // that computes parts of the signature and tests for incompatible devices,
+    // and move it either into ParseArguments or a new function. Move the part
+    // that copies buffers around to here, and we can fuse this "argument
+    // dropping" logic with that code
+    if (cache_entry->kept_var_bitvec.has_value()) {
+      // Input pruning enabled.
+      std::vector<xla::PjRtBuffer*> kept_args;
+      kept_args.reserve(arguments.arg_buffers.size());
+      for (int i = 0; i < arguments.arg_buffers.size(); ++i) {
+        if (cache_entry->kept_var_bitvec.value()[i]) {
+          kept_args.push_back(arguments.arg_buffers[i]);
+        }
+      }
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          cache_entry->executable->mutable_pjrt_executable()->Execute(
+              {kept_args}, cache_entry->executable->options()));
+    } else {
+      // Input pruning not enabled.
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          cache_entry->executable->mutable_pjrt_executable()->Execute(
+              {arguments.arg_buffers}, cache_entry->executable->options()));
+    }
   }
   auto traceback = xla::Traceback::Get();
 

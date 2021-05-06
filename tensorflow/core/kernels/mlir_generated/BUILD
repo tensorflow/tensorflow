@@ -339,6 +339,28 @@ tf_kernel_library(
     ]),
 )
 
+tf_kernel_library(
+    name = "gpu_relu_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_relu.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_relu_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "relu_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_relu_op",
+    ]),
+)
+
 cc_library(
     name = "base_ops_test",
     testonly = 1,
@@ -1022,6 +1044,7 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
+        "relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",
@@ -1087,8 +1110,8 @@ gpu_kernel_library(
         "f64",
     ] * 8,
     tile_size = "256",
-    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 + ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
-    unroll_factors = "4",
+    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 +
+            ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
 )
 
 gpu_kernel_library(

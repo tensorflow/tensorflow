@@ -1,7 +1,11 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "gentbl_filegroup", "td_library")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
 load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
@@ -23,8 +27,6 @@ package_group(
 exports_files([
     "LICENSE.TXT",
     "include/mlir/Dialect/LLVMIR/LLVMOps.td",
-    "lib/Bindings/Python/StandardOps.td",
-    "lib/Bindings/Python/BuiltinOps.td",
     "run_lit.sh",
 ])
 
@@ -431,13 +433,8 @@ cc_library(
 )
 
 ##---------------------------------------------------------------------------##
-# Python bindings.
-#
-# This only defines filegroups that are used to construct Python extensions and
-# libraries. Actual libraries can be constructed elsewhere. Note that we define
-# separate filegroups for files in different directories so that we can mirror
-# the tree correctly in Python land.
-##---------------------------------------------------------------------------##
+# Sources of Python bindings.
+#----------------------------------------------------------------------------##
 
 cc_library(
     name = "MLIRBindingsPythonExtension",
@@ -448,115 +445,59 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "MLIRBindingsPythonSourceFiles",
+exports_files(["lib/Bindings/Python/MainModule.cpp"])
+
+cc_library(
+    name = "MLIRBindingsPythonCore",
     srcs = glob(
         include = ["lib/Bindings/Python/*.cpp"],
         exclude = ["lib/Bindings/Python/MainModule.cpp"],
     ),
-)
-
-exports_files(
-    ["lib/Bindings/Python/MainModule.cpp"],
-)
-
-filegroup(
-    name = "MLIRBindingsPythonHeaderFiles",
-    srcs = glob(["lib/Bindings/Python/*.h"]),
-)
-
-td_library(
-    name = "StandardOpsPyTdFiles",
-    srcs = [
-        "include/mlir/Bindings/Python/Attributes.td",
+    hdrs = glob(["lib/Bindings/Python/*.h"]),
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
     ],
-    includes = ["include"],
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
+    ],
+    includes = [
+        "include",
+        "lib/Bindings/Python",
+    ],
     deps = [
-        ":OpBaseTdFiles",
-        ":StdOpsTdFiles",
+        ":CAPIAsync",
+        ":CAPIDebug",
+        ":CAPIExecutionEngine",
+        ":CAPIGPU",
+        ":CAPIIR",
+        ":CAPILinalg",
+        ":CAPIRegistration",
+        ":MLIRBindingsPythonExtension",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
     ],
 )
 
-gentbl_filegroup(
-    name = "StandardOpsPyGen",
-    tbl_outs = [
-        (
-            "-gen-python-op-bindings -bind-dialect=std",
-            "lib/Bindings/Python/mlir/dialects/_std_ops_gen.py",
-        ),
+# Dynamic library with the MLIR Python extension.
+cc_binary(
+    name = "_mlir.so",
+    srcs = ["lib/Bindings/Python/MainModule.cpp"],
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
     ],
-    tblgen = ":mlir-tblgen",
-    td_file = "lib/Bindings/Python/StandardOps.td",
-    deps = [
-        ":StandardOpsPyTdFiles",
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
     ],
-)
-
-td_library(
-    name = "BuiltinOpsPyTdFiles",
-    srcs = [
-        "include/mlir/Bindings/Python/Attributes.td",
-        "lib/Bindings/Python/BuiltinOps.td",
-    ],
-    includes = ["include"],
-    deps = [
-        ":BuiltinDialectTdFiles",
-        ":OpBaseTdFiles",
-    ],
-)
-
-gentbl_filegroup(
-    name = "BuiltinOpsPyGen",
-    tbl_outs = [
-        (
-            "-gen-python-op-bindings -bind-dialect=builtin",
-            "lib/Bindings/Python/mlir/dialects/_builtin_ops_gen.py",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "lib/Bindings/Python/BuiltinOps.td",
-    deps = [
-        ":BuiltinOpsPyTdFiles",
-    ],
-)
-
-filegroup(
-    name = "BuiltinOpsPyFiles",
-    srcs = [
-        "lib/Bindings/Python/mlir/dialects/_builtin_ops_ext.py",
-        "lib/Bindings/Python/mlir/dialects/builtin.py",
-        ":BuiltinOpsPyGen",
-    ],
-)
-
-filegroup(
-    name = "CorePyFiles",
-    srcs = [
-        "lib/Bindings/Python/mlir/_cext_loader.py",
-        "lib/Bindings/Python/mlir/_dlloader.py",
-    ],
-)
-
-filegroup(
-    name = "DialectCorePyFiles",
-    srcs = [
-        "lib/Bindings/Python/mlir/dialects/_ods_common.py",
-    ],
-)
-
-filegroup(
-    name = "IRPyFiles",
-    srcs = [
-        "lib/Bindings/Python/mlir/ir.py",
-    ],
-)
-
-filegroup(
-    name = "StandardOpsPyFiles",
-    srcs = [
-        "lib/Bindings/Python/mlir/dialects/std.py",
-        ":StandardOpsPyGen",
-    ],
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [":MLIRBindingsPythonCore"],
 )
 
 ##---------------------------------------------------------------------------##
@@ -1207,6 +1148,7 @@ cc_library(
 td_library(
     name = "SparseTensorTdFiles",
     srcs = [
+        "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td",
         "include/mlir/Dialect/SparseTensor/IR/SparseTensorBase.td",
         "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.td",
     ],
@@ -1215,6 +1157,24 @@ td_library(
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
     ],
+)
+
+gentbl(
+    name = "SparseTensorAttrDefsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td",
+    deps = [":SparseTensorTdFiles"],
 )
 
 gentbl(
@@ -1243,6 +1203,20 @@ gentbl(
     deps = [":SparseTensorTdFiles"],
 )
 
+gentbl(
+    name = "SparseTensorPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name SparseTensor",
+            "include/mlir/Dialect/SparseTensor/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/Transforms/Passes.td",
+    deps = [":PassBaseTdFiles"],
+)
+
 cc_library(
     name = "SparseTensor",
     srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
@@ -1251,22 +1225,32 @@ cc_library(
     deps = [
         ":IR",
         ":SideEffectInterfaces",
+        ":SparseTensorAttrDefsIncGen",
         ":SparseTensorOpsIncGen",
+        "@llvm-project//llvm:Support",
     ],
 )
 
 cc_library(
     name = "SparseTensorTransforms",
     srcs = glob(["lib/Dialect/SparseTensor/Transforms/*.cpp"]),
-    hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Transforms.h"],
+    hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Passes.h"],
     includes = ["include"],
     deps = [
         ":IR",
         ":LLVMDialect",
+        ":LinalgOps",
+        ":LinalgTransforms",
         ":MemRefDialect",
+        ":Pass",
+        ":SCFDialect",
         ":SparseTensor",
+        ":SparseTensorPassIncGen",
         ":StandardOps",
+        ":StandardOpsTransforms",
         ":Transforms",
+        ":VectorOps",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -3300,7 +3284,6 @@ cc_library(
 td_library(
     name = "TensorOpsTdFiles",
     srcs = [
-        "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.td",
         "include/mlir/Dialect/Tensor/IR/TensorBase.td",
         "include/mlir/Dialect/Tensor/IR/TensorOps.td",
     ],
@@ -3311,24 +3294,6 @@ td_library(
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
     ],
-)
-
-gentbl(
-    name = "TensorAttrDefsIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "--gen-attrdef-decls",
-            "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.h.inc",
-        ),
-        (
-            "--gen-attrdef-defs",
-            "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Tensor/IR/TensorAttrDefs.td",
-    deps = [":TensorOpsTdFiles"],
 )
 
 gentbl(
@@ -3369,7 +3334,6 @@ cc_library(
         ":IR",
         ":SideEffectInterfaces",
         ":Support",
-        ":TensorAttrDefsIncGen",
         ":TensorOpsIncGen",
         "@llvm-project//llvm:Support",
     ],
@@ -4419,6 +4383,7 @@ cc_library(
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
         ":SparseTensor",
+        ":SparseTensorTransforms",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",
@@ -6041,6 +6006,7 @@ cc_library(
     hdrs = glob(["include/mlir/Dialect/MemRef/Transforms/*.h"]),
     includes = ["include"],
     deps = [
+        ":Affine",
         ":IR",
         ":MemRefDialect",
         ":MemRefPassIncGen",

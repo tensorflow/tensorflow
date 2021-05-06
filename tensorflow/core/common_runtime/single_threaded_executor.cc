@@ -456,8 +456,13 @@ class SingleThreadedExecutorImpl : public Executor {
     return Status::OK();
   }
 
+  // Execute all operations in the calling thread when asynchronous execution
+  // is requested. Callers may expect to perform expensive work in the calling
+  // thread even when the execution itself is single-threaded.
+  //
+  // This also avoid stack-overflow issues with functional control flow.
   void RunAsync(const Args& args, DoneCallback done) override {
-    done(Run(args));
+    args.runner([this, args, done]() { done(Run(args)); });
   }
 
  private:

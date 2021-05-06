@@ -61,6 +61,7 @@ keras_packages = [
     "tensorflow.python.keras.layers.cudnn_recurrent",
     "tensorflow.python.keras.layers.dense_attention",
     "tensorflow.python.keras.layers.embeddings",
+    "tensorflow.python.keras.layers.legacy_rnn.rnn_cell_impl",
     "tensorflow.python.keras.layers.local",
     "tensorflow.python.keras.layers.merge",
     "tensorflow.python.keras.layers.noise",

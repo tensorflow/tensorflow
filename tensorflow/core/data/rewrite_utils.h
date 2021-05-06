@@ -25,9 +25,14 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
+
+RewriterConfig CreateRewriterConfig(
+    const std::vector<tstring>& optimizations,
+    const std::vector<string>& optimizations_configs);
 
 // Rewrites the input dataset using the given config.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,

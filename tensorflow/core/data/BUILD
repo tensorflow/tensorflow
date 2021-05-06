@@ -18,7 +18,7 @@ package(
     licenses = ["notice"],
 )
 
-# Export a few files for use on Android.
+# Export files for use on Android.
 exports_files([
     "captured_function.cc",
     "captured_function.h",
@@ -26,8 +26,12 @@ exports_files([
     "dataset_utils.h",
     "name_utils.cc",
     "name_utils.h",
-    "split_utils.h",
+    "rewrite_utils.cc",
+    "rewrite_utils.h",
+    "root_dataset.cc",
+    "root_dataset.h",
     "split_utils.cc",
+    "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
 ])
@@ -36,6 +40,7 @@ cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
     hdrs = ["captured_function.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":dataset_utils",
         ":stats_utils",
@@ -96,6 +101,7 @@ cc_library(
     testonly = 1,
     srcs = ["dataset_test_base.cc"],
     hdrs = ["dataset_test_base.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":name_utils",
         ":split_utils",
@@ -120,6 +126,7 @@ cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -182,6 +189,7 @@ cc_library(
     name = "name_utils",
     srcs = ["name_utils.cc"],
     hdrs = ["name_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -221,6 +229,22 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+    ],
+)
+
+cc_library(
+    name = "root_dataset",
+    srcs = ["root_dataset.cc"],
+    hdrs = ["root_dataset.h"],
+    deps = [
+        ":dataset_utils",
+        ":name_utils",
+        ":rewrite_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:stringprintf",
     ],
 )
 
@@ -299,11 +323,13 @@ cc_library(
     srcs = ["standalone.cc"],
     hdrs = ["standalone.h"],
     deps = [
+        ":root_dataset",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/memory",
     ],
 )

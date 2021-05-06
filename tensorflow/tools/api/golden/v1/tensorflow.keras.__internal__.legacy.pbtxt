@@ -4,4 +4,8 @@ tf_module {
     name: "layers"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "rnn_cell"
+    mtype: "<type \'module\'>"
+  }
 }

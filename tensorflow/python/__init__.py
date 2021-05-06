@@ -146,7 +146,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.compiler.mlir import mlir
 
 # Structs (aka extension types)
-from tensorflow.python.framework import tensor_struct as _tensor_struct
+from tensorflow.python.framework import extension_type as _extension_type
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

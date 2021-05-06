@@ -953,7 +953,9 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
       return success();
     }
 
-    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    auto result_type =
+        this->typeConverter->convertType(op.getResult().getType())
+            .dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -1290,9 +1292,13 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
     int64_t rank = arg_type.getRank();
     SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
 
-    rewriter.replaceOpWithNewOp<SubTensorOp>(
-        dynamic_slice_op, dynamic_slice_op.getType().cast<RankedTensorType>(),
-        adaptor.operand(), start_indices, sizes, strides);
+    auto result_type =
+        this->typeConverter->convertType(dynamic_slice_op.getType())
+            .cast<RankedTensorType>();
+
+    rewriter.replaceOpWithNewOp<SubTensorOp>(dynamic_slice_op, result_type,
+                                             adaptor.operand(), start_indices,
+                                             sizes, strides);
     return success();
   }
 };

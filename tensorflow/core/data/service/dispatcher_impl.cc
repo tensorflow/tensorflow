@@ -136,8 +136,10 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
-  job_gc_thread_ = absl::WrapUnique(
-      env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  if (config_.job_gc_timeout_ms() >= 0) {
+    job_gc_thread_ = absl::WrapUnique(
+        env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -791,6 +793,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         "could be caused by a dispatcher restart.");
   }
   TF_RETURN_IF_ERROR(s);
+  if (job->garbage_collected) {
+    return errors::FailedPrecondition(
+        "The requested job has been garbage collected due to inactivity. "
+        "Consider configuring the dispatcher with a higher "
+        "`job_gc_timeout_ms`.");
+  }
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
     round_robin_rounds_[request->job_client_id()] =
@@ -933,17 +941,10 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                   (config_.job_gc_timeout_ms() * 1000)) {
       continue;
     }
-    std::vector<std::shared_ptr<const Task>> tasks;
-    TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
-    for (const auto& task : tasks) {
-      if (task->finished) {
-        continue;
-      }
-      Update update;
-      update.mutable_finish_task()->set_task_id(task->task_id);
-      TF_RETURN_IF_ERROR(state_.Apply(update));
-    }
-    DCHECK(job->finished);
+    Update update;
+    update.mutable_garbage_collect_job()->set_job_id(job->job_id);
+    TF_RETURN_IF_ERROR(state_.Apply(update));
+    LOG(INFO) << "Garbage collected job " << job->DebugString();
   }
   return Status::OK();
 }

@@ -21,7 +21,8 @@ limitations under the License.
 // definition to `tf_ops.td` and perform the modification there.
 //
 // This file contains TensorFlow ops whose definitions are programmatically
-// generated from the api-def-files in the following folder:
+// generated from the TF op registration and the api-def-files in the following
+// folder:
 // tensorflow/core/api_def/base_api
 // The generated fields for an op include name, summary, description, traits,
 // arguments, results, derived attributes. Therefore, modifications to these
@@ -1115,6 +1116,51 @@ about broadcasting
   let hasCanonicalizer = 1;
 }
 
+def TF_BatchMatMulV3Op : TF_Op<"BatchMatMulV3", [NoSideEffect]> {
+  let summary = "Multiplies slices of two tensors in batches.";
+
+  let description = [{
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+viewed as an element of a batch), and arranges the individual results
+in a single output tensor of the same batch size. Each of the
+individual slices can optionally be adjointed (to adjoint a matrix
+means to transpose and conjugate it) before multiplication by setting
+the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+and `[..., r_y, c_y]`.
+
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+
+    r_o = c_x if adj_x else r_x
+    c_o = r_y if adj_y else c_y
+
+It is computed as:
+
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+
+*NOTE*: `BatchMatMulV3` supports broadcasting in the batch dimensions. More
+about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>, [{2-D or higher with shape `[..., r_x, c_x]`.}]>:$x,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64]>, [{3-D or higher with shape `[..., r_o, c_o]`}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Ta = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tb = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_BatchNormWithGlobalNormalizationOp : TF_Op<"BatchNormWithGlobalNormalization", [NoSideEffect]> {
   let summary = "Batch normalization.";
 
@@ -2160,7 +2206,8 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
-    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 
   let results = (outs
@@ -4754,6 +4801,24 @@ Equivalent to np.full
   ];
 }
 
+def TF_FinalizeDatasetOp : TF_Op<"FinalizeDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset by applying `tf.data.Options` to `input_dataset`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
+
+    DefaultValuedAttr<BoolAttr, "false">:$has_captured_ref,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_FloorOp : TF_Op<"Floor", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns element-wise largest integer not greater than x.";
 
@@ -5322,7 +5387,7 @@ shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.}]>:$outpu
   }];
 }
 
-def TF_GeneratorDatasetOp : TF_Op<"GeneratorDataset", [AttrSizedOperandSegments, NoSideEffect, TF_NoConstantFold]> {
+def TF_GeneratorDatasetOp : TF_Op<"GeneratorDataset", [AttrSizedOperandSegments, TF_GeneratorOpSideEffect]> {
   let summary = [{
 Creates a dataset that invokes a function to generate elements.
   }];

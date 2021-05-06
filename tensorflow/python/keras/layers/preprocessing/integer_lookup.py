@@ -276,15 +276,20 @@ class IntegerLookup(index_lookup.IndexLookup):
 
     # Support deprecated args for this layer.
     if "max_values" in kwargs:
-      logging.warning("max_values is deprecated, use max_tokens instead.")
+      logging.log_first_n(logging.WARN,
+                          "max_values is deprecated, use max_tokens instead.",
+                          1)
       max_tokens = kwargs["max_values"]
       del kwargs["max_values"]
     if "mask_value" in kwargs:
-      logging.warning("mask_value is deprecated, use mask_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "mask_value is deprecated, use mask_token instead.",
+                          1)
       mask_token = kwargs["mask_value"]
       del kwargs["mask_value"]
     if "oov_value" in kwargs:
-      logging.warning("oov_value is deprecated, use oov_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "oov_value is deprecated, use oov_token instead.", 1)
       oov_token = kwargs["oov_value"]
       del kwargs["oov_value"]
 

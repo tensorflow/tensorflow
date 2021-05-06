@@ -1,7 +1,6 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_mobile",
@@ -299,13 +298,14 @@ tf_kernel_library(
     srcs = ["io_ops.cc"],
     hdrs = ["io_ops.h"],
     deps = [
-        ":snapshot_util",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
     ],
@@ -354,6 +354,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:initializable_lookup_table",
         "//tensorflow/core/kernels:lookup_util",
@@ -609,15 +610,6 @@ tf_kernel_library(
     ],
 )
 
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "snapshot_util",
-    hdrs = ["snapshot_util.h"],
-    deps = [
-        "//tensorflow/core/data:snapshot_utils",
-    ],
-)
-
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
@@ -717,6 +709,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

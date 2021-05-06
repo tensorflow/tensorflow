@@ -115,6 +115,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<FuncOp>(
       TF::CreateDropWhileShapeInvariantInDeviceClusterPass());
@@ -125,6 +126,10 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.

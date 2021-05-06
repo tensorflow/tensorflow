@@ -47,6 +47,10 @@ namespace {
 
 constexpr char kDelimiter[] = "@@";
 
+constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
+constexpr char kOptimizers[] = "optimizers";
+constexpr char kOptimizerConfigs[] = "optimizer_configs";
+
 void AddFakeSinks(FunctionDef* function_def) {
   int counter = 0;
   for (const auto& output : function_def->signature().output_arg()) {
@@ -143,6 +147,29 @@ Status ApplyRewrites(OpKernelContext* ctx,
 }
 
 }  // anonymous namespace
+
+RewriterConfig CreateRewriterConfig(
+    const std::vector<tstring>& optimizations,
+    const std::vector<string>& optimizations_configs) {
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers(kOptimizerName);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  rewriter_config.set_fail_on_optimizer_errors(true);
+  auto custom_optimizer = rewriter_config.add_custom_optimizers();
+  custom_optimizer->set_name(kOptimizerName);
+  auto* custom_optimizations_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
+  for (const auto& opt : optimizations) {
+    custom_optimizations_list->add_s(opt.data(), opt.size());
+  }
+  auto* config_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
+          .mutable_list();
+  for (const auto& config : optimizations_configs) {
+    config_list->add_s(config.data(), config.size());
+  }
+  return rewriter_config;
+}
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,

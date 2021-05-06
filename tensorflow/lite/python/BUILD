@@ -1,9 +1,13 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
+load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/tflite_micro:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -175,7 +179,6 @@ py_library(
         ":metrics",
         ":op_hint",
         ":util",
-        "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
@@ -268,9 +271,7 @@ py_library(
     name = "util",
     srcs = ["util.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = internal_visibility_allowlist(),
     deps = [
         ":op_hint",
         ":schema_py",

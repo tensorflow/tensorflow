@@ -23,6 +23,12 @@ ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
   endif
 endif
 
+# Convert downloaded person detect int8 model.
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/person_detection_int8_vela_convert.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the person detection int8 model conversion: $(DOWNLOAD_RESULT))
+endif
+
 FLOAT := soft
 GCC_TARGET_ARCH := $(TARGET_ARCH)
 
@@ -129,6 +135,9 @@ ARM_CPU := $(subst +nofp,,$(ARM_CPU))
 CXXFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 CCFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 
+# For Ethos-U Core Driver. Header file name is depending on target architecture.
+CXXFLAGS += -DCMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE=\"$(ARM_CPU).h\"
+
 THIRD_PARTY_CC_SRCS += \
   $(ETHOS_U_CORE_PLATFORM)/retarget.c \
   $(ETHOS_U_CORE_PLATFORM)/uart.c
@@ -159,7 +168,6 @@ MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-  tensorflow/lite/micro/examples/person_detection/Makefile.inc \
   tensorflow/lite/micro/examples/hello_world/Makefile.inc \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))

@@ -96,6 +96,10 @@ tf_class {
     argspec: "args=[\'self\', \'buffer_size\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "random"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "range"
     argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -50,6 +51,218 @@ constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
+
+// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
+// the iterator name by getting rid of everything post the final colon.
+Status GetIteratorName(StringPiece key, string* name) {
+  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  if (split_keys.size() != 2) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  string real_key = split_keys[1];
+  const int pos = real_key.rfind(kColon);
+  *name = real_key.substr(0, pos);
+  return Status::OK();
+}
+
+// Use "Opt" suffix so that they are not confused with the enums in Options
+// proto.
+constexpr char kMapVectorizationOpt[] = "map_vectorization";
+constexpr char kMapAndBatchFusionOpt[] = "map_and_batch_fusion";
+constexpr char kNoopEliminationOpt[] = "noop_elimination";
+constexpr char kMapParallelizationOpt[] = "map_parallelization";
+constexpr char kShuffleAndRepeatFusionOpt[] = "shuffle_and_repeat_fusion";
+constexpr char kFilterFusionOpt[] = "filter_fusion";
+constexpr char kFilterWithRandomUniformFusionOpt[] =
+    "filter_with_random_uniform_fusion";
+constexpr char kHoistRandomUniformOpt[] = "hoist_random_uniform";
+constexpr char kMapAndFilterFusionOpt[] = "map_and_filter_fusion";
+constexpr char kMapFusionOpt[] = "map_fusion";
+constexpr char kParallelBatchOpt[] = "parallel_batch";
+constexpr char kReorderDataDiscardingOpsOpt[] = "reorder_data_discarding_ops";
+constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
+constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
+    "disable_prefetch_legacy_autotune";
+constexpr char kMakeSloppyOpt[] = "make_sloppy";
+constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
+constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
+constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
+constexpr char kAutotuneOpt[] = "autotune";
+constexpr char kSlackOpt[] = "slack";
+constexpr char kSlackPeriodOpt[] = "slack_period";
+
+void MapVectorizationGraphRewrites(const Options& options,
+                                   std::set<tstring>* optimization_enabled,
+                                   std::set<tstring>* optimization_disabled) {
+  if (options.optimization_options()
+          .map_vectorization()
+          .optional_enabled_case() != MapVectorization::kEnabled) {
+    return;
+  }
+  if (options.optimization_options().map_vectorization().enabled()) {
+    optimization_enabled->insert(kMapVectorizationOpt);
+  } else {
+    optimization_disabled->insert(kMapVectorizationOpt);
+  }
+}
+
+void DefaultOptimizationGraphRewrites(const Options& options,
+                                      std::set<tstring>* optimization_enabled,
+                                      std::set<tstring>* optimization_disabled,
+                                      std::set<tstring>* optimization_default) {
+  MapVectorizationGraphRewrites(options, optimization_enabled,
+                                optimization_disabled);
+  const auto& optimization_options = options.optimization_options();
+  if (optimization_options.optional_apply_default_optimizations_case() !=
+          OptimizationOptions::kApplyDefaultOptimizations ||
+      optimization_options.apply_default_optimizations()) {
+    if (optimization_options.optional_map_and_batch_fusion_case() !=
+        OptimizationOptions::kMapAndBatchFusion) {
+      optimization_default->insert(kMapAndBatchFusionOpt);
+    }
+    if (optimization_options.optional_noop_elimination_case() !=
+        OptimizationOptions::kNoopElimination) {
+      optimization_default->insert(kNoopEliminationOpt);
+    }
+    if (optimization_options.optional_map_parallelization_case() !=
+        OptimizationOptions::kMapParallelization) {
+      optimization_default->insert(kMapParallelizationOpt);
+    }
+    if (optimization_options.optional_shuffle_and_repeat_fusion_case() !=
+        OptimizationOptions::kShuffleAndRepeatFusion) {
+      optimization_default->insert(kShuffleAndRepeatFusionOpt);
+    }
+  }
+  if (optimization_options.optional_filter_fusion_case() ==
+      OptimizationOptions::kFilterFusion) {
+    if (optimization_options.filter_fusion()) {
+      optimization_enabled->insert(kFilterFusionOpt);
+    } else {
+      optimization_disabled->insert(kFilterFusionOpt);
+    }
+  }
+  if (optimization_options.optional_filter_with_random_uniform_fusion_case() ==
+      OptimizationOptions::kFilterWithRandomUniformFusion) {
+    if (optimization_options.filter_with_random_uniform_fusion()) {
+      optimization_enabled->insert(kFilterWithRandomUniformFusionOpt);
+    } else {
+      optimization_disabled->insert(kFilterWithRandomUniformFusionOpt);
+    }
+  }
+  if (optimization_options.optional_hoist_random_uniform_case() ==
+      OptimizationOptions::kHoistRandomUniform) {
+    if (optimization_options.hoist_random_uniform()) {
+      optimization_enabled->insert(kHoistRandomUniformOpt);
+    } else {
+      optimization_disabled->insert(kHoistRandomUniformOpt);
+    }
+  }
+  if (optimization_options.optional_map_and_batch_fusion_case() ==
+      OptimizationOptions::kMapAndBatchFusion) {
+    if (optimization_options.map_and_batch_fusion()) {
+      optimization_enabled->insert(kMapAndBatchFusionOpt);
+    } else {
+      optimization_disabled->insert(kMapAndBatchFusionOpt);
+    }
+  }
+  if (optimization_options.optional_map_and_filter_fusion_case() ==
+      OptimizationOptions::kMapAndFilterFusion) {
+    if (optimization_options.map_and_filter_fusion()) {
+      optimization_enabled->insert(kMapAndFilterFusionOpt);
+    } else {
+      optimization_disabled->insert(kMapAndFilterFusionOpt);
+    }
+  }
+  if (optimization_options.optional_map_parallelization_case() ==
+      OptimizationOptions::kMapParallelization) {
+    if (optimization_options.map_parallelization()) {
+      optimization_enabled->insert(kMapParallelizationOpt);
+    } else {
+      optimization_disabled->insert(kMapParallelizationOpt);
+    }
+  }
+  if (optimization_options.optional_map_fusion_case() ==
+      OptimizationOptions::kMapFusion) {
+    if (optimization_options.map_fusion()) {
+      optimization_enabled->insert(kMapFusionOpt);
+    } else {
+      optimization_disabled->insert(kMapFusionOpt);
+    }
+  }
+  if (optimization_options.optional_noop_elimination_case() ==
+      OptimizationOptions::kNoopElimination) {
+    if (optimization_options.noop_elimination()) {
+      optimization_enabled->insert(kNoopEliminationOpt);
+    } else {
+      optimization_disabled->insert(kNoopEliminationOpt);
+    }
+  }
+  if (optimization_options.optional_parallel_batch_case() ==
+      OptimizationOptions::kParallelBatch) {
+    if (optimization_options.parallel_batch()) {
+      optimization_enabled->insert(kParallelBatchOpt);
+    } else {
+      optimization_disabled->insert(kParallelBatchOpt);
+    }
+  }
+  if (optimization_options.optional_reorder_data_discarding_ops_case() ==
+      OptimizationOptions::kReorderDataDiscardingOps) {
+    if (optimization_options.reorder_data_discarding_ops()) {
+      optimization_enabled->insert(kReorderDataDiscardingOpsOpt);
+    } else {
+      optimization_disabled->insert(kReorderDataDiscardingOpsOpt);
+    }
+  }
+  if (optimization_options.optional_shuffle_and_repeat_fusion_case() ==
+      OptimizationOptions::kShuffleAndRepeatFusion) {
+    if (optimization_options.shuffle_and_repeat_fusion()) {
+      optimization_enabled->insert(kShuffleAndRepeatFusionOpt);
+    } else {
+      optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
+    }
+  }
+  const bool has_autotune = optimization_options.optional_autotune_case() ==
+                            OptimizationOptions::kAutotune;
+  const bool has_autotune_buffers =
+      optimization_options.optional_autotune_buffers_case() ==
+      OptimizationOptions::kAutotuneBuffers;
+  if (!(has_autotune && !optimization_options.autotune()) &&
+      (has_autotune_buffers && optimization_options.autotune_buffers())) {
+    optimization_enabled->insert(kAutotuneBufferSizesOpt);
+    optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
+  }
+  if (has_autotune && !optimization_options.autotune()) {
+    optimization_disabled->insert(kAutotuneBufferSizesOpt);
+    optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
+  }
+}
+
+void GraphRewritesOptions(const Options& options,
+                          std::set<tstring>* optimization_enabled,
+                          std::set<tstring>* optimization_disabled,
+                          std::set<tstring>* optimization_default) {
+  DefaultOptimizationGraphRewrites(options, optimization_enabled,
+                                   optimization_disabled, optimization_default);
+  if (options.optional_deterministic_case() == Options::kDeterministic) {
+    if (options.deterministic()) {
+      optimization_disabled->insert(kMakeSloppyOpt);
+    } else {
+      optimization_enabled->insert(kMakeSloppyOpt);
+    }
+  }
+  if (options.optional_slack_case() == Options::kSlack) {
+    if (options.slack()) {
+      optimization_enabled->insert(kSlackOpt);
+    } else {
+      optimization_disabled->insert(kSlackOpt);
+    }
+  }
+}
 
 }  // namespace
 
@@ -177,28 +390,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 
   return Status::OK();
 }
-
-namespace {
-
-// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
-// the iterator name by getting rid of everything post the final colon.
-Status GetIteratorName(StringPiece key, string* name) {
-  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
-  if (split_keys.size() != 2) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  string real_key = split_keys[1];
-  const int pos = real_key.rfind(kColon);
-  *name = real_key.substr(0, pos);
-  return Status::OK();
-}
-
-}  // namespace
 
 VariantTensorDataReader::VariantTensorDataReader(
     const std::vector<const tensorflow::VariantTensorData*>& data) {
@@ -534,6 +725,24 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
+std::vector<tstring> ConfigureExperimentsAndSelectOptimizations(
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default) {
+  string job_name = port::JobName();
+  // The map that stores the live experiment names and for how much percentage
+  // of the Borg jobs, the experiments will be randomly turned on.
+  // clang-format off
+  absl::flat_hash_map<string, uint64> live_experiments = {
+    {"enable_gradient_descent", 0}
+  };
+  // clang-format on
+  auto hash_func = [](const string& str) { return Hash64(str); };
+  return SelectOptimizations(job_name, live_experiments, optimizations_enabled,
+                             optimizations_disabled, optimizations_default,
+                             hash_func);
+}
+
 std::vector<tstring> SelectOptimizations(
     const string& job_name,
     const absl::flat_hash_map<string, uint64>& live_experiments,
@@ -674,6 +883,21 @@ std::vector<tstring> SelectOptimizations(
 
   optimizations.insert(optimizations.end(), optimizations_set.begin(),
                        optimizations_set.end());
+
+  // Log and record the live experiments that will be applied.
+  if (!job_name.empty() && !live_experiments.empty()) {
+    VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+               "Please see `go/tf-data-experiments` for more details.";
+
+    for (auto& pair : live_experiments) {
+      string experiment = pair.first;
+      if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
+          optimizations.end()) {
+        VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
+        metrics::RecordTFDataExperiment(experiment);
+      }
+    }
+  }
   return optimizations;
 }
 
@@ -913,6 +1137,90 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
     TF_RETURN_IF_ERROR(status);
   }
   return Status::OK();
+}
+
+void GetOptimizations(const Options& options,
+                      std::vector<tstring>* optimizations_enabled,
+                      std::vector<tstring>* optimizations_disabled,
+                      std::vector<tstring>* optimizations_default) {
+  std::set<tstring> enabled_set;
+  std::set<tstring> disabled_set;
+  std::set<tstring> default_set;
+  GraphRewritesOptions(options, &enabled_set, &disabled_set, &default_set);
+  *optimizations_enabled = {enabled_set.begin(), enabled_set.end()};
+  *optimizations_disabled = {disabled_set.begin(), disabled_set.end()};
+  *optimizations_default = {default_set.begin(), default_set.end()};
+}
+
+void CreateGraphRewriteConfigs(const Options& options,
+                               std::vector<std::string>* configs) {
+  const auto& optimization_options = options.optimization_options();
+  const auto& map_vectorization = optimization_options.map_vectorization();
+  if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
+      map_vectorization.enabled() &&
+      map_vectorization.optional_use_choose_fastest_case() ==
+          MapVectorization::kUseChooseFastest) {
+    if (map_vectorization.use_choose_fastest()) {
+      configs->push_back(absl::StrCat(kMapVectorizationOpt, ":",
+                                      kUseChooseFastestOpt, ":true"));
+    } else {
+      configs->push_back(absl::StrCat(kMapVectorizationOpt, ":",
+                                      kUseChooseFastestOpt, ":false"));
+    }
+  }
+  std::vector<tstring> autotune_only_optimizations = {
+      kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
+      kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
+      kMapParallelizationOpt};
+
+  if (optimization_options.optional_autotune_case() ==
+          OptimizationOptions::kAutotune &&
+      !optimization_options.autotune()) {
+    for (const auto& optimization : autotune_only_optimizations) {
+      configs->push_back(
+          absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
+    }
+  } else {
+    for (const auto& optimization : autotune_only_optimizations) {
+      configs->push_back(
+          absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":true"));
+    }
+  }
+  if (options.slack()) {
+    int num_devices = 1;
+    if (options.distribute_options().optional_num_devices_case() ==
+        DistributeOptions::kNumDevices) {
+      num_devices = options.distribute_options().num_devices();
+    }
+    configs->push_back(
+        absl::StrCat(kSlackOpt, ":", kSlackPeriodOpt, ":", num_devices));
+  }
+}
+
+bool ShouldConfigureMaxIntraOpParallelism(const Options& options) {
+  return options.threading_options().optional_max_intra_op_parallelism_case() ==
+         ThreadingOptions::kMaxIntraOpParallelism;
+}
+
+bool ShouldUsePrivateThreadPool(const Options& options) {
+  return options.threading_options().optional_private_threadpool_size_case() ==
+         ThreadingOptions::kPrivateThreadpoolSize;
+}
+
+bool ShouldUseAutotuning(const Options& options) {
+  return options.optimization_options().optional_autotune_case() !=
+             OptimizationOptions::kAutotune ||
+         options.optimization_options().autotune();
+}
+
+bool ShouldApplyOptimizations(
+    const Options& options, const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_default) {
+  return (options.optimization_options()
+                  .optional_apply_default_optimizations_case() !=
+              OptimizationOptions::kApplyDefaultOptimizations ||
+          options.optimization_options().apply_default_optimizations() ||
+          !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
 }  // namespace data

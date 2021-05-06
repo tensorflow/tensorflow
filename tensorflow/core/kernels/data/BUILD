@@ -8,18 +8,12 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 
-# TODO(b/168713048): Avoid visibility exceptions.
-package_group(name = "friends")
-
 package(
-    default_visibility = [
-        ":friends",
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
-# Export a few files for use on Android.
+# Export files for use on Android.
 exports_files([
     "batch_dataset_op.cc",
     "batch_dataset_op.h",
@@ -126,15 +120,6 @@ tf_kernel_library(
     ],
 )
 
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "captured_function",
-    hdrs = ["captured_function.h"],
-    deps = [
-        "//tensorflow/core/data:captured_function",
-    ],
-)
-
 tf_kernel_library(
     name = "concatenate_dataset_op",
     srcs = ["concatenate_dataset_op.cc"],
@@ -173,7 +158,6 @@ tf_kernel_library(
     srcs = ["dataset_ops.cc"],
     hdrs = ["dataset_ops.h"],
     deps = [
-        ":serialization_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -181,27 +165,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler/utils:traversal",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "dataset_test_base",
-    testonly = 1,
-    hdrs = ["dataset_test_base.h"],
-    deps = [
-        "//tensorflow/core/data:dataset_test_base",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "dataset_utils",
-    hdrs = ["dataset_utils.h"],
-    deps = [
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -256,6 +222,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op",
@@ -411,15 +378,6 @@ tf_cc_test(
     ],
 )
 
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "hash_utils",
-    hdrs = ["hash_utils.h"],
-    deps = [
-        "//tensorflow/core/data:hash_utils",
-    ],
-)
-
 tf_kernel_library(
     name = "interleave_dataset_op",
     srcs = ["interleave_dataset_op.cc"],
@@ -478,6 +436,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
@@ -585,16 +544,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "name_utils",
-    hdrs = ["name_utils.h"],
-    deps = [
-        "//tensorflow/core/data:name_utils",
     ],
 )
 
@@ -644,6 +595,7 @@ tf_kernel_library(
         "optional_ops.cu.cc",
         "optional_ops.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1022,24 +974,6 @@ tf_cc_test(
     ],
 )
 
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "rewrite_utils",
-    hdrs = ["rewrite_utils.h"],
-    deps = [
-        "//tensorflow/core/data:rewrite_utils",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "serialization_utils",
-    hdrs = ["serialization_utils.h"],
-    deps = [
-        "//tensorflow/core/data:serialization_utils",
-    ],
-)
-
 tf_kernel_library(
     name = "shard_dataset_op",
     srcs = ["shard_dataset_op.cc"],
@@ -1107,7 +1041,6 @@ tf_cc_test(
     ],
 )
 
-# TODO(b/168713048): Remove forwarding target once all users are updated.
 tf_kernel_library(
     name = "skip_dataset_op",
     srcs = ["skip_dataset_op.cc"],
@@ -1169,24 +1102,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "split_utils",
-    hdrs = ["split_utils.h"],
-    deps = [
-        "//tensorflow/core/data:split_utils",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "stats_utils",
-    hdrs = ["stats_utils.h"],
-    deps = [
-        "//tensorflow/core/data:stats_utils",
     ],
 )
 
@@ -1462,6 +1377,10 @@ filegroup(
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:rewrite_utils.cc",
+        "//tensorflow/core/data:rewrite_utils.h",
+        "//tensorflow/core/data:root_dataset.cc",
+        "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/data:split_utils.cc",

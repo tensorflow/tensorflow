@@ -515,11 +515,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatResponse resp;
       Status s = dispatcher_->ClientHeartbeat(req, resp);
       if (!s.ok()) {
-        LOG(WARNING) << "Failed to heartbeat to dispatcher from job client id "
-                     << job_client_id_
-                     << ". Dispatcher address: " << dataset()->address_
-                     << ". Error: " << s;
-        return;
+        if (errors::IsAborted(s) || errors::IsUnavailable(s) ||
+            errors::IsCancelled(s)) {
+          LOG(WARNING)
+              << "Failed to heartbeat to dispatcher from job client id "
+              << job_client_id_
+              << ". Dispatcher address: " << dataset()->address_
+              << ". Error: " << s;
+          return;
+        }
+        mutex_lock l(mu_);
+        status_ = s;
+        get_next_cv_.notify_all();
       }
       mutex_lock l(mu_);
       UpdateJobFinished(resp.job_finished());

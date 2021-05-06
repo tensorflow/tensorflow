@@ -16002,6 +16002,29 @@ func TensorListFromTensor(scope *Scope, tensor tf.Output, element_shape tf.Outpu
 	return op.Output(0)
 }
 
+// Splits a tensor into a list.
+//
+// list[i] corresponds to lengths[i] tensors from the input tensor.
+// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
+//
+// tensor: The input tensor.
+// element_shape: A shape compatible with that of elements in the tensor.
+// lengths: Vector of sizes of the 0th dimension of tensors in the list.
+// output_handle: The list.
+func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSplit",
+		Input: []tf.Input{
+			tensor, element_shape, lengths,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17181,29 +17204,6 @@ func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Splits a tensor into a list.
-//
-// list[i] corresponds to lengths[i] tensors from the input tensor.
-// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
-//
-// tensor: The input tensor.
-// element_shape: A shape compatible with that of elements in the tensor.
-// lengths: Vector of sizes of the 0th dimension of tensors in the list.
-// output_handle: The list.
-func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSplit",
-		Input: []tf.Input{
-			tensor, element_shape, lengths,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // ParseSingleSequenceExampleAttr is an optional argument to ParseSingleSequenceExample.
@@ -22099,6 +22099,13 @@ func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 // `float` or `double` that is the absolute value of each element in `x`. All
 // elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
 // value is computed as \\( \sqrt{a^2 + b^2}\\).
+//
+// For example:
+//
+// >>> x = tf.complex(3.0, 4.0)
+// >>> print((tf.raw_ops.ComplexAbs(x=x, Tout=tf.dtypes.float32, name=None)).numpy())
+// 5.0
+//
 func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -26418,6 +26425,38 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Assigns sparse updates to the variable referenced by `resource`.
+//
+// This operation computes
+//
+//     # Scalar indices
+//     ref[indices, ...] = updates[...]
+//
+//     # Vector indices (for each i)
+//     ref[indices[i], ...] = updates[i, ...]
+//
+//     # High rank indices (for each i, ..., j)
+//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+//
+// Arguments:
+//	resource: Should be from a `Variable` node.
+//	indices: A tensor of indices into the first dimension of `ref`.
+//	updates: A tensor of updated values to add to `ref`.
+//
+// Returns the created operation.
+func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterUpdate",
+		Input: []tf.Input{
+			resource, indices, updates,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Creates a Dataset that returns pseudorandom numbers.
@@ -32402,38 +32441,6 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output, optional ..
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Assigns sparse updates to the variable referenced by `resource`.
-//
-// This operation computes
-//
-//     # Scalar indices
-//     ref[indices, ...] = updates[...]
-//
-//     # Vector indices (for each i)
-//     ref[indices[i], ...] = updates[i, ...]
-//
-//     # High rank indices (for each i, ..., j)
-//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
-//
-// Arguments:
-//	resource: Should be from a `Variable` node.
-//	indices: A tensor of indices into the first dimension of `ref`.
-//	updates: A tensor of updated values to add to `ref`.
-//
-// Returns the created operation.
-func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterUpdate",
-		Input: []tf.Input{
-			resource, indices, updates,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Creates ngrams from ragged string data.
 //
 // This op accepts a ragged tensor with 1 ragged dimension containing only
@@ -35811,6 +35818,9 @@ func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num
 type StringUpperAttr func(optionalAttr)
 
 // StringUpperEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringUpperEncoding(value string) StringUpperAttr {
 	return func(m optionalAttr) {
@@ -35825,6 +35835,9 @@ func StringUpperEncoding(value string) StringUpperAttr {
 // >>> tf.strings.upper("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
 //
+//
+// Arguments:
+//	input: The input to be upper-cased.
 func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -48578,6 +48591,9 @@ func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Tou
 type StringLowerAttr func(optionalAttr)
 
 // StringLowerEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringLowerEncoding(value string) StringLowerAttr {
 	return func(m optionalAttr) {
@@ -48592,6 +48608,9 @@ func StringLowerEncoding(value string) StringLowerAttr {
 // >>> tf.strings.lower("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
 //
+//
+// Arguments:
+//	input: The input to be lower-cased.
 func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return

@@ -254,6 +254,44 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
 
+  // CHECK-LABEL: func @tail_multiple_nested_outside_compiled_ops
+  func @tail_multiple_nested_outside_compiled_ops(%arg0: tensor<i32>) {
+    // CHECK:      %[[CLUSTER_OUT:.*]]:3 = "tf_device.cluster"
+    // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"
+    // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"
+    // CHECK-NEXT:   tf_device.return %[[B_OUT]], %[[CONST_OUT]], %[[A_OUT]]
+    // CHECK-NEXT: {
+    // CHECK-DAG:  num_cores_per_replica = 1
+    // CHECK-DAG:  step_marker_location = ""
+    // CHECK-DAG:  padding_map = []
+    // CHECK-DAG:  topology = ""
+    // CHECK-DAG:  device_assignment = []
+    //
+    // CHECK:      "tf_device.launch"
+    // CHECK-NEXT:   %[[C_OUT:.*]] = "tf.C"(%arg0, %[[CLUSTER_OUT]]#2)
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK         "tf.IfRegion"
+    // CHECK:          "tf.D"(%[[C_OUT]], %arg0, %[[CLUSTER_OUT]]#0)
+    // CHECK-NOT:      _xla_outside_compilation
+    // CHECK:        tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    "tf_device.cluster"() ( {
+      %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      %a = "tf.A"() : () -> tensor<i32>
+      %b = "tf.B"(%arg0) : (tensor<i32>) -> tensor<i32>
+      %c = "tf.C"(%arg0, %a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.IfRegion"(%0) ( {
+        "tf.D"(%c, %arg0, %b) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+      }) {is_stateless = true, _xla_outside_compilation = "cluster1"} : (tensor<i1>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    return
+  }
+
   // CHECK-LABEL: func @tail_aliased_output
   func @tail_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) {
     // CHECK-NEXT: %[[A_OUT:.*]] = "tf.A"
