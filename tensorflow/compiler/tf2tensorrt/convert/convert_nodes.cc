@@ -7241,9 +7241,10 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
 #endif
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
-  (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
-#endif
+  // TODO: @DEKHTIARJonathan - Uncomment when fixed
+  //#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+  //  (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
+  //#endif
   (*registration)["AddN"] = ConvertAddN;
   (*registration)["Cast"] = ConvertCast;
   (*registration)["ConcatV2"] = ConvertConcat;
