@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
@@ -2894,7 +2895,7 @@ def matrix_set_diag(
 
 def _constant_if_small(value, shape, dtype, name):
   try:
-    if np.prod(shape) < 1000:
+    if math_ops.reduce_prod(shape) < 1000:
       return constant(value, shape=shape, dtype=dtype, name=name)
   except TypeError:
     # Happens when shape is a Tensor, list with Tensor elements, etc.
