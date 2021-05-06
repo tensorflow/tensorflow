@@ -27,6 +27,28 @@ general code health, maintainability, style, and submission, as well as how to
 setup a development environment. This guide contains step-by-step instructions
 for the specific task of porting reference ops from Lite to Micro.
 
+<!--
+Semi-automated TOC generation with instructions from
+https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
+-->
+<!--ts-->
+* [Porting Reference Ops from Lite to Micro](#porting-reference-ops-from-lite-to-micro)
+   * [1. Look for a port already in progress](#1-look-for-a-port-already-in-progress)
+   * [2. Open a GitHub issue to track the port](#2-open-a-github-issue-to-track-the-port)
+   * [3. Extract Lite's code for parsing op parameters to a function (PR1)](#3-extract-lites-code-for-parsing-op-parameters-to-a-function-pr1)
+   * [4. Extract the reference for the op to a standalone header (PR2)](#4-extract-the-reference-for-the-op-to-a-standalone-header-pr2)
+   * [5. Port the op from Lite to Micro (PR3)](#5-port-the-op-from-lite-to-micro-pr3)
+* [General Guidelines](#general-guidelines)
+   * [Check each commit for formatting, lint, and unit-test passage](#check-each-commit-for-formatting-lint-and-unit-test-passage)
+   * [Add yourself as an asignee to PRs](#add-yourself-as-an-asignee-to-prs)
+   * [Maintain a 1:1 correspondence between Micro and Lite versions of unit tests](#maintain-a-11-correspondence-between-micro-and-lite-versions-of-unit-tests)
+   * [Sometimes CI checks on PRs are flakey and fail](#sometimes-ci-checks-on-prs-are-flakey-and-fail)
+* [Notes](#notes)
+
+<!-- Added by: rkuester, at: Wed 05 May 2021 07:44:11 PM CDT -->
+
+<!--te-->
+
 ## 1. Look for a port already in progress
 
 Begin by searching the TensorFlow GitHub repository for issues containing the
@@ -196,9 +218,9 @@ A good example is [PR #45311][].
     link to the GitHub issue created to document the port. A good example is
     [PR #45647][].
 
-## General Guidelines
+# General Guidelines
 
-### Check each commit for formatting, lint, and unit-test passage
+## Check each commit for formatting, lint, and unit-test passage
 
 Check each commit against the [pre-submit checklist][] in the micro
 Contributing Guidelines. Specifically, make sure your code:
@@ -211,12 +233,12 @@ Contributing Guidelines. Specifically, make sure your code:
 
 CI runs these checks on all PRs, and will hold up your PR if any of these checks fail.
 
-### Add yourself as an asignee to PRs
+## Add yourself as an asignee to PRs
 
 Feel free to add yourself as an additional assignee to PRs which you submit.
 Other assignees may be set by the project's various bots.
 
-### Maintain a 1:1 correspondence between Micro and Lite versions of unit tests
+## Maintain a 1:1 correspondence between Micro and Lite versions of unit tests
 
 To the extent possible, maintain a 1:1 correspondence between Micro and Lite
 versions of unit tests. Avoid cleanup of merely stylistic issues, e.g., by
@@ -225,13 +247,13 @@ replacing the hardcoded literal `3.40282e+038` with
 versions of a test put a burden on future maintainers to figure out whether the
 differences are actually significant or just stylistic.
 
-### Sometimes CI checks on PRs are flakey and fail
+## Sometimes CI checks on PRs are flakey and fail
 
 Sometimes CI checks on PRs don't fail because of the PRs contents, but because
 of some problem with the test infrastructure. Marking issues with the label
 `kokoro:force-run` causes the checks to be rerun.
 
-## Notes
+# Notes
 
 *   There was discussion of commits vs. PRs in [#45387](https://github.com/tensorflow/tensorflow/issues/45387).
 
