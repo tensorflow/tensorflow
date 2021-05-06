@@ -645,11 +645,11 @@ TF_DEVICELIST_METHOD(uint64_t, TF_DeviceListIncarnation, incarnation(), 0);
 
 // Helper functions -----------------------------------------------------------
 
-namespace {
-
 TF_Operation* ToOperation(Node* node) {
   return static_cast<TF_Operation*>(static_cast<void*>(node));
 }
+
+namespace {
 
 string OutputName(const TF_Output& output) {
   return StrCat(output.oper->node.name(), ":", output.index);
@@ -782,7 +782,7 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
 
 extern "C" {
 
-static TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
+TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
                                                       const char* op_type,
                                                       const char* oper_name)
     TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
@@ -1041,7 +1041,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
   status->status = Status::OK();
 }
 
-static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
+TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
                                               TF_Status* status)
     TF_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
   Node* ret = nullptr;
