@@ -35818,6 +35818,9 @@ func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num
 type StringUpperAttr func(optionalAttr)
 
 // StringUpperEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringUpperEncoding(value string) StringUpperAttr {
 	return func(m optionalAttr) {
@@ -35832,6 +35835,9 @@ func StringUpperEncoding(value string) StringUpperAttr {
 // >>> tf.strings.upper("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
 //
+//
+// Arguments:
+//	input: The input to be upper-cased.
 func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -48585,6 +48591,9 @@ func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Tou
 type StringLowerAttr func(optionalAttr)
 
 // StringLowerEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringLowerEncoding(value string) StringLowerAttr {
 	return func(m optionalAttr) {
@@ -48599,6 +48608,9 @@ func StringLowerEncoding(value string) StringLowerAttr {
 // >>> tf.strings.lower("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
 //
+//
+// Arguments:
+//	input: The input to be lower-cased.
 func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
