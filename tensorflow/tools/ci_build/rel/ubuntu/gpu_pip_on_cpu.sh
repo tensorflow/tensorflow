@@ -27,6 +27,11 @@ export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/ex
 ########################
 ## Build GPU pip package
 ########################
+export PYTHON_BIN_PATH=$(which python3.6)
+set +e  # piping `yes` can raise non-breaking errors; ignore them.
+yes "" | "$PYTHON_BIN_PATH" configure.py
+set -e
+
 bazel build \
   --config=release_gpu_linux \
   --repo_env=PYTHON_BIN_PATH="$(which python3.6)" \
