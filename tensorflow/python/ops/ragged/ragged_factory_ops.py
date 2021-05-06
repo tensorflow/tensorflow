@@ -281,7 +281,7 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
     """Returns the inner shape for a python list `item`."""
     if not isinstance(item, (list, tuple)) and np.ndim(item) == 0:
       return ()
-    elif item:
+    elif len(item):
       return (len(item),) + get_inner_shape(item[0])
     return (0,)
 
