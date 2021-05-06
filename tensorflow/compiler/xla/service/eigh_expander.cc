@@ -322,8 +322,8 @@ Status ApplyRotations(int64 n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
 }
 
 struct FrobeniusNorms {
-  XlaOp off_diagonal_norm;
-  XlaOp total_norm;
+  XlaOp off_diagonal_sq_norm;
+  XlaOp frobenius_sq_norm;
 };
 
 StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
@@ -334,28 +334,27 @@ StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
   auto square_norm = [](XlaOp x) -> XlaOp {
     return Real(x * MaybeConjugate(x, true));
   };
+  auto off_diag = [](XlaOp x) {
+    return Select(GetDiagonalMask(x), ZerosLike(x), x);
+  };
   PrimitiveType norm_type =
       primitive_util::IsComplexType(shape.element_type())
           ? primitive_util::ComplexComponentType(shape.element_type())
           : shape.element_type();
   auto zero = ScalarLike(Real(w_tl), 0.0);
-  auto frobenius_norm =
-      Sqrt(Reduce(square_norm(w_tl) + square_norm(w_tr) + square_norm(w_bl) +
-                      square_norm(w_br),
-                  zero, CreateScalarAddComputation(norm_type, builder),
-                  {num_dims - 2, num_dims - 1}));
-  auto diag_square = Reduce(
-      Square(GetMatrixDiagonal(Real(w_tl))) +
-          Square(GetMatrixDiagonal(Real(w_br))),
-      zero, CreateScalarAddComputation(norm_type, builder), {num_dims - 2});
+  FrobeniusNorms norms;
+  norms.frobenius_sq_norm =
+      Reduce(square_norm(w_tl) + square_norm(w_tr) + square_norm(w_bl) +
+                 square_norm(w_br),
+             zero, CreateScalarAddComputation(norm_type, builder),
+             {num_dims - 2, num_dims - 1});
+  norms.off_diagonal_sq_norm =
+      Reduce(square_norm(off_diag(w_tl)) + square_norm(w_tr) +
+                 square_norm(w_bl) + square_norm(off_diag(w_br)),
+             zero, CreateScalarAddComputation(norm_type, builder),
+             {num_dims - 2, num_dims - 1});
 
-  FrobeniusNorms frobenius_norms;
-
-  frobenius_norms.off_diagonal_norm =
-      Sqrt(Max(Square(frobenius_norm) - diag_square, zero));
-  frobenius_norms.total_norm = frobenius_norm;
-
-  return frobenius_norms;
+  return norms;
 }
 
 StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
@@ -371,8 +370,8 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
         std::make_tuple(values[2], values[3], values[4], values[5]);
     TF_ASSIGN_OR_RETURN(auto norms,
                         ComputeFrobeniusNorms(w_tl, w_tr, w_bl, w_br));
-    auto tol = norms.total_norm * values[1];
-    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
+    auto tol = norms.frobenius_sq_norm * Square(values[1]);
+    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_sq_norm),
                               xla::ConstantR0<bool>(cond_builder, false),
                               CreateScalarOrComputation(PRED, cond_builder));
 

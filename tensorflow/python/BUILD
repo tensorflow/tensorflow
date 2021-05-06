@@ -24,9 +24,6 @@ load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
@@ -209,6 +206,7 @@ py_library(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:kernels",
@@ -3300,7 +3298,7 @@ tf_python_pybind_extension(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "device_lib_test",
     size = "small",
     srcs = [
@@ -3409,7 +3407,6 @@ pywrap_tensorflow_macro(
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
-        "//tensorflow/c:ops",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",

@@ -49,8 +49,6 @@ namespace tensorflow {
 using llvm::ArrayRef;
 using llvm::SmallVector;
 using mlir::Builder;
-using mlir::DenseFPElementsAttr;
-using mlir::DenseIntElementsAttr;
 using mlir::DenseStringElementsAttr;
 using mlir::ElementsAttr;
 using mlir::OpaqueElementsAttr;

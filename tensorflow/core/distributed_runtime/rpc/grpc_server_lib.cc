@@ -370,8 +370,12 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  std::shared_ptr<GrpcChannelCache> channel_cache(
-      NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
+  if (options.rpc_options == nullptr) {
+    return errors::InvalidArgument(
+        "rpc_options not set in WorkerCacheFactoryOptions");
+  }
+  std::shared_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
+      channel_spec, GetChannelCreationFunction(), *options.rpc_options));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);

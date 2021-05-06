@@ -96,8 +96,8 @@ struct CollImplDetails {
   // subdiv_offsets is not provided subdivisons are generated dynamically
   // constrained by max_subdivs_per_device. When subdiv_offsets is empty AND
   // max_subdivs_per_device = 0 an internal default kMaxSubdivsPerDeviceDefault
-  // is used.
-  int max_subdivs_per_device = 0;  // Upper bound on subdivisions per device.
+  // is used. When max_subdivs_per_device = -1, no subivision is done.
+  int max_subdivs_per_device = -1;  // Upper bound on subdivisions per device.
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>

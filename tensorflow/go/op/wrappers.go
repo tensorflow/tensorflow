@@ -19108,6 +19108,14 @@ func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
 	}
 }
 
+// CollectiveReduceV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
+// If not specified, defaults to -1
+func CollectiveReduceV2MaxSubdivsPerDevice(value int64) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["max_subdivs_per_device"] = value
+	}
+}
+
 // Mutually reduces multiple tensors of identical type and shape.
 func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -19356,11 +19364,20 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 
 // Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
 //
-// This is the angle \( \theta \in [-\pi, \pi] \) such that
-// \[ x = r \cos(\theta) \]
+// This is the angle \\( \theta \in [-\pi, \pi] \\) such that
+// \\[ x = r \cos(\theta) \\]
 // and
-// \[ y = r \sin(\theta) \]
-// where \(r = \sqrt(x^2 + y^2) \).
+// \\[ y = r \sin(\theta) \\]
+// where \\(r = \sqrt{x^2 + y^2} \\).
+//
+// For example:
+//
+// >>> x = [1., 1.]
+// >>> y = [1., -1.]
+// >>> print((tf.math.atan2(y,x) * (180 / np.pi)).numpy())
+// [ 45. -45.]
+//
+//
 func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -22082,6 +22099,13 @@ func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 // `float` or `double` that is the absolute value of each element in `x`. All
 // elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
 // value is computed as \\( \sqrt{a^2 + b^2}\\).
+//
+// For example:
+//
+// >>> x = tf.complex(3.0, 4.0)
+// >>> print((tf.raw_ops.ComplexAbs(x=x, Tout=tf.dtypes.float32, name=None)).numpy())
+// 5.0
+//
 func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -26401,6 +26425,38 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Assigns sparse updates to the variable referenced by `resource`.
+//
+// This operation computes
+//
+//     # Scalar indices
+//     ref[indices, ...] = updates[...]
+//
+//     # Vector indices (for each i)
+//     ref[indices[i], ...] = updates[i, ...]
+//
+//     # High rank indices (for each i, ..., j)
+//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+//
+// Arguments:
+//	resource: Should be from a `Variable` node.
+//	indices: A tensor of indices into the first dimension of `ref`.
+//	updates: A tensor of updated values to add to `ref`.
+//
+// Returns the created operation.
+func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterUpdate",
+		Input: []tf.Input{
+			resource, indices, updates,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Creates a Dataset that returns pseudorandom numbers.
@@ -32385,38 +32441,6 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output, optional ..
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Assigns sparse updates to the variable referenced by `resource`.
-//
-// This operation computes
-//
-//     # Scalar indices
-//     ref[indices, ...] = updates[...]
-//
-//     # Vector indices (for each i)
-//     ref[indices[i], ...] = updates[i, ...]
-//
-//     # High rank indices (for each i, ..., j)
-//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
-//
-// Arguments:
-//	resource: Should be from a `Variable` node.
-//	indices: A tensor of indices into the first dimension of `ref`.
-//	updates: A tensor of updated values to add to `ref`.
-//
-// Returns the created operation.
-func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterUpdate",
-		Input: []tf.Input{
-			resource, indices, updates,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Creates ngrams from ragged string data.
 //
 // This op accepts a ragged tensor with 1 ragged dimension containing only
@@ -35794,6 +35818,9 @@ func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num
 type StringUpperAttr func(optionalAttr)
 
 // StringUpperEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringUpperEncoding(value string) StringUpperAttr {
 	return func(m optionalAttr) {
@@ -35808,6 +35835,9 @@ func StringUpperEncoding(value string) StringUpperAttr {
 // >>> tf.strings.upper("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
 //
+//
+// Arguments:
+//	input: The input to be upper-cased.
 func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -48561,6 +48591,9 @@ func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Tou
 type StringLowerAttr func(optionalAttr)
 
 // StringLowerEncoding sets the optional encoding attribute to value.
+//
+// value: Character encoding of `input`. Allowed values are '' and 'utf-8'.
+// Value '' is interpreted as ASCII.
 // If not specified, defaults to ""
 func StringLowerEncoding(value string) StringLowerAttr {
 	return func(m optionalAttr) {
@@ -48575,6 +48608,9 @@ func StringLowerEncoding(value string) StringLowerAttr {
 // >>> tf.strings.lower("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
 //
+//
+// Arguments:
+//	input: The input to be lower-cased.
 func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return

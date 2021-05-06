@@ -30,13 +30,63 @@ class LoadOptions(object):
   """
 
   # Define object attributes in __slots__ for improved memory and performance.
-  __slots__ = ("experimental_io_device",)
+  __slots__ = ("allow_partial_checkpoint", "experimental_io_device",)
 
   def __init__(self,
+               allow_partial_checkpoint=False,
                experimental_io_device=None):
     """Creates an object that stores options for SavedModel loading.
 
+    *When to set `allow_partial_checkpoint=True`?*
+
+    This can be used when loading a Keras model (`tf.keras.models.load_model`)
+    with custom objects. When new variables are added to the custom object
+    class, loading will fail the assertion check that all loaded variables have
+    been restored, because the SavedModel checkpoint only contains the variables
+    that were in original the custom object.
+    See the following example:
+
+    ```
+    class Custom(tf.keras.Model):
+      def __init__(self):
+        super(Custom, self).__init__()
+        self.v = tf.Variable(...)
+
+      def call(self, inputs):
+        return ...
+
+    model = Custom()
+    model.save(...)
+    ```
+
+    After saving, say that `Custom` is updated to include an additional
+    variable.
+
+    ```
+    class Custom(tf.keras.Model):
+      def __init__(self):
+        super(Custom, self).__init__()
+        self.v = tf.Variable(...)
+        self.w = tf.Variable(...)
+
+      def call(self, inputs):
+        return ...
+    ```
+
+    `tf.keras.models.load_model(path, custom_objects={'Custom': Custom})` fails
+    to load since `Custom.w` does not exist in the SavedModel checkpoint. To
+    acknowledge that there are variables that are not restored from the
+    checkpoint and successfully load the model, call:
+
+    ```
+    tf.keras.models.load_model(
+      path, custom_objects={'Custom': Custom},
+      options=tf.saved_model.LoadOptions(allow_partial_checkpoint=True))
+    ```
+
     Args:
+      allow_partial_checkpoint: bool. Defaults to `False`. When enabled, allows
+        the SavedModel checkpoint to not entirely match the loaded object.
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device
@@ -55,3 +105,4 @@ class LoadOptions(object):
 
     """
     self.experimental_io_device = experimental_io_device
+    self.allow_partial_checkpoint = allow_partial_checkpoint

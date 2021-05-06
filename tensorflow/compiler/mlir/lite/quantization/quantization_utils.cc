@@ -127,7 +127,7 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
         static_cast<int64_t>(min.size()) != shape.getDimSize(quant_dim)) {
       return {};
     }
-    // TODO(b/141508873): the quantization dim is set to the last dimension.
+    // The quantization dim is set to the last dimension.
     quantizedEleType = quant::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
         effective_maxs, narrow_range, converter.expressedType, is_signed);
@@ -457,10 +457,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
-    // TODO(b/141508873): Assume the bias is a 1-D tensor, and set the
-    // quantization dim to the last dimension, which is 0. If the bias rank is
-    // larger than 1, this returned quantized type couldn't be used to
-    // quantize the bias.
+    // Assume the bias is a 1-D tensor, and set the quantization dim to the last
+    // dimension, which is 0. If the bias rank is larger than 1, this returned
+    // quantized type couldn't be used to quantize the bias.
     return quant::UniformQuantizedPerAxisType::getChecked(
         builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,

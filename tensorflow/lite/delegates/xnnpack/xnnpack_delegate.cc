@@ -645,6 +645,25 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckNumInputsAndOutputs(
+      TfLiteContext* context, TfLiteNode* node, int min_num_inputs,
+      int max_num_inputs, int expected_num_outputs, int node_index) {
+    if (node->inputs->size < min_num_inputs ||
+        node->inputs->size > max_num_inputs) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of inputs (%d) in node #%d",
+                               node->inputs->size, node_index);
+      return kTfLiteError;
+    }
+    if (node->outputs->size != expected_num_outputs) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unexpected number of outputs (%d != %d) in node #%d",
+          node->outputs->size, expected_num_outputs, node_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckNumInputsAndOutputs(TfLiteContext* context,
                                                TfLiteNode* node,
                                                int expected_num_inputs,
@@ -658,7 +677,7 @@ class Subgraph {
     }
     if (node->outputs->size != expected_num_outputs) {
       TF_LITE_MAYBE_KERNEL_LOG(
-          context, "unexpected number of output (%d != %d) in node #%d",
+          context, "unexpected number of outputs (%d != %d) in node #%d",
           node->outputs->size, expected_num_outputs, node_index);
       return kTfLiteError;
     }
@@ -1658,7 +1677,7 @@ class Subgraph {
         CheckFullyConnectedParams(logging_context, fc_params, node_index));
 
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 3, 1, node_index));
+        CheckNumInputsAndOutputs(logging_context, node, 2, 3, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
@@ -1676,21 +1695,20 @@ class Subgraph {
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     }
 
-    const int bias_tensor_id = node->inputs->data[2];
-    if (bias_tensor_id < 0) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context, "unsupported FULLY_CONNECTED node #%d without bias",
-          node_index);
-      return kTfLiteError;
-    }
-    const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
-        logging_context, bias_tensor, node->inputs->data[2], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
-                                           node->inputs->data[2]));
-    if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, bias_tensor, node->inputs->data[2], node_index));
+    int bias_tensor_id = -1;
+    if (node->inputs->size >= 3) {
+      bias_tensor_id = node->inputs->data[2];
+      if (bias_tensor_id >= 0) {
+        const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+            logging_context, bias_tensor, node->inputs->data[2], node_index));
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
+                                               node->inputs->data[2]));
+        if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
+          TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+              logging_context, bias_tensor, node->inputs->data[2], node_index));
+        }
+      }
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -1783,7 +1801,8 @@ class Subgraph {
           subgraph, output_min, output_max,
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
-          /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
+          /*bias_id=*/bias_tensor_id >= 0 ? xnnpack_tensors[bias_tensor_id]
+                                          : XNN_INVALID_VALUE_ID,
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
           /*flags=*/fc_params->keep_num_dims ? 0
                                              : XNN_FLAG_TENSORFLOW_RESHAPE_2D);

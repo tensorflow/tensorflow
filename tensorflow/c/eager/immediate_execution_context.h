@@ -228,6 +228,12 @@ class ImmediateExecutionContext : public AbstractContext {
   // Distributed runtime related functions.
   //===--------------------------------------------------------------------===//
 #if !defined(IS_MOBILE_PLATFORM)
+  // Set up a multi-client distributed execution environment. Must be called on
+  // all tasks in the cluster.
+  // This call internally coordinates with other tasks to initialize the eager
+  // context and TF server for multi-client execution.
+  virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
+
   // Set a distributed manager that helps set up, update, and check liveness
   // of member tasks in the cluster.
   virtual void SetDistributedManager(

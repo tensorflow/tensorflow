@@ -32,6 +32,7 @@ def android_library_with_tflite(
     """
     android_library(
         name = name,
+        exports = exports + tflite_exports,
         deps = deps + tflite_deps,
         **kwargs
     )

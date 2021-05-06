@@ -66,7 +66,7 @@ class CategoryEncodingDistributionTest(
     with distribution.scope():
       input_data = keras.Input(shape=(4,), dtype=dtypes.int32)
       layer = category_encoding.CategoryEncoding(
-          num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+          num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(inp_dataset)

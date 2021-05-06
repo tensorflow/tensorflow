@@ -145,8 +145,6 @@ from tensorflow.lite.testing.op_tests.topk import make_topk_tests
 from tensorflow.lite.testing.op_tests.transpose import make_transpose_tests
 from tensorflow.lite.testing.op_tests.transpose_conv import make_transpose_conv_tests
 from tensorflow.lite.testing.op_tests.unfused_gru import make_unfused_gru_tests
-from tensorflow.lite.testing.op_tests.unidirectional_sequence_lstm import make_unidirectional_sequence_lstm_tests
-from tensorflow.lite.testing.op_tests.unidirectional_sequence_rnn import make_unidirectional_sequence_rnn_tests
 from tensorflow.lite.testing.op_tests.unique import make_unique_tests
 from tensorflow.lite.testing.op_tests.unpack import make_unpack_tests
 from tensorflow.lite.testing.op_tests.unroll_batch_matmul import make_unroll_batch_matmul_tests

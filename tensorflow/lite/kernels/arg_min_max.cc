@@ -48,6 +48,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
     axis_value += NumDimensions(input);
   }
 
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
+
   // Copy the input dimensions to output except the axis dimension.
   TfLiteIntArray* output_dims = TfLiteIntArrayCreate(NumDimensions(input) - 1);
   int j = 0;

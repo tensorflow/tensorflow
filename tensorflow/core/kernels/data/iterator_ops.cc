@@ -23,6 +23,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -34,8 +37,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -236,8 +237,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
                                 iterator_state_->pflr(), iterator_state_->flr(),
                                 /*iterator=*/nullptr);
   }
+
   // Create new iterator.
-  std::unique_ptr<IteratorBase> iterator;
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr();
   params.function_handle_cache = new_state->function_handle_cache();
@@ -250,18 +251,27 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
       ctx->cancellation_manager(),
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
-  {
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+
+  std::unique_ptr<IteratorBase> iterator;
+  if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
+    DatasetBase* finalized_dataset;
+    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
+    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
+        IteratorContext(std::move(params)),
+        /*parent=*/nullptr, "Iterator", &iterator));
+  } else {
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              /*parent=*/nullptr, "Iterator",
                                              &iterator));
-    TF_RETURN_IF_ERROR(
-        VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
-    TF_RETURN_IF_ERROR(
-        VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
-
-    new_state->DowncastAndSetIterator(std::move(iterator));
   }
+  TF_RETURN_IF_ERROR(
+      VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
+  TF_RETURN_IF_ERROR(
+      VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
+
+  new_state->DowncastAndSetIterator(std::move(iterator));
 
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
@@ -740,8 +750,16 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
         captured_func->Instantiate(&iter_ctx, &instantiated_captured_func));
 
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
-                                             "ReduceIterator", &iterator));
+    if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
+      DatasetBase* finalized_dataset = nullptr;
+      TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+      TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
+          &iter_ctx, /*parent=*/nullptr, "ReduceIterator", &iterator));
+      finalized_dataset->Unref();
+    } else {
+      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
+                                               "ReduceIterator", &iterator));
+    }
 
     // Iterate through the input dataset.
     while (true) {
@@ -1186,7 +1204,18 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
-  OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, serializer.GetReader()));
+  Status s = iterator_resource->Restore(ctx, serializer.GetReader());
+  if (!s.ok()) {
+    OP_REQUIRES_OK(
+        ctx,
+        Status(s.code(),
+               absl::StrCat(
+                   "Failed to restore dataset iterator from checkpoint: ",
+                   s.error_message(),
+                   ". Make sure the dataset definition has not changed between "
+                   "the process that saved the checkpoint and the process that "
+                   "is restoring it.")));
+  }
 }
 
 namespace {

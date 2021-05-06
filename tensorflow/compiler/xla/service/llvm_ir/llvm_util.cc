@@ -697,15 +697,7 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
-unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
-  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
-  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    // AMDGPU uses 1 for global memory address space.
-    return kAMDGPUGlobalMemoryAddrSpace;
-  }
-  return 0;
-}
+unsigned GetGlobalMemoryAddressSpace() { return 1; }
 
 llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
                                                      llvm::IRBuilder<>* b) {
@@ -713,7 +705,6 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
-    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
     llvm::Type* state_type = b->getInt128Ty();
     // Use a non-zero initial value as zero state can cause the result of the
     // first random number generation not passing the chi-square test. The
@@ -728,7 +719,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
         /*Name=*/kRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
+        /*AddressSpace=*/GetGlobalMemoryAddressSpace(),
         /*isExternallyInitialized=*/false);
   }
   return state_ptr;

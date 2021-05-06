@@ -2663,7 +2663,7 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, div_func);
 }
 
-// TODO: BroadcastDiv is intentionally duplicated from reference_ops.h.
+// BroadcastDiv is intentionally duplicated from reference_ops.h.
 // For more details see the comment above the generic version of
 // BroadcastDivSlow.
 template <int N = 5>

@@ -108,6 +108,16 @@ RingAlg::RingAlg(CollectiveType type, const string& name)
 
 namespace {
 Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
+  // This function generates subdivision_offsets. Expect it to be empty when
+  // called.
+  DCHECK(col_params->instance.impl_details.subdiv_offsets.empty());
+
+  if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
+    col_params->instance.impl_details.subdiv_offsets = {0};
+    VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
+    return Status::OK();
+  }
+
   if (col_params->instance.shape.num_elements() == 0) {
     return errors::Internal("shape in CollectiveParams should be non-empty");
   }

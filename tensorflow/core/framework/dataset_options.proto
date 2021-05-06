@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/dataset_options_go_proto";
+
 // Represents the type of auto-sharding we enable.
 enum AutoShardPolicy {
   // AUTO: Attempts FILE-based sharding, falling back to DATA-based sharding.
@@ -69,7 +71,7 @@ message OptimizationOptions {
   // use. Values greater than the available RAM in bytes may result in OOM. If
   // 0, defaults to half of the available RAM in bytes.
   oneof optional_autotune_ram_budget {
-    int32 autotune_ram_budget = 5;
+    int64 autotune_ram_budget = 5;
   }
   // Whether to fuse filter transformations.
   oneof optional_filter_fusion {
