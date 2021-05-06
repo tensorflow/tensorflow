@@ -262,30 +262,26 @@ func @QuantizeSplitUnusedResults(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %c
 }
 
 // CHECK-LABEL: QuantizeShape
-func @QuantizeShape(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>,
-                    %arg2: tensor<*x!quant.uniform<u8:f32, 1.0>>,
-                    %arg3: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<?xi32>,tensor<3xi32>) {
-  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
-  %2 = "tfl.dequantize"(%arg2) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
-  %3 = "tfl.dequantize"(%arg3) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
-  %4 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+func @QuantizeShape(%arg0: tensor<*x!quant.uniform<u8:f32, 1.0>>,
+                    %arg1: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<?xi32>,tensor<3xi32>) {
+  %2 = "tfl.dequantize"(%arg0) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
+  %3 = "tfl.dequantize"(%arg1) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
   %5 = "tfl.shape"(%2) : (tensor<*xf32>) -> tensor<?xi32>
   %6 = "tfl.shape"(%3) : (tensor<?x?x4xf32>) -> tensor<3xi32>
-  return %4, %5, %6 : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+  return %5, %6 : tensor<?xi32>, tensor<3xi32>
 
-// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
-// CHECK-NEXT: %[[s2:.*]] = "tfl.shape"(%arg1) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
-// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg2) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
-// CHECK-NEXT: %[[s1]], %[[s2]], %[[s3]] : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+// CHECK: %[[s2:.*]] = "tfl.shape"(%arg0) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
+// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg1) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
+// CHECK-NEXT: %[[s2]], %[[s3]] : tensor<?xi32>, tensor<3xi32>
 }
 
 // CHECK-LABEL: QuantizeMultipleUsers
-func @QuantizeMultipleUsers(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
-  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
-  %2 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+func @QuantizeMultipleUsers(%arg1: tensor<?x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<?x!quant.uniform<u8:f32, 1.0>>) -> tensor<?xf32>
+  %2 = "tfl.shape"(%1) : (tensor<?xf32>) -> tensor<1xi32>
   return %2, %2 : tensor<1xi32>, tensor<1xi32>
 
-// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<?x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
 // CHECK-NEXT: %[[s1]], %[[s1]] : tensor<1xi32>, tensor<1xi32>
 }
 
