@@ -2953,8 +2953,35 @@ name=None))
                          seed=None):
     """A transformation that resamples a dataset to achieve a target distribution.
 
-    **NOTE** Resampling is performed via rejection sampling; some fraction
-    of the input values will be dropped.
+    Lets consider the following example where a dataset with an initial data
+    distribution of `init_dist` needs to be resampled into a dataset with `target_dist`
+    distribution.
+
+    >>> init_dist = [0.5, 0.5]
+    >>> target_dist = [0.6, 0.4]
+    >>> num_classes = len(init_dist)
+    >>> num_samples = 100000
+    >>> data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+    >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
+    >>> x = collections.defaultdict(int)
+    >>> for i in dataset:
+    ...   x[i.numpy()] += 1
+
+    The value of `x` will be close to `{0: 50000, 1: 50000}` as per the `init_dist`
+    distribution.
+
+    >>> dataset = dataset.rejection_resample(
+    ...    class_func=lambda x: x % 2,
+    ...    target_dist=target_dist,
+    ...    initial_dist=init_dist)
+
+    >>> y = collections.defaultdict(int)
+    >>> for i in dataset:
+    ...   cls, _ = i
+    ...   y[cls.numpy()] += 1
+
+    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus satisfying
+    the `target_dist` distribution.
 
     Args:
       class_func: A function mapping an element of the input dataset to a scalar
