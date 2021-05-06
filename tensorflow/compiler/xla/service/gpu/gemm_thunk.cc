@@ -78,7 +78,30 @@ struct MatrixDescriptor {
   int64 num_cols;
 };
 
-template <typename Element>
+// Converts from an XLA PrimitiveType to a blas::ComputationType, which is
+// used to specify the precision with which matmul computations should be
+// performed, separately from the precision of the inputs and result.
+static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
+    PrimitiveType type) {
+  switch (type) {
+    case F16:
+      // Use F32 as computation type for F16 as we currently only implement
+      // the cuDNN pseudo half configuration for half precision.
+      return se::blas::ComputationType::kF32;
+    case F32:
+      return se::blas::ComputationType::kF32;
+    case F64:
+      return se::blas::ComputationType::kF64;
+    case C64:
+      return se::blas::ComputationType::kComplexF32;
+    case C128:
+      return se::blas::ComputationType::kComplexF64;
+    default:
+      return absl::nullopt;
+  }
+}
+
+template <typename Element, typename AlphaType>
 static bool DoGemmWithAlgorithm(
     int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
     MatrixDescriptor output_matrix, Element alpha, Element beta,
@@ -87,37 +110,12 @@ static bool DoGemmWithAlgorithm(
   DCHECK(!output_matrix.transpose);
 
   PrimitiveType type = primitive_util::NativeToPrimitiveType<Element>();
-
-  // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
-  // used to specify the precision with which matmul computations should be
-  // performed, separately from the precision of the inputs and result.
-  se::blas::ComputationType computation_type;
-  switch (type) {
-    case F16:
-      // Use F32 as computation type for F16 as we currently only implement
-      // the cuDNN pseudo half configuration for half precision.
-      computation_type = se::blas::ComputationType::kF32;
-      break;
-    case F32:
-      computation_type = se::blas::ComputationType::kF32;
-      break;
-    case F64:
-      computation_type = se::blas::ComputationType::kF64;
-      break;
-    case C64:
-      computation_type = se::blas::ComputationType::kComplexF32;
-      break;
-    case C128:
-      computation_type = se::blas::ComputationType::kComplexF64;
-      break;
-    default:
-      return false;
-  }
+  se::blas::ComputationType computation_type =
+      *ComputationTypeFromPrimitive(type);
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
-
   auto lhs_transpose = lhs_matrix.transpose ? se::blas::Transpose::kTranspose
                                             : se::blas::Transpose::kNoTranspose;
   auto rhs_transpose = rhs_matrix.transpose ? se::blas::Transpose::kTranspose
@@ -159,7 +157,7 @@ static bool DoGemmWithAlgorithm(
   }
 
   return stream
-      ->ThenBlasGemm<Element, Element>(
+      ->ThenBlasGemm<Element, AlphaType>(
           lhs_transpose, rhs_transpose, output_matrix.num_rows,
           output_matrix.num_cols, /*size of reduce dim=*/k,
           /*alpha=*/alpha, lhs_data,
@@ -276,31 +274,31 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
     switch (output_shape.element_type()) {
       case F16:
         CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<Eigen::half>(
+        return DoGemmWithAlgorithm<Eigen::half, Eigen::half>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix,
             static_cast<Eigen::half>(alpha.real()),
             static_cast<Eigen::half>(beta), stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       case F32:
         CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<float>(
+        return DoGemmWithAlgorithm<float, float>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
             beta, stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       case F64:
         CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<double>(
+        return DoGemmWithAlgorithm<double, double>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
             beta, stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       case C64:
-        return DoGemmWithAlgorithm<complex64>(
+        return DoGemmWithAlgorithm<complex64, complex64>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix,
             static_cast<complex64>(alpha), static_cast<complex64>(beta), stream,
             best_algorithm,
             /*output_profile_result=*/profile_result);
       case C128:
-        return DoGemmWithAlgorithm<complex128>(
+        return DoGemmWithAlgorithm<complex128, complex128>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha,
             static_cast<complex128>(beta), stream, best_algorithm,
             /*output_profile_result=*/profile_result);
