@@ -2954,8 +2954,8 @@ name=None))
     """A transformation that resamples a dataset to achieve a target distribution.
 
     Lets consider the following example where a dataset with an initial data
-    distribution of `init_dist` needs to be resampled into a dataset with `target_dist`
-    distribution.
+    distribution of `init_dist` needs to be resampled into a dataset with
+    `target_dist` distribution.
 
     >>> init_dist = [0.5, 0.5]
     >>> target_dist = [0.6, 0.4]
@@ -2967,8 +2967,8 @@ name=None))
     >>> for i in dataset:
     ...   x[i.numpy()] += 1
 
-    The value of `x` will be close to `{0: 50000, 1: 50000}` as per the `init_dist`
-    distribution.
+    The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
+    `init_dist` distribution.
 
     >>> dataset = dataset.rejection_resample(
     ...    class_func=lambda x: x % 2,
@@ -2980,8 +2980,8 @@ name=None))
     ...   cls, _ = i
     ...   y[cls.numpy()] += 1
 
-    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus satisfying
-    the `target_dist` distribution.
+    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus
+    satisfying the `target_dist` distribution.
 
     Args:
       class_func: A function mapping an element of the input dataset to a scalar
