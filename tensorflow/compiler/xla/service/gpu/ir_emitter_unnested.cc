@@ -1358,7 +1358,7 @@ Status VerifyBatchNormForThunkEmission(
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
-bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
+std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   const auto is_row_major = [](mlir::Value value) {
     // Only tested when the inputs are row-major. So only
     // enable that case. Maybe it would works if only the
@@ -1380,10 +1380,17 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   // We also detect at the same time if there is a row broadcasting
   // operation.
   bool some_row_broadcasting = false;
+  auto out_rank = TypeToShape(fusion.getFusionResults()[0].getType()).rank();
+  int nb_big_input = 0;
   for (mlir::Operation& op : fusion.region().front()) {
-    if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                  mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
+    if (mlir::isa<mlir::memref::TensorLoadOp>(op)) {
+      auto load = mlir::dyn_cast<mlir::memref::TensorLoadOp>(op);
+      auto rank = TypeToShape(load.getResult().getType()).rank();
+      nb_big_input += rank == out_rank;
+      continue;
+    } else if (mlir::isa<mlir::memref::TensorStoreOp,
+	       mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
+	       mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
       continue;
     }
     HloOpcode opcode = *MhloToHloOpcode(&op);
@@ -1409,10 +1416,11 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
     }
     VLOG(2) << "Row vectorization not enabled due to this op: "
             << MlirToString(&op);
-    return false;
+    return std::make_pair(false, 0);
+
   }
   // Trigger only when there is a row broadcasting.
-  return row_vectorized && some_row_broadcasting;
+  return std::make_pair(row_vectorized && some_row_broadcasting, nb_big_input);
 }
 }  // namespace
 
@@ -1917,9 +1925,10 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     unroll_factor = 1;
   }
 
-
-  bool row_vectorized = RowVectorizationEnabled(fusion);
-  bool few_waves = [fusion, row_vectorized]() mutable {
+  auto row_vec_enabled = RowVectorizationEnabled(fusion);
+  bool row_vectorized = std::get<0>(row_vec_enabled);
+  int nb_big_inputs = std::get<1>(row_vec_enabled);
+  bool few_waves = [fusion, row_vectorized, nb_big_inputs]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
       if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
                     mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
@@ -1931,7 +1940,9 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
         continue;
       }
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-        if (broadcast.broadcast_dimensions().size() == 0 || row_vectorized) {
+        if (broadcast.broadcast_dimensions().size() == 0 ||
+	    // More then 2 bit inputs cause one speed regression.
+	    (row_vectorized && nb_big_inputs <= 2)) {
           continue;
         }
       }
