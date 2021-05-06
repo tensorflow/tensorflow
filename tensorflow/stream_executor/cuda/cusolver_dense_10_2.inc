@@ -199,16 +199,6 @@ cusolverStatus_t CUSOLVERAPI cusolverDnIRSInfosGetNiters(
   return func_ptr(params, infos, niters);
 }
 
-cusolverStatus_t CUSOLVERAPI cusolverDnIRSInfosGetNiters(
-    cusolverDnIRSParams_t params, cusolverDnIRSInfos_t infos,
-    cusolver_int_t *niters) {
-  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
-      cusolverDnIRSParams_t, cusolverDnIRSInfos_t, cusolver_int_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnIRSInfosGetNiters");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(params, infos, niters);
-}
-
 cusolverStatus_t CUSOLVERAPI cusolverDnIRSInfosGetOuterNiters(
     cusolverDnIRSParams_t params, cusolverDnIRSInfos_t infos,
     cusolver_int_t *outer_niters) {
