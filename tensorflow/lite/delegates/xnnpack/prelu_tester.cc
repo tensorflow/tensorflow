@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/prelu_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -119,6 +120,7 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
       CreateBuffer(builder, builder.CreateVector({})),
   }};
 
+  double slope_scale = 0;
   if (FP16Weights()) {
     std::vector<uint16_t> slope_data(ComputeSize(SlopeShape()));
     std::generate(slope_data.begin(), slope_data.end(),
@@ -128,23 +130,25 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
         builder, builder.CreateVector(
                      reinterpret_cast<const uint8_t*>(slope_data.data()),
                      sizeof(uint16_t) * slope_data.size())));
-  } else if (INT8Weights()) {
-    std::vector<int8_t> slope_data(ComputeSize(SlopeShape()));
-    std::generate(slope_data.begin(), slope_data.end(),
-                  std::bind(QuantizeInt8, slope_rng, slope_zero_point_, slope_scale_));
-
-    buffers.push_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(slope_data.data()),
-                     sizeof(int8_t) * slope_data.size())));
   } else {
     std::vector<float> slope_data(ComputeSize(SlopeShape()));
     std::generate(slope_data.begin(), slope_data.end(), slope_rng);
 
-    buffers.push_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(slope_data.data()),
-                     sizeof(float) * slope_data.size())));
+    if (INT8Weights()) {
+      std::vector<int8_t> quantized_slope_data(slope_data.size());
+      slope_scale = GetInt8QuantizationScale(slope_data);
+      std::transform(slope_data.begin(), slope_data.end(), quantized_slope_data.begin(),
+                     std::bind(QuantizeInt8, std::placeholders::_1, 0, slope_scale));
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(slope_data.data()),
+                       sizeof(int8_t) * slope_data.size())));
+    } else {
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(slope_data.data()),
+                       sizeof(float) * slope_data.size())));
+    }
   }
 
   std::vector<flatbuffers::Offset<Tensor>> tensors;
@@ -162,8 +166,8 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
                      TensorType_INT8, /*buffer=*/1, /*name=*/0,
                      CreateQuantizationParameters(
                              builder, /*min=*/0, /*max=*/0,
-                             builder.CreateVector<float>({slope_scale_}),
-                             builder.CreateVector<int64_t>({slope_zero_point_}))));
+                             builder.CreateVector<float>({slope_scale}),
+                             builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights()) {
     const int dims_count = SlopeShape().size();
     std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(

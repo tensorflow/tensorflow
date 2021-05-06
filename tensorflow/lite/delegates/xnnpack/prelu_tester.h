@@ -88,8 +88,6 @@ class PreluTester {
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
   bool sparse_weights_ = false;
-  int8_t slope_zero_point_ = 0;
-  float slope_scale_ = 0.75f;
 };
 
 }  // namespace xnnpack

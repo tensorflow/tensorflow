@@ -138,10 +138,6 @@ class BinaryElementwiseTester {
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
   bool sparse_weights_ = false;
-  int8_t input1_zero_point_ = 0;
-  int8_t input2_zero_point_ = 0;
-  float input1_scale_ = 0.75f;
-  float input2_scale_ = 1.0f;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

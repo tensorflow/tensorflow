@@ -118,8 +118,6 @@ class FullyConnectedTester {
   bool keep_dims_ = false;
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
-  int8_t weights_zero_point_ = 0;
-  float weights_scale_ = 0.75f;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

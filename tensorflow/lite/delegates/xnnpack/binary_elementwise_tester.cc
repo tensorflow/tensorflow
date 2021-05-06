@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/binary_elementwise_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -204,6 +205,7 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
       CreateBuffer(builder, builder.CreateVector({})),
   }};
 
+  double input1_scale = 0;
   int32_t input1_buffer = 0;
   if (Input1Static()) {
     if (FP16Weights()) {
@@ -215,29 +217,33 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(input1_data.data()),
                        sizeof(uint16_t) * input1_data.size())));
-    } else if (INT8Weights()) {
-      std::vector<int8_t> input1_data(ComputeSize(Input1Shape()));
-      std::generate(input1_data.begin(), input1_data.end(),
-                    std::bind(QuantizeInt8, input1_rng, input1_zero_point_, input1_scale_));
-
-      buffers.push_back(CreateBuffer(
-              builder, builder.CreateVector(
-                      reinterpret_cast<const uint8_t*>(input1_data.data()),
-                      sizeof(int8_t) * input1_data.size())));
     } else {
       std::vector<float> input1_data(ComputeSize(Input1Shape()));
       std::generate(input1_data.begin(), input1_data.end(), input1_rng);
 
-      if (!SparseWeights()) {
-        input1_buffer = buffers.size();
+      if (INT8Weights()) {
+        std::vector<int8_t> quantized_input1_data(input1_data.size());
+        input1_scale = GetInt8QuantizationScale(input1_data);
+        std::transform(input1_data.begin(), input1_data.end(), quantized_input1_data.begin(),
+                       std::bind(QuantizeInt8, std::placeholders::_1, 0, input1_scale));
+        buffers.push_back(CreateBuffer(
+                builder, builder.CreateVector(
+                        reinterpret_cast<const uint8_t*>(quantized_input1_data.data()),
+                        sizeof(int8_t) * quantized_input1_data.size())));
+      } else {
+        if (!SparseWeights()) {
+          input1_buffer = buffers.size();
+        }
+
+        buffers.push_back(CreateBuffer(
+                builder, builder.CreateVector(
+                        reinterpret_cast<const uint8_t *>(input1_data.data()),
+                        sizeof(float) * input1_data.size())));
       }
-      buffers.push_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(input1_data.data()),
-                       sizeof(float) * input1_data.size())));
     }
   }
 
+  double input2_scale = 0;
   int32_t input2_buffer = 0;
   if (Input2Static()) {
     if (FP16Weights()) {
@@ -249,26 +255,29 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(input2_data.data()),
                        sizeof(uint16_t) * input2_data.size())));
-    } else if (INT8Weights()) {
-      std::vector<int8_t> input2_data(ComputeSize(Input1Shape()));
-      std::generate(input2_data.begin(), input2_data.end(),
-                    std::bind(QuantizeInt8, input2_rng, input2_zero_point_, input2_scale_));
-
-      buffers.push_back(CreateBuffer(
-              builder, builder.CreateVector(
-                      reinterpret_cast<const uint8_t *>(input2_data.data()),
-                      sizeof(int8_t) * input2_data.size())));
     } else {
       std::vector<float> input2_data(ComputeSize(Input2Shape()));
       std::generate(input2_data.begin(), input2_data.end(), input2_rng);
 
-      if (!SparseWeights()) {
-        input2_buffer = buffers.size();
+      if (INT8Weights()) {
+        std::vector<int8_t> quantized_input2_data(input2_data.size());
+        input2_scale = GetInt8QuantizationScale(input2_data);
+        std::transform(input2_data.begin(), input2_data.end(), quantized_input2_data.begin(),
+                       std::bind(QuantizeInt8, std::placeholders::_1, 0, input2_scale));
+        buffers.push_back(CreateBuffer(
+                builder, builder.CreateVector(
+                        reinterpret_cast<const uint8_t*>(quantized_input2_data.data()),
+                        sizeof(int8_t) * quantized_input2_data.size())));
+      } else {
+        if (!SparseWeights()) {
+          input2_buffer = buffers.size();
+        }
+
+        buffers.push_back(CreateBuffer(
+                builder, builder.CreateVector(
+                        reinterpret_cast<const uint8_t *>(input2_data.data()),
+                        sizeof(float) * input2_data.size())));
       }
-      buffers.push_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(input2_data.data()),
-                       sizeof(float) * input2_data.size())));
     }
   }
 
@@ -289,8 +298,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      TensorType_INT8, 1, 0,
                      CreateQuantizationParameters(
                          builder, /*min=*/0, /*max=*/0,
-                         builder.CreateVector<float>({input1_scale_}),
-                         builder.CreateVector<int64_t>({input1_zero_point_}))));
+                         builder.CreateVector<float>({input1_scale}),
+                         builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights() && Input1Static()) {
     int dims_count = Input1Shape().size();
     std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
@@ -325,8 +334,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      TensorType_INT8, 1, 0,
                      CreateQuantizationParameters(
                          builder, /*min=*/0, /*max=*/0,
-                         builder.CreateVector<float>({input2_scale_}),
-                         builder.CreateVector<int64_t>({input2_zero_point_}))));
+                         builder.CreateVector<float>({input2_scale}),
+                         builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights() && Input2Static()) {
     int dims_count = Input2Shape().size();
     std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(

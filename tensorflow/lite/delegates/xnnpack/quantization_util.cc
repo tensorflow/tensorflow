@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 
 #include <algorithm>
-#include <limits>
 
 #include <fp16.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -27,9 +26,8 @@ namespace xnnpack {
 
 void DequantizeFloat16(const uint16_t *packed_fp16_data, float *unpacked_fp32_data,
                        size_t tensor_elements) {
-  for (size_t i = 0; i < tensor_elements; ++i) {
-    unpacked_fp32_data[i] = fp16_ieee_to_fp32_value(packed_fp16_data[i]);
-  }
+  std::transform(packed_fp16_data, packed_fp16_data + tensor_elements,
+                 unpacked_fp32_data, fp16_ieee_to_fp32_value);
 }
 
 void DequantizeInt8(const int8_t *packed_s8_data, float *unpacked_fp32_data,

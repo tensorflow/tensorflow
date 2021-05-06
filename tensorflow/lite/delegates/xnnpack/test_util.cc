@@ -34,5 +34,17 @@ int8_t QuantizeInt8(float value, int32_t zero_point, double scale) {
   return static_cast<int8_t>(clamped);
 }
 
+double GetInt8QuantizationScale(const std::vector<float>& data) {
+  static constexpr int8_t qmin_val = std::numeric_limits<int8_t>::min();
+  static constexpr int8_t qmax_val = std::numeric_limits<int8_t>::max();
+  static constexpr double qmin_double = qmin_val;
+  static constexpr double qmax_double = qmax_val;
+
+  const double scale = (*std::max_element(data.begin(), data.end()) -
+                        *std::min_element(data.begin(), data.end())) /
+                       (qmax_double - qmin_double);
+  return static_cast<double>(scale);
+}
+
 }  // namespace xnnpack
 }  // namespace tflite

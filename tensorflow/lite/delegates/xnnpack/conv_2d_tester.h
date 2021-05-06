@@ -229,8 +229,6 @@ class Conv2DTester {
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
   bool sparse_weights_ = false;
-  int8_t weights_zero_point_ = 0;
-  float weights_scale_ = 0.75f;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;

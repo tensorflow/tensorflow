@@ -17,11 +17,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_TEST_UTIL_H_
 
 #include <cstdint>
+#include <vector>
 
 namespace tflite {
 namespace xnnpack {
 
 int8_t QuantizeInt8(float value, int32_t zero_point, double scale);
+
+double GetInt8QuantizationScale(const std::vector<float>& data);
 
 }  // namespace xnnpack
 }  // namespace tflite
