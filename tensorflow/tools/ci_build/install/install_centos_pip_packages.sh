@@ -55,17 +55,17 @@ pip2 install --upgrade protobuf==3.6.1
 pip3 install --upgrade protobuf==3.6.1
 
 pip2 install --upgrade numpy==1.14.5
-pip3 install --upgrade numpy==1.14.5
+pip3 install --upgrade numpy>=1.14.5
 
 pip2 install scipy==1.2.2
-pip3 install scipy==1.4.1
+pip3 install scipy>=1.4.1
 
 pip2 install scikit-learn==0.18.1
 pip3 install scikit-learn==0.18.1
 
 # pandas required by `inflow`
 pip2 install pandas==0.19.2
-pip3 install pandas==0.19.2
+pip3 install pandas>=0.19.2
 
 # Benchmark tests require the following:
 pip2 install psutil
