@@ -91,6 +91,15 @@ class CUDABlas : public blas::BlasSupport {
                           bool pointer_mode_host, bool err_on_failure,
                           cublasMath_t math_type, Args... args);
 
+  // Same as above, but returns Status.
+  template <typename... Args>
+  port::Status DoBlasInternalImplStatus(Args... args) {
+    if (!DoBlasInternalImpl(args...)) {
+      return port::InternalError("Failed calling cuBLAS");
+    }
+    return port::Status::OK();
+  }
+
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>

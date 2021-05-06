@@ -113,6 +113,16 @@ class ROCMBlas : public blas::BlasSupport {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/true, args...);
   }
+
+  // Same as above, but returns Status.
+  template <typename... Args>
+  port::Status DoBlasInternalStatus(Args... args) {
+    if (!DoBlasInternal(args...)) {
+      return port::InternalError("Failed calling rocBLAS");
+    }
+    return port::Status::OK();
+  }
+
   template <typename FuncT, typename... Args>
   bool DoBlasInternalFailureOK(FuncT rocblas_func, Stream *stream,
                                bool pointer_mode_host, Args... args) {

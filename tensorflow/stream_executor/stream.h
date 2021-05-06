@@ -1356,40 +1356,73 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *x, int incx);
 
-  // See BlasSupport::DoBlasGemm.
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, float alpha,
-                                 const DeviceMemory<Eigen::half> &a, int lda,
-                                 const DeviceMemory<Eigen::half> &b, int ldb,
-                                 float beta, DeviceMemory<Eigen::half> *c,
-                                 int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, float alpha,
-                                 const DeviceMemory<float> &a, int lda,
-                                 const DeviceMemory<float> &b, int ldb,
-                                 float beta, DeviceMemory<float> *c, int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, double alpha,
-                                 const DeviceMemory<double> &a, int lda,
-                                 const DeviceMemory<double> &b, int ldb,
-                                 double beta, DeviceMemory<double> *c, int ldc);
+  template <typename InputType>
   TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                                  uint64 m, uint64 n, uint64 k,
-                                 std::complex<float> alpha,
-                                 const DeviceMemory<std::complex<float>> &a,
-                                 int lda,
-                                 const DeviceMemory<std::complex<float>> &b,
-                                 int ldb, std::complex<float> beta,
-                                 DeviceMemory<std::complex<float>> *c, int ldc);
+                                 const DeviceMemory<InputType> &a, int lda,
+                                 const DeviceMemory<InputType> &b, int ldb,
+                                 DeviceMemory<InputType> *c, int ldc) {
+    InputType alpha{1.0};
+    InputType beta{0.0};
+    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
+                        ldc);
+  }
+
+  template <typename InputType, typename ConstantType>
   TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                                  uint64 m, uint64 n, uint64 k,
-                                 std::complex<double> alpha,
-                                 const DeviceMemory<std::complex<double>> &a,
-                                 int lda,
-                                 const DeviceMemory<std::complex<double>> &b,
-                                 int ldb, std::complex<double> beta,
-                                 DeviceMemory<std::complex<double>> *c,
-                                 int ldc);
+                                 ConstantType alpha,
+                                 const DeviceMemory<InputType> &a, int lda,
+                                 const DeviceMemory<InputType> &b, int ldb,
+                                 ConstantType beta, DeviceMemory<InputType> *c,
+                                 int ldc) {
+    static_assert(!std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<ConstantType, float>::value ||
+                      std::is_same<ConstantType, Eigen::half>::value,
+                  "If input is Eigen::half, constant has to be either "
+                  "Eigen::half or float");
+    static_assert(
+        std::is_same<InputType, Eigen::half>::value ||
+            std::is_same<InputType, ConstantType>::value,
+        "If input is not Eigen::half, constant and input types have to match");
+    static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, float>::value ||
+                      std::is_same<InputType, double>::value ||
+                      std::is_same<InputType, std::complex<float>>::value ||
+                      std::is_same<InputType, std::complex<double>>::value,
+                  "Input can be half, float, double, std::complex<float> or "
+                  "std::complex<double>");
+    if (!ok()) {
+      return *this;
+    }
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      CheckStatus(
+          port::InternalError("Attempting to perform BLAS operation using "
+                              "StreamExecutor without BLAS support"));
+      return *this;
+    }
+
+    // Non-extended BLAS interface requires alpha/beta to be floats when input
+    // type is Eigen::half. However, for consistency purposes it is convenient
+    // for the interface to accept Eigen::half.
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    if (std::is_same<ConstantType, Eigen::half>::value) {
+      alpha_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::half *>(&alpha));
+      beta_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::half *>(&beta));
+      alpha_ptr = &alpha_storage;
+      beta_ptr = &beta_storage;
+    }
+
+    CheckStatus(blas->DoBlasGemm(this, transa, transb, m, n, k,
+                                 blas::ToDataType<InputType>::value, alpha_ptr,
+                                 a, lda, b, ldb, beta_ptr, c, ldc));
+    return *this;
+  }
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
