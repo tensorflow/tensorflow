@@ -454,7 +454,9 @@ inline T LsbMask(int width) {
   CHECK_GE(width, 0) << "Unsupported width " << width;
   CHECK_LE(width, std::numeric_limits<T>::digits)
       << "Unsupported width " << width;
-  return static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+  return width == 0
+             ? 0
+             : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
