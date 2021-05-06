@@ -151,52 +151,54 @@ std::vector<char> QuantizedFullyConnectedTester::CreateTfLiteModel() const {
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   const std::vector<int32_t> output_shape = OutputShape();
-  const std::array<flatbuffers::Offset<Tensor>, 4> tensors{{
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(InputShape().data(),
-                                                 InputShape().size()),
-                   TensorType_INT8, /*buffer=*/0, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({InputScale()}),
-                       builder.CreateVector<int64_t>({InputZeroPoint()}))),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(filter_shape.data(),
-                                                 filter_shape.size()),
-                   TensorType_INT8, /*buffer=*/1, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({FilterScale()}),
-                       builder.CreateVector<int64_t>({0}))),
-      CreateTensor(
-          builder,
-          builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-          TensorType_INT32, /*buffer=*/2, /*name=*/0,
-          CreateQuantizationParameters(
-              builder, /*min=*/0, /*max=*/0,
-              builder.CreateVector<float>({InputScale() * FilterScale()}),
-              builder.CreateVector<int64_t>({0}))),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(output_shape.data(),
-                                                 output_shape.size()),
-                   TensorType_INT8, /*buffer=*/0, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({OutputScale()}),
-                       builder.CreateVector<int64_t>({OutputZeroPoint()}))),
-  }};
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(InputShape().data(), InputShape().size()),
+      TensorType_INT8, /*buffer=*/0, /*name=*/0,
+      CreateQuantizationParameters(
+          builder, /*min=*/0, /*max=*/0,
+          builder.CreateVector<float>({InputScale()}),
+          builder.CreateVector<int64_t>({InputZeroPoint()}))));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+      TensorType_INT8, /*buffer=*/1, /*name=*/0,
+      CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
+                                   builder.CreateVector<float>({FilterScale()}),
+                                   builder.CreateVector<int64_t>({0}))));
+  if (HasBias()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        TensorType_INT32, /*buffer=*/2, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({InputScale() * FilterScale()}),
+            builder.CreateVector<int64_t>({0}))));
+  }
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
+      TensorType_INT8, /*buffer=*/0, /*name=*/0,
+      CreateQuantizationParameters(
+          builder, /*min=*/0, /*max=*/0,
+          builder.CreateVector<float>({OutputScale()}),
+          builder.CreateVector<int64_t>({OutputZeroPoint()}))));
 
   flatbuffers::Offset<FullyConnectedOptions> fully_connected_options =
       CreateFullyConnectedOptions(builder, Activation(),
                                   FullyConnectedOptionsWeightsFormat_DEFAULT,
                                   KeepDims());
 
-  const std::array<int32_t, 3> op_inputs{
-      {static_cast<int>(tensors.size()) - 4,
-       static_cast<int>(tensors.size()) - 3,
-       static_cast<int>(tensors.size()) - 2}};
+  std::vector<int32_t> op_inputs{{static_cast<int32_t>(tensors.size()) - 3,
+                                  static_cast<int32_t>(tensors.size()) - 2}};
+  if (HasBias()) {
+    op_inputs.insert(op_inputs.begin(),
+                     static_cast<int32_t>(tensors.size()) - 4);
+  }
   const std::array<int32_t, 1> op_outputs{
-      {static_cast<int>(tensors.size()) - 1}};
+      {static_cast<int32_t>(tensors.size()) - 1}};
   operators.emplace_back(CreateOperator(
       builder, /*opcode_index=*/0,
       builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
@@ -204,7 +206,7 @@ std::vector<char> QuantizedFullyConnectedTester::CreateTfLiteModel() const {
       BuiltinOptions_FullyConnectedOptions, fully_connected_options.Union()));
 
   const std::array<int32_t, 1> subgraph_inputs{
-      {static_cast<int>(tensors.size()) - 4}};
+      {static_cast<int>(tensors.size()) - 3 - static_cast<int>(HasBias())}};
   const std::array<int32_t, 1> subgraph_outputs{
       {static_cast<int>(tensors.size()) - 1}};
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
