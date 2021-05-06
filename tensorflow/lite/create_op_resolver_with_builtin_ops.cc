@@ -25,7 +25,7 @@ namespace tflite {
 // (like the XNNPACK delegate). For smaller binary sizes users should avoid
 // linking this in, and should provide a CreateOpResolver() with selected ops
 // instead.
-std::unique_ptr<OpResolver> CreateOpResolver() {  // NOLINT
+std::unique_ptr<MutableOpResolver> CreateOpResolver() {  // NOLINT
   return std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver>(
       new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
 }

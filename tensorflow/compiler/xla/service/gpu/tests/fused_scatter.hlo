@@ -1,0 +1,185 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [2 x i32]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [2 x i32]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_6:.*]], i64 64
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_5]] to [2 x i32]*
+// CHECK:         %[[VAL_8:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !8
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !8
+// CHECK:         %[[VAL_10:.*]] = mul nuw nsw i32 %[[VAL_8]], 1
+// CHECK:         %[[VAL_11:.*]] = add nuw nsw i32 %[[VAL_10]], %[[VAL_9]]
+// CHECK:         %[[VAL_12:.*]] = icmp ult i32 %[[VAL_11]], 1
+// CHECK:         call void @llvm.assume(i1 %[[VAL_12]])
+// CHECK:         %[[VAL_13:.*]] = mul nuw nsw i32 %[[VAL_11]], 2
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_13]], 1
+// CHECK:         %[[VAL_15:.*]] = add nuw nsw i32 %[[VAL_13]], 1
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_15]], 1
+// CHECK:         %[[VAL_17:.*]] = icmp ult i32 %[[VAL_13]], 2
+// CHECK:         br i1 %[[VAL_17]], label %[[VAL_18:.*]], label %[[VAL_19:.*]]
+// CHECK:       indices.in_bounds-after:                          ; preds = %[[VAL_18]], %[[VAL_20:.*]]
+// CHECK:         ret void
+// CHECK:       indices.in_bounds-true:                           ; preds = %[[VAL_20]]
+// CHECK:         %[[VAL_21:.*]] = bitcast [2 x i32]* %[[VAL_2]] to i32*
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds i32, i32* %[[VAL_21]], i32 %[[VAL_13]]
+// CHECK:         %[[VAL_23:.*]] = load i32, i32* %[[VAL_22]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_24:.*]] = bitcast [2 x i32]* %[[VAL_4]] to i32*
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds i32, i32* %[[VAL_24]], i32 %[[VAL_13]]
+// CHECK:         %[[VAL_26:.*]] = load i32, i32* %[[VAL_25]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_27:.*]] = add i32 %[[VAL_23]], %[[VAL_26]]
+// CHECK:         %[[VAL_28:.*]] = bitcast [2 x i32]* %[[VAL_7]] to i32*
+// CHECK:         %[[VAL_29:.*]] = getelementptr inbounds i32, i32* %[[VAL_28]], i32 %[[VAL_13]]
+// CHECK:         store i32 %[[VAL_27]], i32* %[[VAL_29]], align 4
+// CHECK:         %[[VAL_30:.*]] = bitcast [2 x i32]* %[[VAL_2]] to i32*
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds i32, i32* %[[VAL_30]], i32 %[[VAL_15]]
+// CHECK:         %[[VAL_32:.*]] = load i32, i32* %[[VAL_31]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_33:.*]] = bitcast [2 x i32]* %[[VAL_4]] to i32*
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds i32, i32* %[[VAL_33]], i32 %[[VAL_15]]
+// CHECK:         %[[VAL_35:.*]] = load i32, i32* %[[VAL_34]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_36:.*]] = add i32 %[[VAL_32]], %[[VAL_35]]
+// CHECK:         %[[VAL_37:.*]] = bitcast [2 x i32]* %[[VAL_7]] to i32*
+// CHECK:         %[[VAL_38:.*]] = getelementptr inbounds i32, i32* %[[VAL_37]], i32 %[[VAL_15]]
+// CHECK:         store i32 %[[VAL_36]], i32* %[[VAL_38]], align 4
+// CHECK:         br label %[[VAL_19]]
+// CHECK:       entry:
+// CHECK:         %[[VAL_39:.*]] = getelementptr inbounds i8, i8* %[[VAL_40:.*]], i64 0
+// CHECK:         %[[VAL_41:.*]] = bitcast i8* %[[VAL_39]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds i8, i8* %[[VAL_40]], i64 0
+// CHECK:         %[[VAL_43:.*]] = bitcast i8* %[[VAL_42]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_44:.*]] = getelementptr inbounds i8, i8* %[[VAL_45:.*]], i64 0
+// CHECK:         %[[VAL_46:.*]] = bitcast i8* %[[VAL_44]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_47:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !8
+// CHECK:         %[[VAL_48:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !10
+// CHECK:         %[[VAL_49:.*]] = mul nuw nsw i32 %[[VAL_47]], 3
+// CHECK:         %[[VAL_50:.*]] = add nuw nsw i32 %[[VAL_49]], %[[VAL_48]]
+// CHECK:         %[[VAL_51:.*]] = icmp ult i32 %[[VAL_50]], 3
+// CHECK:         call void @llvm.assume(i1 %[[VAL_51]])
+// CHECK:         %[[VAL_52:.*]] = mul nuw nsw i32 %[[VAL_50]], 2
+// CHECK:         %[[VAL_53:.*]] = udiv i32 %[[VAL_52]], 1
+// CHECK:         %[[VAL_54:.*]] = urem i32 %[[VAL_53]], 3
+// CHECK:         %[[VAL_55:.*]] = udiv i32 %[[VAL_52]], 3
+// CHECK:         %[[VAL_56:.*]] = add nuw nsw i32 %[[VAL_52]], 1
+// CHECK:         %[[VAL_57:.*]] = udiv i32 %[[VAL_56]], 1
+// CHECK:         %[[VAL_58:.*]] = urem i32 %[[VAL_57]], 3
+// CHECK:         %[[VAL_59:.*]] = udiv i32 %[[VAL_56]], 3
+// CHECK:         %[[VAL_60:.*]] = icmp ult i32 %[[VAL_52]], 6
+// CHECK:         br i1 %[[VAL_60]], label %[[VAL_61:.*]], label %[[VAL_62:.*]]
+// CHECK:       updates.in_bounds-after:                          ; preds = %[[VAL_61]], %[[VAL_63:.*]]
+// CHECK:         ret void
+// CHECK:       updates.in_bounds-true:                           ; preds = %[[VAL_63]]
+// CHECK:         %[[VAL_64:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_41]] to i32*
+// CHECK:         %[[VAL_65:.*]] = getelementptr inbounds i32, i32* %[[VAL_64]], i32 %[[VAL_52]]
+// CHECK:         %[[VAL_66:.*]] = load i32, i32* %[[VAL_65]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_67:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_43]] to i32*
+// CHECK:         %[[VAL_68:.*]] = getelementptr inbounds i32, i32* %[[VAL_67]], i32 %[[VAL_52]]
+// CHECK:         %[[VAL_69:.*]] = load i32, i32* %[[VAL_68]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_70:.*]] = add i32 %[[VAL_66]], %[[VAL_69]]
+// CHECK:         %[[VAL_71:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_46]] to i32*
+// CHECK:         %[[VAL_72:.*]] = getelementptr inbounds i32, i32* %[[VAL_71]], i32 %[[VAL_52]]
+// CHECK:         store i32 %[[VAL_70]], i32* %[[VAL_72]], align 4
+// CHECK:         %[[VAL_73:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_41]] to i32*
+// CHECK:         %[[VAL_74:.*]] = getelementptr inbounds i32, i32* %[[VAL_73]], i32 %[[VAL_56]]
+// CHECK:         %[[VAL_75:.*]] = load i32, i32* %[[VAL_74]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_76:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_43]] to i32*
+// CHECK:         %[[VAL_77:.*]] = getelementptr inbounds i32, i32* %[[VAL_76]], i32 %[[VAL_56]]
+// CHECK:         %[[VAL_78:.*]] = load i32, i32* %[[VAL_77]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_79:.*]] = add i32 %[[VAL_75]], %[[VAL_78]]
+// CHECK:         %[[VAL_80:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_46]] to i32*
+// CHECK:         %[[VAL_81:.*]] = getelementptr inbounds i32, i32* %[[VAL_80]], i32 %[[VAL_56]]
+// CHECK:         store i32 %[[VAL_79]], i32* %[[VAL_81]], align 4
+// CHECK:         br label %[[VAL_62]]
+// CHECK:       entry:
+// CHECK:         %[[VAL_82:.*]] = getelementptr inbounds i8, i8* %[[VAL_83:.*]], i64 0
+// CHECK:         %[[VAL_84:.*]] = bitcast i8* %[[VAL_82]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_85:.*]] = getelementptr inbounds i8, i8* %[[VAL_83]], i64 0
+// CHECK:         %[[VAL_86:.*]] = bitcast i8* %[[VAL_85]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_87:.*]] = getelementptr inbounds i8, i8* %[[VAL_88:.*]], i64 0
+// CHECK:         %[[VAL_89:.*]] = bitcast i8* %[[VAL_87]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_90:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !8
+// CHECK:         %[[VAL_91:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !11
+// CHECK:         %[[VAL_92:.*]] = mul nuw nsw i32 %[[VAL_90]], 9
+// CHECK:         %[[VAL_93:.*]] = add nuw nsw i32 %[[VAL_92]], %[[VAL_91]]
+// CHECK:         %[[VAL_94:.*]] = icmp ult i32 %[[VAL_93]], 9
+// CHECK:         call void @llvm.assume(i1 %[[VAL_94]])
+// CHECK:         %[[VAL_95:.*]] = udiv i32 %[[VAL_93]], 1
+// CHECK:         %[[VAL_96:.*]] = urem i32 %[[VAL_95]], 3
+// CHECK:         %[[VAL_97:.*]] = udiv i32 %[[VAL_93]], 3
+// CHECK:         %[[VAL_98:.*]] = icmp ult i32 %[[VAL_93]], 9
+// CHECK:         br i1 %[[VAL_98]], label %[[VAL_99:.*]], label %[[VAL_100:.*]]
+// CHECK:       operand.in_bounds-after:                          ; preds = %[[VAL_99]], %[[VAL_101:.*]]
+// CHECK:         ret void
+// CHECK:       operand.in_bounds-true:                           ; preds = %[[VAL_101]]
+// CHECK:         %[[VAL_102:.*]] = bitcast [3 x [3 x i32]]* %[[VAL_84]] to i32*
+// CHECK:         %[[VAL_103:.*]] = getelementptr inbounds i32, i32* %[[VAL_102]], i32 %[[VAL_93]]
+// CHECK:         %[[VAL_104:.*]] = load i32, i32* %[[VAL_103]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_105:.*]] = bitcast [3 x [3 x i32]]* %[[VAL_86]] to i32*
+// CHECK:         %[[VAL_106:.*]] = getelementptr inbounds i32, i32* %[[VAL_105]], i32 %[[VAL_93]]
+// CHECK:         %[[VAL_107:.*]] = load i32, i32* %[[VAL_106]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_108:.*]] = add i32 %[[VAL_104]], %[[VAL_107]]
+// CHECK:         %[[VAL_109:.*]] = bitcast [3 x [3 x i32]]* %[[VAL_89]] to i32*
+// CHECK:         %[[VAL_110:.*]] = getelementptr inbounds i32, i32* %[[VAL_109]], i32 %[[VAL_93]]
+// CHECK:         store i32 %[[VAL_108]], i32* %[[VAL_110]], align 4
+// CHECK:         br label %[[VAL_100]]
+// CHECK:       entry:
+// CHECK:         %[[VAL_111:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_112:.*]] = getelementptr inbounds i8, i8* %[[VAL_113:.*]], i64 64
+// CHECK:         %[[VAL_114:.*]] = bitcast i8* %[[VAL_112]] to [2 x i32]*
+// CHECK:         %[[VAL_115:.*]] = getelementptr inbounds i8, i8* %[[VAL_113]], i64 0
+// CHECK:         %[[VAL_116:.*]] = bitcast i8* %[[VAL_115]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_117:.*]] = getelementptr inbounds i8, i8* %[[VAL_118:.*]], i64 0
+// CHECK:         %[[VAL_119:.*]] = bitcast i8* %[[VAL_117]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_120:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !8
+// CHECK:         %[[VAL_121:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !12
+// CHECK:         %[[VAL_122:.*]] = mul nuw nsw i32 %[[VAL_120]], 6
+// CHECK:         %[[VAL_123:.*]] = add nuw nsw i32 %[[VAL_122]], %[[VAL_121]]
+// CHECK:         %[[VAL_124:.*]] = icmp ult i32 %[[VAL_123]], 6
+// CHECK:         call void @llvm.assume(i1 %[[VAL_124]])
+// CHECK:         %[[VAL_125:.*]] = udiv i32 %[[VAL_123]], 1
+// CHECK:         %[[VAL_126:.*]] = urem i32 %[[VAL_125]], 3
+// CHECK:         %[[VAL_127:.*]] = udiv i32 %[[VAL_123]], 3
+// CHECK:         %[[VAL_128:.*]] = icmp ult i32 %[[VAL_123]], 6
+// CHECK:         br i1 %[[VAL_128]], label %[[VAL_129:.*]], label %[[VAL_130:.*]]
+// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_131:.*]], %[[VAL_132:.*]]
+// CHECK:         ret void
+// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_132]]
+// CHECK:         %[[VAL_133:.*]] = getelementptr inbounds [2 x i32], [2 x i32]* %[[VAL_114]], i32 0, i32 %[[VAL_127]]
+// CHECK:         %[[VAL_134:.*]] = load i32, i32* %[[VAL_133]], align 4, !invariant.load !9
+// CHECK:         %[[VAL_135:.*]] = add i32 0, %[[VAL_134]]
+// CHECK:         %[[VAL_136:.*]] = icmp ult i32 %[[VAL_134]], 3
+// CHECK:         %[[VAL_137:.*]] = and i1 true, %[[VAL_136]]
+// CHECK:         br i1 %[[VAL_137]], label %[[VAL_138:.*]], label %[[VAL_131]]
+// CHECK:       scatter.in_bounds-after{{.*}}:                         ; preds = %[[VAL_138]], %[[VAL_129]]
+// CHECK:         br label %[[VAL_130]]
+// CHECK:       scatter.in_bounds-true{{.*}}:                          ; preds = %[[VAL_129]]
+// CHECK:         %[[VAL_139:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_119]], i32 0, i32 %[[VAL_135]], i32 %[[VAL_126]]
+// CHECK:         %[[VAL_140:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_116]] to i32*
+// CHECK:         %[[VAL_141:.*]] = getelementptr inbounds i32, i32* %[[VAL_140]], i32 %[[VAL_123]]
+// CHECK:         %[[VAL_142:.*]] = load i32, i32* %[[VAL_141]], align 4, !invariant.load !9
+// CHECK:         store i32 %[[VAL_142]], i32* %[[VAL_111]], align 4
+// CHECK:         %[[VAL_143:.*]] = load i32, i32* %[[VAL_111]], align 4
+// CHECK:         store atomic i32 %[[VAL_143]], i32* %[[VAL_139]] unordered, align 4
+// CHECK:         br label %[[VAL_131]]
+
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  p0 = s32[3,3] parameter(0)
+  operand = s32[3,3] add(p0, p0)
+  p1 = s32[2] parameter(1)
+  indices = s32[2] add(p1, p1)
+  p2 = s32[2,3] parameter(2)
+  updates = s32[2,3] add(p2, p2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}

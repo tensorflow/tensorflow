@@ -83,13 +83,6 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
-# Create a header file containing an array with the first 10 images from the
-# CIFAR10 test dataset.
-patch_cifar10_dataset() {
-  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
-  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
-}
-
 build_embarc_mli() {
   make -j 4 -C ${1}/lib/make TCF_FILE=${2}
 }
@@ -116,7 +109,7 @@ download_and_extract() {
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
-  local curl_retries=3
+  local curl_retries=5
 
   # Destionation already downloaded.
   if [ -d ${dir} ]; then
@@ -131,24 +124,21 @@ download_and_extract() {
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
-  for (( i=1; i<=$curl_retries; ++i ))
-  do
+  for (( i=1; i<=$curl_retries; ++i )); do
     # We have to use this approach because we normally halt the script when
     # there's an error, and instead we want to catch errors so we can retry.
-    set +e
-    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    set +ex
+    curl -LsS --fail --retry 5 "${url}" > ${tempfile}
     CURL_RESULT=$?
-    set -e
+    set -ex
 
     # Was the command successful? If so, continue.
-    if [[ $CURL_RESULT -eq 0 ]]
-    then
+    if [[ $CURL_RESULT -eq 0 ]]; then
       break
     fi
 
     # Keep trying if we see the '56' error code.
-    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
-    then
+    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]; then
       echo "Error $CURL_RESULT downloading '${url}'"
       exit 1
     fi

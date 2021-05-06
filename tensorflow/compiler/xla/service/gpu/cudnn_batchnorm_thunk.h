@@ -48,7 +48,7 @@ namespace gpu {
 class CudnnBatchNormForwardInferenceThunk : public Thunk {
  public:
   CudnnBatchNormForwardInferenceThunk(ThunkInfo thunk_info,
-                                      CudnnBatchNormConfig&& config,
+                                      CudnnBatchNormConfig config,
                                       const BufferAllocation::Slice& operand,
                                       const BufferAllocation::Slice& scale,
                                       const BufferAllocation::Slice& offset,
@@ -76,7 +76,7 @@ class CudnnBatchNormForwardInferenceThunk : public Thunk {
 class CudnnBatchNormForwardTrainingThunk : public Thunk {
  public:
   CudnnBatchNormForwardTrainingThunk(
-      ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+      ThunkInfo thunk_info, CudnnBatchNormConfig config,
       const BufferAllocation::Slice& operand,
       const BufferAllocation::Slice& scale,
       const BufferAllocation::Slice& offset,
@@ -104,7 +104,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
 class CudnnBatchNormBackwardThunk : public Thunk {
  public:
   CudnnBatchNormBackwardThunk(
-      ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+      ThunkInfo thunk_info, CudnnBatchNormConfig config,
       const BufferAllocation::Slice& operand,
       const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
       const BufferAllocation::Slice& inv_stddev,

@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
@@ -255,6 +258,12 @@ Status TpuCompileOpKernelCommon::GetShardingInfo(
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
+  arg_core_mapping->clear();
+  arg_core_mapping->resize(metadata_.args_size());
+
+  per_core_arg_shapes->clear();
+  per_core_arg_shapes->resize(metadata_.num_cores_per_replica());
+
   int num_inputs = metadata_.args_size();
   for (int i = 0; i < num_inputs; ++i) {
     const auto& proto_arg = metadata_.args(i);
@@ -317,14 +326,6 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   CopyGraph(*fbody->graph, graph.get());
 
   VLOG(2) << "metadata: " << metadata_.DebugString();
-  std::vector<int> parameter_arg_mapping;
-  for (int i = 0; i < args.size(); i++) {
-    XlaCompiler::Argument& arg = args[i];
-    if (arg.kind != XlaCompiler::Argument::kParameter) {
-      continue;
-    }
-    parameter_arg_mapping.push_back(i);
-  }
   TF_RET_CHECK(fbody->arg_nodes.size() == args.size());
   for (size_t i = 0; i < fbody->arg_nodes.size(); i++) {
     args[i].node_name = fbody->arg_nodes[i]->name();
@@ -335,27 +336,6 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   std::vector<PartialTensorShape> partial_arg_shapes(arg_shapes.size());
   for (const TensorShape& shape : arg_shapes) {
     arg_shape_dims.push_back(shape.dim_sizes());
-  }
-
-  for (const auto& padding_mapping : metadata_.padding_maps()) {
-    if (padding_mapping.padding_arg_index() >= parameter_arg_mapping.size()) {
-      return errors::Internal(absl::StrCat(
-          "TPUCompileMetadataProto `padding_maps` has `padding_arg_index` ",
-          padding_mapping.padding_arg_index(),
-          " which exceeds`parameter_arg_mapping` array bounds ",
-          parameter_arg_mapping.size(),
-          ". this usually indicates there are dynamic shape inputs fed into "
-          "TPUs from outside compilation head extraction, which is not "
-          "supported"));
-    }
-    int padding_arg_index =
-        parameter_arg_mapping.at(padding_mapping.padding_arg_index());
-    args[parameter_arg_mapping.at(padding_mapping.arg_index())]
-        .dynamic_dim_to_arg_num_map[padding_mapping.shape_index()] =
-        padding_arg_index;
-    arg_shape_dims[parameter_arg_mapping.at(padding_mapping.arg_index())]
-                  [padding_mapping.shape_index()] = -1;
-    args[padding_arg_index].is_pad_arg = true;
   }
 
   for (int64 i = 0; i < arg_shape_dims.size(); ++i) {
@@ -568,7 +548,21 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     done->store(true);
   });
 
-  OP_REQUIRES_OK(ctx, ComputeInternal(ctx));
+  Status compile_status = ComputeInternal(ctx);
+  string status_payload;
+  // Construct payload if compile_status is not ok and there's no payload for
+  // compilation yet.
+  if (!compile_status.ok() &&
+      compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+          .empty()) {
+    tpu::CompilationResultProto proto;
+    proto.set_status_code(compile_status.code());
+    proto.set_status_error_message(compile_status.error_message());
+    status_payload = proto.SerializeAsString();
+  }
+  OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
+                                TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                                status_payload, compile_status);
 }
 
 Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
@@ -584,8 +578,12 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
       ComputeArgumentShapes(metadata_, dynamic_shapes, &arg_shapes));
   Status compile_status;
   if (use_mlir_) {
-    compile_status = Compile(MlirToHloArgs{mlir_module_}, mesh_state->data(),
-                             arg_shapes, tpu_program_group);
+    const ConfigProto* config = flib_runtime->config_proto();
+    ConfigProto::Experimental::MlirBridgeRollout rollout_state =
+        GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
+                                         : absl::nullopt);
+    compile_status = Compile(MlirToHloArgs{mlir_module_, rollout_state},
+                             mesh_state->data(), arg_shapes, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,
@@ -788,6 +786,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
+    status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                      output.scalar<tstring>()());
   }
 
   if (status.ok()) {
@@ -841,7 +841,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       }
     }
   }
-  return Status::OK();
+  return status;
 }
 }  // namespace tpu
 }  // namespace tensorflow

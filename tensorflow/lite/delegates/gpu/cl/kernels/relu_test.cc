@@ -27,14 +27,24 @@ namespace gpu {
 namespace cl {
 
 TEST_F(OpenCLOperationTest, ReLUNoClipNoAlpha) {
-  ReLUNoClipNoAlphaTest(&exec_env_);
+  auto status = ReLUNoClipNoAlphaTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, ReLUClip) { ReLUClipTest(&exec_env_); }
+TEST_F(OpenCLOperationTest, ReLUClip) {
+  auto status = ReLUClipTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
-TEST_F(OpenCLOperationTest, ReLUAlpha) { ReLUAlphaTest(&exec_env_); }
+TEST_F(OpenCLOperationTest, ReLUAlpha) {
+  auto status = ReLUAlphaTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
-TEST_F(OpenCLOperationTest, ReLUAlphaClip) { ReLUAlphaClipTest(&exec_env_); }
+TEST_F(OpenCLOperationTest, ReLUAlphaClip) {
+  auto status = ReLUAlphaClipTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
 }  // namespace cl
 }  // namespace gpu

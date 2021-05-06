@@ -290,11 +290,27 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
   }
 
-  // If a tuple element is not passed unmodified from the while body's param0
-  // through to the while body's root, count that element as "used", since
-  // removing that element would be observable.
+  absl::flat_hash_set<int64> used_indices_after_loop;
+  if (while_op == while_op->parent()->root_instruction()) {
+    for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+      used_indices_after_loop.insert(i);
+    }
+  }
+  for (auto user : while_op->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+        used_indices_after_loop.insert(i);
+      }
+      break;
+    }
+    used_indices_after_loop.insert(user->tuple_index());
+  }
+  // If a tuple element is used after the loop but not passed unmodified from
+  // the while body's param0 through to the while body's root, count that
+  // element as "used", since removing that element would be observable.
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.contains(i)) {
+    if (used_tuple_indices.contains(i) ||
+        !used_indices_after_loop.contains(i)) {
       continue;
     }
 

@@ -74,10 +74,10 @@ Build the `TensorFlowLite` Objective-C library target:
 bazel build tensorflow/lite/objc:TensorFlowLite
 ```
 
-Build the `Tests` target:
+Build the `tests` target:
 
 ```shell
-bazel test tensorflow/lite/objc:Tests
+bazel test tensorflow/lite/objc:tests
 ```
 
 #### Generate the Xcode project using Tulsi

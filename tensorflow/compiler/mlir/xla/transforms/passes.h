@@ -49,9 +49,14 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type);
 
+/// Replaces types that do not exist in MHLO with equivalent types that do
+/// exist.
+std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
+
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns);
+                                          OwningRewritePatternList& patterns,
+                                          MLIRContext* ctx);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
@@ -80,6 +85,9 @@ LogicalResult legalizeTF(
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
+
+// Prepare module for export to XLA HLO protos/instruction.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
 
 }  // namespace mhlo
 }  // namespace mlir

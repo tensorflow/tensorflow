@@ -15,9 +15,6 @@
 # ==============================================================================
 """Keras-based attention layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import math
@@ -37,6 +34,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -168,7 +166,7 @@ class MultiHeadAttention(Layer):
   >>> print(output_tensor.shape)
   (None, 5, 3, 4, 16)
 
-  Arguments:
+  Args:
     num_heads: Number of attention heads.
     key_dim: Size of each attention head for query and key.
     value_dim:  Size of each attention head for value.
@@ -192,7 +190,10 @@ class MultiHeadAttention(Layer):
     key: Optional key `Tensor` of shape `[B, S, dim]`. If not given, will use
       `value` for both `key` and `value`, which is the most common case.
     attention_mask: a boolean mask of shape `[B, T, S]`, that prevents
-      attention to certain positions.
+      attention to certain positions. The boolean mask specifies which query
+      elements can attend to which key elements, 1 indicates attention and 0
+      indicates no attention. Broadcasting can happen for the missing batch
+      dimensions and the head dimension.
     return_attention_scores: A boolean to indicate whether the output should
       be attention output if True, or (attention_output, attention_scores) if
       False. Defaults to False.
@@ -245,6 +246,7 @@ class MultiHeadAttention(Layer):
     else:
       self._attention_axes = attention_axes
     self._built_from_signature = False
+    self._query_shape, self._key_shape, self._value_shape = None, None, None
 
   def get_config(self):
     config = {
@@ -275,10 +277,31 @@ class MultiHeadAttention(Layer):
         "kernel_constraint":
             constraints.serialize(self._kernel_constraint),
         "bias_constraint":
-            constraints.serialize(self._bias_constraint)
+            constraints.serialize(self._bias_constraint),
+        "query_shape": self._query_shape,
+        "key_shape": self._key_shape,
+        "value_shape": self._value_shape,
     }
     base_config = super(MultiHeadAttention, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config):
+    # If the layer has a different build() function from the Keras default,
+    # we need to trigger the customized build to create weights.
+    query_shape = config.pop("query_shape")
+    key_shape = config.pop("key_shape")
+    value_shape = config.pop("value_shape")
+    layer = cls(**config)
+    if None in [query_shape, key_shape, value_shape]:
+      logging.warning(
+          "One of the input shape is missing. They should be "
+          "memorized when the layer was serialized. "
+          "%s is created without weights.",
+          str(cls))
+    else:
+      layer._build_from_signature(query_shape, value_shape, key_shape)  # pylint: disable=protected-access
+    return layer
 
   def _build_from_signature(self, query, value, key=None):
     """Builds layers and variables.
@@ -292,19 +315,19 @@ class MultiHeadAttention(Layer):
     """
     self._built_from_signature = True
     if hasattr(query, "shape"):
-      query_shape = tensor_shape.TensorShape(query.shape)
+      self._query_shape = tensor_shape.TensorShape(query.shape)
     else:
-      query_shape = query
+      self._query_shape = tensor_shape.TensorShape(query)
     if hasattr(value, "shape"):
-      value_shape = tensor_shape.TensorShape(value.shape)
+      self._value_shape = tensor_shape.TensorShape(value.shape)
     else:
-      value_shape = value
+      self._value_shape = tensor_shape.TensorShape(value)
     if key is None:
-      key_shape = value_shape
+      self._key_shape = self._value_shape
     elif hasattr(key, "shape"):
-      key_shape = tensor_shape.TensorShape(key.shape)
+      self._key_shape = tensor_shape.TensorShape(key.shape)
     else:
-      key_shape = key
+      self._key_shape = tensor_shape.TensorShape(key)
 
     common_kwargs = dict(
         kernel_initializer=self._kernel_initializer,
@@ -318,7 +341,7 @@ class MultiHeadAttention(Layer):
     # to avoid creating symbolic Tensors that will later pollute any eager
     # operations.
     with tf_utils.maybe_init_scope(self):
-      free_dims = query_shape.rank - 1
+      free_dims = self._query_shape.rank - 1
       einsum_equation, bias_axes, output_rank = _build_proj_equation(
           free_dims, bound_dims=1, output_dims=2)
       self._query_dense = einsum_dense.EinsumDense(
@@ -329,7 +352,7 @@ class MultiHeadAttention(Layer):
           name="query",
           **common_kwargs)
       einsum_equation, bias_axes, output_rank = _build_proj_equation(
-          key_shape.rank - 1, bound_dims=1, output_dims=2)
+          self._key_shape.rank - 1, bound_dims=1, output_dims=2)
       self._key_dense = einsum_dense.EinsumDense(
           einsum_equation,
           output_shape=_get_output_shape(output_rank - 1,
@@ -338,7 +361,7 @@ class MultiHeadAttention(Layer):
           name="key",
           **common_kwargs)
       einsum_equation, bias_axes, output_rank = _build_proj_equation(
-          value_shape.rank - 1, bound_dims=1, output_dims=2)
+          self._value_shape.rank - 1, bound_dims=1, output_dims=2)
       self._value_dense = einsum_dense.EinsumDense(
           einsum_equation,
           output_shape=_get_output_shape(output_rank - 1,
@@ -351,21 +374,35 @@ class MultiHeadAttention(Layer):
       # These computations could be wrapped into the keras attention layer once
       # it support mult-head einsum computations.
       self._build_attention(output_rank)
-      if self._output_shape:
-        if not isinstance(self._output_shape, collections.abc.Sized):
-          output_shape = [self._output_shape]
-        else:
-          output_shape = self._output_shape
+      self._output_dense = self._make_output_dense(
+          free_dims, common_kwargs, "attention_output")
+
+  def _make_output_dense(self, free_dims, common_kwargs, name=None):
+    """Builds the output projection matrix.
+
+    Args:
+      free_dims: Number of free dimensions for einsum equation building.
+      common_kwargs: Common keyword arguments for einsum layer.
+      name: the name for the projection layer.
+
+    Returns:
+      Projection layer.
+    """
+    if self._output_shape:
+      if not isinstance(self._output_shape, collections.abc.Sized):
+        output_shape = [self._output_shape]
       else:
-        output_shape = [query_shape[-1]]
-      einsum_equation, bias_axes, output_rank = _build_proj_equation(
-          free_dims, bound_dims=2, output_dims=len(output_shape))
-      self._output_dense = einsum_dense.EinsumDense(
-          einsum_equation,
-          output_shape=_get_output_shape(output_rank - 1, output_shape),
-          bias_axes=bias_axes if self._use_bias else None,
-          name="attention_output",
-          **common_kwargs)
+        output_shape = self._output_shape
+    else:
+      output_shape = [self._query_shape[-1]]
+    einsum_equation, bias_axes, output_rank = _build_proj_equation(
+        free_dims, bound_dims=2, output_dims=len(output_shape))
+    return einsum_dense.EinsumDense(
+        einsum_equation,
+        output_shape=_get_output_shape(output_rank - 1, output_shape),
+        bias_axes=bias_axes if self._use_bias else None,
+        name=name,
+        **common_kwargs)
 
   def _build_attention(self, rank):
     """Builds multi-head dot-product attention computations.

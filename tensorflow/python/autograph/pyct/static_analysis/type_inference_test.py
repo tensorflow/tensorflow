@@ -669,7 +669,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     self.assertTypes(fn_body[0].value, str)
     self.assertTypes(fn_body[0].value.value, list)
-    self.assertTypes(fn_body[0].value.slice.value, int)
+    self.assertTypes(fn_body[0].value.slice, int)
 
   def test_tuple_unpacking(self):
 

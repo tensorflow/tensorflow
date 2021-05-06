@@ -219,7 +219,8 @@ llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
@@ -227,7 +228,8 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 void VectorSupportLibrary::StoreVector(llvm::Value* value,
@@ -236,8 +238,9 @@ void VectorSupportLibrary::StoreVector(llvm::Value* value,
   if (pointer->getType() != vector_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 void VectorSupportLibrary::StoreScalar(llvm::Value* value,
@@ -246,8 +249,9 @@ void VectorSupportLibrary::StoreScalar(llvm::Value* value,
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {

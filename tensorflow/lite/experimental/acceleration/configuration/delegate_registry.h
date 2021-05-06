@@ -79,8 +79,9 @@ class DelegatePluginRegistry {
   std::unique_ptr<DelegatePluginInterface> CreateImpl(
       const std::string& name, const TFLiteSettings& settings);
   static DelegatePluginRegistry* GetSingleton();
-  std::unordered_map<std::string, CreatorFunction> factories_;
   absl::Mutex mutex_;
+  std::unordered_map<std::string, CreatorFunction> factories_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace delegates

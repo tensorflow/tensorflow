@@ -172,6 +172,8 @@ CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*test*.cc) \
+$(wildcard tensorflow/lite/*/*_ops_wrapper.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \
@@ -187,8 +189,6 @@ $(wildcard tensorflow/lite/*/*/*/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/*/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*/*/*tool.cc) \
-$(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/*/mock*.c) \
 tensorflow/lite/create_op_resolver_with_selected_ops.cc \
 tensorflow/lite/tflite_with_xnnpack.cc \

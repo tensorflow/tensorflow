@@ -19,7 +19,7 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
-install_ubuntu_16_pip_deps pip3.7
+install_ubuntu_16_python_pip_deps python3.7
 install_bazelisk
 install_ctpu pip3.7
 
@@ -56,6 +56,7 @@ ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
 test_args=(
   --test_timeout=120,600,-1,-1 \
+  --test_env=TF_ENABLE_LEGACY_FILESYSTEM=1 \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
   --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \

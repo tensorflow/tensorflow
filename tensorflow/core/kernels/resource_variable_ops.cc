@@ -136,10 +136,11 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(
-                  "Error while reading resource variable ", handle.name(),
-                  " from Container: ", handle.container(),
-                  ". This could mean that the variable was uninitialized. ",
-                  status.ToString()));
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status=", status.ToString()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
@@ -215,12 +216,18 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name("ReadVariableOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
+    ReadVariableOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_ReadVariablesOp").Device(DEVICE_DEFAULT).HostMemory("resources"),
+    ReadVariablesOp);
+
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
 
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
-  PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
@@ -245,7 +252,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        ctx->stack_trace());
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);
@@ -292,25 +300,26 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-template <typename T>
-class VariableShapeOp : public OpKernel {
- public:
-  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
+#define REGISTER_DEFAULT_KERNELS(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                 \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("resource")         \
+                              .TypeConstraint<type>("dtype"), \
+                          VarHandleOp)
+TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
+TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
+#undef REGISTER_DEFAULT_KERNELS
 
-  void Compute(OpKernelContext* ctx) override {
-    core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
-    variable->mu()->lock_shared();
-    TensorShape shape = variable->tensor()->shape();
-    variable->mu()->unlock_shared();
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
-    for (int i = 0; i < shape.dims(); ++i) {
-      output->flat<T>()(i) = shape.dim_size(i);
-    }
-  }
-};
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("resources")
+                            .TypeConstraint("dtypes",
+                                            {DT_INT64, DT_COMPLEX64,
+                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
+                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
+                        ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
@@ -394,24 +403,31 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     mutex_lock ml(*variable->mu());
-    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+    // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
+    // check below is to allow an XLA specific situation wherein update can
+    // happen first by the AssignVariableOp,
+    // in which case the variable is still uninitialized.
+    // When using TF-XLA, this scenario is possible when the execution uses the
+    // 'fallback' path (which essentially invokes Tensorflow ops via
+    // partitioned_call).
+    OP_REQUIRES(context,
+                (variable->tensor()->dtype() == DT_INVALID &&
+                 !variable->is_initialized) ||
+                    variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
     if (variable->copy_on_read_mode.load()) {
-      PersistentTensor unused;
-      Tensor* tmp;
       AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
       attr.set_nic_compatible(true);
       OP_REQUIRES_OK(context,
-                     context->allocate_persistent(value.dtype(), value.shape(),
-                                                  &unused, &tmp, attr));
+                     context->allocate_temp(value.dtype(), value.shape(),
+                                            variable->tensor(), attr));
       functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-      copy_functor(context->eigen_device<Device>(), tmp->flat<T>(),
-                   value.flat<T>());
-      *variable->tensor() = *tmp;
+      copy_functor(context->eigen_device<Device>(),
+                   variable->tensor()->flat<T>(), value.flat<T>());
     } else {
       *variable->tensor() = value;
     }
@@ -479,14 +495,10 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     // Need to copy, but maybe we can re-use variable's buffer?
     if (!variable->tensor()->RefCountIsOne() ||
         !variable->tensor()->shape().IsSameSize(value.shape())) {
-      PersistentTensor unused;
-      Tensor* tmp;
       // Allocation of DT_VARIANT is always on host.
       attr.set_on_host(true);
-      OP_REQUIRES_OK(context,
-                     context->allocate_persistent(DT_VARIANT, value.shape(),
-                                                  &unused, &tmp, attr));
-      *variable->tensor() = *tmp;
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_VARIANT, value.shape(),
+                                                     variable->tensor(), attr));
     }
 
     const auto elements_in = value.flat<Variant>();
@@ -619,6 +631,12 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
                             .HostMemory("is_initialized"),
                         IsResourceInitialized<Var>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("resource")
+                            .HostMemory("is_initialized"),
+                        IsResourceInitialized<Var>);
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {

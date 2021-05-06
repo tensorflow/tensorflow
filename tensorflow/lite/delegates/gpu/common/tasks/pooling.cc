@@ -73,22 +73,21 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
       op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int linear_id_1 = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
     c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
   } else {
-    c += "  int Y = get_global_id(1);\n";
+    c += "  int Y = GLOBAL_ID_1;\n";
   }
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  float4 r = (float4)(0.0f);\n";
+  c += "  float4 r = INIT_FLOAT4(0.0f);\n";
   c += "  float window_size = 0.0;\n";
   if (stride_correction) {
     c += "  int xs = " +
@@ -124,7 +123,7 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
   if (manual_clamp) {
     c += "     r += !outside ? args.src_tensor.Read<float>(" + src_coord +
          ") : "
-         "(float4)(0.0f);\n";
+         "INIT_FLOAT4(0.0f);\n";
   } else {
     c += "      r += args.src_tensor.Read<float>(" + src_coord + ");\n";
   }
@@ -194,24 +193,23 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   }
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int linear_id_1 = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
     c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
   } else {
-    c += "  int Y = get_global_id(1);\n";
+    c += "  int Y = GLOBAL_ID_1;\n";
   }
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
+  c += "  FLT4 maximum = INIT_FLT4(-10000.0f);\n";
   if (output_indices) {
-    c += "  FLT4 indexes = (FLT4)(0.0f);\n";
+    c += "  FLT4 indexes = INIT_FLT4(0.0f);\n";
   }
   if (stride_correction) {
     c += "  int xs = " +
@@ -246,11 +244,12 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "      FLT4 src = args.src_tensor.Read(" + src_coord + ");\n";
   if (output_indices) {
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-      c += "      FLT index_counter = (FLT)((ky * args.kernel_size_x + kx) * "
-           "args.kernel_size_z + kz) + (FLT)(0.1f);\n";
+      c +=
+          "      FLT index_counter = INIT_FLT((ky * args.kernel_size_x + kx) * "
+          "args.kernel_size_z + kz) + INIT_FLT(0.1f);\n";
     } else {
-      c += "      FLT index_counter = (FLT)(ky * args.kernel_size_x + kx) + "
-           "(FLT)(0.1f);\n";
+      c += "      FLT index_counter = INIT_FLT(ky * args.kernel_size_x + kx) + "
+           "INIT_FLT(0.1f);\n";
     }
     c += "      if (src.x > maximum.x) {\n";
     c += "        indexes.x = index_counter;\n";

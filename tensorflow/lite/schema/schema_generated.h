@@ -49,6 +49,9 @@ struct TensorT;
 struct Conv2DOptions;
 struct Conv2DOptionsT;
 
+struct Conv3DOptions;
+struct Conv3DOptionsT;
+
 struct Pool2DOptions;
 struct Pool2DOptionsT;
 
@@ -361,6 +364,18 @@ struct BroadcastToOptionsT;
 struct Rfft2dOptions;
 struct Rfft2dOptionsT;
 
+struct HashtableOptions;
+struct HashtableOptionsT;
+
+struct HashtableFindOptions;
+struct HashtableFindOptionsT;
+
+struct HashtableImportOptions;
+struct HashtableImportOptionsT;
+
+struct HashtableSizeOptions;
+struct HashtableSizeOptionsT;
+
 struct TableOptions;
 struct TableOptionsT;
 
@@ -402,11 +417,14 @@ enum TensorType {
   TensorType_FLOAT64 = 10,
   TensorType_COMPLEX128 = 11,
   TensorType_UINT64 = 12,
+  TensorType_RESOURCE = 13,
+  TensorType_VARIANT = 14,
+  TensorType_UINT32 = 15,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT64
+  TensorType_MAX = TensorType_UINT32
 };
 
-inline const TensorType (&EnumValuesTensorType())[13] {
+inline const TensorType (&EnumValuesTensorType())[16] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -420,13 +438,16 @@ inline const TensorType (&EnumValuesTensorType())[13] {
     TensorType_INT8,
     TensorType_FLOAT64,
     TensorType_COMPLEX128,
-    TensorType_UINT64
+    TensorType_UINT64,
+    TensorType_RESOURCE,
+    TensorType_VARIANT,
+    TensorType_UINT32
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[14] = {
+  static const char * const names[17] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -440,13 +461,16 @@ inline const char * const *EnumNamesTensorType() {
     "FLOAT64",
     "COMPLEX128",
     "UINT64",
+    "RESOURCE",
+    "VARIANT",
+    "UINT32",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT64)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT32)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -810,290 +834,319 @@ enum BuiltinOperator {
   BuiltinOperator_CALL_ONCE = 129,
   BuiltinOperator_BROADCAST_TO = 130,
   BuiltinOperator_RFFT2D = 131,
-  BuiltinOperator_TABLE = 132,
+  BuiltinOperator_CONV_3D = 132,
+  BuiltinOperator_IMAG = 133,
+  BuiltinOperator_REAL = 134,
+  BuiltinOperator_COMPLEX_ABS = 135,
+  BuiltinOperator_HASHTABLE = 136,
+  BuiltinOperator_HASHTABLE_FIND = 137,
+  BuiltinOperator_HASHTABLE_IMPORT = 138,
+  BuiltinOperator_HASHTABLE_SIZE = 139,
+  BuiltinOperator_REDUCE_ALL = 140,
+  BuiltinOperator_TABLE = 141,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
   BuiltinOperator_MAX = BuiltinOperator_TABLE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[133] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[142] {
   static const BuiltinOperator values[] = {
-      BuiltinOperator_ADD,
-      BuiltinOperator_AVERAGE_POOL_2D,
-      BuiltinOperator_CONCATENATION,
-      BuiltinOperator_CONV_2D,
-      BuiltinOperator_DEPTHWISE_CONV_2D,
-      BuiltinOperator_DEPTH_TO_SPACE,
-      BuiltinOperator_DEQUANTIZE,
-      BuiltinOperator_EMBEDDING_LOOKUP,
-      BuiltinOperator_FLOOR,
-      BuiltinOperator_FULLY_CONNECTED,
-      BuiltinOperator_HASHTABLE_LOOKUP,
-      BuiltinOperator_L2_NORMALIZATION,
-      BuiltinOperator_L2_POOL_2D,
-      BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
-      BuiltinOperator_LOGISTIC,
-      BuiltinOperator_LSH_PROJECTION,
-      BuiltinOperator_LSTM,
-      BuiltinOperator_MAX_POOL_2D,
-      BuiltinOperator_MUL,
-      BuiltinOperator_RELU,
-      BuiltinOperator_RELU_N1_TO_1,
-      BuiltinOperator_RELU6,
-      BuiltinOperator_RESHAPE,
-      BuiltinOperator_RESIZE_BILINEAR,
-      BuiltinOperator_RNN,
-      BuiltinOperator_SOFTMAX,
-      BuiltinOperator_SPACE_TO_DEPTH,
-      BuiltinOperator_SVDF,
-      BuiltinOperator_TANH,
-      BuiltinOperator_CONCAT_EMBEDDINGS,
-      BuiltinOperator_SKIP_GRAM,
-      BuiltinOperator_CALL,
-      BuiltinOperator_CUSTOM,
-      BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
-      BuiltinOperator_PAD,
-      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
-      BuiltinOperator_GATHER,
-      BuiltinOperator_BATCH_TO_SPACE_ND,
-      BuiltinOperator_SPACE_TO_BATCH_ND,
-      BuiltinOperator_TRANSPOSE,
-      BuiltinOperator_MEAN,
-      BuiltinOperator_SUB,
-      BuiltinOperator_DIV,
-      BuiltinOperator_SQUEEZE,
-      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-      BuiltinOperator_STRIDED_SLICE,
-      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
-      BuiltinOperator_EXP,
-      BuiltinOperator_TOPK_V2,
-      BuiltinOperator_SPLIT,
-      BuiltinOperator_LOG_SOFTMAX,
-      BuiltinOperator_DELEGATE,
-      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
-      BuiltinOperator_CAST,
-      BuiltinOperator_PRELU,
-      BuiltinOperator_MAXIMUM,
-      BuiltinOperator_ARG_MAX,
-      BuiltinOperator_MINIMUM,
-      BuiltinOperator_LESS,
-      BuiltinOperator_NEG,
-      BuiltinOperator_PADV2,
-      BuiltinOperator_GREATER,
-      BuiltinOperator_GREATER_EQUAL,
-      BuiltinOperator_LESS_EQUAL,
-      BuiltinOperator_SELECT,
-      BuiltinOperator_SLICE,
-      BuiltinOperator_SIN,
-      BuiltinOperator_TRANSPOSE_CONV,
-      BuiltinOperator_SPARSE_TO_DENSE,
-      BuiltinOperator_TILE,
-      BuiltinOperator_EXPAND_DIMS,
-      BuiltinOperator_EQUAL,
-      BuiltinOperator_NOT_EQUAL,
-      BuiltinOperator_LOG,
-      BuiltinOperator_SUM,
-      BuiltinOperator_SQRT,
-      BuiltinOperator_RSQRT,
-      BuiltinOperator_SHAPE,
-      BuiltinOperator_POW,
-      BuiltinOperator_ARG_MIN,
-      BuiltinOperator_FAKE_QUANT,
-      BuiltinOperator_REDUCE_PROD,
-      BuiltinOperator_REDUCE_MAX,
-      BuiltinOperator_PACK,
-      BuiltinOperator_LOGICAL_OR,
-      BuiltinOperator_ONE_HOT,
-      BuiltinOperator_LOGICAL_AND,
-      BuiltinOperator_LOGICAL_NOT,
-      BuiltinOperator_UNPACK,
-      BuiltinOperator_REDUCE_MIN,
-      BuiltinOperator_FLOOR_DIV,
-      BuiltinOperator_REDUCE_ANY,
-      BuiltinOperator_SQUARE,
-      BuiltinOperator_ZEROS_LIKE,
-      BuiltinOperator_FILL,
-      BuiltinOperator_FLOOR_MOD,
-      BuiltinOperator_RANGE,
-      BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      BuiltinOperator_LEAKY_RELU,
-      BuiltinOperator_SQUARED_DIFFERENCE,
-      BuiltinOperator_MIRROR_PAD,
-      BuiltinOperator_ABS,
-      BuiltinOperator_SPLIT_V,
-      BuiltinOperator_UNIQUE,
-      BuiltinOperator_CEIL,
-      BuiltinOperator_REVERSE_V2,
-      BuiltinOperator_ADD_N,
-      BuiltinOperator_GATHER_ND,
-      BuiltinOperator_COS,
-      BuiltinOperator_WHERE,
-      BuiltinOperator_RANK,
-      BuiltinOperator_ELU,
-      BuiltinOperator_REVERSE_SEQUENCE,
-      BuiltinOperator_MATRIX_DIAG,
-      BuiltinOperator_QUANTIZE,
-      BuiltinOperator_MATRIX_SET_DIAG,
-      BuiltinOperator_ROUND,
-      BuiltinOperator_HARD_SWISH,
-      BuiltinOperator_IF,
-      BuiltinOperator_WHILE,
-      BuiltinOperator_NON_MAX_SUPPRESSION_V4,
-      BuiltinOperator_NON_MAX_SUPPRESSION_V5,
-      BuiltinOperator_SCATTER_ND,
-      BuiltinOperator_SELECT_V2,
-      BuiltinOperator_DENSIFY,
-      BuiltinOperator_SEGMENT_SUM,
-      BuiltinOperator_BATCH_MATMUL,
-      BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES,
-      BuiltinOperator_CUMSUM,
-      BuiltinOperator_CALL_ONCE,
-      BuiltinOperator_BROADCAST_TO,
-      BuiltinOperator_RFFT2D,
-      BuiltinOperator_TABLE};
+    BuiltinOperator_ADD,
+    BuiltinOperator_AVERAGE_POOL_2D,
+    BuiltinOperator_CONCATENATION,
+    BuiltinOperator_CONV_2D,
+    BuiltinOperator_DEPTHWISE_CONV_2D,
+    BuiltinOperator_DEPTH_TO_SPACE,
+    BuiltinOperator_DEQUANTIZE,
+    BuiltinOperator_EMBEDDING_LOOKUP,
+    BuiltinOperator_FLOOR,
+    BuiltinOperator_FULLY_CONNECTED,
+    BuiltinOperator_HASHTABLE_LOOKUP,
+    BuiltinOperator_L2_NORMALIZATION,
+    BuiltinOperator_L2_POOL_2D,
+    BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
+    BuiltinOperator_LOGISTIC,
+    BuiltinOperator_LSH_PROJECTION,
+    BuiltinOperator_LSTM,
+    BuiltinOperator_MAX_POOL_2D,
+    BuiltinOperator_MUL,
+    BuiltinOperator_RELU,
+    BuiltinOperator_RELU_N1_TO_1,
+    BuiltinOperator_RELU6,
+    BuiltinOperator_RESHAPE,
+    BuiltinOperator_RESIZE_BILINEAR,
+    BuiltinOperator_RNN,
+    BuiltinOperator_SOFTMAX,
+    BuiltinOperator_SPACE_TO_DEPTH,
+    BuiltinOperator_SVDF,
+    BuiltinOperator_TANH,
+    BuiltinOperator_CONCAT_EMBEDDINGS,
+    BuiltinOperator_SKIP_GRAM,
+    BuiltinOperator_CALL,
+    BuiltinOperator_CUSTOM,
+    BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
+    BuiltinOperator_PAD,
+    BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+    BuiltinOperator_GATHER,
+    BuiltinOperator_BATCH_TO_SPACE_ND,
+    BuiltinOperator_SPACE_TO_BATCH_ND,
+    BuiltinOperator_TRANSPOSE,
+    BuiltinOperator_MEAN,
+    BuiltinOperator_SUB,
+    BuiltinOperator_DIV,
+    BuiltinOperator_SQUEEZE,
+    BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+    BuiltinOperator_STRIDED_SLICE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
+    BuiltinOperator_EXP,
+    BuiltinOperator_TOPK_V2,
+    BuiltinOperator_SPLIT,
+    BuiltinOperator_LOG_SOFTMAX,
+    BuiltinOperator_DELEGATE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+    BuiltinOperator_CAST,
+    BuiltinOperator_PRELU,
+    BuiltinOperator_MAXIMUM,
+    BuiltinOperator_ARG_MAX,
+    BuiltinOperator_MINIMUM,
+    BuiltinOperator_LESS,
+    BuiltinOperator_NEG,
+    BuiltinOperator_PADV2,
+    BuiltinOperator_GREATER,
+    BuiltinOperator_GREATER_EQUAL,
+    BuiltinOperator_LESS_EQUAL,
+    BuiltinOperator_SELECT,
+    BuiltinOperator_SLICE,
+    BuiltinOperator_SIN,
+    BuiltinOperator_TRANSPOSE_CONV,
+    BuiltinOperator_SPARSE_TO_DENSE,
+    BuiltinOperator_TILE,
+    BuiltinOperator_EXPAND_DIMS,
+    BuiltinOperator_EQUAL,
+    BuiltinOperator_NOT_EQUAL,
+    BuiltinOperator_LOG,
+    BuiltinOperator_SUM,
+    BuiltinOperator_SQRT,
+    BuiltinOperator_RSQRT,
+    BuiltinOperator_SHAPE,
+    BuiltinOperator_POW,
+    BuiltinOperator_ARG_MIN,
+    BuiltinOperator_FAKE_QUANT,
+    BuiltinOperator_REDUCE_PROD,
+    BuiltinOperator_REDUCE_MAX,
+    BuiltinOperator_PACK,
+    BuiltinOperator_LOGICAL_OR,
+    BuiltinOperator_ONE_HOT,
+    BuiltinOperator_LOGICAL_AND,
+    BuiltinOperator_LOGICAL_NOT,
+    BuiltinOperator_UNPACK,
+    BuiltinOperator_REDUCE_MIN,
+    BuiltinOperator_FLOOR_DIV,
+    BuiltinOperator_REDUCE_ANY,
+    BuiltinOperator_SQUARE,
+    BuiltinOperator_ZEROS_LIKE,
+    BuiltinOperator_FILL,
+    BuiltinOperator_FLOOR_MOD,
+    BuiltinOperator_RANGE,
+    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+    BuiltinOperator_LEAKY_RELU,
+    BuiltinOperator_SQUARED_DIFFERENCE,
+    BuiltinOperator_MIRROR_PAD,
+    BuiltinOperator_ABS,
+    BuiltinOperator_SPLIT_V,
+    BuiltinOperator_UNIQUE,
+    BuiltinOperator_CEIL,
+    BuiltinOperator_REVERSE_V2,
+    BuiltinOperator_ADD_N,
+    BuiltinOperator_GATHER_ND,
+    BuiltinOperator_COS,
+    BuiltinOperator_WHERE,
+    BuiltinOperator_RANK,
+    BuiltinOperator_ELU,
+    BuiltinOperator_REVERSE_SEQUENCE,
+    BuiltinOperator_MATRIX_DIAG,
+    BuiltinOperator_QUANTIZE,
+    BuiltinOperator_MATRIX_SET_DIAG,
+    BuiltinOperator_ROUND,
+    BuiltinOperator_HARD_SWISH,
+    BuiltinOperator_IF,
+    BuiltinOperator_WHILE,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+    BuiltinOperator_SCATTER_ND,
+    BuiltinOperator_SELECT_V2,
+    BuiltinOperator_DENSIFY,
+    BuiltinOperator_SEGMENT_SUM,
+    BuiltinOperator_BATCH_MATMUL,
+    BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES,
+    BuiltinOperator_CUMSUM,
+    BuiltinOperator_CALL_ONCE,
+    BuiltinOperator_BROADCAST_TO,
+    BuiltinOperator_RFFT2D,
+    BuiltinOperator_CONV_3D,
+    BuiltinOperator_IMAG,
+    BuiltinOperator_REAL,
+    BuiltinOperator_COMPLEX_ABS,
+    BuiltinOperator_HASHTABLE,
+    BuiltinOperator_HASHTABLE_FIND,
+    BuiltinOperator_HASHTABLE_IMPORT,
+    BuiltinOperator_HASHTABLE_SIZE,
+    BuiltinOperator_REDUCE_ALL,
+    BuiltinOperator_TABLE
+  };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char *const names[134] = {"ADD",
-                                         "AVERAGE_POOL_2D",
-                                         "CONCATENATION",
-                                         "CONV_2D",
-                                         "DEPTHWISE_CONV_2D",
-                                         "DEPTH_TO_SPACE",
-                                         "DEQUANTIZE",
-                                         "EMBEDDING_LOOKUP",
-                                         "FLOOR",
-                                         "FULLY_CONNECTED",
-                                         "HASHTABLE_LOOKUP",
-                                         "L2_NORMALIZATION",
-                                         "L2_POOL_2D",
-                                         "LOCAL_RESPONSE_NORMALIZATION",
-                                         "LOGISTIC",
-                                         "LSH_PROJECTION",
-                                         "LSTM",
-                                         "MAX_POOL_2D",
-                                         "MUL",
-                                         "RELU",
-                                         "RELU_N1_TO_1",
-                                         "RELU6",
-                                         "RESHAPE",
-                                         "RESIZE_BILINEAR",
-                                         "RNN",
-                                         "SOFTMAX",
-                                         "SPACE_TO_DEPTH",
-                                         "SVDF",
-                                         "TANH",
-                                         "CONCAT_EMBEDDINGS",
-                                         "SKIP_GRAM",
-                                         "CALL",
-                                         "CUSTOM",
-                                         "EMBEDDING_LOOKUP_SPARSE",
-                                         "PAD",
-                                         "UNIDIRECTIONAL_SEQUENCE_RNN",
-                                         "GATHER",
-                                         "BATCH_TO_SPACE_ND",
-                                         "SPACE_TO_BATCH_ND",
-                                         "TRANSPOSE",
-                                         "MEAN",
-                                         "SUB",
-                                         "DIV",
-                                         "SQUEEZE",
-                                         "UNIDIRECTIONAL_SEQUENCE_LSTM",
-                                         "STRIDED_SLICE",
-                                         "BIDIRECTIONAL_SEQUENCE_RNN",
-                                         "EXP",
-                                         "TOPK_V2",
-                                         "SPLIT",
-                                         "LOG_SOFTMAX",
-                                         "DELEGATE",
-                                         "BIDIRECTIONAL_SEQUENCE_LSTM",
-                                         "CAST",
-                                         "PRELU",
-                                         "MAXIMUM",
-                                         "ARG_MAX",
-                                         "MINIMUM",
-                                         "LESS",
-                                         "NEG",
-                                         "PADV2",
-                                         "GREATER",
-                                         "GREATER_EQUAL",
-                                         "LESS_EQUAL",
-                                         "SELECT",
-                                         "SLICE",
-                                         "SIN",
-                                         "TRANSPOSE_CONV",
-                                         "SPARSE_TO_DENSE",
-                                         "TILE",
-                                         "EXPAND_DIMS",
-                                         "EQUAL",
-                                         "NOT_EQUAL",
-                                         "LOG",
-                                         "SUM",
-                                         "SQRT",
-                                         "RSQRT",
-                                         "SHAPE",
-                                         "POW",
-                                         "ARG_MIN",
-                                         "FAKE_QUANT",
-                                         "REDUCE_PROD",
-                                         "REDUCE_MAX",
-                                         "PACK",
-                                         "LOGICAL_OR",
-                                         "ONE_HOT",
-                                         "LOGICAL_AND",
-                                         "LOGICAL_NOT",
-                                         "UNPACK",
-                                         "REDUCE_MIN",
-                                         "FLOOR_DIV",
-                                         "REDUCE_ANY",
-                                         "SQUARE",
-                                         "ZEROS_LIKE",
-                                         "FILL",
-                                         "FLOOR_MOD",
-                                         "RANGE",
-                                         "RESIZE_NEAREST_NEIGHBOR",
-                                         "LEAKY_RELU",
-                                         "SQUARED_DIFFERENCE",
-                                         "MIRROR_PAD",
-                                         "ABS",
-                                         "SPLIT_V",
-                                         "UNIQUE",
-                                         "CEIL",
-                                         "REVERSE_V2",
-                                         "ADD_N",
-                                         "GATHER_ND",
-                                         "COS",
-                                         "WHERE",
-                                         "RANK",
-                                         "ELU",
-                                         "REVERSE_SEQUENCE",
-                                         "MATRIX_DIAG",
-                                         "QUANTIZE",
-                                         "MATRIX_SET_DIAG",
-                                         "ROUND",
-                                         "HARD_SWISH",
-                                         "IF",
-                                         "WHILE",
-                                         "NON_MAX_SUPPRESSION_V4",
-                                         "NON_MAX_SUPPRESSION_V5",
-                                         "SCATTER_ND",
-                                         "SELECT_V2",
-                                         "DENSIFY",
-                                         "SEGMENT_SUM",
-                                         "BATCH_MATMUL",
-                                         "PLACEHOLDER_FOR_GREATER_OP_CODES",
-                                         "CUMSUM",
-                                         "CALL_ONCE",
-                                         "BROADCAST_TO",
-                                         "RFFT2D",
-                                         "TABLE",
-                                         nullptr};
+  static const char * const names[143] = {
+    "ADD",
+    "AVERAGE_POOL_2D",
+    "CONCATENATION",
+    "CONV_2D",
+    "DEPTHWISE_CONV_2D",
+    "DEPTH_TO_SPACE",
+    "DEQUANTIZE",
+    "EMBEDDING_LOOKUP",
+    "FLOOR",
+    "FULLY_CONNECTED",
+    "HASHTABLE_LOOKUP",
+    "L2_NORMALIZATION",
+    "L2_POOL_2D",
+    "LOCAL_RESPONSE_NORMALIZATION",
+    "LOGISTIC",
+    "LSH_PROJECTION",
+    "LSTM",
+    "MAX_POOL_2D",
+    "MUL",
+    "RELU",
+    "RELU_N1_TO_1",
+    "RELU6",
+    "RESHAPE",
+    "RESIZE_BILINEAR",
+    "RNN",
+    "SOFTMAX",
+    "SPACE_TO_DEPTH",
+    "SVDF",
+    "TANH",
+    "CONCAT_EMBEDDINGS",
+    "SKIP_GRAM",
+    "CALL",
+    "CUSTOM",
+    "EMBEDDING_LOOKUP_SPARSE",
+    "PAD",
+    "UNIDIRECTIONAL_SEQUENCE_RNN",
+    "GATHER",
+    "BATCH_TO_SPACE_ND",
+    "SPACE_TO_BATCH_ND",
+    "TRANSPOSE",
+    "MEAN",
+    "SUB",
+    "DIV",
+    "SQUEEZE",
+    "UNIDIRECTIONAL_SEQUENCE_LSTM",
+    "STRIDED_SLICE",
+    "BIDIRECTIONAL_SEQUENCE_RNN",
+    "EXP",
+    "TOPK_V2",
+    "SPLIT",
+    "LOG_SOFTMAX",
+    "DELEGATE",
+    "BIDIRECTIONAL_SEQUENCE_LSTM",
+    "CAST",
+    "PRELU",
+    "MAXIMUM",
+    "ARG_MAX",
+    "MINIMUM",
+    "LESS",
+    "NEG",
+    "PADV2",
+    "GREATER",
+    "GREATER_EQUAL",
+    "LESS_EQUAL",
+    "SELECT",
+    "SLICE",
+    "SIN",
+    "TRANSPOSE_CONV",
+    "SPARSE_TO_DENSE",
+    "TILE",
+    "EXPAND_DIMS",
+    "EQUAL",
+    "NOT_EQUAL",
+    "LOG",
+    "SUM",
+    "SQRT",
+    "RSQRT",
+    "SHAPE",
+    "POW",
+    "ARG_MIN",
+    "FAKE_QUANT",
+    "REDUCE_PROD",
+    "REDUCE_MAX",
+    "PACK",
+    "LOGICAL_OR",
+    "ONE_HOT",
+    "LOGICAL_AND",
+    "LOGICAL_NOT",
+    "UNPACK",
+    "REDUCE_MIN",
+    "FLOOR_DIV",
+    "REDUCE_ANY",
+    "SQUARE",
+    "ZEROS_LIKE",
+    "FILL",
+    "FLOOR_MOD",
+    "RANGE",
+    "RESIZE_NEAREST_NEIGHBOR",
+    "LEAKY_RELU",
+    "SQUARED_DIFFERENCE",
+    "MIRROR_PAD",
+    "ABS",
+    "SPLIT_V",
+    "UNIQUE",
+    "CEIL",
+    "REVERSE_V2",
+    "ADD_N",
+    "GATHER_ND",
+    "COS",
+    "WHERE",
+    "RANK",
+    "ELU",
+    "REVERSE_SEQUENCE",
+    "MATRIX_DIAG",
+    "QUANTIZE",
+    "MATRIX_SET_DIAG",
+    "ROUND",
+    "HARD_SWISH",
+    "IF",
+    "WHILE",
+    "NON_MAX_SUPPRESSION_V4",
+    "NON_MAX_SUPPRESSION_V5",
+    "SCATTER_ND",
+    "SELECT_V2",
+    "DENSIFY",
+    "SEGMENT_SUM",
+    "BATCH_MATMUL",
+    "PLACEHOLDER_FOR_GREATER_OP_CODES",
+    "CUMSUM",
+    "CALL_ONCE",
+    "BROADCAST_TO",
+    "RFFT2D",
+    "CONV_3D",
+    "IMAG",
+    "REAL",
+    "COMPLEX_ABS",
+    "HASHTABLE",
+    "HASHTABLE_FIND",
+    "HASHTABLE_IMPORT",
+    "HASHTABLE_SIZE",
+    "REDUCE_ALL",
+    "TABLE",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_TABLE))
-    return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_TABLE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1205,239 +1258,255 @@ enum BuiltinOptions {
   BuiltinOptions_CallOnceOptions = 103,
   BuiltinOptions_BroadcastToOptions = 104,
   BuiltinOptions_Rfft2dOptions = 105,
-  BuiltinOptions_TableOptions = 106,
+  BuiltinOptions_Conv3DOptions = 106,
+  BuiltinOptions_HashtableOptions = 107,
+  BuiltinOptions_HashtableFindOptions = 108,
+  BuiltinOptions_HashtableImportOptions = 109,
+  BuiltinOptions_HashtableSizeOptions = 110,
+  BuiltinOptions_TableOptions = 111,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_TableOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[107] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[112] {
   static const BuiltinOptions values[] = {
-      BuiltinOptions_NONE,
-      BuiltinOptions_Conv2DOptions,
-      BuiltinOptions_DepthwiseConv2DOptions,
-      BuiltinOptions_ConcatEmbeddingsOptions,
-      BuiltinOptions_LSHProjectionOptions,
-      BuiltinOptions_Pool2DOptions,
-      BuiltinOptions_SVDFOptions,
-      BuiltinOptions_RNNOptions,
-      BuiltinOptions_FullyConnectedOptions,
-      BuiltinOptions_SoftmaxOptions,
-      BuiltinOptions_ConcatenationOptions,
-      BuiltinOptions_AddOptions,
-      BuiltinOptions_L2NormOptions,
-      BuiltinOptions_LocalResponseNormalizationOptions,
-      BuiltinOptions_LSTMOptions,
-      BuiltinOptions_ResizeBilinearOptions,
-      BuiltinOptions_CallOptions,
-      BuiltinOptions_ReshapeOptions,
-      BuiltinOptions_SkipGramOptions,
-      BuiltinOptions_SpaceToDepthOptions,
-      BuiltinOptions_EmbeddingLookupSparseOptions,
-      BuiltinOptions_MulOptions,
-      BuiltinOptions_PadOptions,
-      BuiltinOptions_GatherOptions,
-      BuiltinOptions_BatchToSpaceNDOptions,
-      BuiltinOptions_SpaceToBatchNDOptions,
-      BuiltinOptions_TransposeOptions,
-      BuiltinOptions_ReducerOptions,
-      BuiltinOptions_SubOptions,
-      BuiltinOptions_DivOptions,
-      BuiltinOptions_SqueezeOptions,
-      BuiltinOptions_SequenceRNNOptions,
-      BuiltinOptions_StridedSliceOptions,
-      BuiltinOptions_ExpOptions,
-      BuiltinOptions_TopKV2Options,
-      BuiltinOptions_SplitOptions,
-      BuiltinOptions_LogSoftmaxOptions,
-      BuiltinOptions_CastOptions,
-      BuiltinOptions_DequantizeOptions,
-      BuiltinOptions_MaximumMinimumOptions,
-      BuiltinOptions_ArgMaxOptions,
-      BuiltinOptions_LessOptions,
-      BuiltinOptions_NegOptions,
-      BuiltinOptions_PadV2Options,
-      BuiltinOptions_GreaterOptions,
-      BuiltinOptions_GreaterEqualOptions,
-      BuiltinOptions_LessEqualOptions,
-      BuiltinOptions_SelectOptions,
-      BuiltinOptions_SliceOptions,
-      BuiltinOptions_TransposeConvOptions,
-      BuiltinOptions_SparseToDenseOptions,
-      BuiltinOptions_TileOptions,
-      BuiltinOptions_ExpandDimsOptions,
-      BuiltinOptions_EqualOptions,
-      BuiltinOptions_NotEqualOptions,
-      BuiltinOptions_ShapeOptions,
-      BuiltinOptions_PowOptions,
-      BuiltinOptions_ArgMinOptions,
-      BuiltinOptions_FakeQuantOptions,
-      BuiltinOptions_PackOptions,
-      BuiltinOptions_LogicalOrOptions,
-      BuiltinOptions_OneHotOptions,
-      BuiltinOptions_LogicalAndOptions,
-      BuiltinOptions_LogicalNotOptions,
-      BuiltinOptions_UnpackOptions,
-      BuiltinOptions_FloorDivOptions,
-      BuiltinOptions_SquareOptions,
-      BuiltinOptions_ZerosLikeOptions,
-      BuiltinOptions_FillOptions,
-      BuiltinOptions_BidirectionalSequenceLSTMOptions,
-      BuiltinOptions_BidirectionalSequenceRNNOptions,
-      BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-      BuiltinOptions_FloorModOptions,
-      BuiltinOptions_RangeOptions,
-      BuiltinOptions_ResizeNearestNeighborOptions,
-      BuiltinOptions_LeakyReluOptions,
-      BuiltinOptions_SquaredDifferenceOptions,
-      BuiltinOptions_MirrorPadOptions,
-      BuiltinOptions_AbsOptions,
-      BuiltinOptions_SplitVOptions,
-      BuiltinOptions_UniqueOptions,
-      BuiltinOptions_ReverseV2Options,
-      BuiltinOptions_AddNOptions,
-      BuiltinOptions_GatherNdOptions,
-      BuiltinOptions_CosOptions,
-      BuiltinOptions_WhereOptions,
-      BuiltinOptions_RankOptions,
-      BuiltinOptions_ReverseSequenceOptions,
-      BuiltinOptions_MatrixDiagOptions,
-      BuiltinOptions_QuantizeOptions,
-      BuiltinOptions_MatrixSetDiagOptions,
-      BuiltinOptions_HardSwishOptions,
-      BuiltinOptions_IfOptions,
-      BuiltinOptions_WhileOptions,
-      BuiltinOptions_DepthToSpaceOptions,
-      BuiltinOptions_NonMaxSuppressionV4Options,
-      BuiltinOptions_NonMaxSuppressionV5Options,
-      BuiltinOptions_ScatterNdOptions,
-      BuiltinOptions_SelectV2Options,
-      BuiltinOptions_DensifyOptions,
-      BuiltinOptions_SegmentSumOptions,
-      BuiltinOptions_BatchMatMulOptions,
-      BuiltinOptions_CumsumOptions,
-      BuiltinOptions_CallOnceOptions,
-      BuiltinOptions_BroadcastToOptions,
-      BuiltinOptions_Rfft2dOptions,
-      BuiltinOptions_TableOptions};
+    BuiltinOptions_NONE,
+    BuiltinOptions_Conv2DOptions,
+    BuiltinOptions_DepthwiseConv2DOptions,
+    BuiltinOptions_ConcatEmbeddingsOptions,
+    BuiltinOptions_LSHProjectionOptions,
+    BuiltinOptions_Pool2DOptions,
+    BuiltinOptions_SVDFOptions,
+    BuiltinOptions_RNNOptions,
+    BuiltinOptions_FullyConnectedOptions,
+    BuiltinOptions_SoftmaxOptions,
+    BuiltinOptions_ConcatenationOptions,
+    BuiltinOptions_AddOptions,
+    BuiltinOptions_L2NormOptions,
+    BuiltinOptions_LocalResponseNormalizationOptions,
+    BuiltinOptions_LSTMOptions,
+    BuiltinOptions_ResizeBilinearOptions,
+    BuiltinOptions_CallOptions,
+    BuiltinOptions_ReshapeOptions,
+    BuiltinOptions_SkipGramOptions,
+    BuiltinOptions_SpaceToDepthOptions,
+    BuiltinOptions_EmbeddingLookupSparseOptions,
+    BuiltinOptions_MulOptions,
+    BuiltinOptions_PadOptions,
+    BuiltinOptions_GatherOptions,
+    BuiltinOptions_BatchToSpaceNDOptions,
+    BuiltinOptions_SpaceToBatchNDOptions,
+    BuiltinOptions_TransposeOptions,
+    BuiltinOptions_ReducerOptions,
+    BuiltinOptions_SubOptions,
+    BuiltinOptions_DivOptions,
+    BuiltinOptions_SqueezeOptions,
+    BuiltinOptions_SequenceRNNOptions,
+    BuiltinOptions_StridedSliceOptions,
+    BuiltinOptions_ExpOptions,
+    BuiltinOptions_TopKV2Options,
+    BuiltinOptions_SplitOptions,
+    BuiltinOptions_LogSoftmaxOptions,
+    BuiltinOptions_CastOptions,
+    BuiltinOptions_DequantizeOptions,
+    BuiltinOptions_MaximumMinimumOptions,
+    BuiltinOptions_ArgMaxOptions,
+    BuiltinOptions_LessOptions,
+    BuiltinOptions_NegOptions,
+    BuiltinOptions_PadV2Options,
+    BuiltinOptions_GreaterOptions,
+    BuiltinOptions_GreaterEqualOptions,
+    BuiltinOptions_LessEqualOptions,
+    BuiltinOptions_SelectOptions,
+    BuiltinOptions_SliceOptions,
+    BuiltinOptions_TransposeConvOptions,
+    BuiltinOptions_SparseToDenseOptions,
+    BuiltinOptions_TileOptions,
+    BuiltinOptions_ExpandDimsOptions,
+    BuiltinOptions_EqualOptions,
+    BuiltinOptions_NotEqualOptions,
+    BuiltinOptions_ShapeOptions,
+    BuiltinOptions_PowOptions,
+    BuiltinOptions_ArgMinOptions,
+    BuiltinOptions_FakeQuantOptions,
+    BuiltinOptions_PackOptions,
+    BuiltinOptions_LogicalOrOptions,
+    BuiltinOptions_OneHotOptions,
+    BuiltinOptions_LogicalAndOptions,
+    BuiltinOptions_LogicalNotOptions,
+    BuiltinOptions_UnpackOptions,
+    BuiltinOptions_FloorDivOptions,
+    BuiltinOptions_SquareOptions,
+    BuiltinOptions_ZerosLikeOptions,
+    BuiltinOptions_FillOptions,
+    BuiltinOptions_BidirectionalSequenceLSTMOptions,
+    BuiltinOptions_BidirectionalSequenceRNNOptions,
+    BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+    BuiltinOptions_FloorModOptions,
+    BuiltinOptions_RangeOptions,
+    BuiltinOptions_ResizeNearestNeighborOptions,
+    BuiltinOptions_LeakyReluOptions,
+    BuiltinOptions_SquaredDifferenceOptions,
+    BuiltinOptions_MirrorPadOptions,
+    BuiltinOptions_AbsOptions,
+    BuiltinOptions_SplitVOptions,
+    BuiltinOptions_UniqueOptions,
+    BuiltinOptions_ReverseV2Options,
+    BuiltinOptions_AddNOptions,
+    BuiltinOptions_GatherNdOptions,
+    BuiltinOptions_CosOptions,
+    BuiltinOptions_WhereOptions,
+    BuiltinOptions_RankOptions,
+    BuiltinOptions_ReverseSequenceOptions,
+    BuiltinOptions_MatrixDiagOptions,
+    BuiltinOptions_QuantizeOptions,
+    BuiltinOptions_MatrixSetDiagOptions,
+    BuiltinOptions_HardSwishOptions,
+    BuiltinOptions_IfOptions,
+    BuiltinOptions_WhileOptions,
+    BuiltinOptions_DepthToSpaceOptions,
+    BuiltinOptions_NonMaxSuppressionV4Options,
+    BuiltinOptions_NonMaxSuppressionV5Options,
+    BuiltinOptions_ScatterNdOptions,
+    BuiltinOptions_SelectV2Options,
+    BuiltinOptions_DensifyOptions,
+    BuiltinOptions_SegmentSumOptions,
+    BuiltinOptions_BatchMatMulOptions,
+    BuiltinOptions_CumsumOptions,
+    BuiltinOptions_CallOnceOptions,
+    BuiltinOptions_BroadcastToOptions,
+    BuiltinOptions_Rfft2dOptions,
+    BuiltinOptions_Conv3DOptions,
+    BuiltinOptions_HashtableOptions,
+    BuiltinOptions_HashtableFindOptions,
+    BuiltinOptions_HashtableImportOptions,
+    BuiltinOptions_HashtableSizeOptions,
+    BuiltinOptions_TableOptions
+  };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char *const names[108] = {"NONE",
-                                         "Conv2DOptions",
-                                         "DepthwiseConv2DOptions",
-                                         "ConcatEmbeddingsOptions",
-                                         "LSHProjectionOptions",
-                                         "Pool2DOptions",
-                                         "SVDFOptions",
-                                         "RNNOptions",
-                                         "FullyConnectedOptions",
-                                         "SoftmaxOptions",
-                                         "ConcatenationOptions",
-                                         "AddOptions",
-                                         "L2NormOptions",
-                                         "LocalResponseNormalizationOptions",
-                                         "LSTMOptions",
-                                         "ResizeBilinearOptions",
-                                         "CallOptions",
-                                         "ReshapeOptions",
-                                         "SkipGramOptions",
-                                         "SpaceToDepthOptions",
-                                         "EmbeddingLookupSparseOptions",
-                                         "MulOptions",
-                                         "PadOptions",
-                                         "GatherOptions",
-                                         "BatchToSpaceNDOptions",
-                                         "SpaceToBatchNDOptions",
-                                         "TransposeOptions",
-                                         "ReducerOptions",
-                                         "SubOptions",
-                                         "DivOptions",
-                                         "SqueezeOptions",
-                                         "SequenceRNNOptions",
-                                         "StridedSliceOptions",
-                                         "ExpOptions",
-                                         "TopKV2Options",
-                                         "SplitOptions",
-                                         "LogSoftmaxOptions",
-                                         "CastOptions",
-                                         "DequantizeOptions",
-                                         "MaximumMinimumOptions",
-                                         "ArgMaxOptions",
-                                         "LessOptions",
-                                         "NegOptions",
-                                         "PadV2Options",
-                                         "GreaterOptions",
-                                         "GreaterEqualOptions",
-                                         "LessEqualOptions",
-                                         "SelectOptions",
-                                         "SliceOptions",
-                                         "TransposeConvOptions",
-                                         "SparseToDenseOptions",
-                                         "TileOptions",
-                                         "ExpandDimsOptions",
-                                         "EqualOptions",
-                                         "NotEqualOptions",
-                                         "ShapeOptions",
-                                         "PowOptions",
-                                         "ArgMinOptions",
-                                         "FakeQuantOptions",
-                                         "PackOptions",
-                                         "LogicalOrOptions",
-                                         "OneHotOptions",
-                                         "LogicalAndOptions",
-                                         "LogicalNotOptions",
-                                         "UnpackOptions",
-                                         "FloorDivOptions",
-                                         "SquareOptions",
-                                         "ZerosLikeOptions",
-                                         "FillOptions",
-                                         "BidirectionalSequenceLSTMOptions",
-                                         "BidirectionalSequenceRNNOptions",
-                                         "UnidirectionalSequenceLSTMOptions",
-                                         "FloorModOptions",
-                                         "RangeOptions",
-                                         "ResizeNearestNeighborOptions",
-                                         "LeakyReluOptions",
-                                         "SquaredDifferenceOptions",
-                                         "MirrorPadOptions",
-                                         "AbsOptions",
-                                         "SplitVOptions",
-                                         "UniqueOptions",
-                                         "ReverseV2Options",
-                                         "AddNOptions",
-                                         "GatherNdOptions",
-                                         "CosOptions",
-                                         "WhereOptions",
-                                         "RankOptions",
-                                         "ReverseSequenceOptions",
-                                         "MatrixDiagOptions",
-                                         "QuantizeOptions",
-                                         "MatrixSetDiagOptions",
-                                         "HardSwishOptions",
-                                         "IfOptions",
-                                         "WhileOptions",
-                                         "DepthToSpaceOptions",
-                                         "NonMaxSuppressionV4Options",
-                                         "NonMaxSuppressionV5Options",
-                                         "ScatterNdOptions",
-                                         "SelectV2Options",
-                                         "DensifyOptions",
-                                         "SegmentSumOptions",
-                                         "BatchMatMulOptions",
-                                         "CumsumOptions",
-                                         "CallOnceOptions",
-                                         "BroadcastToOptions",
-                                         "Rfft2dOptions",
-                                         "TableOptions",
-                                         nullptr};
+  static const char * const names[113] = {
+    "NONE",
+    "Conv2DOptions",
+    "DepthwiseConv2DOptions",
+    "ConcatEmbeddingsOptions",
+    "LSHProjectionOptions",
+    "Pool2DOptions",
+    "SVDFOptions",
+    "RNNOptions",
+    "FullyConnectedOptions",
+    "SoftmaxOptions",
+    "ConcatenationOptions",
+    "AddOptions",
+    "L2NormOptions",
+    "LocalResponseNormalizationOptions",
+    "LSTMOptions",
+    "ResizeBilinearOptions",
+    "CallOptions",
+    "ReshapeOptions",
+    "SkipGramOptions",
+    "SpaceToDepthOptions",
+    "EmbeddingLookupSparseOptions",
+    "MulOptions",
+    "PadOptions",
+    "GatherOptions",
+    "BatchToSpaceNDOptions",
+    "SpaceToBatchNDOptions",
+    "TransposeOptions",
+    "ReducerOptions",
+    "SubOptions",
+    "DivOptions",
+    "SqueezeOptions",
+    "SequenceRNNOptions",
+    "StridedSliceOptions",
+    "ExpOptions",
+    "TopKV2Options",
+    "SplitOptions",
+    "LogSoftmaxOptions",
+    "CastOptions",
+    "DequantizeOptions",
+    "MaximumMinimumOptions",
+    "ArgMaxOptions",
+    "LessOptions",
+    "NegOptions",
+    "PadV2Options",
+    "GreaterOptions",
+    "GreaterEqualOptions",
+    "LessEqualOptions",
+    "SelectOptions",
+    "SliceOptions",
+    "TransposeConvOptions",
+    "SparseToDenseOptions",
+    "TileOptions",
+    "ExpandDimsOptions",
+    "EqualOptions",
+    "NotEqualOptions",
+    "ShapeOptions",
+    "PowOptions",
+    "ArgMinOptions",
+    "FakeQuantOptions",
+    "PackOptions",
+    "LogicalOrOptions",
+    "OneHotOptions",
+    "LogicalAndOptions",
+    "LogicalNotOptions",
+    "UnpackOptions",
+    "FloorDivOptions",
+    "SquareOptions",
+    "ZerosLikeOptions",
+    "FillOptions",
+    "BidirectionalSequenceLSTMOptions",
+    "BidirectionalSequenceRNNOptions",
+    "UnidirectionalSequenceLSTMOptions",
+    "FloorModOptions",
+    "RangeOptions",
+    "ResizeNearestNeighborOptions",
+    "LeakyReluOptions",
+    "SquaredDifferenceOptions",
+    "MirrorPadOptions",
+    "AbsOptions",
+    "SplitVOptions",
+    "UniqueOptions",
+    "ReverseV2Options",
+    "AddNOptions",
+    "GatherNdOptions",
+    "CosOptions",
+    "WhereOptions",
+    "RankOptions",
+    "ReverseSequenceOptions",
+    "MatrixDiagOptions",
+    "QuantizeOptions",
+    "MatrixSetDiagOptions",
+    "HardSwishOptions",
+    "IfOptions",
+    "WhileOptions",
+    "DepthToSpaceOptions",
+    "NonMaxSuppressionV4Options",
+    "NonMaxSuppressionV5Options",
+    "ScatterNdOptions",
+    "SelectV2Options",
+    "DensifyOptions",
+    "SegmentSumOptions",
+    "BatchMatMulOptions",
+    "CumsumOptions",
+    "CallOnceOptions",
+    "BroadcastToOptions",
+    "Rfft2dOptions",
+    "Conv3DOptions",
+    "HashtableOptions",
+    "HashtableFindOptions",
+    "HashtableImportOptions",
+    "HashtableSizeOptions",
+    "TableOptions",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE,
-                              BuiltinOptions_TableOptions))
-    return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_TableOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1862,8 +1931,28 @@ template<> struct BuiltinOptionsTraits<tflite::BroadcastToOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BroadcastToOptions;
 };
 
-template <> struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
+template<> struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_Rfft2dOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::Conv3DOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_Conv3DOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableFindOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableFindOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableImportOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableImportOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableSizeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableSizeOptions;
 };
 
 template<> struct BuiltinOptionsTraits<tflite::TableOptions> {
@@ -2741,6 +2830,46 @@ struct BuiltinOptionsUnion {
   const tflite::Rfft2dOptionsT *AsRfft2dOptions() const {
     return type == BuiltinOptions_Rfft2dOptions ?
       reinterpret_cast<const tflite::Rfft2dOptionsT *>(value) : nullptr;
+  }
+  tflite::Conv3DOptionsT *AsConv3DOptions() {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<tflite::Conv3DOptionsT *>(value) : nullptr;
+  }
+  const tflite::Conv3DOptionsT *AsConv3DOptions() const {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<const tflite::Conv3DOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableOptionsT *AsHashtableOptions() {
+    return type == BuiltinOptions_HashtableOptions ?
+      reinterpret_cast<tflite::HashtableOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableOptionsT *AsHashtableOptions() const {
+    return type == BuiltinOptions_HashtableOptions ?
+      reinterpret_cast<const tflite::HashtableOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableFindOptionsT *AsHashtableFindOptions() {
+    return type == BuiltinOptions_HashtableFindOptions ?
+      reinterpret_cast<tflite::HashtableFindOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableFindOptionsT *AsHashtableFindOptions() const {
+    return type == BuiltinOptions_HashtableFindOptions ?
+      reinterpret_cast<const tflite::HashtableFindOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableImportOptionsT *AsHashtableImportOptions() {
+    return type == BuiltinOptions_HashtableImportOptions ?
+      reinterpret_cast<tflite::HashtableImportOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableImportOptionsT *AsHashtableImportOptions() const {
+    return type == BuiltinOptions_HashtableImportOptions ?
+      reinterpret_cast<const tflite::HashtableImportOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() {
+    return type == BuiltinOptions_HashtableSizeOptions ?
+      reinterpret_cast<tflite::HashtableSizeOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() const {
+    return type == BuiltinOptions_HashtableSizeOptions ?
+      reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value) : nullptr;
   }
   tflite::TableOptionsT *AsTableOptions() {
     return type == BuiltinOptions_TableOptions ?
@@ -3945,6 +4074,144 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
 }
 
 flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Conv3DOptionsT : public flatbuffers::NativeTable {
+  typedef Conv3DOptions TableType;
+  tflite::Padding padding;
+  int32_t stride_d;
+  int32_t stride_w;
+  int32_t stride_h;
+  tflite::ActivationFunctionType fused_activation_function;
+  int32_t dilation_d_factor;
+  int32_t dilation_w_factor;
+  int32_t dilation_h_factor;
+  Conv3DOptionsT()
+      : padding(tflite::Padding_SAME),
+        stride_d(0),
+        stride_w(0),
+        stride_h(0),
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        dilation_d_factor(1),
+        dilation_w_factor(1),
+        dilation_h_factor(1) {
+  }
+};
+
+struct Conv3DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Conv3DOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PADDING = 4,
+    VT_STRIDE_D = 6,
+    VT_STRIDE_W = 8,
+    VT_STRIDE_H = 10,
+    VT_FUSED_ACTIVATION_FUNCTION = 12,
+    VT_DILATION_D_FACTOR = 14,
+    VT_DILATION_W_FACTOR = 16,
+    VT_DILATION_H_FACTOR = 18
+  };
+  tflite::Padding padding() const {
+    return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
+  }
+  int32_t stride_d() const {
+    return GetField<int32_t>(VT_STRIDE_D, 0);
+  }
+  int32_t stride_w() const {
+    return GetField<int32_t>(VT_STRIDE_W, 0);
+  }
+  int32_t stride_h() const {
+    return GetField<int32_t>(VT_STRIDE_H, 0);
+  }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  int32_t dilation_d_factor() const {
+    return GetField<int32_t>(VT_DILATION_D_FACTOR, 1);
+  }
+  int32_t dilation_w_factor() const {
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 1);
+  }
+  int32_t dilation_h_factor() const {
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_PADDING) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_D) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_D_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           verifier.EndTable();
+  }
+  Conv3DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Conv3DOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Conv3DOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_padding(tflite::Padding padding) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_PADDING, static_cast<int8_t>(padding), 0);
+  }
+  void add_stride_d(int32_t stride_d) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_D, stride_d, 0);
+  }
+  void add_stride_w(int32_t stride_w) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_W, stride_w, 0);
+  }
+  void add_stride_h(int32_t stride_h) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_H, stride_h, 0);
+  }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_dilation_d_factor(int32_t dilation_d_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_D_FACTOR, dilation_d_factor, 1);
+  }
+  void add_dilation_w_factor(int32_t dilation_w_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 1);
+  }
+  void add_dilation_h_factor(int32_t dilation_h_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
+  }
+  explicit Conv3DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Conv3DOptionsBuilder &operator=(const Conv3DOptionsBuilder &);
+  flatbuffers::Offset<Conv3DOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Conv3DOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::Padding padding = tflite::Padding_SAME,
+    int32_t stride_d = 0,
+    int32_t stride_w = 0,
+    int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    int32_t dilation_d_factor = 1,
+    int32_t dilation_w_factor = 1,
+    int32_t dilation_h_factor = 1) {
+  Conv3DOptionsBuilder builder_(_fbb);
+  builder_.add_dilation_h_factor(dilation_h_factor);
+  builder_.add_dilation_w_factor(dilation_w_factor);
+  builder_.add_dilation_d_factor(dilation_d_factor);
+  builder_.add_stride_h(stride_h);
+  builder_.add_stride_w(stride_w);
+  builder_.add_stride_d(stride_d);
+  builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_padding(padding);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Pool2DOptionsT : public flatbuffers::NativeTable {
   typedef Pool2DOptions TableType;
@@ -6248,22 +6515,29 @@ flatbuffers::Offset<EmbeddingLookupSparseOptions> CreateEmbeddingLookupSparseOpt
 struct GatherOptionsT : public flatbuffers::NativeTable {
   typedef GatherOptions TableType;
   int32_t axis;
+  int32_t batch_dims;
   GatherOptionsT()
-      : axis(0) {
+      : axis(0),
+        batch_dims(0) {
   }
 };
 
 struct GatherOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef GatherOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_AXIS = 4
+    VT_AXIS = 4,
+    VT_BATCH_DIMS = 6
   };
   int32_t axis() const {
     return GetField<int32_t>(VT_AXIS, 0);
   }
+  int32_t batch_dims() const {
+    return GetField<int32_t>(VT_BATCH_DIMS, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_AXIS) &&
+           VerifyField<int32_t>(verifier, VT_BATCH_DIMS) &&
            verifier.EndTable();
   }
   GatherOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6276,6 +6550,9 @@ struct GatherOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_axis(int32_t axis) {
     fbb_.AddElement<int32_t>(GatherOptions::VT_AXIS, axis, 0);
+  }
+  void add_batch_dims(int32_t batch_dims) {
+    fbb_.AddElement<int32_t>(GatherOptions::VT_BATCH_DIMS, batch_dims, 0);
   }
   explicit GatherOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -6291,8 +6568,10 @@ struct GatherOptionsBuilder {
 
 inline flatbuffers::Offset<GatherOptions> CreateGatherOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    int32_t axis = 0) {
+    int32_t axis = 0,
+    int32_t batch_dims = 0) {
   GatherOptionsBuilder builder_(_fbb);
+  builder_.add_batch_dims(batch_dims);
   builder_.add_axis(axis);
   return builder_.Finish();
 }
@@ -9622,29 +9901,26 @@ flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuffers::Fl
 
 struct Rfft2dOptionsT : public flatbuffers::NativeTable {
   typedef Rfft2dOptions TableType;
-  Rfft2dOptionsT() {}
+  Rfft2dOptionsT() {
+  }
 };
 
 struct Rfft2dOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef Rfft2dOptionsT NativeTableType;
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && verifier.EndTable();
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
   }
-  Rfft2dOptionsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      Rfft2dOptionsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<Rfft2dOptions> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  Rfft2dOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Rfft2dOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct Rfft2dOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   explicit Rfft2dOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   Rfft2dOptionsBuilder &operator=(const Rfft2dOptionsBuilder &);
@@ -9661,9 +9937,205 @@ inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableOptions TableType;
+  int32_t table_id;
+  tflite::TensorType key_dtype;
+  tflite::TensorType value_dtype;
+  HashtableOptionsT()
+      : table_id(0),
+        key_dtype(tflite::TensorType_FLOAT32),
+        value_dtype(tflite::TensorType_FLOAT32) {
+  }
+};
+
+struct HashtableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TABLE_ID = 4,
+    VT_KEY_DTYPE = 6,
+    VT_VALUE_DTYPE = 8
+  };
+  int32_t table_id() const {
+    return GetField<int32_t>(VT_TABLE_ID, 0);
+  }
+  tflite::TensorType key_dtype() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_KEY_DTYPE, 0));
+  }
+  tflite::TensorType value_dtype() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_VALUE_DTYPE, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_TABLE_ID) &&
+           VerifyField<int8_t>(verifier, VT_KEY_DTYPE) &&
+           VerifyField<int8_t>(verifier, VT_VALUE_DTYPE) &&
+           verifier.EndTable();
+  }
+  HashtableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_table_id(int32_t table_id) {
+    fbb_.AddElement<int32_t>(HashtableOptions::VT_TABLE_ID, table_id, 0);
+  }
+  void add_key_dtype(tflite::TensorType key_dtype) {
+    fbb_.AddElement<int8_t>(HashtableOptions::VT_KEY_DTYPE, static_cast<int8_t>(key_dtype), 0);
+  }
+  void add_value_dtype(tflite::TensorType value_dtype) {
+    fbb_.AddElement<int8_t>(HashtableOptions::VT_VALUE_DTYPE, static_cast<int8_t>(value_dtype), 0);
+  }
+  explicit HashtableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableOptionsBuilder &operator=(const HashtableOptionsBuilder &);
+  flatbuffers::Offset<HashtableOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t table_id = 0,
+    tflite::TensorType key_dtype = tflite::TensorType_FLOAT32,
+    tflite::TensorType value_dtype = tflite::TensorType_FLOAT32) {
+  HashtableOptionsBuilder builder_(_fbb);
+  builder_.add_table_id(table_id);
+  builder_.add_value_dtype(value_dtype);
+  builder_.add_key_dtype(key_dtype);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableFindOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableFindOptions TableType;
+  HashtableFindOptionsT() {
+  }
+};
+
+struct HashtableFindOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableFindOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableFindOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableFindOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableFindOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableFindOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableFindOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableFindOptionsBuilder &operator=(const HashtableFindOptionsBuilder &);
+  flatbuffers::Offset<HashtableFindOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableFindOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableFindOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableImportOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableImportOptions TableType;
+  HashtableImportOptionsT() {
+  }
+};
+
+struct HashtableImportOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableImportOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableImportOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableImportOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableImportOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableImportOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableImportOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableImportOptionsBuilder &operator=(const HashtableImportOptionsBuilder &);
+  flatbuffers::Offset<HashtableImportOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableImportOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableImportOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableSizeOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableSizeOptions TableType;
+  HashtableSizeOptionsT() {
+  }
+};
+
+struct HashtableSizeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableSizeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableSizeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableSizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableSizeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableSizeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableSizeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableSizeOptionsBuilder &operator=(const HashtableSizeOptionsBuilder &);
+  flatbuffers::Offset<HashtableSizeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableSizeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableSizeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct TableOptionsT : public flatbuffers::NativeTable {
   typedef TableOptions TableType;
@@ -10170,6 +10642,21 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::Rfft2dOptions *builtin_options_as_Rfft2dOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_Rfft2dOptions ? static_cast<const tflite::Rfft2dOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::Conv3DOptions *builtin_options_as_Conv3DOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_Conv3DOptions ? static_cast<const tflite::Conv3DOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableOptions *builtin_options_as_HashtableOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableOptions ? static_cast<const tflite::HashtableOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableFindOptions *builtin_options_as_HashtableFindOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableFindOptions ? static_cast<const tflite::HashtableFindOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableImportOptions *builtin_options_as_HashtableImportOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableImportOptions ? static_cast<const tflite::HashtableImportOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableSizeOptions *builtin_options_as_HashtableSizeOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableSizeOptions ? static_cast<const tflite::HashtableSizeOptions *>(builtin_options()) : nullptr;
+  }
   const tflite::TableOptions *builtin_options_as_TableOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_TableOptions ? static_cast<const tflite::TableOptions *>(builtin_options()) : nullptr;
   }
@@ -10625,8 +11112,28 @@ template<> inline const tflite::BroadcastToOptions *Operator::builtin_options_as
   return builtin_options_as_BroadcastToOptions();
 }
 
-template <> inline const tflite::Rfft2dOptions *Operator::builtin_options_as<tflite::Rfft2dOptions>() const {
+template<> inline const tflite::Rfft2dOptions *Operator::builtin_options_as<tflite::Rfft2dOptions>() const {
   return builtin_options_as_Rfft2dOptions();
+}
+
+template<> inline const tflite::Conv3DOptions *Operator::builtin_options_as<tflite::Conv3DOptions>() const {
+  return builtin_options_as_Conv3DOptions();
+}
+
+template<> inline const tflite::HashtableOptions *Operator::builtin_options_as<tflite::HashtableOptions>() const {
+  return builtin_options_as_HashtableOptions();
+}
+
+template<> inline const tflite::HashtableFindOptions *Operator::builtin_options_as<tflite::HashtableFindOptions>() const {
+  return builtin_options_as_HashtableFindOptions();
+}
+
+template<> inline const tflite::HashtableImportOptions *Operator::builtin_options_as<tflite::HashtableImportOptions>() const {
+  return builtin_options_as_HashtableImportOptions();
+}
+
+template<> inline const tflite::HashtableSizeOptions *Operator::builtin_options_as<tflite::HashtableSizeOptions>() const {
+  return builtin_options_as_HashtableSizeOptions();
 }
 
 template<> inline const tflite::TableOptions *Operator::builtin_options_as<tflite::TableOptions>() const {
@@ -11667,6 +12174,53 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
       _dilation_h_factor);
 }
 
+inline Conv3DOptionsT *Conv3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Conv3DOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Conv3DOptions::UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = padding(); _o->padding = _e; }
+  { auto _e = stride_d(); _o->stride_d = _e; }
+  { auto _e = stride_w(); _o->stride_w = _e; }
+  { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = dilation_d_factor(); _o->dilation_d_factor = _e; }
+  { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; }
+  { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; }
+}
+
+inline flatbuffers::Offset<Conv3DOptions> Conv3DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateConv3DOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Conv3DOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _padding = _o->padding;
+  auto _stride_d = _o->stride_d;
+  auto _stride_w = _o->stride_w;
+  auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _dilation_d_factor = _o->dilation_d_factor;
+  auto _dilation_w_factor = _o->dilation_w_factor;
+  auto _dilation_h_factor = _o->dilation_h_factor;
+  return tflite::CreateConv3DOptions(
+      _fbb,
+      _padding,
+      _stride_d,
+      _stride_w,
+      _stride_h,
+      _fused_activation_function,
+      _dilation_d_factor,
+      _dilation_w_factor,
+      _dilation_h_factor);
+}
+
 inline Pool2DOptionsT *Pool2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new Pool2DOptionsT();
   UnPackTo(_o, _resolver);
@@ -12661,6 +13215,7 @@ inline void GatherOptions::UnPackTo(GatherOptionsT *_o, const flatbuffers::resol
   (void)_o;
   (void)_resolver;
   { auto _e = axis(); _o->axis = _e; }
+  { auto _e = batch_dims(); _o->batch_dims = _e; }
 }
 
 inline flatbuffers::Offset<GatherOptions> GatherOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GatherOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -12672,9 +13227,11 @@ inline flatbuffers::Offset<GatherOptions> CreateGatherOptions(flatbuffers::FlatB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const GatherOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _axis = _o->axis;
+  auto _batch_dims = _o->batch_dims;
   return tflite::CreateGatherOptions(
       _fbb,
-      _axis);
+      _axis,
+      _batch_dims);
 }
 
 inline TransposeOptionsT *TransposeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -14390,38 +14947,128 @@ inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuff
       _fbb);
 }
 
-inline Rfft2dOptionsT *Rfft2dOptions::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline Rfft2dOptionsT *Rfft2dOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new Rfft2dOptionsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void Rfft2dOptions::UnPackTo(
-    Rfft2dOptionsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void Rfft2dOptions::UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
 }
 
-inline flatbuffers::Offset<Rfft2dOptions> Rfft2dOptions::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<Rfft2dOptions> Rfft2dOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateRfft2dOptions(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const Rfft2dOptionsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  return tflite::CreateRfft2dOptions(_fbb);
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Rfft2dOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRfft2dOptions(
+      _fbb);
+}
+
+inline HashtableOptionsT *HashtableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableOptions::UnPackTo(HashtableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = table_id(); _o->table_id = _e; }
+  { auto _e = key_dtype(); _o->key_dtype = _e; }
+  { auto _e = value_dtype(); _o->value_dtype = _e; }
+}
+
+inline flatbuffers::Offset<HashtableOptions> HashtableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _table_id = _o->table_id;
+  auto _key_dtype = _o->key_dtype;
+  auto _value_dtype = _o->value_dtype;
+  return tflite::CreateHashtableOptions(
+      _fbb,
+      _table_id,
+      _key_dtype,
+      _value_dtype);
+}
+
+inline HashtableFindOptionsT *HashtableFindOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableFindOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableFindOptions::UnPackTo(HashtableFindOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableFindOptions> HashtableFindOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableFindOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableFindOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableFindOptions(
+      _fbb);
+}
+
+inline HashtableImportOptionsT *HashtableImportOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableImportOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableImportOptions::UnPackTo(HashtableImportOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableImportOptions> HashtableImportOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableImportOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableImportOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableImportOptions(
+      _fbb);
+}
+
+inline HashtableSizeOptionsT *HashtableSizeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableSizeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableSizeOptions::UnPackTo(HashtableSizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableSizeOptions> HashtableSizeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableSizeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableSizeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableSizeOptions(
+      _fbb);
 }
 
 inline TableOptionsT *TableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15340,6 +15987,26 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_TableOptions: {
       auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -15782,10 +16449,31 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_TableOptions: {
       auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+
     default: return nullptr;
   }
 }
@@ -16211,6 +16899,26 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
     case BuiltinOptions_Rfft2dOptions: {
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptionsT *>(value);
       return CreateRfft2dOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptionsT *>(value);
+      return CreateConv3DOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptionsT *>(value);
+      return CreateHashtableOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptionsT *>(value);
+      return CreateHashtableFindOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptionsT *>(value);
+      return CreateHashtableImportOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value);
+      return CreateHashtableSizeOptions(_fbb, ptr, _rehasher).Union();
     }
     case BuiltinOptions_TableOptions: {
       auto ptr = reinterpret_cast<const tflite::TableOptionsT *>(value);
@@ -16640,6 +17348,26 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_Rfft2dOptions: {
       value = new tflite::Rfft2dOptionsT(*reinterpret_cast<tflite::Rfft2dOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      value = new tflite::Conv3DOptionsT(*reinterpret_cast<tflite::Conv3DOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableOptions: {
+      value = new tflite::HashtableOptionsT(*reinterpret_cast<tflite::HashtableOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      value = new tflite::HashtableFindOptionsT(*reinterpret_cast<tflite::HashtableFindOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      value = new tflite::HashtableImportOptionsT(*reinterpret_cast<tflite::HashtableImportOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      value = new tflite::HashtableSizeOptionsT(*reinterpret_cast<tflite::HashtableSizeOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_TableOptions: {
@@ -17175,6 +17903,31 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_Rfft2dOptions: {
       auto ptr = reinterpret_cast<tflite::Rfft2dOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<tflite::Conv3DOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableFindOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableImportOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableSizeOptionsT *>(value);
       delete ptr;
       break;
     }

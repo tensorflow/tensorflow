@@ -14,12 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
 
+#include <stddef.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <set>
-#include <type_traits>
+#include <memory>
 #include <utility>
+#include <vector>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/simple_memory_arena.h"
 
 namespace tflite {
 namespace {
@@ -30,14 +36,12 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs, bool preserve_intermediates,
-                           int tensor_alignment)
+                           bool preserve_all_tensors, int tensor_alignment)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
-      preserve_inputs_(preserve_inputs),
-      preserve_intermediates_(preserve_intermediates),
+      preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 
 ArenaPlanner::~ArenaPlanner() {}
@@ -116,25 +120,21 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Variable tensors also should be ensured to be never overwritten and need to
   // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
+    // Increase the reference count for variable tensors by one, so it will
+    // never be deallocated.
     refcounts[tensor_index]++;
+    // `variables` is a subgraph-level list and it should never be
+    // kTfLiteOptionalTensor.
+    TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
+    // Variable tensor should be allocated at the very beginning.
+    TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
   }
 
-  // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
-  // sure they never be overwritten.
+  // Queue all graph inputs for allocation and make sure they are never
+  // overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
-      if (preserve_inputs_) {
-        refcounts[tensor_index]++;
-      }
-      TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
-    }
-  }
-
-  // Queue all graph variable tensors for allocation.
-  for (int tensor_index : graph_info_->variables()) {
-    if (tensor_index != kTfLiteOptionalTensor) {
-      // Increase the reference count for input tensors by one, so it will
-      // never be deallocated.
+      refcounts[tensor_index]++;
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
@@ -151,12 +151,6 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     }
   }
 
-  // Queue all graph inputs for allocation.
-  for (int tensor_index : graph_info_->inputs()) {
-    if (tensor_index != kTfLiteOptionalTensor) {
-      TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
-    }
-  }
   // Go through the graph in execution order.
   for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
@@ -170,7 +164,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
     // them for deallocation.
-    if (!preserve_intermediates_) {
+    if (!preserve_all_tensors_) {
       TfLiteIntArray* node_inputs = node.inputs;
       for (int j = 0; j < node_inputs->size; ++j) {
         int tensor_index = node_inputs->data[j];
@@ -205,7 +199,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
       alloc_node_[tensor_index] = i;
-      if (!preserve_intermediates_) {
+      if (!preserve_all_tensors_) {
         dealloc_node_[tensor_index] = i;
       }
     }

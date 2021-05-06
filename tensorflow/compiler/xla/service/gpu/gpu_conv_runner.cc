@@ -368,7 +368,8 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
 
   TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
                       XlaConvLayoutsToStreamExecutorLayouts(
-                          dnums, input_shape, filter_shape, output_shape));
+                          dnums, input_shape.layout(), filter_shape.layout(),
+                          output_shape.layout()));
 
   BatchDescriptor& input_descriptor = config.input_descriptor;
   input_descriptor = BatchDescriptor(effective_num_dimensions);

@@ -79,7 +79,8 @@ def all_reduce_v2(t,
                   final_op='Id',
                   communication_hint='auto',
                   timeout=0,
-                  ordering_token=None):
+                  ordering_token=None,
+                  max_subdivs_per_device=-1):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -102,6 +103,11 @@ def all_reduce_v2(t,
     ordering_token: an optional resource tensor to pass to the op as inputs.
       They aren't used by the kernel but allow AutoControlDependency to order
       the collectives with control dependencies.
+    max_subdivs_per_device: int specifying the maximum number of subdivisions a
+      tensor on a device can be divided into. The runtime uses this contraint to
+      parallelize processing of each per-device tensor. Setting to -1 disables
+      subdivision and reverts to previous behavior of not sub-dividing tensor.
+      Setting to 0 uses sytem defaults.
 
   Returns:
     An Op implementing the distributed reduction.
@@ -117,7 +123,8 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+      ordering_token=ordering_token or [],
+      max_subdivs_per_device=max_subdivs_per_device)
 
 
 def all_gather(t,
@@ -261,6 +268,40 @@ def broadcast_send(t,
       timeout_seconds=timeout)
 
 
+def broadcast_send_v2(t,
+                      group_size,
+                      group_key,
+                      instance_key,
+                      communication_hint='auto',
+                      timeout=0):
+  """Broadcasts one tensor to a group of others, across devices.
+
+  Args:
+    t: the tensor to be sent.
+    group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
+        the total number of devices participating.  Each tensor must reside on a
+        different device.
+    group_key: an int32 tensor identifying the group of devices.
+    instance_key: an int32 tensor identifying the participating group of Ops.
+    communication_hint: preferred collective communication.  The implementation
+      may fall back to another mechanism.  Options include `auto`, `ring`, and
+      `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
+
+  Returns:
+    An Op implementing the distributed broadcast send.
+  """
+  return gen_collective_ops.collective_bcast_send_v2(
+      t,
+      group_size=group_size,
+      group_key=group_key,
+      instance_key=instance_key,
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
+
+
 def broadcast_recv(shape,
                    dtype,
                    group_size,
@@ -300,5 +341,42 @@ def broadcast_recv(shape,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
+
+
+def broadcast_recv_v2(shape,
+                      dtype,
+                      group_size,
+                      group_key,
+                      instance_key,
+                      communication_hint='auto',
+                      timeout=0):
+  """Receives a broadcasts tensor, across devices.
+
+  Args:
+    shape: an int tensor.  Shape of the tensor to be received.
+    dtype: Type of the tensor to be received.
+    group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
+        the total number of devices participating.  Each tensor must reside on a
+        different device.
+    group_key: an int32 tensor identifying the group of devices.
+    instance_key: an int32 tensor identifying the participating group of Ops.
+    communication_hint: preferred collective communication.  The implementation
+      may fall back to another mechanism.  Options include `auto`, `ring`, and
+      `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
+
+  Returns:
+    An Op implementing the broadcast receive.
+  """
+  return gen_collective_ops.collective_bcast_recv_v2(
+      T=dtype,
+      group_size=group_size,
+      group_key=group_key,
+      instance_key=instance_key,
+      shape=shape,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout)

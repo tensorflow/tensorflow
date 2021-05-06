@@ -216,6 +216,130 @@ TEST_F(RemapperTest, FuseBatchNormWithRelu) {
   }
 }
 
+#if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
+TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  bool is_training = true;
+
+  const int num_channels = 24;
+
+  TensorShape channel_shape({num_channels});
+  TensorShape empty_shape({0});
+
+  // Forward pass.
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT,
+                           ops::Placeholder::Shape({2, 8, 8, num_channels}));
+  auto input_cast = ops::Cast(s.WithOpName("input_cast"), input, DT_HALF);
+  auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT);
+  auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
+  auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
+  auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
+
+  float epsilon = 0.1f;
+  auto fbn = ops::FusedBatchNormV3(
+      s.WithOpName("fused_batch_norm"), input_cast, scale, offset, mean, var,
+      ops::FusedBatchNormV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
+  auto relu = ops::Relu(s.WithOpName("relu"), fbn.y);
+
+  // Backward pass.
+  auto output_grad =
+      Placeholder(s.WithOpName("output_grad"), DT_FLOAT,
+                  ops::Placeholder::Shape({2, 8, 8, num_channels}));
+  auto output_grad_cast =
+      ops::Cast(s.WithOpName("output_grad_cast"), output_grad, DT_HALF);
+  auto relu_grad = ops::internal::ReluGrad(s.WithOpName("relu_grad"),
+                                           output_grad_cast, relu);
+  auto fbn_grad = ops::FusedBatchNormGradV3(
+      s.WithOpName("fused_batch_norm_grad"), relu_grad, input_cast, scale,
+      fbn.reserve_space_1, fbn.reserve_space_2, fbn.reserve_space_3,
+      ops::FusedBatchNormGradV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
+  auto fetch0 = ops::Identity(s.WithOpName("fetch0"), fbn_grad.x_backprop);
+  auto fetch1 = ops::Identity(s.WithOpName("fetch1"), fbn_grad.scale_backprop);
+  auto fetch2 = ops::Identity(s.WithOpName("fetch2"), fbn_grad.offset_backprop);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+  auto scale_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto offset_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto mean_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto var_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto output_grad_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+
+  GrapplerItem item;
+  item.fetch = {"fetch0", "fetch1", "fetch2"};
+  item.feed = {{"input", input_t},   {"scale", scale_t},
+               {"offset", offset_t}, {"mean", mean_t},
+               {"var", var_t},       {"output_grad", output_grad_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on GPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:GPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "fused_batch_norm");
+      found++;
+    }
+    if (node.name() == "fused_batch_norm") {
+      EXPECT_EQ(node.op(), "_FusedBatchNormEx");
+      ASSERT_EQ(node.input_size(), 5);
+      EXPECT_EQ(node.input(0), "input_cast");
+      EXPECT_EQ(node.input(1), "scale");
+      EXPECT_EQ(node.input(2), "offset");
+      EXPECT_EQ(node.input(3), "mean");
+      EXPECT_EQ(node.input(4), "var");
+
+      auto attr = node.attr();
+      EXPECT_EQ(attr["num_side_inputs"].i(), 0);
+      EXPECT_EQ(attr["activation_mode"].s(), "Relu");
+      found++;
+    }
+
+    if (node.name() == "fused_batch_norm_grad") {
+      EXPECT_EQ(node.op(), "_FusedBatchNormGradEx");
+      ASSERT_EQ(node.input_size(), 8);
+      EXPECT_EQ(node.input(0), "output_grad_cast");
+      EXPECT_EQ(node.input(1), "input_cast");
+      EXPECT_EQ(node.input(2), "scale");
+      EXPECT_EQ(node.input(3), "fused_batch_norm:3");
+      EXPECT_EQ(node.input(4), "fused_batch_norm:4");
+      EXPECT_EQ(node.input(5), "fused_batch_norm:5");
+      EXPECT_EQ(node.input(6), "offset");
+      EXPECT_EQ(node.input(7), "relu");
+
+      auto attr = node.attr();
+      EXPECT_EQ(attr["num_side_inputs"].i(), 0);
+      EXPECT_EQ(attr["activation_mode"].s(), "Relu");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 3);
+
+  if (GetNumAvailableGPUs() > 0) {
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 3);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 3);
+    test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[1], tensors_expected[1], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[2], tensors_expected[2], 1e-2, /*rtol=*/1e-2);
+  }
+}
+#endif
+
 TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
   using ::tensorflow::ops::Placeholder;
 
@@ -327,6 +451,175 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
     }
   }
 }
+
+#if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
+TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  bool is_training = true;
+
+  const int num_channels = 24;
+
+  TensorShape input_shape({2, 8, 8, num_channels});
+  TensorShape channel_shape({num_channels});
+  TensorShape empty_shape({0});
+
+  // Forward pass.
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT,
+                           ops::Placeholder::Shape(input_shape));
+  auto input_cast = ops::Cast(s.WithOpName("input_cast"), input, DT_HALF);
+  auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT);
+  auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
+  auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
+  auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
+  auto side_input = Placeholder(s.WithOpName("side_input"), DT_FLOAT,
+                                ops::Placeholder::Shape(input_shape));
+  auto side_input_cast =
+      ops::Cast(s.WithOpName("side_input_cast"), side_input, DT_HALF);
+
+  float epsilon = 0.1f;
+  auto fbn = ops::FusedBatchNormV3(
+      s.WithOpName("fused_batch_norm"), input_cast, scale, offset, mean, var,
+      ops::FusedBatchNormV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
+  auto fbn_side_input =
+      ops::FusedBatchNormV3(s.WithOpName("fused_batch_norm_side_input"),
+                            side_input_cast, scale, offset, mean, var,
+                            ops::FusedBatchNormV3::IsTraining(is_training)
+                                .Epsilon(epsilon)
+                                .DataFormat("NHWC"));
+  // Since fbn.y is the first argument of "add" op, "fused_batch_norm" will be
+  // fused (not "fused_batch_norm_side_input"). Correspondingly,
+  // "fused_batch_norm_grad" will be fused (not
+  // "fused_batch_norm_side_input_grad").
+  auto add = ops::Add(s.WithOpName("add"), fbn.y, fbn_side_input.y);
+  auto relu = ops::Relu(s.WithOpName("relu"), add);
+
+  // Backward pass.
+  auto output_grad =
+      Placeholder(s.WithOpName("output_grad"), DT_FLOAT,
+                  ops::Placeholder::Shape({2, 8, 8, num_channels}));
+  auto output_grad_cast =
+      ops::Cast(s.WithOpName("output_grad_cast"), output_grad, DT_HALF);
+  auto relu_grad = ops::internal::ReluGrad(s.WithOpName("relu_grad"),
+                                           output_grad_cast, relu);
+  auto fbn_grad = ops::FusedBatchNormGradV3(
+      s.WithOpName("fused_batch_norm_grad"), relu_grad, input_cast, scale,
+      fbn.reserve_space_1, fbn.reserve_space_2, fbn.reserve_space_3,
+      ops::FusedBatchNormGradV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
+  auto fbn_side_input_grad = ops::FusedBatchNormGradV3(
+      s.WithOpName("fused_batch_norm_side_input_grad"), relu_grad,
+      side_input_cast, scale, fbn_side_input.reserve_space_1,
+      fbn_side_input.reserve_space_2, fbn_side_input.reserve_space_3,
+      ops::FusedBatchNormGradV3::IsTraining(is_training)
+          .Epsilon(epsilon)
+          .DataFormat("NHWC"));
+  auto fetch0 = ops::Identity(s.WithOpName("fetch0"), fbn_grad.x_backprop);
+  auto fetch1 = ops::Identity(s.WithOpName("fetch1"), fbn_grad.scale_backprop);
+  auto fetch2 = ops::Identity(s.WithOpName("fetch2"), fbn_grad.offset_backprop);
+  auto fetch3 =
+      ops::Identity(s.WithOpName("fetch3"), fbn_side_input_grad.x_backprop);
+  auto fetch4 =
+      ops::Identity(s.WithOpName("fetch4"), fbn_side_input_grad.scale_backprop);
+  auto fetch5 = ops::Identity(s.WithOpName("fetch5"),
+                              fbn_side_input_grad.offset_backprop);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>(input_shape);
+  auto scale_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto offset_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto mean_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto var_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+  auto side_input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+  auto output_grad_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+
+  GrapplerItem item;
+  item.fetch = {"fetch0", "fetch1", "fetch2", "fetch3", "fetch4", "fetch5"};
+  item.feed = {{"input", input_t},
+               {"scale", scale_t},
+               {"offset", offset_t},
+               {"mean", mean_t},
+               {"var", var_t},
+               {"side_input", side_input_t},
+               {"output_grad", output_grad_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on GPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:GPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "fused_batch_norm");
+      found++;
+    }
+    if (node.name() == "fused_batch_norm") {
+      EXPECT_EQ(node.op(), "_FusedBatchNormEx");
+      ASSERT_EQ(node.input_size(), 6);
+      EXPECT_EQ(node.input(0), "input_cast");
+      EXPECT_EQ(node.input(1), "scale");
+      EXPECT_EQ(node.input(2), "offset");
+      EXPECT_EQ(node.input(3), "mean");
+      EXPECT_EQ(node.input(4), "var");
+      EXPECT_EQ(node.input(5), "fused_batch_norm_side_input");
+
+      auto attr = node.attr();
+      EXPECT_EQ(attr["num_side_inputs"].i(), 1);
+      EXPECT_EQ(attr["activation_mode"].s(), "Relu");
+      found++;
+    }
+
+    if (node.name() == "relu_grad") {
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "fused_batch_norm_grad:5");
+      found++;
+    }
+
+    if (node.name() == "fused_batch_norm_grad") {
+      EXPECT_EQ(node.op(), "_FusedBatchNormGradEx");
+      ASSERT_EQ(node.input_size(), 8);
+      EXPECT_EQ(node.input(0), "output_grad_cast");
+      EXPECT_EQ(node.input(1), "input_cast");
+      EXPECT_EQ(node.input(2), "scale");
+      EXPECT_EQ(node.input(3), "fused_batch_norm:3");
+      EXPECT_EQ(node.input(4), "fused_batch_norm:4");
+      EXPECT_EQ(node.input(5), "fused_batch_norm:5");
+      EXPECT_EQ(node.input(6), "offset");
+      EXPECT_EQ(node.input(7), "relu");
+
+      auto attr = node.attr();
+      EXPECT_EQ(attr["num_side_inputs"].i(), 1);
+      EXPECT_EQ(attr["activation_mode"].s(), "Relu");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 4);
+
+  if (GetNumAvailableGPUs() > 0) {
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 6);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 6);
+    test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[1], tensors_expected[1], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[2], tensors_expected[2], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[3], tensors_expected[3], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[4], tensors_expected[4], 1e-2, /*rtol=*/1e-2);
+    test::ExpectClose(tensors[5], tensors_expected[5], 1e-2, /*rtol=*/1e-2);
+  }
+}
+#endif
 
 TEST_F(RemapperTest, FuseConv2DWithBias) {
   using ::tensorflow::ops::Placeholder;
@@ -461,10 +754,10 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
 TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(ENABLE_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBias with bfloat16.";
-#endif  // !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -555,6 +848,8 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
     auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
     auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
 
+    float leakyrelu_alpha = 0.5;
+
     std::vector<int> strides = {1, 1, 1, 1};
     auto conv =
         ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
@@ -571,7 +866,7 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, bias_add));
       } else if (activation == "LeakyRelu") {
-        auto attr = ops::internal::LeakyRelu::Alpha(0.5);
+        auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
         return ops::Identity(
             fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
       }
@@ -614,7 +909,7 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         EXPECT_EQ(fused_ops[1], activation);
 
         if (activation == "LeakyRelu") {
-          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
+          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), leakyrelu_alpha);
         }
         found++;
       }
@@ -635,7 +930,14 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "Tanh",
+                                       "LeakyRelu"};
+#else
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
+#endif
+
+    for (const string& activation : activations) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto lhs_shape = ops::Placeholder::Shape({8, 32});
@@ -649,6 +951,8 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
       auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
 
+      float leakyrelu_alpha = 0.5;
+
       ops::Identity fetch = [&]() -> ops::Identity {
         auto activate = s.WithOpName("activation");
         auto fetch = s.WithOpName("fetch");
@@ -659,6 +963,14 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+        } else if (activation == "Tanh") {
+          return ops::Identity(fetch, ops::Tanh(activate, bias_add));
+#endif
+        } else if (activation == "LeakyRelu") {
+          auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+          return ops::Identity(
+              fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
         }
 
         return ops::Identity(fetch, bias);
@@ -697,6 +1009,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           ASSERT_EQ(fused_ops.size(), 2);
           EXPECT_EQ(fused_ops[0], "BiasAdd");
           EXPECT_EQ(fused_ops[1], activation);
+
+          if (activation == "LeakyRelu") {
+            EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), leakyrelu_alpha);
+          }
           found++;
         }
       }
@@ -719,14 +1035,13 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(ENABLE_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBiasAndActivation with bfloat16.";
-#endif  // !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
-#ifndef INTEL_MKL
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   using ops::Placeholder;
 
@@ -802,7 +1117,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   ASSERT_EQ(tensors_expected.size(), 1);
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-4);
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
@@ -831,6 +1146,8 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
     auto batch_norm = ops::FusedBatchNorm(s.WithOpName("batch_norm"), conv,
                                           scale, offset, mean, variance, attrs);
 
+    float leakyrelu_alpha = 0.5;
+
     ops::Identity fetch = [&]() -> ops::Identity {
       auto activate = s.WithOpName("activation");
       auto fetch = s.WithOpName("fetch");
@@ -842,7 +1159,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, batch_norm.y));
       } else if (activation == "LeakyRelu") {
-        auto attr = ops::internal::LeakyRelu::Alpha(0.5);
+        auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
         return ops::Identity(
             fetch, ops::internal::LeakyRelu(activate, batch_norm.y, attr));
       }
@@ -893,7 +1210,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         EXPECT_EQ(fused_ops[1], activation);
 
         if (activation == "LeakyRelu") {
-          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
+          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), leakyrelu_alpha);
         }
         found++;
       }
@@ -904,7 +1221,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
     ASSERT_EQ(tensors_expected.size(), 1);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     ASSERT_EQ(tensors.size(), 1);
-    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+    test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-4);
   }
 }
 
@@ -978,7 +1295,6 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
-#endif  // !INTEL_MKL
 
 }  // namespace grappler
 }  // namespace tensorflow

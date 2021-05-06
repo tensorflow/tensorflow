@@ -689,7 +689,7 @@ class BaseSession(SessionInterface):
       raise TypeError('config must be a tf.ConfigProto, but got %s' %
                       type(config))
 
-    if (mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled
+    if (mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled()
         and config.graph_options.rewrite_options.auto_mixed_precision !=
         rewriter_config_pb2.RewriterConfig.OFF):
       new_config = config_pb2.ConfigProto()
@@ -699,7 +699,7 @@ class BaseSession(SessionInterface):
       config = new_config
     elif (config.graph_options.rewrite_options.auto_mixed_precision !=
           rewriter_config_pb2.RewriterConfig.ON):
-      mixed_precision_global_state.non_mixed_precision_session_created = True
+      mixed_precision_global_state.set_non_mixed_precision_session_created(True)
 
     self._config = config
     self._add_shapes = config.graph_options.infer_shapes

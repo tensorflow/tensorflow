@@ -24,38 +24,15 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
 namespace {
-// This pass lifts tf_executor.island inner ops from a tf_executor.graph that
-// contains only tf_executor.island ops.
-//
-// e.g.
-//   func @my_fn(%arg0, %arg1) -> (...) {
-//     %graph_results:2 = tf_executor.graph {
-//       %island_0_result, %island_0_control = tf_executor.island {
-//         %a = tf.opA(%arg0)
-//         tf_executor.yield %a
-//       }
-//       %island_1_result, %island_1_control = tf_executor.island {
-//         %b = tf.opB(%arg1, %island_0_result)
-//         tf_executor.yield %b
-//       }
-//       tf_executor.fetch %island_0_result, %island_1_result
-//     }
-//     return %graph_results#0, %graph_results#1
-//   }
-//
-// will be transformed into:
-//   func @my_fn(%arg0, %arg1) -> (...) {
-//     %a = tf.opA(%arg0)
-//     %b = tf.opB(%arg1, %a)
-//     return %a, %b
-//   }
 
 struct ExecutorDialectToFunctionalConversion
-    : public PassWrapper<ExecutorDialectToFunctionalConversion, FunctionPass> {
+    : public TF::ExecutorDialectToFunctionalPassBase<
+          ExecutorDialectToFunctionalConversion> {
   void runOnFunction() override;
 };
 
@@ -109,7 +86,3 @@ CreateExecutorDialectToFunctionalConversionPass() {
 
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::ExecutorDialectToFunctionalConversion> pass(
-    "tf-executor-to-functional-conversion",
-    "Transform from the TF executor dialect (tf_executor.graph containing only "
-    "tf_executor.island ops) to func op.");

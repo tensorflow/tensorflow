@@ -17,7 +17,7 @@ package(
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(
@@ -31,6 +31,25 @@ tf_proto_library(
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "xrt_tpu_utils",
+    srcs = [
+        "xrt_tpu_device.cc",
+    ],
+    hdrs = [
+        "xrt_tpu_device.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
 )
 
 cc_library(
@@ -124,3 +143,12 @@ cc_library(
         "//tensorflow/compiler/xrt/kernels:xrt_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xrt_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xrt_proto"],
+# )
+# copybara:uncomment_end

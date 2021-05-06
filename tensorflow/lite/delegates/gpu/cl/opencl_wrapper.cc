@@ -85,7 +85,13 @@ absl::Status LoadOpenCL() {
     return absl::OkStatus();
   }
 #endif
-  libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
+#ifdef __APPLE__
+  static const char* kClLibName =
+      "/System/Library/Frameworks/OpenCL.framework/OpenCL";
+#else
+  static const char* kClLibName = "libOpenCL.so";
+#endif
+  libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
@@ -226,6 +232,8 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
+
+  LoadQcomExtensionFunctions();
 }
 
 // No OpenCL support, do not set function addresses
@@ -345,6 +353,8 @@ PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+DEFINE_QCOM_FUNCTION_PTRS
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,

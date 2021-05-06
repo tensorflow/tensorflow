@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 
@@ -31,6 +32,10 @@ namespace gpu {
 
 struct GPUImage2DDescriptor {
   DataType data_type;
+  bool normalized = false;   // used with INT data types, if normalized, we read
+                             // in kernel float data.
+  DataType normalized_type;  // can be FLOAT32 or FLOAT16, using with normalized
+                             // = true
   AccessType access_type;
 };
 
@@ -117,7 +122,8 @@ class GPUObjectDescriptor {
   }
 
   virtual absl::Status PerformSelector(
-      const std::string& selector, const std::vector<std::string>& args,
+      const GpuInfo& gpu_info, const std::string& selector,
+      const std::vector<std::string>& args,
       const std::vector<std::string>& template_args,
       std::string* result) const {
     *result = "";

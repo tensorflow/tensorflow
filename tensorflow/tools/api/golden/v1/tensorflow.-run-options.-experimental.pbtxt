@@ -21,12 +21,6 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.RunOptions.Experimental.RunHandlerPoolOptions"
     }
-    field {
-      name: "always_track_kernel_execution_cost"
-      number: 4
-      label: LABEL_OPTIONAL
-      type: TYPE_BOOL
-    }
     nested_type {
       name: "RunHandlerPoolOptions"
       field {

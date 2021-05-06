@@ -13,15 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Training state management."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras import backend as K
+from tensorflow.python.framework import errors
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
@@ -55,7 +53,7 @@ class WorkerTrainingState(object):
         name='ckpt_saved_epoch')
 
     # Variable initialization.
-    K.set_value(self._ckpt_saved_epoch, CKPT_SAVED_EPOCH_UNUSED_VALUE)
+    backend.set_value(self._ckpt_saved_epoch, CKPT_SAVED_EPOCH_UNUSED_VALUE)
 
     # _ckpt_saved_epoch gets tracked and is included in the checkpoint file
     # when backing up.
@@ -88,10 +86,10 @@ class WorkerTrainingState(object):
   def back_up(self, epoch):
     """Back up the current state of training into a checkpoint file.
 
-    Arguments:
+    Args:
       epoch: The current epoch information to be saved.
     """
-    K.set_value(self._ckpt_saved_epoch, epoch)
+    backend.set_value(self._ckpt_saved_epoch, epoch)
     # Save the model plus CKPT_SAVED_EPOCH variable.
     if self.write_checkpoint_manager.save():
       distributed_file_utils.remove_temp_dirpath(
@@ -114,7 +112,10 @@ class WorkerTrainingState(object):
     successfully finishes.
     """
     if self.write_checkpoint_manager is self.read_checkpoint_manager:
-      file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+      try:
+        file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+      except errors.NotFoundError:
+        pass
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
@@ -125,7 +126,7 @@ class WorkerTrainingState(object):
     infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
     unfinished training from certain epoch.
 
-    Arguments:
+    Args:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
       mode: The mode for running `model.fit()`.
 
@@ -135,7 +136,7 @@ class WorkerTrainingState(object):
       at. Otherwise, return the `initial_epoch` the user passes in.
     """
 
-    epoch = K.eval(self._ckpt_saved_epoch)
+    epoch = backend.eval(self._ckpt_saved_epoch)
     if mode == mode_keys.ModeKeys.TRAIN and epoch >= 0:
       # The most recently saved epoch is one epoch prior to the epoch it
       # failed at, so return the value of 'self._ckpt_saved_epoch' plus one.

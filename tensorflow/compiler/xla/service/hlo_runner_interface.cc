@@ -71,6 +71,20 @@ HloRunnerInterface::ReadModuleFromHloTextFile(
   return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunnerInterface::ReadModuleFromModuleBinaryProtofile(
+    const std::string& filename, const DebugOptions& debug_options) {
+  HloModuleProto module_proto;
+  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                                 filename, &module_proto));
+
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
+
+  return HloModule::CreateFromProto(module_proto, module_config);
+}
+
 StatusOr<Literal> HloRunnerInterface::Execute(
     std::unique_ptr<HloModule> module, absl::Span<const Literal> arguments,
     bool run_hlo_passes, ExecutionProfile* profile) {
@@ -98,6 +112,22 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   }
   return ExecuteWithExecutable(std::move(executable), argument_pointers,
                                nullptr);
+}
+
+void HloRunnerInterface::UpdateEntryComputationLayout(
+    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn) {
+  CHECK(shape_representation_fn != nullptr);
+  // Make sure entry computation shapes are in device representation.
+  for (int i = 0; i < module->entry_computation_layout().parameter_count();
+       i++) {
+    Shape shape =
+        module->entry_computation_layout().parameter_layout(i).shape();
+    *module->mutable_entry_computation_layout()->mutable_parameter_layout(i) =
+        ShapeLayout(shape_representation_fn(shape));
+  }
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(shape_representation_fn(
+          module->entry_computation_layout().result_layout().shape()));
 }
 
 }  // namespace xla

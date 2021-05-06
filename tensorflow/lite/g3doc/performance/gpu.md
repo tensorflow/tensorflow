@@ -77,32 +77,9 @@ your phone.
 
 #### Step 2. Modify the Podfile to use the TensorFlow Lite GPU CocoaPod
 
-<section class="zippy">
-
-Until TensorFlow Lite 2.0.0
-
-We have built a binary CocoaPod that includes the GPU delegate. To switch the
-project to use it, modify the
-`tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use the
-`TensorFlowLiteGpuExperimental` pod instead of `TensorFlowLite`.
-
-```
-target 'YourProjectName'
-  # pod 'TensorFlowLite', '1.12.0'
-  pod 'TensorFlowLiteGpuExperimental'
-```
-
-</section>
-
-From TensorFlow Lite 2.1.0, GPU delegate is included in the `TensorFlowLiteC`
-pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
-depending on the language.
-
-Note: This behavior will be changed in 2.3.0 and latest nightly releases
-
-For nightly version and upcoming 2.3.0 release, by default GPU delegate is
-excluded from the pod to reduce the binary size. You can include them by
-specifying subspec. For `TensorFlowLiteSwift` pod:
+From 2.3.0 release, by default GPU delegate is excluded from the pod to reduce
+the binary size. You can include them by specifying subspec. For
+`TensorFlowLiteSwift` pod:
 
 ```ruby
 pod 'TensorFlowLiteSwift/Metal', '~> 0.0.1-nightly',
@@ -114,7 +91,32 @@ OR
 pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
 ```
 
-You can do similarly for `TensorFlowLiteC` if you want to use the C API.
+You can do similarly for `TensorFlowLiteObjC` or `TensorFlowLitC` if you want to
+use the Objective-C (from 2.4.0 release) or C API.
+
+<div>
+  <devsite-expandable>
+    <h4 class="showalways">Before 2.3.0 release</h4>
+    <h4>Until TensorFlow Lite 2.0.0</h4>
+    <p>
+      We have built a binary CocoaPod that includes the GPU delegate. To switch
+      the project to use it, modify the
+      `tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use the
+      `TensorFlowLiteGpuExperimental` pod instead of `TensorFlowLite`.
+    </p>
+    <pre class="prettyprint lang-ruby notranslate" translate="no"><code>
+    target 'YourProjectName'
+      # pod 'TensorFlowLite', '1.12.0'
+      pod 'TensorFlowLiteGpuExperimental'
+    </code></pre>
+    <h4>Until TensorFlow Lite 2.2.0</h4>
+    <p>
+      From TensorFlow Lite 2.1.0 to 2.2.0, GPU delegate is included in the
+      `TensorFlowLiteC` pod. You can choose between `TensorFlowLiteC` and
+      `TensorFlowLiteSwift` depending on the language.
+    </p>
+  </devsite-expandable>
+</div>
 
 #### Step 3. Enable the GPU delegate
 
@@ -232,63 +234,92 @@ the`addDelegate` function to register the GPU delegate to the interpreter:
 
 ### iOS
 
-#### Swift
+Note: GPU delegate can also use C API for Objective-C code. Prior to TensorFlow
+Lite 2.4.0 release, this was the only option.
 
-Initialize TensorFlow Lite interpreter with the GPU delegate.
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Swift</h3>
+      <p><pre class="prettyprint lang-swift">
+    import TensorFlowLite
 
-```swift
-import TensorFlowLite
+    // Load model ...
 
-// Load model ...
+    // Initialize TensorFlow Lite interpreter with the GPU delegate.
+    let delegate = MetalDelegate()
+    if let interpreter = try Interpreter(modelPath: modelPath,
+                                         delegates: [delegate]) {
+      // Run inference ...
+    }
+      </pre></p>
+    </section>
+    <section>
+      <h3>Objective-C</h3>
+      <p><pre class="prettyprint lang-objc">
+    // Import module when using CocoaPods with module support
+    @import TFLTensorFlowLite;
 
-let delegate = MetalDelegate()
+    // Or import following headers manually
+    #import "tensorflow/lite/objc/apis/TFLMetalDelegate.h"
+    #import "tensorflow/lite/objc/apis/TFLTensorFlowLite.h"
 
-if let interpreter = try Interpreter(modelPath: modelPath,
-                                     delegates: [delegate]) {
-  // Run inference ...
-}
+    // Initialize GPU delegate
+    TFLMetalDelegate* metalDelegate = [[TFLMetalDelegate alloc] init];
 
-```
+    // Initialize interpreter with model path and GPU delegate
+    TFLInterpreterOptions* options = [[TFLInterpreterOptions alloc] init];
+    NSError* error = nil;
+    TFLInterpreter* interpreter = [[TFLInterpreter alloc]
+                                    initWithModelPath:modelPath
+                                              options:options
+                                            delegates:@[ metalDelegate ]
+                                                error:&amp;error];
+    if (error != nil) { /* Error handling... */ }
 
-#### Objective-C
+    if (![interpreter allocateTensorsWithError:&amp;error]) { /* Error handling... */ }
+    if (error != nil) { /* Error handling... */ }
 
-Note: For Objective-C, GPU delegate is provided via C API.
+    // Run inference ...
+    ```
+      </pre></p>
+    </section>
+    <section>
+      <h3>C (Until 2.3.0)</h3>
+      <p><pre class="prettyprint lang-c">
+    #include "tensorflow/lite/c/c_api.h"
+    #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
 
-In your application code, include the GPU delegate header and call the
-`Interpreter::ModifyGraphWithDelegate` function to register the GPU delegate to
-the interpreter:
+    // Initialize model
+    TfLiteModel* model = TfLiteModelCreateFromFile(model_path);
 
-```objc
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+    // Initialize interpreter with GPU delegate
+    TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+    TfLiteDelegate* delegate = TFLGPUDelegateCreate(nil);  // default config
+    TfLiteInterpreterOptionsAddDelegate(options, metal_delegate);
+    TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+    TfLiteInterpreterOptionsDelete(options);
 
-// Initialize model
-TfLiteModel* model = TfLiteModelCreateFromFile(model_path);
+    TfLiteInterpreterAllocateTensors(interpreter);
 
-// Initialize interpreter with GPU delegate
-TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-TfLiteDelegate* delegate = TFLGPUDelegateCreate(nil);  // default config
-TfLiteInterpreterOptionsAddDelegate(options, metal_delegate);
-TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
-TfLiteInterpreterOptionsDelete(options);
+    NSMutableData *input_data = [NSMutableData dataWithLength:input_size * sizeof(float)];
+    NSMutableData *output_data = [NSMutableData dataWithLength:output_size * sizeof(float)];
+    TfLiteTensor* input = TfLiteInterpreterGetInputTensor(interpreter, 0);
+    const TfLiteTensor* output = TfLiteInterpreterGetOutputTensor(interpreter, 0);
 
-TfLiteInterpreterAllocateTensors(interpreter);
+    // Run inference
+    TfLiteTensorCopyFromBuffer(input, inputData.bytes, inputData.length);
+    TfLiteInterpreterInvoke(interpreter);
+    TfLiteTensorCopyToBuffer(output, outputData.mutableBytes, outputData.length);
 
-NSMutableData *input_data = [NSMutableData dataWithLength:input_size * sizeof(float)];
-NSMutableData *output_data = [NSMutableData dataWithLength:output_size * sizeof(float)];
-TfLiteTensor* input = TfLiteInterpreterGetInputTensor(interpreter, 0);
-const TfLiteTensor* output = TfLiteInterpreterGetOutputTensor(interpreter, 0);
-
-// Run inference
-TfLiteTensorCopyFromBuffer(input, inputData.bytes, inputData.length);
-TfLiteInterpreterInvoke(interpreter);
-TfLiteTensorCopyToBuffer(output, outputData.mutableBytes, outputData.length);
-
-// Clean up
-TfLiteInterpreterDelete(interpreter);
-TFLGpuDelegateDelete(metal_delegate);
-TfLiteModelDelete(model);
-```
+    // Clean up
+    TfLiteInterpreterDelete(interpreter);
+    TFLGpuDelegateDelete(metal_delegate);
+    TfLiteModelDelete(model);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ## Supported Models and Ops
 

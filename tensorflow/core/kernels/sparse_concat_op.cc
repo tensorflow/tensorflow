@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -66,12 +67,31 @@ class SparseConcatOp : public OpKernel {
     OP_REQUIRES(context, shapes.size() == N,
                 errors::InvalidArgument("Expected ", N, " input shapes, got ",
                                         shapes.size()));
+    bool overflow_ocurred = false;
     for (int i = 0; i < N; i++) {
+      int64 new_num_elements = 1;
       OP_REQUIRES(context, TensorShapeUtils::IsVector(shapes[i].shape()),
                   errors::InvalidArgument(
                       "Input shapes should be a vector but received shape ",
                       shapes[i].shape().DebugString(), " at position ", i));
+      auto input_shape_vector = shapes[i].vec<int64>();
+      for (int j = 0; j < input_shape_vector.size(); j++) {
+        new_num_elements =
+            MultiplyWithoutOverflow(new_num_elements, input_shape_vector(j));
+        if (new_num_elements < 0) {
+          overflow_ocurred = true;
+          break;
+        }
+      }
+
+      if (overflow_ocurred) {
+        break;
+      }
     }
+
+    OP_REQUIRES(
+        context, !overflow_ocurred,
+        errors::Internal("Encountered overflow from large input shape."));
 
     const TensorShape input_shape(shapes[0].vec<int64>());
     const int input_rank = input_shape.dims();

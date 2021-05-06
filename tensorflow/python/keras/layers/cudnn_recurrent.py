@@ -12,16 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Recurrent layers backed by cuDNN.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Recurrent layers backed by cuDNN."""
 
 import collections
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -37,7 +33,7 @@ from tensorflow.python.util.tf_export import keras_export
 class _CuDNNRNN(RNN):
   """Private base class for CuDNNGRU and CuDNNLSTM layers.
 
-  Arguments:
+  Args:
     return_sequences: Boolean. Whether to return the last output
         in the output sequence, or the full sequence.
     return_state: Boolean. Whether to return the last state
@@ -106,7 +102,7 @@ class _CuDNNRNN(RNN):
 
     if self.go_backwards:
       # Reverse time axis.
-      inputs = K.reverse(inputs, 1)
+      inputs = backend.reverse(inputs, 1)
     output, states = self._process_batch(inputs, initial_state)
 
     if self.stateful:
@@ -166,7 +162,7 @@ class CuDNNGRU(_CuDNNRNN):
   developer website](https://developer.nvidia.com/cudnn).
   Can only be run on GPU.
 
-  Arguments:
+  Args:
       units: Positive integer, dimensionality of the output space.
       kernel_initializer: Initializer for the `kernel` weights matrix, used for
         the linear transformation of the inputs.
@@ -346,7 +342,7 @@ class CuDNNLSTM(_CuDNNRNN):
   developer website](https://developer.nvidia.com/cudnn).
   Can only be run on GPU.
 
-  Arguments:
+  Args:
       units: Positive integer, dimensionality of the output space.
       kernel_initializer: Initializer for the `kernel` weights matrix, used for
         the linear transformation of the inputs.

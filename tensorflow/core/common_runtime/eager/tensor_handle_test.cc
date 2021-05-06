@@ -39,7 +39,7 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr);
   TensorHandle* sync_th =
       TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr, ctx);
   TensorHandle* async_th = TensorHandle::CreateEmptyLocalHandle(
@@ -105,8 +105,7 @@ class PackedTensorHandleTest : public ::testing::Test {
     context_ = new EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        /* async= */ false,
-        /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
+        /* async= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
@@ -190,8 +189,8 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   EXPECT_EQ(dtypes_and_shapes.at(0).dtype, DT_FLOAT);
   EXPECT_EQ(dtypes_and_shapes.at(0).shape.IsIdenticalTo({2, 2}), true);
 
-  CompositeDevice* device = reinterpret_cast<CompositeDevice*>(
-      absl::get<Device*>(packed_handle->device()));
+  CompositeDevice* device =
+      reinterpret_cast<CompositeDevice*>(packed_handle->device());
   EXPECT_EQ(device->name(), "/job:worker/replica:0/task:0/device:COMPOSITE:0");
   EXPECT_EQ(device->underlying_devices()->size(), 4);
 
@@ -201,7 +200,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
     TensorHandle* h = nullptr;
     TF_ASSERT_OK(packed_handle->ExtractPackedHandle(i, &h));
-    EXPECT_EQ(absl::get<Device*>(h->device()), ListDevices().at(i));
+    EXPECT_EQ(h->device(), ListDevices().at(i));
     EXPECT_EQ(h->Type(), expected_handle_types.at(i));
   }
   EXPECT_FALSE(IsReady(packed_handle));
@@ -237,14 +236,14 @@ TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
   TF_ASSERT_OK(packed_handle->Shape(&packed_shape));
   EXPECT_EQ(packed_shape, shape);
 
-  CompositeDevice* device = reinterpret_cast<CompositeDevice*>(
-      absl::get<Device*>(packed_handle->device()));
+  CompositeDevice* device =
+      reinterpret_cast<CompositeDevice*>(packed_handle->device());
   EXPECT_EQ(device->name(), "/job:worker/replica:0/task:0/device:COMPOSITE:0");
   EXPECT_EQ(device->underlying_devices()->size(), 1);
   EXPECT_EQ(packed_handle->NumPackedHandles(), 1);
   TensorHandle* h0 = nullptr;
   TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &h0));
-  EXPECT_EQ(absl::get<Device*>(h0->device()), d);
+  EXPECT_EQ(h0->device(), d);
   EXPECT_TRUE(IsReady(packed_handle));
   packed_handle->Unref();
 }
@@ -256,7 +255,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr);
 
   tensorflow::DataType dtype = DT_RESOURCE;
   TensorShape shape = {2};
@@ -288,7 +287,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnRemoteDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr);
 
   std::unique_ptr<Device> d0(
       CreateDevice("CPU", "/job:worker/task:0/device:CPU:0", false));
@@ -342,8 +341,7 @@ class RemoteTensorHandleTest : public ::testing::Test {
     context_ = new EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        /* async= */ false,
-        /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
+        /* async= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
@@ -382,8 +380,7 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   EagerContext* context = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /* async= */ false,
-      /* lazy_copy_function_remote_inputs= */ false, &device_mgr,
+      /* async= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr);
 
@@ -395,7 +392,7 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
       /*unknown_device=*/true);
-  EXPECT_EQ(absl::get<Device*>(h->device()), d1);
+  EXPECT_EQ(h->device(), d1);
 
   Device* d2 = device_mgr.ListDevices().at(2);
   TF_ASSERT_OK(h->SetRemoteShapeAndDevice(
@@ -403,7 +400,7 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   Status s;
   EXPECT_EQ(h->BackingDeviceName(&s), d2->name());
   TF_EXPECT_OK(s);
-  EXPECT_EQ(absl::get<Device*>(h->device()), d2);
+  EXPECT_EQ(h->device(), d2);
   h->Unref();
   context->Unref();
 }
@@ -418,7 +415,7 @@ TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr);
 
   Device* dcpu = local_device_mgr.ListDevices()[0];
   Device* dgpu = local_device_mgr.ListDevices()[1];

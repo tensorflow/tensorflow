@@ -13,10 +13,11 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(
@@ -33,7 +34,10 @@ tf_kernel_library(
         ":tpu_compile_op",
         ":tpu_configuration_ops",
         ":tpu_execute_op",
+        ":tpu_functional_ops",
         ":tpu_handle_to_key_op",
+        ":tpu_ordinal_selector_op",
+        ":tpu_reshard_variables_op",
         ":transfer_ops",
     ],
 )
@@ -56,6 +60,8 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        "@com_google_absl//absl/types:optional",
+        "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",
         "@com_google_absl//absl/strings",
@@ -276,9 +282,11 @@ cc_library(
     hdrs = ["tpu_program_group_interface.h"],
     deps = [
         ":tpu_compilation_cache_key",
+        ":tpu_executable_info_proto_cc",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
@@ -438,6 +446,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/strings",
     ],
@@ -637,8 +646,8 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "@com_google_absl//absl/types:variant",
     ],
     alwayslink = 1,
@@ -879,4 +888,155 @@ cc_library(
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core:framework",
     ],
+)
+
+cc_library(
+    name = "tpu_reshard_variables_op",
+    srcs = ["tpu_reshard_variables_op.cc"],
+    hdrs = ["tpu_reshard_variables_op.h"],
+    deps = [
+        ":tpu_compilation_cache_common_proto_cc",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_op_consts",
+        ":tpu_program_group",
+        ":tpu_reshard_variables_op_util",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/compiler/jit:xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_execute",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_interface",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_reshard_variables_op_util",
+    srcs = ["tpu_reshard_variables_op_util.cc"],
+    hdrs = ["tpu_reshard_variables_op_util.h"],
+    deps = [
+        ":tpu_compilation_cache_common_proto_cc",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_op_consts",
+        ":tpu_program_group",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/compiler/jit:xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_execute",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_interface",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_ordinal_selector_op",
+    srcs = ["tpu_ordinal_selector_op.cc"],
+    deps = [
+        ":tpu_ordinal_selector",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_ordinal_selector_interface",
+    hdrs = ["tpu_ordinal_selector_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tpu_ordinal_selector",
+    hdrs = ["tpu_ordinal_selector.h"],
+    deps = [
+        ":tpu_ordinal_selector_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_fingerprint_lookup",
+    srcs = ["tpu_fingerprint_lookup.cc"],
+    hdrs = ["tpu_fingerprint_lookup.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "tpu_functional_ops",
+    srcs = ["tpu_functional_ops.cc"],
+    hdrs = ["tpu_functional_ops.h"],
+    deps = [
+        ":tpu_compile_op_support",
+        ":tpu_op_util",
+        ":tpu_ordinal_selector",
+        ":tpu_util_hdrs",
+        "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:sharding_util",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/core/common_runtime:placer",
+        "//tensorflow/core/common_runtime:rendezvous_mgr",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_fingerprint_lookup",
+        "//tensorflow/core/tpu/kernels:tpu_op_consts",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
 )

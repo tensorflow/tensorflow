@@ -18,6 +18,9 @@ limitations under the License.
 // Test the new interface: BM_benchmark(benchmark::State& state)
 namespace tensorflow {
 namespace testing {
+
+bool no_arg_was_run_ = false;
+
 namespace {
 
 void BM_TestIterState(::testing::benchmark::State& state) {
@@ -26,6 +29,7 @@ void BM_TestIterState(::testing::benchmark::State& state) {
     ++i;
     DoNotOptimize(i);
   }
+  no_arg_was_run_ = true;
 }
 
 BENCHMARK(BM_TestIterState);
@@ -81,5 +85,6 @@ BENCHMARK(BM_TwoArgs)->ArgPair(kArgOne, kArgTwo);
 
 int main() {
   ::testing::benchmark::RunSpecifiedBenchmarks();
+  CHECK(tensorflow::testing::no_arg_was_run_);
   return 0;
 }

@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -176,3 +176,19 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xplane_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xplane_proto"],
+# )
+#
+# py_proto_library(
+#     name = "trace_events_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":trace_events_proto"],
+# )
+# copybara:uncomment_end

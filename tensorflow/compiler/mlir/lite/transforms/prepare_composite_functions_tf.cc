@@ -27,11 +27,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -61,6 +62,8 @@ constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
 constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
+constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
+constexpr char kCustomDenseImageWarp[] = "addons:DenseImageWarp";
 
 using mlir::TF::FuncAttr;
 
@@ -70,8 +73,8 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.setAttr(kTFImplements,
-                  StringAttr::get("embedding_lookup", func_.getContext()));
+    func_->setAttr(kTFImplements,
+                   StringAttr::get(func_.getContext(), "embedding_lookup"));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
@@ -85,13 +88,13 @@ class ConvertEmbeddedLookupFunc {
 
   LogicalResult VerifySignature() {
     if (func_.getNumArguments() != 2) {
-      return func_.emitError()
+      return func_.emitWarning()
              << "Invalid number of arguments in the embedding "
                 "matmul composite function";
     }
     if (func_.getType().getNumResults() != 1) {
-      return func_.emitError() << "Invalid number of results in the embedding "
-                                  "matmul composite function";
+      return func_.emitWarning() << "Invalid number of results in the "
+                                    "embedding matmul composite function";
     }
     return success();
   }
@@ -238,14 +241,12 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
                                                         StringAttr attr) {
   if (attr.getValue() == "embedding_matmul") {
-    func.eraseBody();
-    func.addEntryBlock();
     // Convert the composite embedding_matmul function body to a
     // TFLite fused embedding_lookup op.
     ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
-    if (failed(convert_embedded_lookup.VerifySignature())) {
-      return signalPassFailure();
-    }
+    if (failed(convert_embedded_lookup.VerifySignature())) return;
+    func.eraseBody();
+    func.addEntryBlock();
     convert_embedded_lookup.RewriteFunc();
   } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
     // Check if the lstm cell simple can be fused, if not, we just don't do
@@ -269,19 +270,23 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
       return signalPassFailure();
     }
   } else if (attr.getValue() == kTfNMSPadded) {
+    ConvertNMSPaddedFunc convert_nms_padded(func);
+    if (failed(convert_nms_padded.VerifySignature())) return;
     func.eraseBody();
     func.addEntryBlock();
-    ConvertNMSPaddedFunc convert_nms_padded(func);
-    if (failed(convert_nms_padded.VerifySignature())) {
+    convert_nms_padded.RewriteFunc();
+  } else if (attr.getValue() == kCustomDenseImageWarp) {
+    ConvertDenseImageWarpFunc image_warping(func);
+    if (failed(image_warping.VerifySignature())) return;
+    if (failed(image_warping.RewriteFunc())) {
       return signalPassFailure();
     }
-    convert_nms_padded.RewriteFunc();
   }
 }
 
 void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     FuncOp func, FuncAttr attr) {
-  auto api_name = attr.GetName().getLeafReference();
+  auto api_name = attr.getName().getLeafReference();
   bool enable_fuse_tftext =
       fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
   if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
@@ -290,8 +295,14 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     }
   } else if (api_name == kCustomSSDPostprocessing) {
     ConvertSSDPostProcessFunc convert_ssd_postprocess(func, attr);
-    if (failed(convert_ssd_postprocess.VerifySignature()) ||
-        failed(convert_ssd_postprocess.RewriteFunc())) {
+    if (failed(convert_ssd_postprocess.VerifySignature())) return;
+    if (failed(convert_ssd_postprocess.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else if (api_name == kCustomMaxUnpooling) {
+    ConvertMaxUnpoolingFunc max_unpooling(func, attr);
+    if (failed(max_unpooling.VerifySignature())) return;
+    if (failed(max_unpooling.RewriteFunc())) {
       return signalPassFailure();
     }
   }
@@ -308,10 +319,8 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
   if (attr.getValue().startswith("lstm_")) {
     // Check if the keras lstm can be fused, if not, we just don't do anything.
     if (failed(CheckFusableKerasLstm(func, module))) return;
-
     func.eraseBody();
     func.addEntryBlock();
-
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
@@ -326,20 +335,21 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
     // 2) tf._implements, with proto attributes.
     // 3) tf.api_implements.
     // We need to handle them separately.
-    auto tf_implements_attr_str = func.getAttrOfType<StringAttr>(kTFImplements);
+    auto tf_implements_attr_str =
+        func->getAttrOfType<StringAttr>(kTFImplements);
     if (tf_implements_attr_str) {
       ConvertTFImplements(func, tf_implements_attr_str);
       continue;
     }
 
-    auto tf_implements_attr = func.getAttrOfType<FuncAttr>(kTFImplements);
+    auto tf_implements_attr = func->getAttrOfType<FuncAttr>(kTFImplements);
     if (tf_implements_attr) {
       ConvertTFImplementsWithAttributes(func, tf_implements_attr);
       continue;
     }
 
     auto tf_api_implements_attr =
-        func.getAttrOfType<StringAttr>(kTFAPIImplements);
+        func->getAttrOfType<StringAttr>(kTFAPIImplements);
     if (tf_api_implements_attr) {
       // TODO(b/147536816): Keras lstm should set up the correct attributes.
       ConvertTFAPIImplements(func, tf_api_implements_attr, module);

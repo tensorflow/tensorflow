@@ -121,7 +121,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
       if (auto device_by_replica = devices.getValue().get(launch.device()))
-        launch.setAttr(
+        launch->setAttr(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
 

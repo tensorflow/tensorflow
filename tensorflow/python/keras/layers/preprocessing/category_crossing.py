@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras category crossing preprocessing layers."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import itertools
 import numpy as np
@@ -26,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -36,7 +34,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.layers.experimental.preprocessing.CategoryCrossing')
-class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
+class CategoryCrossing(base_layer.Layer):
   """Category crossing layer.
 
   This layer concatenates multiple categorical inputs into a single categorical
@@ -63,7 +61,7 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
            [b'b-e'],
            [b'c-f']], dtype=object)>
 
-  Arguments:
+  Args:
     depth: depth of input crossing. By default None, all inputs are crossed into
       one output. It can also be an int or tuple/list of ints. Passing an
       integer will create combinations of crossed outputs with depth up to that
@@ -114,13 +112,11 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
     `[[b'1_X_2_X_3'], [b'4_X_5_X_6']]`
   """
 
-  def __init__(self, depth=None, name=None, separator=None, **kwargs):
+  def __init__(self, depth=None, name=None, separator='_X_', **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         'CategoryCrossing').set(True)
     self.depth = depth
-    if separator is None:
-      separator = '_X_'
     self.separator = separator
     if isinstance(depth, (tuple, list)):
       self._depth_tuple = depth

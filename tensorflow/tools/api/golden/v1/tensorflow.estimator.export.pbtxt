@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "EvalOutput"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ExportOutput"
     mtype: "<type \'type\'>"
   }

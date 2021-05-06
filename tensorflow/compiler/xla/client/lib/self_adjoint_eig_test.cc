@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -100,47 +102,34 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
     return result;
   }
 
-  XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
-    Shape shape = builder->GetShape(result.v).ValueOrDie();
-    absl::Span<const int64> out_dims = shape.dimensions();
-    std::vector<int64> broadcast_dims(shape.rank() - 1);
-    std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
-
-    broadcast_dims[shape.rank() - 2] = shape.rank() - 1;
-    auto vw = Mul(result.v, BroadcastInDim(result.w, out_dims, broadcast_dims));
-    return BatchDot(vw, TransposeInMinorDims(result.v),
-                    PrecisionConfig::HIGHEST);
-  }
-
-  XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
-    Shape shape = builder->GetShape(m1).ValueOrDie();
-    int64 size = 1;
-    for (auto d : shape.dimensions()) {
-      size *= d;
-    }
-    return ReduceAll(Abs(m1 - m2), ConstantR0WithType(builder, F32, 0),
-                     CreateScalarAddComputation(F32, builder)) /
-           ConstantR0WithType(builder, F32, size);
-  }
-
-  Array2D<float> GenerateRandomSymmetricMatrix(int size) {
-    Array2D<float> result{size, size, 0.0};
-    // TODO(b/128001705): This seed should not be needed but makes the test
-    // avoid inputs which trigger numerical instability.
-    result.FillRandom(10 /* stddev */, 2 /* mean */, 12346 /* seed */);
-    for (int i = 0; i < size; ++i) {
-      for (int j = 0; j < i; ++j) {
-        result({j, i}) = result({i, j});
-      }
-    }
-    return result;
-  }
-
   Array3D<float> batch_3d_4x4_;
   Array2D<float> matrix2d_8x8_;
   Array2D<float> low_rank_4x4_;
   Array2D<int> wrong_type_4x4_;
 };
+
+XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
+  Shape shape = builder->GetShape(m1).ValueOrDie();
+  int64 size = ShapeUtil::ElementsIn(shape);
+  return ReduceAll(Abs(m1 - m2), ConstantR0WithType(builder, F32, 0),
+                   CreateScalarAddComputation(F32, builder)) /
+         ConstantR0WithType(builder, F32, std::max<int64>(1, size));
+}
+
+XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
+  Shape shape = builder->GetShape(result.v).ValueOrDie();
+  absl::Span<const int64> out_dims = shape.dimensions();
+  std::vector<int64> broadcast_dims(shape.rank() - 1);
+  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+
+  broadcast_dims[shape.rank() - 2] = shape.rank() - 1;
+  auto vw =
+      Mul(result.v,
+          BroadcastInDim(ConvertElementType(result.w, shape.element_type()),
+                         out_dims, broadcast_dims));
+  return BatchDot(vw, MaybeConjugate(TransposeInMinorDims(result.v), true),
+                  PrecisionConfig::HIGHEST);
+}
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
   XlaBuilder builder(TestName());
@@ -152,6 +141,22 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
 
   ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
+  XlaBuilder builder(TestName());
+  Array<complex64> input = {
+      {1, complex64{2, -7}, complex64{4, -8}},
+      {complex64{2, 7}, 3, complex64{5, -9}},
+      {complex64{4, 8}, complex64{5, 9}, 6},
+  };
+  XlaOp a;
+  auto a_data = CreateParameter<complex64>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a);
+  ComputeMatmulVWVt(result, &builder);
+
+  ComputeAndCompare<complex64>(&builder, input, {a_data.get()},
+                               ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
@@ -247,69 +252,43 @@ XLA_TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
   EXPECT_FALSE(result.w.valid());
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_8x8) {
+Array2D<float> GenerateRandomSymmetricMatrix(int size) {
+  Array2D<float> result{size, size, 0.0};
+  // TODO(b/128001705): This seed should not be needed but makes the test
+  // avoid inputs which trigger numerical instability.
+  result.FillRandom(10 /* stddev */, 2 /* mean */, 12346 /* seed */);
+  for (int i = 0; i < size; ++i) {
+    for (int j = 0; j < i; ++j) {
+      result({j, i}) = result({i, j});
+    }
+  }
+  return result;
+}
+
+using EighTestCase = int64;
+class RandomEighTest : public ClientLibraryTestBase,
+                       public ::testing::WithParamInterface<EighTestCase> {};
+
+XLA_TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
-  int size = 8;
+  int64 size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
   auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  // TODO(phawkins): this would be better expressed as <= 6e-3.
+  ComputeAndCompareR0<float>(&builder, 3e-3, {a_data.get()},
+                             ErrorSpec(3e-3, 0));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_16x16) {
-  XlaBuilder builder(TestName());
-  int size = 16;
-  Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
-  XlaOp a;
-  auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEig(a);
-  GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
-
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
-}
-
-XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_32x32) {
-  XlaBuilder builder(TestName());
-  int size = 32;
-  Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
-  XlaOp a;
-  auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEig(a);
-  GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
-
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
-}
-
-XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_256x256) {
-  XlaBuilder builder(TestName());
-  int size = 256;
-  Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
-  XlaOp a;
-  auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEig(a);
-  GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
-
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
-}
-
-XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_512x512) {
-  XlaBuilder builder(TestName());
-  int size = 512;
-  Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
-  XlaOp a;
-  auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEig(a);
-  GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
-
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
-}
+INSTANTIATE_TEST_SUITE_P(
+    RandomEighTestInstantiation, RandomEighTest,
+    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 256, 512),
+    [](const ::testing::TestParamInfo<EighTestCase>& info) {
+      const int64 size = info.param;
+      return absl::StrCat(size);
+    });
 
 }  // namespace xla

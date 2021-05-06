@@ -12,9 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
-#define PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
 
 #include "tensorflow/lite/c/common.h"
 
-#endif  // PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_
+// TfLiteOpaqueDelegate: allows delegation of nodes to alternative backends.
+// TfLiteOpaqueDelegate is an abstract type that is intended to have the same
+// role as TfLiteDelegate, but without necessarily exposing the implementation
+// details of how delegates are implemented.
+typedef TfLiteDelegate TfLiteOpaqueDelegate;
+
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_C_COMMON_H_

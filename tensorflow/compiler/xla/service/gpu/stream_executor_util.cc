@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -123,8 +122,8 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 
 StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
 XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
-                                      const Shape& input, const Shape& filter,
-                                      const Shape& output) {
+                                      const Layout& input, const Layout& filter,
+                                      const Layout& output) {
   Layout nchw_input, nchw_filter, nchw_output;
   std::tie(nchw_input, nchw_filter, nchw_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX,
@@ -140,35 +139,35 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
           .ConsumeValueOrDie();
 
   DataLayout input_layout;
-  if (ShapeUtil::ShapeIsComatibleWithLayout(input, nchw_input)) {
+  if (LayoutUtil::Equal(input, nchw_input)) {
     input_layout = DataLayout::kBatchDepthYX;
-  } else if (ShapeUtil::ShapeIsComatibleWithLayout(input, nhwc_input)) {
+  } else if (LayoutUtil::Equal(input, nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid input shape %s for conv with dnums %s",
-                         ShapeUtil::HumanStringWithLayout(input),
+    return InternalError("Invalid input layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(input),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 
   FilterLayout filter_layout;
-  if (ShapeUtil::ShapeIsComatibleWithLayout(filter, nchw_filter)) {
+  if (LayoutUtil::Equal(filter, nchw_filter)) {
     filter_layout = FilterLayout::kOutputInputYX;
-  } else if (ShapeUtil::ShapeIsComatibleWithLayout(filter, nhwc_filter)) {
+  } else if (LayoutUtil::Equal(filter, nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return InternalError("Invalid filter shape %s for conv with dnums %s",
-                         ShapeUtil::HumanStringWithLayout(filter),
+    return InternalError("Invalid filter layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(filter),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 
   DataLayout output_layout;
-  if (ShapeUtil::ShapeIsComatibleWithLayout(output, nchw_output)) {
+  if (LayoutUtil::Equal(output, nchw_output)) {
     output_layout = DataLayout::kBatchDepthYX;
-  } else if (ShapeUtil::ShapeIsComatibleWithLayout(output, nhwc_output)) {
+  } else if (LayoutUtil::Equal(output, nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid output shape %s for conv with dnums %s",
-                         ShapeUtil::HumanStringWithLayout(output),
+    return InternalError("Invalid output layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(output),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 

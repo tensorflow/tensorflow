@@ -26,24 +26,22 @@ namespace tensorrt {
 
 bool IsGoogleTensorRTEnabled() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#if TF_OSS_TENSORRT_STATIC
+#if TF_USE_TENSORRT_STATIC
   LOG(INFO) << "TensorRT libraries are statically linked, skip dlopen check";
   return true;
-#else
+#else   // TF_USE_TENSORRT_STATIC
   auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
   if (!handle_or.ok()) {
     LOG_WARNING_WITH_PREFIX
         << "Cannot dlopen some TensorRT libraries. If you would like "
            "to use Nvidia GPU with TensorRT, please make sure the "
            "missing libraries mentioned above are installed properly.";
-    return false;
-  } else {
-    return true;
   }
-#endif
-#else
+  return handle_or.ok();
+#endif  // TF_USE_TENSORRT_STATIC
+#else   // GOOGLE_CUDA && GOOGLE_TENSORRT
   return false;
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 }
 
 }  // namespace tensorrt

@@ -32,7 +32,7 @@ TEST(GpuMultiStream, Basics) {
       GetGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                    /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  PjRtDevice* device = client->local_devices().at(0);
+  PjRtDevice* device = client->addressable_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});
@@ -74,19 +74,19 @@ TEST(GpuMultiStream, Basics) {
         client->BufferFromHostBuffer(
             dummy_inputs.data(), dummy_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-            /*buffer_reference=*/nullptr, device));
+            /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
         client->BufferFromHostBuffer(
             inputs.data(), shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-            /*buffer_reference=*/nullptr, device));
+            /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
         client->BufferFromHostBuffer(
             inputs.data(), shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-            /*buffer_reference=*/nullptr, device));
+            /*on_done_with_host_buffer=*/nullptr, device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
     ExecuteOptions options;

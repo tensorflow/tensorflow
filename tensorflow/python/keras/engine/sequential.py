@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Home of the `Sequential` model.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Home of the `Sequential` model."""
 
 import copy
 import warnings
@@ -160,7 +156,7 @@ class Sequential(functional.Functional):
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
 
-    Arguments:
+    Args:
         layer: layer instance.
 
     Raises:
@@ -363,7 +359,7 @@ class Sequential(functional.Functional):
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
     # If applicable, update the static input shape of the model.
     if not self._has_explicit_input_shape:
-      if not tensor_util.is_tensor(inputs) and not isinstance(
+      if not tensor_util.is_tf_type(inputs) and not isinstance(
           inputs, np_arrays.ndarray):
         # This is a Sequential with mutiple inputs. This is technically an
         # invalid use case of Sequential, but we tolerate it for backwards
@@ -422,7 +418,7 @@ class Sequential(functional.Functional):
 
     The input samples are processed batch by batch.
 
-    Arguments:
+    Args:
         x: input data, as a Numpy array or list of Numpy arrays
             (if the model has multiple inputs).
         batch_size: integer.
@@ -447,7 +443,7 @@ class Sequential(functional.Functional):
 
     The input samples are processed batch by batch.
 
-    Arguments:
+    Args:
         x: input data, as a Numpy array or list of Numpy arrays
             (if the model has multiple inputs).
         batch_size: integer.

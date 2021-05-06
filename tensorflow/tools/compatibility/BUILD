@@ -7,21 +7,24 @@ load(
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//learning/brain/testing/tf2_migration_tools:__pkg__",
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],
 )
 
 py_library(
     name = "ipynb",
     srcs = ["ipynb.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["@six_archive//:six"],
 )
 
 py_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "@pasta",
         "@six_archive//:six",
@@ -32,7 +35,7 @@ py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ast_edits",
         "//tensorflow/python:client_testlib",
@@ -45,7 +48,7 @@ py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tf_upgrade_lib",
         "@six_archive//:six",
@@ -55,7 +58,7 @@ py_binary(
 py_library(
     name = "tf_upgrade_lib",
     srcs = ["tf_upgrade.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ast_edits",
         "@six_archive//:six",
@@ -66,7 +69,7 @@ py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
     ],
@@ -82,20 +85,21 @@ py_library(
     name = "renames_v2",
     srcs = ["renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
 )
 
 py_library(
     name = "reorders_v2",
     srcs = ["reorders_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "all_renames_v2",
     srcs = ["all_renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
@@ -107,7 +111,7 @@ py_test(
     name = "all_renames_v2_test",
     srcs = ["all_renames_v2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
         "//tensorflow/python:client_testlib",
@@ -119,14 +123,14 @@ py_test(
 py_library(
     name = "module_deprecations_v2",
     srcs = ["module_deprecations_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":ast_edits"],
 )
 
 py_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -139,7 +143,7 @@ py_library(
 py_library(
     name = "tf_upgrade_v2_safety_lib",
     srcs = ["tf_upgrade_v2_safety.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -152,7 +156,7 @@ py_binary(
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ast_edits",
         ":ipynb",
@@ -166,7 +170,7 @@ py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
         "v1only",
@@ -187,7 +191,7 @@ py_test(
     name = "tf_upgrade_v2_safety_test",
     srcs = ["tf_upgrade_v2_safety_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tf_upgrade_v2_safety_lib",
         "//tensorflow/python:client_testlib",
@@ -201,7 +205,7 @@ py_test(
 #     name = "test_file_v0_11",
 #     size = "small",
 #     srcs = ["testdata/test_file_v0_11.py"],
-#     srcs_version = "PY2AND3",
+#     srcs_version = "PY3",
 #     deps = [
 #         "//tensorflow:tensorflow_py",
 #     ],
@@ -227,7 +231,7 @@ py_test(
     size = "small",
     srcs = ["test_file_v1_0.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -254,7 +258,7 @@ py_test(
     size = "small",
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
         "v1only",
@@ -269,8 +273,7 @@ py_test(
     size = "small",
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

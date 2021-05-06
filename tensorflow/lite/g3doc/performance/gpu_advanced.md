@@ -187,25 +187,21 @@ bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate
 bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
-### iOS (Swift)
+Note: When calling `Interpreter::ModifyGraphWithDelegate()` or
+`Interpreter::Invoke()`, the caller must have an `EGLContext` in the current
+thread and `Interpreter::Invoke()` must be called from the same `EGLContext`. If
+an `EGLContext` does not exist, the delegate will internally create one, but
+then the developer must ensure that `Interpreter::Invoke()` is always called
+from the same thread in which `Interpreter::ModifyGraphWithDelegate()` was
+called.
 
-Initialize TensorFlow Lite interpreter with the GPU delegate.
+### iOS (C++)
 
-```swift
-import TensorFlowLite
+Note: For Swift/Objective-C/C use cases, please refer to
+[GPU delegate guide](gpu#ios)
 
-let delegate = MetalDelegate()
-if let interpreter = try Interpreter(modelPath: modelPath,
-                                     delegates: [delegate]) {
-
-  // Run inference ...
-}
-
-```
-
-### iOS (Objective-C)
-
-Note: For Objective-C, GPU delegate is provided via C API.
+Note: This is only available when you are using bazel or build TensorFlow Lite
+by yourself. C++ API can't be used with CocoaPods.
 
 To use TensorFlow Lite on GPU, get the GPU delegate via `TFLGpuDelegateCreate()`
 and then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
@@ -233,62 +229,72 @@ ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 TFLGpuDelegateDelete(delegate);
 ```
 
-Note: When calling `Interpreter::ModifyGraphWithDelegate()` or
-`Interpreter::Invoke()`, the caller must have an `EGLContext` in the current
-thread and `Interpreter::Invoke()` must be called from the same `EGLContext`. If
-an `EGLContext` does not exist, the delegate will internally create one, but
-then the developer must ensure that `Interpreter::Invoke()` is always called
-from the same thread in which `Interpreter::ModifyGraphWithDelegate()` was
-called.
-
 ## Advanced usage
 
 ### Delegate Options for iOS
 
-`TFLGpuDelegateCreate()` accepts a `struct` of options.
-([C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h),
-[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/MetalDelegate.swift))
+Constructor for GPU delegate accepts a `struct` of options.
+([Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/MetalDelegate.swift),
+[Objective-C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/objc/apis/TFLMetalDelegate.h),
+[C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h))
 
-Passing `nullptr`(C API) or nothing (Swift API) to the initializer sets the
-default options (which are explicated in the Basic Usage example above).
+Passing `nullptr` (C API) or nothing (Objective-C and Swift API) to the
+initializer sets the default options (which are explicated in the Basic Usage
+example above).
 
-**Swift API**
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Swift</h3>
+      <p><pre class="prettyprint lang-swift">
+    // THIS:
+    var options = MetalDelegate.Options()
+    options.isPrecisionLossAllowed = false
+    options.waitType = .passive
+    options.isQuantizationEnabled = true
+    let delegate = MetalDelegate(options: options)
 
-```swift
+    // IS THE SAME AS THIS:
+    let delegate = MetalDelegate()
+      </pre></p>
+    </section>
+    <section>
+      <h3>Objective-C</h3>
+      <p><pre class="prettyprint lang-objc">
+    // THIS:
+    TFLMetalDelegateOptions* options = [[TFLMetalDelegateOptions alloc] init];
+    options.precisionLossAllowed = false;
+    options.waitType = TFLMetalDelegateThreadWaitTypePassive;
+    options.quantizationEnabled = true;
 
-// THIS:
-var options = MetalDelegate.Options()
-options.isPrecisionLossAllowed = false
-options.waitType = .passive
-options.isQuantizationEnabled = false
-let delegate = MetalDelegate(options: options)
+    TFLMetalDelegate* delegate = [[TFLMetalDelegate alloc] initWithOptions:options];
 
-// IS THE SAME AS THIS:
-let delegate = MetalDelegate()
+    // IS THE SAME AS THIS:
+    TFLMetalDelegate* delegate = [[TFLMetalDelegate alloc] init];
+      </pre></p>
+    </section>
+    <section>
+      <h3>C</h3>
+      <p><pre class="prettyprint lang-c">
+    // THIS:
+    const TFLGpuDelegateOptions options = {
+      .allow_precision_loss = false,
+      .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+      .enable_quantization = true,
+    };
 
-```
+    TfLiteDelegate* delegate = TFLGpuDelegateCreate(options);
 
-**C API (also used for Objective-C)**
+    // IS THE SAME AS THIS:
+    TfLiteDelegate* delegate = TFLGpuDelegateCreate(nullptr);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
-```c++
-
-// THIS:
-const TFLGpuDelegateOptions options = {
-  .allow_precision_loss = false,
-  .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
-  .enable_quantization = false,
-};
-
-auto* delegate = TFLGpuDelegateCreate(options);
-
-// IS THE SAME AS THIS:
-auto* delegate = TFLGpuDelegateCreate(nullptr);
-
-```
-
-While it is convenient to use `nullptr`, we recommend that you explicitly set
-the options, to avoid any unexpected behavior if default values are changed in
-the future.
+While it is convenient to use `nullptr` or default constructors, we recommend
+that you explicitly set the options, to avoid any unexpected behavior if default
+values are changed in the future.
 
 ### Running quantized models on GPU
 
@@ -347,26 +353,41 @@ Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 
 #### iOS
 
-iOD APIs support quantized models by default. To disable, do the following:
+iOS APIs support quantized models by default. To disable, do the following:
 
-**Swift API**
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Swift</h3>
+      <p><pre class="prettyprint lang-swift">
+    var options = MetalDelegate.Options()
+    options.isQuantizationEnabled = false
+    let delegate = MetalDelegate(options: options)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Objective-C</h3>
+      <p><pre class="prettyprint lang-objc">
+    TFLMetalDelegateOptions* options = [[TFLMetalDelegateOptions alloc] init];
+    options.quantizationEnabled = false;
+      </pre></p>
+    </section>
+    <section>
+      <h3>C</h3>
+      <p><pre class="prettyprint lang-c">
+    TFLGpuDelegateOptions options = TFLGpuDelegateOptionsDefault();
+    options.enable_quantization = false;
 
-```swift
-var options = MetalDelegate.Options()
-options.isQuantizationEnabled = false
-let delegate = MetalDelegate(options: options)
-```
+    TfLiteDelegate* delegate = TFLGpuDelegateCreate(options);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
-**C API (also used for Objective-C)**
+### Input/Output Buffers (iOS, C++ API only)
 
-```c
-TFLGpuDelegateOptions options = TFLGpuDelegateOptionsDefault();
-options.enable_quantization = false;
-
-auto* delegate = TFLGpuDelegateCreate(options);
-```
-
-### Input/Output Buffers (iOS only)
+Note: This is only available when you are using bazel or build TensorFlow Lite
+by yourself. C++ API can't be used with CocoaPods.
 
 To do computation on the GPU, data must be made available to the GPU. This often
 requires performing a memory copy. It is desirable not to cross the CPU/GPU
@@ -378,7 +399,7 @@ If the network's input is an image already loaded in the GPU memory (for
 example, a GPU texture containing the camera feed) it can stay in the GPU memory
 without ever entering the CPU memory. Similarly, if the network's output is in
 the form of a renderable image (for example,
-[image style transfer](https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Gatys_Image_Style_Transfer_CVPR_2016_paper.pdf)_)
+[image style transfer](https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Gatys_Image_Style_Transfer_CVPR_2016_paper.pdf))
 it can be directly displayed on the screen.
 
 To achieve best performance, TensorFlow Lite makes it possible for users to

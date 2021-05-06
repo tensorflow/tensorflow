@@ -40,7 +40,8 @@ GPUResources BufferDescriptor::GetGPUResources() const {
 }
 
 absl::Status BufferDescriptor::PerformSelector(
-    const std::string& selector, const std::vector<std::string>& args,
+    const GpuInfo& gpu_info, const std::string& selector,
+    const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
     return PerformReadSelector(args, result);

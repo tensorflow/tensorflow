@@ -400,6 +400,9 @@ message HloModuleProto {
   DynamicParameterBindingProto dynamic_parameter_binding = 9;
 
   repeated CrossProgramPrefetch cross_program_prefetches = 10;
+
+  // True if the module contains dynamic computation.
+  bool is_dynamic = 11;
 }
 
 // Serialization of LogicalBuffer.

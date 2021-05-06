@@ -151,6 +151,25 @@ class ContextTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       context.context().get_total_memory_usage('GPU')
 
+  def testListFunctionNames(self):
+
+    @def_function.function
+    def f():
+      return constant_op.constant(1.)
+
+    concrete = f.get_concrete_function()
+    self.assertIn(concrete.name.decode(),
+                  context.context().list_function_names())
+
+  def testSetLogicalDeviceAfterContextInitialization(self):
+    ctx = context.Context()
+    ctx.set_logical_cpu_devices(4)
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 4)
+
+    # Cannot set logical device twice.
+    with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
+      ctx.set_logical_cpu_devices(8)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

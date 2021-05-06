@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -38,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -112,6 +112,9 @@ struct TFRInlinerInterface : public DialectInlinerInterface {
 
 TFRDialect::TFRDialect(MLIRContext *context)
     : Dialect(/*name=*/"tfr", context, TypeID::get<TFRDialect>()) {
+  // TFR depends on TensorFlow for its canonicalization
+  context->getOrLoadDialect<TF::TensorFlowDialect>();
+
   addTypes<TFRTensorType, TFRTensorListType, TFRAttrType>();
   addOperations<
 #define GET_OP_LIST
@@ -231,7 +234,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   // Collect all the undefined attributes used in the inputs.
   llvm::SmallVector<StringAttr, 4> undefined_attrs;
   for (auto attr : input_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }
@@ -295,7 +298,7 @@ static LogicalResult Verify(TFRFuncOp func) {
 
   // Collect all the undefined attributes used in the outputs.
   for (auto attr : output_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }
@@ -544,8 +547,8 @@ void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "equal op has two operands");
   auto ctx = getContext();
-  if (operands[0] == operands[1]) return BoolAttr::get(/*value=*/true, ctx);
-  return BoolAttr::get(/*value=*/false, ctx);
+  if (operands[0] == operands[1]) return BoolAttr::get(ctx, true);
+  return BoolAttr::get(ctx, false);
 }
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
@@ -593,7 +596,7 @@ Type TFRDialect::parseType(DialectAsmParser &parser) const {
     do {
       StringRef attr;
       if (failed(parser.parseKeyword(&attr))) return {};
-      attrs.push_back(StringAttr::get(attr, ctx));
+      attrs.push_back(StringAttr::get(ctx, attr));
     } while (succeeded(parser.parseOptionalComma()));
 
     if (l_square_parsed && failed(parser.parseRSquare())) {
@@ -610,7 +613,7 @@ Type TFRDialect::parseType(DialectAsmParser &parser) const {
   } else if (typeNameSpelling == "tensor_list") {
     return TFRTensorListType::getChecked(attrs, loc);
   } else if (typeNameSpelling == "attr") {
-    return TFRAttrType::getChecked(loc);
+    return TFRAttrType::getChecked(loc, loc.getContext());
   } else {
     parser.emitError(parser.getNameLoc(), "unknown type " + typeNameSpelling);
     return {};

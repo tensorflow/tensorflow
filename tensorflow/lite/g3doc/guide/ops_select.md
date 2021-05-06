@@ -1,17 +1,15 @@
 # Select TensorFlow operators
 
-Caution: This feature is experimental.
-
 Since the TensorFlow Lite builtin operator library only supports a limited
 number of TensorFlow operators, not every model is convertible. For details,
 refer to [operator compatibility](ops_compatibility.md).
 
 To allow conversion, users can enable the usage of
-[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
-in their TensorFlow Lite model. However, running TensorFlow Lite models with
-TensorFlow ops requires pulling in the core TensorFlow runtime, which increases
-the TensorFlow Lite interpreter binary size. For Android, you can avoid this by
-selectively building only required Tensorflow ops. For the details, refer to
+[certain TensorFlow ops](op_select_allowlist.md) in their TensorFlow Lite model.
+However, running TensorFlow Lite models with TensorFlow ops requires pulling in
+the core TensorFlow runtime, which increases the TensorFlow Lite interpreter
+binary size. For Android, you can avoid this by selectively building only
+required Tensorflow ops. For the details, refer to
 [reduce binary size](../guide/reduce_binary_size.md).
 
 This document outlines how to [convert](#convert_a_model) and
@@ -55,9 +53,9 @@ the standard TensorFlow Lite AAR as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
     // This dependency adds the necessary TF op support.
-    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly-SNAPSHOT'
 }
 ```
 
@@ -261,15 +259,11 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
     input/output types that are typically available in TensorFlow.
 *   Unsupported ops: Control flow ops and ops that require explicit
     initialization from resources, like `HashTableV2`, are not yet supported.
-*   Unsupported optimizations: If you apply an optimization known as
-    [post training quantization](../performance/post_training_quantization.md),
-    only the TensorFlow Lite ops will be quantized (or optimized), but the
-    TensorFlow ops will remain as float (or unoptimized).
 
-## Future plans
+## Updates
 
-The following is a list of improvements to this pipeline that are in progress:
-
-*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
-    example, NNAPI and GPU delegates.
+*   Version 2.5 (not yet officially released)
+    -   You can apply an optimization known as
+        [post training quantization](../performance/post_training_quantization.md)
+*   Version 2.4
+    -   Compatibility with hardware accelerated delegates has improved

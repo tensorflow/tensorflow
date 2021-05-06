@@ -21,11 +21,8 @@ separate inputs if the given input_shape is a list, and will create a single
 input if the given shape is a tuple.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections.abc as collections_abc
+import collections
+import enum
 import json
 import numpy as np
 import wrapt
@@ -83,7 +80,7 @@ def _decode_helper(obj):
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
 
-  Arguments:
+  Args:
       obj: the object to serialize
 
   Returns:
@@ -121,7 +118,7 @@ def get_json_type(obj):
   if isinstance(obj, dtypes.DType):
     return obj.name
 
-  if isinstance(obj, collections_abc.Mapping):
+  if isinstance(obj, collections.abc.Mapping):
     return dict(obj)
 
   if obj is Ellipsis:
@@ -140,5 +137,7 @@ def get_json_type(obj):
                        'class {} has not been registered.'
                        .format(obj, type(obj)))
 
-  raise TypeError('Not JSON Serializable:', obj)
+  if isinstance(obj, enum.Enum):
+    return obj.value
 
+  raise TypeError('Not JSON Serializable:', obj)

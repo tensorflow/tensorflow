@@ -98,9 +98,8 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
 
   def testComputeAverageLossInvalidSampleWeights(self):
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
-                                 "Dimensions must be equal")):
+    with self.assertRaisesIncompatibleShapesError(
+        (ValueError, errors_impl.InvalidArgumentError)):
       nn_impl.compute_average_loss([2.5, 6.2, 5.],
                                    sample_weight=[0.2, 0.8],
                                    global_batch_size=10)

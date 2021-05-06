@@ -36,46 +36,6 @@ constexpr float kHexagonMinRelativeScale = 0.0009766f;
 
 }  // namespace
 
-TfLiteStatus TransposeConv2dOpBuilder::ProcessPerChannelQuantizedWeights(
-    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
-    TfLiteContext* context, float* weights_min, float* weights_max) {
-  const auto& weights_tensor = context->tensors[inputs->data[1]];
-  TfLiteAffineQuantization* weights_quant_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(
-          weights_tensor.quantization.params);
-
-  // Retrieve channel scales.
-  num_scale_values_ = weights_quant_params->scale->size;
-  // Normalize the scales as expected by Hexagon.
-  scales_data_ = weights_quant_params->scale->data;
-  std::vector<float> normalized_scales;
-  normalized_scales.reserve(num_scale_values_);
-  float scale_max = 0.0;
-  for (int i = 0; i < num_scale_values_; ++i) {
-    normalized_scales.push_back(scales_data_[i]);
-    if (scales_data_[i] > scale_max) {
-      scale_max = scales_data_[i];
-    }
-  }
-  if (scale_max == 0.0) {
-    TF_LITE_KERNEL_LOG(context, "Scale max is zero for: %s",
-                       weights_tensor.name);
-    return kTfLiteError;
-  }
-  for (int i = 0; i < num_scale_values_; ++i) {
-    normalized_scales[i] =
-        std::max(normalized_scales[i] / scale_max, kHexagonMinRelativeScale);
-  }
-  // Add node for channel scales data.
-  const std::vector<int> scales_shape = {1, 1, 1, num_scale_values_};
-  channel_scales_node_ = graph_builder_->AddConstNodeWithData(
-      scales_shape.data(), reinterpret_cast<char*>(normalized_scales.data()),
-      normalized_scales.size() * sizeof(normalized_scales[0]));
-  *weights_min = -128 * scale_max;
-  *weights_max = 127 * scale_max;
-  return kTfLiteOk;
-}
-
 TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
@@ -111,7 +71,8 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   float weights_max = 0;
   if (is_per_channel_quant) {
     ProcessPerChannelQuantizedWeights(inputs, outputs, context, &weights_min,
-                                      &weights_max);
+                                      &weights_max, graph_builder_,
+                                      &per_channel_quant_);
   } else {
     TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
         weights_tensor, &weights_min, &weights_max));
@@ -160,18 +121,48 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   AddInput(TensorID(stride_node->GetID(), 0));
 
   // BIAS.
-  // TFLite's TransposeConv doesn't have a bias input, so we just feed in 0s.
-  std::vector<int> bias_data(output_depth_size, 0);
-  // Hexagon's conv ops require bias as a [1, 1, 1, dout] tensor.
-  bias_shape_ = {1, 1, 1, output_depth_size};
-  auto* bias_const = graph_builder_->AddConstNodeWithData(
-      bias_shape_.data(), reinterpret_cast<char*>(bias_data.data()),
-      sizeof(bias_data[0]) * bias_data.size());
-  float zero_bound = 0;
-  auto* bias_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
-  auto* bias_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
+  const bool has_bias = inputs->size == 4;
+  OpBuilder* bias_const = nullptr;
+  OpBuilder* bias_min_const = nullptr;
+  OpBuilder* bias_max_const = nullptr;
+  if (!has_bias) {
+    // If the TFLite node does not have a bias, we simply feed in 0s.
+    std::vector<int> bias_data(output_depth_size, 0);
+    bias_shape_ = {1, 1, 1, output_depth_size};
+    bias_const = graph_builder_->AddConstNodeWithData(
+        bias_shape_.data(), reinterpret_cast<char*>(bias_data.data()),
+        sizeof(bias_data[0]) * bias_data.size());
+    float zero_bound = 0;
+    bias_min_const = graph_builder_->AddConstNodeWithData(
+        kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
+    bias_max_const = graph_builder_->AddConstNodeWithData(
+        kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
+  } else {
+    const auto& bias_tensor = context->tensors[inputs->data[3]];
+    if (bias_tensor.allocation_type != kTfLiteMmapRo) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Bias tensor doesn't have correct allocation type: %s",
+                         bias_tensor.name);
+      return kTfLiteError;
+    }
+    float bias_min = 0;
+    float bias_max = 0;
+    if (per_channel_quant_.channel_scales_node != nullptr) {
+      ProcessPerChannelQuantizedBias(inputs, outputs, context, &bias_min,
+                                     &bias_max, graph_builder_,
+                                     &per_channel_quant_, &bias_const);
+    } else {
+      bias_const =
+          graph_builder_->AddConstNodeWithData(inputs->data[3], bias_tensor);
+      TF_LITE_ENSURE_STATUS(
+          ComputeMinAndMaxQuantValues(bias_tensor, &bias_min, &bias_max));
+    }
+
+    bias_min_const = graph_builder_->AddConstNodeWithData(
+        kScalarShape, reinterpret_cast<char*>(&bias_min), sizeof(bias_min));
+    bias_max_const = graph_builder_->AddConstNodeWithData(
+        kScalarShape, reinterpret_cast<char*>(&bias_max), sizeof(bias_max));
+  }
   AddInput(TensorID(bias_const->GetID(), 0));
   AddInput(TensorID(bias_min_const->GetID(), 0));
   AddInput(TensorID(bias_max_const->GetID(), 0));
@@ -181,8 +172,8 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
       ComputeAndAddMinAndMax(context, context->tensors[outputs->data[0]]));
 
   // Channel scales, if this op is per-channel quantized.
-  if (channel_scales_node_ != nullptr) {
-    AddInput(TensorID(channel_scales_node_->GetID(), 0));
+  if (per_channel_quant_.channel_scales_node != nullptr) {
+    AddInput(TensorID(per_channel_quant_.channel_scales_node->GetID(), 0));
   }
 
   // Hexagon outputs for this node.

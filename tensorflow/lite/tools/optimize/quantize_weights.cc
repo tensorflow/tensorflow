@@ -91,7 +91,8 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
              builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
              builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
              builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
-             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
+             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
+             builtin_op_code == BuiltinOperator_TRANSPOSE_CONV) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/svdf.cc
@@ -356,6 +357,8 @@ void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 5 : 2;
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 9 : 3;
+    } else if (op_code == BuiltinOperator_BATCH_MATMUL) {
+      model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 1;
     } else if (op_code == BuiltinOperator_SVDF) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 2;
     } else if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {

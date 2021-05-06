@@ -142,7 +142,7 @@ LogicalResult CopyAllowedUnregisteredAttrs(Operation* src, CallOp dst,
 
     // Unregistered attribute.
     if (GetAllowedAttributes().contains(attr_name)) {
-      dst.setAttr(attr.first, attr.second);
+      dst->setAttr(attr.first, attr.second);
     } else {
       src->emitError("Denied unregistered attribute was found: " + attr_name);
       return failure();

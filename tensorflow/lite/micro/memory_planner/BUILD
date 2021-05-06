@@ -1,15 +1,12 @@
 load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-load(
     "//tensorflow/lite/micro:build_def.bzl",
     "micro_copts",
 )
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -37,6 +34,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -51,12 +49,11 @@ cc_library(
     copts = micro_copts(),
     deps = [
         ":memory_planner",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_compatibility",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "linear_memory_planner_test",
     srcs = [
         "linear_memory_planner_test.cc",
@@ -67,7 +64,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "greedy_memory_planner_test",
     srcs = [
         "greedy_memory_planner_test.cc",

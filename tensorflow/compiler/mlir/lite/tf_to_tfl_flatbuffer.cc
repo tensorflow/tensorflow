@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -100,7 +101,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     const GraphImportConfig& specs, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    llvm::SourceMgr* source_mgr, MLIRContext* context) {
+    absl::string_view control_output_arrays, llvm::SourceMgr* source_mgr,
+    MLIRContext* context) {
   // Set up the input file.
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
@@ -121,14 +123,14 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, /*control_output_arrays=*/"",
+        input_shapes, output_arrays, control_output_arrays,
         specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, /*control_output_arrays=*/"",
+      input_shapes, output_arrays, control_output_arrays,
       specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false, context);
@@ -172,20 +174,29 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   // Write MLIR TFLite dialect into FlatBuffer
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops, select_user_tf_ops, saved_model_tags,
-            &op_or_arg_name_mapper)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
     // Post-training weight quantization path. Once MLIR has support for this,
     // we can remove this else statement.
     std::string pre_quantized_result;
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
-            saved_model_tags, &op_or_arg_name_mapper)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
+                                                   &pre_quantized_result)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
@@ -210,6 +221,9 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
         string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
   }
 
+  if (mlir::failed(module.verify())) {
+    return tensorflow::errors::Unknown("Final module is invalid");
+  }
   return Status::OK();
 }
 
@@ -229,8 +243,10 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
+    MLIRImportOptions options;
+    options.upgrade_legacy = specs.upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context, specs.upgrade_legacy);
+        input_filename, tags, exported_names, context, options);
 
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();

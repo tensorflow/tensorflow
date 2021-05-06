@@ -7,16 +7,22 @@ package(
         "//tensorflow:internal",
         "//tensorflow:structured_tensor_whitelist",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "structured",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["nofixdeps"],
+    deps = [
+        ":structured_ops",
+    ],
+)
+
+py_library(
+    name = "structured_ops",
+    srcs = ["structured_ops.py"],
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
@@ -29,6 +35,7 @@ py_library(
         "structured_array_ops.py",
         "structured_tensor.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -54,6 +61,7 @@ py_library(
     srcs = [
         "structured_array_ops.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:array_ops",
@@ -113,6 +121,32 @@ py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "structured_array_ops_test",
+    srcs = ["structured_array_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":structured_array_ops",
+        ":structured_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:row_partition",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

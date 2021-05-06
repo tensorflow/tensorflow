@@ -148,7 +148,7 @@ class DistributedRuntimeClient {
   // state_ is protected by a mutex because the heartbeat thread needs to look
   // at it.
   absl::Mutex mu_;
-  State state_ GUARDED_BY(mu_) = State::kNotConnected;
+  State state_ ABSL_GUARDED_BY(mu_) = State::kNotConnected;
 
   // A unique session ID, assigned by the server during Connect().
   uint64 session_id_;

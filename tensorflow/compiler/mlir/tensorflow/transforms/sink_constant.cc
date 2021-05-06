@@ -25,21 +25,21 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-sink-constant"
 
 namespace mlir {
-namespace tf_executor {
+namespace TFDevice {
 
 namespace {
 using ::mlir::TF::ConstOp;
 
-class ExecutorConstantSinking
-    : public mlir::PassWrapper<ExecutorConstantSinking, FunctionPass> {
+class ClusterConstantSinkingPass
+    : public TF::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
   void runOnFunction() override {
     getFunction().walk([](tf_device::ClusterOp cluster) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
@@ -82,16 +82,11 @@ class ExecutorConstantSinking
   }
 };
 
-static mlir::PassRegistration<ExecutorConstantSinking> pass(
-    "tf-device-constant-sinking",
-    "Sink constants implicitly captured in a tf_device.cluster region. This "
-    "reduces the number of arguments when outlining later.");
-
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorConstantSinkingPass() {
-  return std::make_unique<ExecutorConstantSinking>();
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass() {
+  return std::make_unique<ClusterConstantSinkingPass>();
 }
 
-}  // namespace tf_executor
+}  // namespace TFDevice
 }  // namespace mlir

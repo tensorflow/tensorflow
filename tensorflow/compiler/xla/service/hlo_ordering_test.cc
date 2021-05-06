@@ -282,10 +282,10 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
                                        dataflow->GetValueDefinedAt(add)));
   ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).uses().size(), 1);
 
-  const HloUse& while_use = dataflow->GetValueDefinedAt(xla_while).uses()[0];
-  EXPECT_EQ(while_use.instruction, add);
-  EXPECT_TRUE(ordering.UseIsBeforeValueDefinition(
-      while_use, dataflow->GetValueDefinedAt(add), *dataflow));
+  const HloUse* while_use = &dataflow->GetValueDefinedAt(xla_while).uses()[0];
+  EXPECT_EQ(while_use->instruction, add);
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
+      {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(xla_while), dataflow->GetValueDefinedAt(add),
       *dataflow));

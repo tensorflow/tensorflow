@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -165,7 +166,16 @@ class DelegatedInterpreter {
     return const_cast<TfLiteRegistration*>(&node_and_registration->second);
   }
 
-  TfLiteIntArray* exec_plan() const { return exec_plan_; }
+  TfLiteIntArray* exec_plan() {
+    // This simulates how TFLite's GetExecutionPlan invalidates previous
+    // output before returning new data.
+    const int num_nodes = exec_plan_->size;
+    TfLiteIntArray* new_array = TfLiteIntArrayCreate(num_nodes);
+    std::memcpy(new_array->data, exec_plan_->data, num_nodes * sizeof(int32_t));
+    TfLiteIntArrayFree(exec_plan_);
+    exec_plan_ = new_array;
+    return exec_plan_;
+  }
   TfLiteDelegateParams* add_delegate_params() {
     delegate_params_.push_back(TfLiteDelegateParams());
     return &delegate_params_.back();
@@ -178,7 +188,7 @@ class DelegatedInterpreter {
 
  private:
   // The manually-set execution plan for this delegated interpreter.
-  TfLiteIntArray* exec_plan_;
+  TfLiteIntArray* exec_plan_ = nullptr;
 
   // The TfLiteDelegateParams object that's manually populated inside the mocked
   // TfLiteContext::PreviewDelegatePartitioning.
@@ -187,7 +197,9 @@ class DelegatedInterpreter {
 
 class InterpreterFp16 : public DelegatedInterpreter {
  public:
-  explicit InterpreterFp16(TfLiteBuiltinOperator op) : DelegatedInterpreter(3) {
+  explicit InterpreterFp16(TfLiteBuiltinOperator op,
+                           bool const_dequantize_inputs = true)
+      : DelegatedInterpreter(3) {
     void* builtin_data = malloc(sizeof(int));
     EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
     EXPECT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
@@ -243,6 +255,15 @@ class InterpreterFp16 : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    if (const_dequantize_inputs) {
+      // This simulates the dequantize inputs being constants in the graph.
+      // If this is not true, FP16GraphPartitionHelper should not consider the
+      // corresponding DEQUANTIZE ops.
+      auto* tensor0 = interpreter_.tensor(0);
+      auto* tensor2 = interpreter_.tensor(2);
+      tensor0->allocation_type = kTfLiteMmapRo;
+      tensor2->allocation_type = kTfLiteMmapRo;
+    }
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization, false),
@@ -322,18 +343,74 @@ TEST(ModelBuilderTest, GetOpsToReplaceAcceptsFp16DequantizeNodes) {
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
 
-  // The Dequant nodes are added to ops_to_replace as a post-processing step by
-  // the FP16GraphPartitioner. ADD is delegated with its inputs pointing to the
-  // FP16 inputs.
+  // Ensure all nodes are delegated, and the ADD op has FP16 inputs.
   EXPECT_EQ(ops_to_replace->size, 3);
   TfLiteNode* node = nullptr;
   TfLiteRegistration* registration = nullptr;
-  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
+  context->GetNodeAndRegistration(context, /**node_id**/ 2, &node,
                                   &registration);
   EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
+InterpreterFp16* interpreter_fp16_non_constant =
+    new InterpreterFp16(kTfLiteBuiltinAdd, /*const_dequantize_inputs=*/false);
+
+// Same as GetOpsToReplaceAcceptsFp16DequantizeNodes, but the DEQUANTIZE inputs
+// are not constant. As a result, we don't allow the delegate to accept them.
+TEST(ModelBuilderTest, GetOpsToReplaceRejectsNonConstantFp16DequantizeNodes) {
+  TfLiteContext* context = interpreter_fp16_non_constant->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_non_constant->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_fp16_non_constant->node(node_index);
+    *registration = interpreter_fp16_non_constant->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // The partitioner should accept only the Add op initially.
+        EXPECT_EQ(nodes_to_replace->size, 1);
+        // Single partition output.
+        auto params = interpreter_fp16_non_constant->add_delegate_params();
+        params->nodes_to_replace = TfLiteIntArrayCreate(1);
+        params->nodes_to_replace->data[0] = 2;
+        params->input_tensors = TfLiteIntArrayCreate(2);
+        params->input_tensors->data[0] = 1;
+        params->input_tensors->data[1] = 3;
+        params->output_tensors = TfLiteIntArrayCreate(1);
+        params->output_tensors->data[0] = 4;
+
+        *partition_params_array =
+            interpreter_fp16_non_constant->delegate_params();
+        *num_partitions = interpreter_fp16_non_constant->num_delegate_params();
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Only ADD is delegated, with FP32 (dequantized) inputs.
+  EXPECT_EQ(ops_to_replace->size, 1);
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
   TfLiteIntArrayFree(ops_to_replace);
 }
 
@@ -800,6 +877,13 @@ class InterpreterMultiNode : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    // Simulate DEQUANTIZE inputs being constants.
+    auto* tensor0 = interpreter_.tensor(0);
+    auto* tensor1 = interpreter_.tensor(1);
+    auto* tensor2 = interpreter_.tensor(2);
+    tensor0->allocation_type = kTfLiteMmapRo;
+    tensor1->allocation_type = kTfLiteMmapRo;
+    tensor2->allocation_type = kTfLiteMmapRo;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization, false),
@@ -832,7 +916,8 @@ class InterpreterMultiNode : public DelegatedInterpreter {
 InterpreterMultiNode* interpreter_mn =
     new InterpreterMultiNode(/*both_ops_supported*/ false);
 
-TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
+TEST(ModelBuilderTest,
+     GetOpsToReplaceSelectsCorrectFp16Nodes_SingleDelegatedPartition) {
   // A graph with three Dequant nodes feeding two ops, 'Add' and 'Greater'.
   // 'Add' can be replaced by the GPU delegate, but 'Greater' can not.
   //   t0 (FP16) --> Dequant(0) --> t3 (FP32) --> Greater(3) -> t6
@@ -840,8 +925,7 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
   //                                          --\
   //   t3 (FP16) --> Dequant(2) --> t5 (FP32) --> Add(4) -> t7
   //
-  //  OpsToReplace should accept 'Add' & the Dequant nodes that only output to
-  //  it (in this case, Dequant(2)).
+  //  OpsToReplace should ONLY accept 'Add'.
   TfLiteContext* context = interpreter_mn->context();
 
   // These functions are meant to be called inside delegates. Swap out
@@ -881,12 +965,9 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
 
-  // Post-PreviewDelegatePartitioning, the partitioner will add Dequant(2) to
-  // ops_to_replace, since it only outputs to a delegated node.
-  EXPECT_EQ(ops_to_replace->size, 2);
+  EXPECT_EQ(ops_to_replace->size, 1);
   // Op at index 4 is the Add op.
   EXPECT_EQ(ops_to_replace->data[0], 4);
-  EXPECT_EQ(ops_to_replace->data[1], 2);
   // Verify that Add op has fp16 inputs.
   TfLiteNode* node = nullptr;
   TfLiteRegistration* registration = nullptr;
@@ -902,7 +983,7 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
 InterpreterMultiNode* interpreter_mn2 =
     new InterpreterMultiNode(/*both_ops_supported*/ true);
 TEST(ModelBuilderTest,
-     GetOpsToReplaceSelectsCorrectFp16Nodes_MultiplePartitions) {
+     GetOpsToReplaceSelectsCorrectFp16Nodes_MultipleDelegatedPartitions) {
   // A graph with three Dequant nodes feeding two Add ops.
   //   t0 (FP16) --> Dequant(0) --> t3 (FP32) --> Add(3) -> t6
   //   t1 (FP16) --> Dequant(1) --> t4 (FP32) --/
@@ -910,8 +991,8 @@ TEST(ModelBuilderTest,
   //   t3 (FP16) --> Dequant(2) --> t5 (FP32) --> Add(4) -> t7
   //
   // In this test case, we purposely partition Add(3) & Add(4) into different
-  // partitions, to check if Dequant nodes that output *only* to the first
-  // partition nodes are accepted.
+  // partitions from the runtime. However, since all non-DEQUANT ops are
+  // delegated, the partitioner suggests delegating the DEQUANTs too.
 
   TfLiteContext* context = interpreter_mn2->context();
 
@@ -967,29 +1048,24 @@ TEST(ModelBuilderTest,
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(
       context, /*allow_quant_ops*/ false, /*max_delegated_partitions*/ 2);
 
-  // Three ops should be selected:
-  // Add(3), Dequant(x), Add(4)
-  // Since both partitions are of size 1, either could end up as the 'first'
-  // partition with one Dequant node added for it.
-  EXPECT_EQ(ops_to_replace->size, 3);
+  // All ops should be selected.
+  EXPECT_EQ(ops_to_replace->size, 5);
 
   TfLiteNode* node = nullptr;
   TfLiteRegistration* registration = nullptr;
   // Verify that both Add ops have fp16 inputs.
-  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
+  context->GetNodeAndRegistration(context, /**node_index**/ 3, &node,
                                   &registration);
   EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
-  context->GetNodeAndRegistration(context, ops_to_replace->data[2], &node,
+  context->GetNodeAndRegistration(context, /**node_index**/ 4, &node,
                                   &registration);
   EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
-  // Verify that the op at index 1 is a Dequant outputing to a single Add.
-  EXPECT_TRUE(ops_to_replace->data[1] == 0 || ops_to_replace->data[1] == 2);
   TfLiteIntArrayFree(ops_to_replace);
 }
 
@@ -1138,30 +1214,32 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
         if (nodes_to_replace->size == 0) {
           *num_partitions = 0;
           return kTfLiteOk;
-        }
-        auto params = interpreter_quant->add_delegate_params();
-        params->nodes_to_replace = TfLiteIntArrayCreate(3);
-        params->nodes_to_replace->data[0] = 0;
-        params->nodes_to_replace->data[1] = 1;
-        params->nodes_to_replace->data[2] = 2;
-        params->input_tensors = TfLiteIntArrayCreate(2);
-        params->input_tensors->data[0] = 0;
-        params->input_tensors->data[1] = 3;
-        params->output_tensors = TfLiteIntArrayCreate(1);
-        params->output_tensors->data[0] = 4;
+        } else if (nodes_to_replace->size == 4) {
+          auto params = interpreter_quant->add_delegate_params();
+          params->nodes_to_replace = TfLiteIntArrayCreate(4);
+          params->nodes_to_replace->data[0] = 0;
+          params->nodes_to_replace->data[1] = 1;
+          params->nodes_to_replace->data[2] = 2;
+          params->nodes_to_replace->data[2] = 3;
+          params->input_tensors = TfLiteIntArrayCreate(2);
+          params->input_tensors->data[0] = 0;
+          params->input_tensors->data[1] = 3;
+          params->output_tensors = TfLiteIntArrayCreate(1);
+          params->output_tensors->data[0] = 5;
 
-        *partition_params_array = interpreter_quant->delegate_params();
-        *num_partitions = interpreter_quant->num_delegate_params();
-        return kTfLiteOk;
+          *partition_params_array = interpreter_quant->delegate_params();
+          *num_partitions = interpreter_quant->num_delegate_params();
+          return kTfLiteOk;
+        } else {
+          // Shouldn't happen!
+          return kTfLiteError;
+        }
       };
 
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, /**allow_quant_ops=*/true);
-  // If we allow quant ops, two QUANTIZE & one ADD node should be accepted.
-  EXPECT_EQ(ops_to_replace->size, 3);
-  EXPECT_EQ(0, ops_to_replace->data[0]);
-  EXPECT_EQ(1, ops_to_replace->data[1]);
-  EXPECT_EQ(2, ops_to_replace->data[2]);
+  // If we allow quant ops, all ops should get delegated.
+  EXPECT_EQ(ops_to_replace->size, 4);
 
   TfLiteIntArray* ops_to_replace_without_quant =
       GetOpsToReplace(context, /**allow_quant_ops=*/false);

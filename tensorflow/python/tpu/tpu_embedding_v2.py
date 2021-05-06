@@ -20,7 +20,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import functools
-from typing import Any, Dict, Callable, List, Optional, Text, Tuple
+from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
 
@@ -41,6 +41,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -155,7 +156,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       strategy.distribute_datasets_from_function(
           dataset_fn=...,
           options=tf.distribute.InputOptions(
-              experimental_prefetch_to_device=False))
+              experimental_fetch_to_device=False))
   dataset_iterator = iter(distributed_dataset)
   ```
 
@@ -228,7 +229,6 @@ class TPUEmbedding(tracking.AutoTrackable):
   model = model_fn(...)
   embedding = tf.tpu.experimental.embedding.TPUEmbedding(
       feature_config=feature_config,
-      batch_size=1024,
       optimizer=tf.tpu.experimental.embedding.SGD(0.1))
   checkpoint = tf.train.Checkpoint(model=model, embedding=embedding)
   checkpoint.restore(...)
@@ -243,7 +243,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   def __init__(
       self,
-      feature_config: Any,
+      feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer],  # pylint:disable=protected-access
       pipeline_execution_with_tensor_core: bool = False):
     """Creates the TPUEmbedding mid level API object.
@@ -297,9 +297,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     # Thus we must fix a common order to tables and ensure they have unique
     # names.
 
-    # Set table order here
-    self._table_config = list(
-        {feature.table for feature in nest.flatten(feature_config)})
+    # Set table order here to the order of the first occurence of the table in a
+    # feature provided by the user. The order of this struct must be fixed
+    # to provide the user with deterministic behavior over multiple
+    # instantiations.
+    self._table_config = []
+    for feature in nest.flatten(feature_config):
+      if feature.table not in self._table_config:
+        self._table_config.append(feature.table)
 
     # Ensure tables have unique names. Also error check the optimizer as we
     # specifically don't do that in the TableConfig class to allow high level
@@ -336,6 +341,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
+    self._verify_batch_size_on_enqueue = True
 
   def build(self, per_replica_batch_size: Optional[int] = None):
     """Create the underlying variables and initializes the TPU for embeddings.
@@ -587,7 +593,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -684,7 +690,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1087,7 +1093,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
-  def _raise_error_for_inputs_not_on_cpu(self, features):
+  def _raise_error_for_inputs_not_on_cpu(self, flat_inputs, flat_paths):
     """Checks all tensors in features to see are placed on the CPU."""
 
     def check_device(path, device_string):
@@ -1097,28 +1103,32 @@ class TPUEmbedding(tracking.AutoTrackable):
             "Received input tensor {} which is on a TPU input device {}. Input "
             "tensors for TPU embeddings must be placed on the CPU. Please "
             "ensure that your dataset is prefetching tensors to the host by "
-            "setting the 'experimental_prefetch_to_device' option of the "
+            "setting the 'experimental_fetch_to_device' option of the "
             "dataset distribution function. See the documentation of the "
-            "enqueue method for an example.".format(
-                path, device_string))
+            "enqueue method for an example.".format(path, device_string))
 
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
-    for path, input_tensor in nest.flatten_with_joined_string_paths(
-        features, expand_composites=True):
-      if (input_tensor.op.type == "Identity" and
-          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
-        for tensor in input_tensor.op.inputs[0].op.inputs:
-          check_device(path, tensor.device)
+    for input_tensor, input_path in zip(flat_inputs, flat_paths):
+      if nest.is_sequence_or_composite(input_tensor):
+        input_tensors = nest.flatten(input_tensor, expand_composites=True)
       else:
-        check_device(path, input_tensor.device)
+        input_tensors = [input_tensor]
+      for t in input_tensors:
+        if (t.op.type == "Identity" and
+            t.op.inputs[0].op.type == "TPUReplicatedInput"):
+          for tensor in t.op.inputs[0].op.inputs:
+            check_device(input_path, tensor.device)
+        else:
+          check_device(input_path, t.device)
 
   def enqueue(
       self,
       features,
       weights=None,
       training: bool = True,
-      name: Optional[Text] = None):
+      name: Optional[Text] = None,
+      device: Optional[Text] = None):
     """Enqueues id tensors for embedding lookup.
 
     This function enqueues a structure of features to be looked up in the
@@ -1139,7 +1149,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1166,6 +1176,28 @@ class TPUEmbedding(tracking.AutoTrackable):
     `embedding.apply_gradients` (e.g. for frozen embeddings or when doing
     evaluation).
 
+    For finer grained control, in the above example the line
+
+    ```
+      embedding.enqueue(embedding_features, training=True)
+    ```
+
+    may be replaced with
+
+    ```
+      per_core_embedding_features = self.strategy.experimental_local_results(
+          embedding_features)
+
+      def per_core_enqueue(ctx):
+        core_id = ctx.replica_id_in_sync_group
+        device = strategy.extended.worker_devices[core_id]
+        embedding.enqueue(per_core_embedding_features[core_id],
+                          device=device)
+
+      strategy.experimental_distribute_values_from_function(
+          per_core_queue_inputs)
+    ```
+
     Args:
       features: A nested structure of `tf.Tensor`s, `tf.SparseTensor`s or
         `tf.RaggedTensor`s, with the same structure as `feature_config`. Inputs
@@ -1181,6 +1213,10 @@ class TPUEmbedding(tracking.AutoTrackable):
         batch (forward pass only). Do not call `apply_gradients` when this is
         `False` as this may lead to a deadlock.
        name: A name for the underlying op.
+       device: The device name (e.g. '/task:0/device:TPU:2') where this batch
+         should be enqueued. This should be set if and only if features is not a
+         `tf.distribute.DistributedValues` and enqueue is not being called
+         inside a TPU context (e.g. inside `TPUStrategy.run`).
 
     Raises:
       ValueError: When called inside a strategy.run call and input is not
@@ -1201,20 +1237,27 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
 
-    # Should we also get batch_size from weights if they exist?
-    # Since features is assumed to be batched at the per replica batch size
-    # the returned batch size here is per replica an not global.
-    batch_size = self._get_batch_size(features, in_tpu_context)
-    if batch_size is None and not self._built:
-      raise RuntimeError("Unable to determine batch size from input features."
-                         "Please call build() with global batch size to "
-                         "initialize the TPU for embeddings.")
-    if batch_size is not None:
-      self._maybe_build(batch_size)
-      if self._batch_size != batch_size:
-        raise ValueError("Multiple calls to enqueue with different batch sizes "
-                         "{} and {}.".format(self._batch_size,
-                                             batch_size))
+    if not self._verify_batch_size_on_enqueue:
+      if not self._batch_size or not self._built:
+        raise ValueError(
+            "Configured not to check batch size on each enqueue() call; please "
+            "ensure build() was called with global batch size to initialize "
+            "the TPU for embeddings.")
+    else:
+      # Should we also get batch_size from weights if they exist?
+      # Since features is assumed to be batched at the per replica batch size
+      # the returned batch size here is per replica an not global.
+      batch_size = self._get_batch_size(features, in_tpu_context)
+      if batch_size is None and not self._built:
+        raise RuntimeError("Unable to determine batch size from input features."
+                           "Please call build() with global batch size to "
+                           "initialize the TPU for embeddings.")
+      if batch_size is not None:
+        self._maybe_build(batch_size)
+        if self._batch_size != batch_size:
+          raise ValueError("Multiple calls to enqueue with different batch "
+                           "sizes {} and {}.".format(self._batch_size,
+                                                     batch_size))
 
     nest.assert_same_structure(self._feature_config, features)
 
@@ -1224,8 +1267,9 @@ class TPUEmbedding(tracking.AutoTrackable):
       nest.assert_same_structure(self._feature_config, weights)
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
+    flat_paths, _ = zip(*flat_features)
 
-    self._raise_error_for_inputs_not_on_cpu(features)
+    self._raise_error_for_inputs_not_on_cpu(flat_inputs, flat_paths)
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
       self._raise_error_for_non_direct_inputs(features)
@@ -1257,7 +1301,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       tpu.outside_compilation(generate_enqueue_ops)
 
-    else:
+    elif device is None:
       mode_override = "train" if training else "inference"
       # We generate enqueue ops per device, so we need to gather the all
       # features for a single device in to a dict.
@@ -1272,7 +1316,8 @@ class TPUEmbedding(tracking.AutoTrackable):
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
-        device_ordinal = int(tpu_device.rsplit(":", 1)[1])
+        device_ordinal = (
+            tf_device.DeviceSpec.from_string(tpu_device).device_index)
         with ops.device(device_util.get_host_for_device(tpu_device)):
           enqueue_op = self._generate_enqueue_op(
               replica_inputs, replica_weights, flat_features,
@@ -1283,6 +1328,22 @@ class TPUEmbedding(tracking.AutoTrackable):
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
       ops.get_default_graph().control_outputs.extend(enqueue_ops)
+    else:
+      mode_override = "train" if training else "inference"
+      device_spec = tf_device.DeviceSpec.from_string(device)
+      if device_spec.device_type != "TPU":
+        raise ValueError(
+            "Non-TPU device {} passed to enqueue.".format(device))
+      with ops.device(device_util.get_host_for_device(device)):
+        enqueue_op = self._generate_enqueue_op(
+            flat_inputs, flat_weights, flat_features,
+            device_ordinal=device_spec.device_index,
+            mode_override=mode_override)
+
+        # Apply the name tag to the op.
+        if name is not None:
+          _add_key_attr(enqueue_op, name)
+        ops.get_default_graph().control_outputs.append(enqueue_op)
 
   def _get_batch_size(self, tensors, in_tpu_context: bool):
     """Gets the batch size from a nested structure of features."""
@@ -1532,8 +1593,6 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   for inp, weight, (path, feature) in zip(
       flat_inputs, flat_weights, flat_features):
     table = tables[feature.table]
-    if feature.max_sequence_length > 0:
-      raise ValueError("Sequence features unsupported at this time.")
 
     if weight is not None:
       if isinstance(inp, ops.Tensor):
@@ -1543,17 +1602,50 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
         raise ValueError(
             "Weight for {} is of type {} but it does not match type of the "
             "input which is {}.".format(path, type(weight), type(inp)))
+      elif feature.max_sequence_length > 0:
+        raise ValueError("Weight specified for {}, but this is a sequence "
+                         "feature.".format(path))
 
     if isinstance(inp, ops.Tensor):
+      if feature.max_sequence_length > 0:
+        raise ValueError("Feature {} is a sequence feature but a dense tensor "
+                         "was passed.".format(path))
       outputs.append(embedding_ops.embedding_lookup_v2(table, inp))
 
     elif isinstance(inp, sparse_tensor.SparseTensor):
-      outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
-          table, inp, sparse_weights=weight, combiner=feature.table.combiner))
+      if feature.max_sequence_length > 0:
+        batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
+        sparse_shape = array_ops.stack(
+            [batch_size, feature.max_sequence_length], axis=0)
+        # TPU Embedding truncates sequences to max_sequence_length, and if we
+        # don't truncate, scatter_nd will error out if the index was out of
+        # bounds.
+        truncated_inp = sparse_ops.sparse_slice(inp, start=[0, 0],
+                                                size=sparse_shape)
+
+        dense_output_shape = array_ops.stack(
+            [batch_size, feature.max_sequence_length, feature.table.dim],
+            axis=0)
+        outputs.append(
+            array_ops.scatter_nd(
+                inp.indices, array_ops.gather(table, truncated_inp.values),
+                dense_output_shape))
+      else:
+        outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
+            table, inp, sparse_weights=weight, combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
-      outputs.append(_ragged_embedding_lookup_with_reduce(
-          table, inp, weight, feature.table.combiner))
+      if feature.max_sequence_length > 0:
+        batch_size = inp.shape[0]
+        dense_output_shape = [
+            batch_size, feature.max_sequence_length, feature.table.dim]
+        ragged_lookup = embedding_ops.embedding_lookup_v2(table, inp)
+        # Unlike scatter_nd, RaggedTensor.to_tensor truncates to the given
+        # shape.
+        outputs.append(ragged_lookup.to_tensor(shape=dense_output_shape))
+      else:
+        outputs.append(_ragged_embedding_lookup_with_reduce(
+            table, inp, weight, feature.table.combiner))
 
     else:
       raise ValueError("Input {} is type {}. Tensor, SparseTensor or "

@@ -37,7 +37,16 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
     auto one_flags = one->CreateFlags(&params_);
     flags.insert(flags.end(), one_flags.begin(), one_flags.end());
   }
-  return tflite::Flags::Parse(argc, argv, flags);
+
+  bool parse_result = tflite::Flags::Parse(argc, argv, flags);
+  if (!parse_result || params_.Get<bool>("help")) {
+    std::string usage = Flags::Usage(argv[0], flags);
+    TFLITE_LOG(ERROR) << usage;
+    // Returning false intentionally when "--help=true" is specified so that
+    // the caller could check the return value to decide stopping the execution.
+    parse_result = false;
+  }
+  return parse_result;
 }
 
 std::vector<tools::TfLiteDelegatePtr>

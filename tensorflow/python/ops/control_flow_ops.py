@@ -3058,7 +3058,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     tensors = [
-        t if (isinstance(t, ops.Operation) or tensor_util.is_tensor(t) or
+        t if (isinstance(t, ops.Operation) or tensor_util.is_tf_type(t) or
               t is None) else ops.convert_to_tensor(t) for t in tensors
     ]
     gating_ops = [
@@ -3081,7 +3081,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if tensor_util.is_tensor(t):
+      if tensor_util.is_tf_type(t):
         tpl.append(with_dependencies([gate], t))
       elif isinstance(t, ops.Operation):
         with ops.control_dependencies([gate]):
@@ -3282,10 +3282,10 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
     branch_fns: validated list of callables for each branch (default last).
   """
   if not isinstance(branch_index, ops.Tensor):
-    raise TypeError("branch_index must a Tensor, got {}".format(
+    raise TypeError("branch_index must be a Tensor, got {}".format(
         type(branch_index)))
   if not branch_index.dtype.is_integer:
-    raise TypeError("branch_index must an integer Tensor, got {}".format(
+    raise TypeError("branch_index must be an integer Tensor, got {}".format(
         branch_index.dtype))
 
   if not branch_fns:

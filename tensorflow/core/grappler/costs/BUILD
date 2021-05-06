@@ -13,7 +13,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 alias(
@@ -91,7 +91,7 @@ cc_library(
 tf_cc_test(
     name = "graph_properties_test",
     srcs = ["graph_properties_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     data = [":graph_properties_testdata"],
     tags = [
         "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
@@ -108,6 +108,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -135,7 +136,7 @@ cc_library(
 tf_cc_test(
     name = "graph_memory_test",
     srcs = ["graph_memory_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     deps = [
         ":graph_memory",
         "//tensorflow/cc:cc_ops",
@@ -390,3 +391,13 @@ tf_cc_test(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "op_performance_data_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_performance_data"],
+# )
+# copybara:uncomment_end

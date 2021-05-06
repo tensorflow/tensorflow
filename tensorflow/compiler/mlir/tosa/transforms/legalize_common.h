@@ -16,39 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H
 
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+
 // This file contains legalizations common to mapping both TensorFlow and
 // TensorFlow Lite to TOSA.
 //
-// Conversion functions return nullptr on a lowerization failure or a lowered
-// operator on success.   Callers must check and return a LogicalResult failure
-// on nullptr.
+// Conversion functions return None on a failure or result value on success.
+// Callers must check and return a LogicalResult failure on nullptr.
 //
 // For these functions, the framework-specific operands/attributes/defaults
 // are already extracted and placed in a common form for lowering.
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"
-#include "mlir/Dialect/Quant/UniformSupport.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
-#include "mlir/IR/TypeUtilities.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/FormatVariadic.h"
 
 namespace mlir {
 namespace tosa {
@@ -228,7 +206,9 @@ llvm::Optional<Value> convertReduceMeanOp(
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                       RankedTensorType output_type,
-                                      Value input_value, StringRef mode);
+                                      Value input_value, StringRef mode,
+                                      bool align_corners,
+                                      bool half_pixel_centers);
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
@@ -258,6 +238,24 @@ llvm::Optional<Value> convertTFConv2DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref);
+
+// Lowers Gather operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value params_value,
+                                      Value indices_value, int32_t batch_dims,
+                                      int32_t axis);
+
+// Lowers GatherNd operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
+                                        Operation* op, Value result_value,
+                                        Value params_value,
+                                        Value indices_value);
+
+// Lowers OneHot operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value indices_value,
+                                      Value on_value, Value off_value,
+                                      int32_t depth, int32_t axis);
 
 };  // namespace tosa
 };  // namespace mlir

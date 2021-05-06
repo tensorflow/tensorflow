@@ -1,4 +1,7 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+
+// NO_DEAD_FUNCTION-NOT: @test
 
 HloModule main
 
@@ -443,12 +446,13 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_infeed
-// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3xi32>, !mhlo.token>
-%test_infeed (token0: token[]) -> (s32[3], token[]) {
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3x3x3xi32>, !mhlo.token>
+%test_infeed (token0: token[]) -> (s32[3, 3, 3], token[]) {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  "mhlo.infeed"([[TOKEN]])
   // CHECK-SAME:  infeed_config = "foobar"
-  ROOT %infeed = (s32[3], token[]) infeed(token[] %token0), infeed_config="foobar"
+  // CHECK-SAME:  layout = {{\[\[2, 0, 1], unit]}}
+  ROOT %infeed = (s32[3, 3, 3]{2, 0, 1}, token[]) infeed(token[] %token0), infeed_config="foobar"
 }
 
 
@@ -1024,10 +1028,10 @@ add {
 
 // CHECK-LABEL:  func private @bitcast
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
-%bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
+%bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1]{2,0,1} {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.bitcast"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
-  ROOT %bitcast = f32[3,4,1] bitcast(f32[3,4] %Arg_0.1)
+  // CHECK: "mhlo.bitcast"(%[[ARG0]]) {minor_to_major = dense<[2, 0, 1]> : tensor<3xindex>, result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  ROOT %bitcast = f32[3,4,1]{2,0,1} bitcast(f32[3,4] %Arg_0.1)
 }
 
 // CHECK-LABEL:  func private @reduce_precision

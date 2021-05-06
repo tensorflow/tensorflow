@@ -20,6 +20,8 @@ limitations under the License.
 #include <fstream>
 
 #include "absl/base/call_once.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -80,7 +83,8 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
-// Returns the directory containing nvvm libdevice files.
+}  // namespace
+
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
@@ -101,8 +105,6 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
-
-}  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -196,17 +198,23 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
       user->custom_call_target() == kCusolverCholeskyCallTarget) {
     return user_index.size() == 1 && user_index[0] == 0;
   }
+  // NCCL all-reduce can be performed in-place.
+  if (user->opcode() == HloOpcode::kAllReduce && user_index.size() == 1 &&
+      user->operand(user_index[0]) == operand) {
+    return true;
+  }
   return absl::nullopt;
 }
 
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
-bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
-  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
+bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
+                          const HloModule* module, std::string* ptx) {
+  // If the xla_gpu_ptx_file option is set, be explicit if a file is used
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string& full_filename :
-       module->config().debug_options().xla_gpu_ptx_file()) {
+       module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
     auto filename = tensorflow::io::Basename(full_filename);
@@ -216,7 +224,7 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
       break;
     }
   }
-  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
+  if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
     VLOG(0) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
@@ -231,6 +239,50 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
     return true;
   }
   return false;
+}
+
+// Try to load textual LLVM IR from files defined in the FLAGS. If
+// successful, return the llvm::Module, otherwise return nullptr.
+std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
+                                                    llvm::Module* llvm_module) {
+  // If the xla_gpu_llvm_ir_file option is set, be explicit if a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  if (module == nullptr) {
+    return nullptr;
+  }
+
+  std::string prefix = xla::FilenameFor(*module, "", "");
+  auto xla_gpu_llvm_ir_file =
+      module->config().debug_options().xla_gpu_llvm_ir_file();
+  auto matched_filename = absl::c_find_if(
+      xla_gpu_llvm_ir_file, [prefix](const string& full_filename) {
+        // To ease comparing many LLVM versions, accept different suffixes then
+        // the original filename.
+        return absl::StartsWith(tensorflow::io::Basename(full_filename),
+                                prefix);
+      });
+  if (!xla_gpu_llvm_ir_file.empty() &&
+      matched_filename == std::end(xla_gpu_llvm_ir_file)) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a LLVM file to load.";
+  }
+
+  if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
+    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    llvm::LLVMContext& context = llvm_module->getContext();
+    llvm::SMDiagnostic err;
+    std::unique_ptr<llvm::Module> loaded_module =
+        llvm::parseIRFile(*matched_filename, err, context);
+
+    if (!loaded_module) {
+      err.print("ERR", llvm::errs());
+      LOG(FATAL) << "Failed to load an LLVM file. It is probably invalid LLVM.";
+    }
+    // Overwrite the dumped not optimized LLVM to show which one will be used.
+    llvm_ir::DumpIrIfEnabled(*module, *loaded_module, /*optimized=*/false);
+    return loaded_module;
+  }
+  return nullptr;
 }
 
 }  // namespace
@@ -297,11 +349,12 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::CompileTargetBinary(const HloModule* module,
+NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec,
-                                   bool relocatable) {
+                                   bool relocatable,
+                                   const HloModule* debug_module) {
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
 
@@ -313,34 +366,32 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     // time, we have a one-element cache, keyed on the module's config's
     // cuda_data_dir.
     if (cached_libdevice_dir_.empty()) {
-      cached_libdevice_dir_ = GetLibdeviceDir(module->config());
+      cached_libdevice_dir_ = GetLibdeviceDir(module_config);
     }
     libdevice_dir = cached_libdevice_dir_;
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
+  std::unique_ptr<llvm::Module> loaded_module =
+      MaybeLoadLLVMFromFile(debug_module, llvm_module);
+  llvm::Module* selected_module = nullptr;
+  if (loaded_module) {
+    selected_module = loaded_module.get();
+  } else {
+    selected_module = llvm_module;
+  }
 
   string ptx;
-  if (!MaybeLoadPtxFromFile(module, &ptx)) {
+  if (!(debug_module &&
+        MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
-                                 libdevice_dir));
-  }
-
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
-  }
-  // Write PTX to IR dump directory, if IR dumping was requested.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
+    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
+                                                 module_config, libdevice_dir));
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config(), relocatable);
+      module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));

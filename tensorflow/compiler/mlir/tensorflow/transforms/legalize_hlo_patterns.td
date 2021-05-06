@@ -281,3 +281,37 @@ def : Pat<(HLO_SelectOp
            (FloatOrDefaultCompare $compare_type0),
            (FloatOrDefaultCompare $compare_type1),
            (FloatOrDefaultCompare $compare_type2)]>;
+
+// Converts a soup of HLOs representing floor_mod to tf.FloorMod.
+// The pattern matched executes the following computation:
+//
+// rem = remainder(arg0, arg1)
+// for i in 0 to len(arg1):
+//    if ((rem[i] < 0 != arg0[i] < 0) && arg0[i] != 0)
+//       rem[i] += arg1[i]
+// return rem
+def : Pat<
+(HLO_SelectOp
+  (HLO_AndOp
+    (HLO_CompareOp
+      (HLO_CompareOp:$rltz
+        (HLO_RemOp:$rem $arg, $arg1),
+        (HLO_ConstOp $cst),
+        HLO_COMPARISON_DIRECTION_LT,
+        $compare_type),
+      (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_COMPARISON_DIRECTION_LT, $compare_type1),
+      HLO_COMPARISON_DIRECTION_NE,
+      $compare_type2),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+  (HLO_AddOp $rem2, $arg1),
+  $rem3),
+(TF_FloorModOp $arg, $arg1),
+[(FloatValueEquals<"0.0"> $cst),
+(FloatValueEquals<"0.0"> $cst1),
+(FloatValueEquals<"0.0"> $cst2),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(SameValue $rem, $rem3),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type1),
+(FloatOrDefaultCompare $compare_type2)]>;

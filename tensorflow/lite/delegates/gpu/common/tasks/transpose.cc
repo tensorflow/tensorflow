@@ -29,27 +29,26 @@ std::string GetTransposeCode(const OperationDef& op_def,
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
-       "Z >= args.dst_tensor.Slices()) { \n";
+       "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT temps[4];\n";
-  c += "  temps[0] = (FLT)(0.0f);\n";
-  c += "  temps[1] = (FLT)(0.0f);\n";
-  c += "  temps[2] = (FLT)(0.0f);\n";
-  c += "  temps[3] = (FLT)(0.0f);\n";
+  c += "  temps[0] = INIT_FLT(0.0f);\n";
+  c += "  temps[1] = INIT_FLT(0.0f);\n";
+  c += "  temps[2] = INIT_FLT(0.0f);\n";
+  c += "  temps[3] = INIT_FLT(0.0f);\n";
   int remap[4];
   remap[attr.perm.b] = 0;
   remap[attr.perm.h] = 1;
@@ -62,14 +61,14 @@ std::string GetTransposeCode(const OperationDef& op_def,
     }
     c += "  int s_y = " + bhw[remap[1]] + ";\n";
     c += "  int s_x = " + bhw[remap[2]] + ";\n";
-    c += "  FLT4 t = args.src_tensor.Read(s_x, s_y, Z);\n";
+    c += "  FLT4 t = args.src_tensor.Read(s_x, s_y, S);\n";
     c += "  temps[0] = t.x;\n";
     c += "  temps[1] = t.y;\n";
     c += "  temps[2] = t.z;\n";
     c += "  temps[3] = t.w;\n";
   } else {
     c += "  for (int i = 0; i < 4; ++i) {\n";
-    c += "    int dst_channel = Z * 4 + i;\n";
+    c += "    int dst_channel = S * 4 + i;\n";
     c += "    if (dst_channel < args.dst_tensor.Channels()) {\n";
     const std::string bhwc[] = {batch_id, "Y", "X", "dst_channel"};
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
@@ -86,8 +85,12 @@ std::string GetTransposeCode(const OperationDef& op_def,
     c += "    }\n";
     c += "  }\n";
   }
-  c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
-  c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
+  c += "  FLT4 result;\n";
+  c += "  result.x = temps[0];\n";
+  c += "  result.y = temps[1];\n";
+  c += "  result.z = temps[2];\n";
+  c += "  result.w = temps[3];\n";
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
   c += "}\n";
   return c;
 }

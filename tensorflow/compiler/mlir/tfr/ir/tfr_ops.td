@@ -93,7 +93,8 @@ def TFR_singleTensorType : Type<Or<[
 // all allowed build list input types
 def TFR_allowedBuiltListType : Type<Or<[
     TFR_TensorType.predicate,
-    TF_ElementType.predicate]>, "single tfr.tensor or tensor element type">;
+    TF_ElementType.predicate,
+    TFR_AttrType.predicate]>, "single tfr.tensor or tensor element type">;
 
 // all allowed build list result types
 def TFR_allowedListResultType : Type<Or<[
@@ -266,7 +267,7 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value),
+    OpBuilder<(ins "Attribute":$value),
     [{
       auto* ctx = value.getContext();
       $_state.addAttribute("value", value);
@@ -424,7 +425,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "StringRef":$name, "FunctionType":$type,
+    OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
@@ -440,7 +441,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
-      for (auto& attr : getAttrs()) {
+      for (auto& attr : (*this)->getAttrs()) {
         all_attrs.insert(attr.first.strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {

@@ -52,7 +52,7 @@ class HloRunnerInterface {
 
     // If the HLO module being run has an infeed instruction, this will be the
     // data which will be fed to it, for as many as infeed_steps steps.
-    const Literal* infeed = nullptr;
+    std::vector<const Literal*> infeed_values;
 
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
@@ -97,10 +97,21 @@ class HloRunnerInterface {
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
       const std::string& filename, const DebugOptions& debug_options);
 
+  // Reads the proto file in xla.HloModule format, creates and returns the
+  // HloModule.
+  static StatusOr<std::unique_ptr<HloModule>>
+  ReadModuleFromModuleBinaryProtofile(const std::string& filename,
+                                      const DebugOptions& debug_options);
+
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       const std::string& filename, const DebugOptions& debug_options);
+
+  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // true, the HLO passes will be run as part of compilation.
+  virtual StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) = 0;
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
@@ -152,6 +163,18 @@ class HloRunnerInterface {
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
+
+  virtual StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::function<Executable*(int64)> executable_provider,
+      std::function<int64(int64)> argument_count_provider,
+      std::function<const Literal*(int64, int64)> argument_provider,
+      const ReplicatedExecuteOptions& options) = 0;
+
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+ protected:
+  void UpdateEntryComputationLayout(
+      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

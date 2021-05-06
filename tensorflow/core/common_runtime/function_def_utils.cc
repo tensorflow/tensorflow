@@ -36,7 +36,17 @@ Status FunctionDefToBodyHelper(
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
   auto graph = absl::make_unique<Graph>(lib_def);
-  graph->SetConstructionContext(ConstructionContext::kFunctionDef);
+
+  auto construction_context_iter = fdef.attr().find("_construction_context");
+  if (construction_context_iter != fdef.attr().end()) {
+    if (construction_context_iter->second.s() == "kEagerRuntime") {
+      graph->SetConstructionContext(ConstructionContext::kEagerRuntime);
+    } else {
+      DCHECK(false) << "Unknown _construction_context attribute: "
+                    << construction_context_iter->second.s();
+    }
+  }
+
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
@@ -45,9 +55,11 @@ Status FunctionDefToBodyHelper(
   const StackTracesMap& stack_traces =
       lib_def->GetStackTraces(fdef.signature().name());
   for (Node* n : graph->nodes()) {
-    auto it = stack_traces.find(n->name());
-    if (n && it != stack_traces.end()) {
-      n->SetStackTrace(it->second);
+    if (n) {
+      auto it = stack_traces.find(n->name());
+      if (it != stack_traces.end()) {
+        n->SetStackTrace(it->second);
+      }
     }
   }
 

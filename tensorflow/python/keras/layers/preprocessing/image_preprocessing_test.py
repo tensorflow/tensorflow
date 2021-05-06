@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for image preprocessing layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -198,8 +194,11 @@ class CenterCropTest(keras_parameterized.TestCase):
                                   ('center_crop_10_by_8', 10, 8),
                                   ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r'assertion failed'):
+    # InternelError is raised by tf.function MLIR lowering pass when TFRT
+    # is enabled.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, errors.InternalError),
+        r'assertion failed|error: \'tf.Slice\' op'):
       self._run_test(expected_height, expected_width)
 
   def test_config_with_custom_name(self):
@@ -231,7 +230,9 @@ class RandomCropTest(keras_parameterized.TestCase):
                                   ('random_crop_10_by_8', 10, 8),
                                   ('random_crop_10_by_12', 10, 12))
   def test_invalid_random_crop(self, expected_height, expected_width):
-    with self.assertRaises(errors.InvalidArgumentError):
+    # InternelError is raised by tf.function MLIR lowering pass when TFRT
+    # is enabled.
+    with self.assertRaises((errors.InvalidArgumentError, errors.InternalError)):
       with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
         self._run_test(expected_height, expected_width)
 
@@ -407,7 +408,7 @@ class RandomFlipTest(keras_parameterized.TestCase):
       mock_random = np.reshape(mock_random, [2, 1, 1, 1])
       with test.mock.patch.object(
           random_ops, 'random_uniform', return_value=mock_random):
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           layer = image_preprocessing.RandomFlip()
           actual_output = layer(input_images, training=1)
           self.assertAllClose(expected_output, actual_output)
@@ -693,7 +694,7 @@ class RandomTransformTest(keras_parameterized.TestCase):
                                       fill_value=0.0,
                                       interpolation='bilinear'):
     inp = np.arange(15).reshape((1, 5, 3, 1)).astype(np.float32)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       output = image_preprocessing.transform(
           inp,
           transform_matrix,
@@ -1082,8 +1083,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
 
   def test_distribution_strategy(self):
     """Tests that RandomRotation can be created within distribution strategies.
-
-    And that replicas got the same random result.
     """
     input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
     with testing_utils.use_gpu():
@@ -1093,7 +1092,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
         output = strat.run(lambda: layer(input_images, training=True))
       values = output.values
       self.assertAllEqual(2, len(values))
-      self.assertAllClose(values[0], values[1], rtol=1e-5)
 
   @testing_utils.run_v2_only
   def test_config_with_custom_name(self):

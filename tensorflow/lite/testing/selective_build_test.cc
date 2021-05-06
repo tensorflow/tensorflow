@@ -29,7 +29,7 @@ bool RunWithRandomInputs(const std::string& filename) {
       tflite::FlatBufferModel::BuildFromFile(filename.c_str());
 
   // Build the interpreter
-  std::unique_ptr<OpResolver> resolver = CreateOpResolver();
+  std::unique_ptr<MutableOpResolver> resolver = CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (tflite::InterpreterBuilder(*model, *resolver)(&interpreter) !=
       kTfLiteOk) {
@@ -64,12 +64,12 @@ bool RunWithRandomInputs(const std::string& filename) {
 }
 
 TEST(SelectiveBuiltTest, AddModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/add.bin";
+  std::string model = "tensorflow/lite/testdata/add.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 
 TEST(SelectiveBuiltTest, LSTMModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/lstm.bin";
+  std::string model = "tensorflow/lite/testdata/lstm.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 }  // namespace tflite

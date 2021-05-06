@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for AutoCastVariable."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import threading
@@ -28,16 +25,23 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.mixed_precision import autocast_variable
+from tensorflow.python.keras.optimizer_v2 import adadelta
+from tensorflow.python.keras.optimizer_v2 import adagrad
+from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.keras.optimizer_v2 import adamax
+from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.keras.optimizer_v2 import nadam
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -55,11 +59,30 @@ def get_var(val, dtype, name=None):
   return variables.VariableV1(val, use_resource=True, dtype=dtype, name=name)
 
 
+def set_cpu_logical_devices_to_at_least(num):
+  """Create cpu logical devices of at least a given number."""
+  physical_devices = config.list_physical_devices('CPU')
+  if not physical_devices:
+    raise RuntimeError('No CPU found')
+  if len(physical_devices) >= num:
+    return
+  # By default each physical device corresponds to one logical device. We create
+  # multiple logical devices for the last physical device so that we have `num`
+  # logical devices.
+  num = num - len(physical_devices) + 1
+  logical_devices = []
+  for _ in range(num):
+    logical_devices.append(context.LogicalDeviceConfiguration())
+  # Create logical devices from the last device since sometimes the first GPU
+  # is the primary graphic card and may have less memory available.
+  config.set_logical_device_configuration(physical_devices[-1], logical_devices)
+
+
 @ds_combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    test_util.set_logical_devices_to_at_least('CPU', 3)
+    set_cpu_logical_devices_to_at_least(3)
     super(AutoCastVariableTest, self).setUp()
 
   @ds_combinations.generate(maybe_distribute)
@@ -352,10 +375,25 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(5., self.evaluate(run_assign()))
 
   @ds_combinations.generate(maybe_distribute)
-  def test_assign_op(self, distribution):
+  def test_op_attribute(self, distribution):
     with distribution.scope():
       x = get_var(0., dtypes.float32)
       x = autocast_variable.create_autocast_variable(x)
+
+      # Variable.op raises an AttributeError in Eager mode and is an op in graph
+      # mode. Variable.assign(...).op is None in Eager mode and an op in Graph
+      # mode or a tf.function. We test this is also true of AutoCastVariable.
+      if context.executing_eagerly():
+        with self.assertRaises(AttributeError):
+          x.op  # pylint: disable=pointless-statement
+        self.assertIsNone(x.assign(1.0).op)
+        self.assertIsNone(x.assign_add(1.0).op)
+        self.assertIsNone(x.assign_sub(1.0).op)
+      else:
+        self.assertIsNotNone(x.op)
+        self.assertIsNotNone(x.assign(1.0).op)
+        self.assertIsNotNone(x.assign_add(1.0).op)
+        self.assertIsNotNone(x.assign_sub(1.0).op)
 
       @def_function.function
       def func():
@@ -503,25 +541,51 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
             'dtype_to_cast_to=float32 '
             'inner_variable=MirroredVariable.*>')
 
-  @parameterized.named_parameters(
-      ('v1', gradient_descent_v1.GradientDescentOptimizer),
-      ('v2', gradient_descent_v2.SGD))
-  def test_optimizer(self, optimizer_class):
+  @ds_combinations.generate(combinations.combine(
+      optimizer_class=[
+          adadelta.Adadelta,
+          adagrad.Adagrad,
+          adam.Adam,
+          adamax.Adamax,
+          ftrl.Ftrl,
+          gradient_descent_v2.SGD,
+          nadam.Nadam,
+          rmsprop.RMSprop,
+          gradient_descent_v1.GradientDescentOptimizer
+      ],
+      use_tf_function=[False, True]))
+  def test_optimizer(self, optimizer_class, use_tf_function):
+    if use_tf_function and not context.executing_eagerly():
+      self.skipTest('Test does not support graph mode with tf.function')
     x = get_var(1., dtypes.float32)
     x = autocast_variable.create_autocast_variable(x)
-    opt = optimizer_class(1.)
+    y = get_var(1., dtypes.float32)
+    opt = optimizer_class(learning_rate=1.)
 
-    @def_function.function
     def f():
-      opt.minimize(lambda: x + 1., var_list=[x])
+      # Minimize both the AutoCastVariable and the normal tf.Variable. Both
+      # variables should be updated to the same value.
+      op = opt.minimize(lambda: x + y, var_list=[x, y])
+      return None if ops.executing_eagerly_outside_functions() else op
+
+    if use_tf_function:
+      f = def_function.function(f)
 
     if context.executing_eagerly():
       f()
     else:
-      op = f()  # pylint: disable=assignment-from-no-return
+      op = f()
       self.evaluate(variables.global_variables_initializer())
       self.evaluate(op)
-    self.assertEqual(self.evaluate(x), 0)
+    # Assert the AutoCastVariable has changed from its initial value
+    self.assertNotEqual(self.evaluate(x), 1.)
+    # Assert AutoCastVariable is updated correctly by comparing it to the normal
+    # variable
+    self.assertAlmostEqual(self.evaluate(x), self.evaluate(y))
+    if optimizer_class in (gradient_descent_v2.SGD,
+                           gradient_descent_v1.GradientDescentOptimizer):
+      # With SGD, the variables decreases by exactly 1
+      self.assertEqual(self.evaluate(x), 0)
 
 
 if __name__ == '__main__':

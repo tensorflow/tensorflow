@@ -25,8 +25,8 @@ limitations under the License.
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -81,7 +81,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
     // Now look at launches and make use of the knowledge we have.
     function.walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
+      auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
       if (!kernel || kernel.isExternal()) return;
@@ -154,7 +154,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     while (!worklist.empty()) {
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
-        if (isa<MemRefCastOp, MemRefReshapeOp>(user)) {
+        if (isa<memref::CastOp, memref::ReshapeOp>(user)) {
           // Reshape and Cast propagate alignment, offset and innermost stride.
           // TODO(herhut): This should be a trait.
           Value result = user->getResult(0);
@@ -170,7 +170,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           }
           worklist.push_back(result);
         }
-        if (auto cast = dyn_cast<MemRefReinterpretCastOp>(user)) {
+        if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
           Value result = cast.result();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {

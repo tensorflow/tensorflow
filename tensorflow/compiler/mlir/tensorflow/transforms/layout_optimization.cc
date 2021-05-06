@@ -387,7 +387,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   // Maybe add Transpose nodes for layout dependent results
   // (or reuse existing transposes).
   OpBuilder builder(op);
-  builder.setInsertionPoint(op);
+  builder.setInsertionPointAfter(op);
 
   for (unsigned idx : layout_dependent_results) {
     OpResult result = op->getResult(idx);

@@ -33,12 +33,13 @@ namespace primitive_util {
 // For non-float datatypes, results in a LOG(FATAL).
 int SignificandWidth(PrimitiveType type);
 
-// The number of exponent bits in a BF16 value.
-const int kBFloat16ExponentBits = 8;
+// Returns the count of exponent bits for float datatypes.
+// For non-float datatypes, results in a LOG(FATAL).
+int ExponentWidth(PrimitiveType type);
 
-// The number of mantissa bits in a BF16 value. There is an implicit leading
-// 1, so there is an implicit additional bit of precision.
-const int kBFloat16MantissaBits = 7;
+// Returns the exponent of the smallest number which cannot be represented.
+// For non-float datatypes, results in a LOG(FATAL).
+int OverflowExponent(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
@@ -158,6 +159,37 @@ PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
 PrimitiveType ComplexComponentType(PrimitiveType complex_type);
+
+// Returns the higher-precision element type if a and b are both floating
+// point types; otherwise, checks that they have the same element type
+// and returns it.
+inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
+  // Returns a tuple where the elements are lexicographically ordered in terms
+  // of importance.
+  auto type_properties = [](PrimitiveType type) {
+    return std::make_tuple(
+        // Prefer floating point types with more range over other
+        // floating-point types or non-floating point types.
+        IsFloatingPointType(type) ? OverflowExponent(type) : -1,
+        // Prefer floating point types with more precision over less precise
+        // types.
+        IsFloatingPointType(type) ? SignificandWidth(type) : -1,
+        // Prefer wider types over narrower types.
+        BitWidth(type),
+        // Prefer signed integer types over unsigned integer types.
+        IsSignedIntegralType(type));
+  };
+  auto a_properties = type_properties(a);
+  auto b_properties = type_properties(b);
+  if (a_properties > b_properties) {
+    return a;
+  }
+  if (b_properties > a_properties) {
+    return b;
+  }
+  CHECK_EQ(a, b);
+  return a;
+}
 
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).

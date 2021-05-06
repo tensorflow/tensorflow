@@ -34,10 +34,14 @@ constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-constexpr std::array<const char*, 7> kAsyncDatasetOps = {
-    "ExperimentalMapAndBatchDataset", "MapAndBatchDataset",
-    "ParallelInterleaveDatasetV2",    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4",    "ParallelMapDataset",
+constexpr std::array<const char*, 8> kAsyncDatasetOps = {
+    "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
+    "ParallelBatchDataset",
+    "ParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDataset",
     "ParallelMapDatasetV2",
 };
 

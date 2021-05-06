@@ -42,13 +42,12 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   }
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   std::string coords = "X, Y";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int Z = get_global_id(2);\n";
+    c += "  int Z = GLOBAL_ID_2;\n";
     c += "  if (Z >= args.dst_tensor.Depth()) return;\n";
     coords = "X, Y, Z";
   }
@@ -82,7 +81,7 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
       }
     }
   } else {
-    c += "  FLT4 result = (FLT4)(0.0);\n";
+    c += "  FLT4 result = INIT_FLT4(0.0);\n";
     int out_channel = 0;
     int read_index = 0;
     int z = 0;

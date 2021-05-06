@@ -830,7 +830,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
        "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
-       "NcclAllReduce", "Send", "Recv",
+       "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
+       "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -1418,7 +1419,7 @@ void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
 
       auto mapping = ctx.tensor_mapping().find(input_tensor);
       if (mapping != ctx.tensor_mapping().end()) {
-        node.set_input(idx, mapping->second.ToString());
+        node.set_input(idx, TensorIdToString(mapping->second));
       }
     }
   }

@@ -70,29 +70,17 @@ Status ExpWithPassThroughGrad(AbstractContext* ctx,
                               absl::Span<AbstractTensorHandle*> outputs) {
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch x.
-  std::vector<AbstractTensorHandle*> exp_outputs(1);
-  TF_RETURN_IF_ERROR(ops::Exp(ctx, inputs, absl::MakeSpan(exp_outputs), "Exp"));
+  AbstractTensorHandle* exp_output;
+  TF_RETURN_IF_ERROR(ops::Exp(ctx, inputs[0], &exp_output, "Exp"));
   std::unique_ptr<GradientFunction> gradient_function(
       new PassThroughGradientFunction);
-  tape.RecordOperation(inputs, exp_outputs, gradient_function.release());
+  tape.RecordOperation(inputs, {exp_output}, gradient_function.release());
   TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx,
-                                          /*targets*/ exp_outputs,
+                                          /*targets*/ {exp_output},
                                           /*sources=*/inputs,
                                           /*output_gradients=*/{},
                                           /*result=*/outputs));
-  for (auto exp_output : exp_outputs) {
-    exp_output->Unref();
-  }
-  return Status::OK();
-}
-
-Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
+  exp_output->Unref();
   return Status::OK();
 }
 
@@ -111,7 +99,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -128,7 +116,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
-  s = getValue(outputs[0], &result_tensor);
+  s = GetValue(outputs[0], &result_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);

@@ -748,7 +748,7 @@ def _maybe_validate_matrix(a, validate_args):
 def matrix_rank(a, tol=None, validate_args=False, name=None):
   """Compute the matrix rank of one or more matrices.
 
-  Arguments:
+  Args:
     a: (Batch of) `float`-like matrix-shaped `Tensor`(s) which are to be
       pseudo-inverted.
     tol: Threshold below which the singular value is counted as 'zero'.

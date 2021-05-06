@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_HIFIMINI_FIXEDPOINT_UTILS_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_HIFIMINI_FIXEDPOINT_UTILS_H_
 
-#include <xtensa/tie/xt_hifi2.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 
 namespace tflite {
+
+#if defined(HIFIMINI)
 
 // INT24 MIN/MAX
 #define INT24_MIN -8388608
@@ -131,6 +132,8 @@ inline int CreateQConstantForInt24(int integer_bits, float f) {
   raw = std::min(raw, max_bounds);
   return static_cast<int>(raw);
 }
+
+#endif  // defined(HIFIMINI)
 
 }  // namespace tflite
 

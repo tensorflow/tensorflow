@@ -32,7 +32,7 @@ namespace gpu {
 namespace dnn = se::dnn;
 
 CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& mean,
@@ -71,7 +71,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& output_data,
@@ -115,7 +115,7 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
     const BufferAllocation::Slice& inv_stddev,

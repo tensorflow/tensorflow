@@ -20,7 +20,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MODEL_BUILDER_H_
 #define TENSORFLOW_LITE_MODEL_BUILDER_H_
 
+#include <stddef.h>
+
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -38,7 +42,11 @@ namespace tflite {
 ///
 /// NOTE: The current API requires that a FlatBufferModel instance be kept alive
 /// by the client as long as it is in use by any dependent Interpreter
-/// instances.
+/// instances. As the FlatBufferModel instance is effectively immutable after
+/// creation, the client may safely use a single model with multiple dependent
+/// Interpreter instances, even across multiple threads (though note that each
+/// Interpreter instance is *not* thread-safe).
+///
 /// <pre><code>
 /// using namespace tflite;
 /// StderrReporter error_reporter;
@@ -103,6 +111,30 @@ class FlatBufferModel {
   /// Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromBuffer(
       const char* caller_owned_buffer, size_t buffer_size,
+      TfLiteVerifier* extra_verifier = nullptr,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Builds a model directly from an allocation.
+  /// Ownership of the allocation is passed to the model, but the caller
+  /// retains ownership of `error_reporter` and must ensure its lifetime is
+  /// longer than the FlatBufferModel instance.
+  /// Returns a nullptr in case of failure (e.g., the allocation is invalid).
+  static std::unique_ptr<FlatBufferModel> BuildFromAllocation(
+      std::unique_ptr<Allocation> allocation,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Verifies whether the content of the allocation is legit, then builds a
+  /// model based on the provided allocation.
+  /// The extra_verifier argument is an additional optional verifier for the
+  /// buffer. By default, we always check with tflite::VerifyModelBuffer. If
+  /// extra_verifier is supplied, the buffer is checked against the
+  /// extra_verifier after the check against tflite::VerifyModelBuilder.
+  /// Ownership of the allocation is passed to the model, but the caller
+  /// retains ownership of `error_reporter` and must ensure its lifetime is
+  /// longer than the FlatBufferModel instance.
+  /// Returns a nullptr in case of failure.
+  static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromAllocation(
+      std::unique_ptr<Allocation> allocation,
       TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 

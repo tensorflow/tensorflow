@@ -99,6 +99,17 @@ def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
 // Any pred, int or floating-point tensor types
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
+// A layout attribute (1D tensor of index type)
+def HLO_LayoutAttr : Attr<
+  And<[IndexElementsAttr.predicate,
+       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+               == 1}]>]>,
+  "A 1D tensor of index type (layout)"> {
+  let storageType = IndexElementsAttr.storageType;
+  let returnType = IndexElementsAttr.returnType;
+  let convertFromStorage = IndexElementsAttr.convertFromStorage;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -637,6 +648,23 @@ class BASE_HLO_ReplicaIdOp {
   }];
 }
 
+class BASE_HLO_PartitionIdOp {
+  string summary = "PartitionId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the partition.
+  }];
+}
+
+class BASE_HLO_AllGatherOp {
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+}
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";

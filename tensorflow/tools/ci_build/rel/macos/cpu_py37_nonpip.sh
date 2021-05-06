@@ -22,18 +22,9 @@ install_bazelisk
 # Pick a more recent version of xcode
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
-python3.7 -m virtualenv tf_build_env --system-site-packages
-source tf_build_env/bin/activate
 
-# Install macos pip dependencies
-install_macos_pip_deps virtualenv
-
-# Run configure.
-export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
-export TF2_BEHAVIOR=1
-export PYTHON_BIN_PATH=$(which python3.7)
-yes "" | "$PYTHON_BIN_PATH" configure.py
+# Set up and install MacOS pip dependencies.
+setup_venv_macos python3.7
 
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
@@ -41,10 +32,10 @@ tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-bench
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
-bazel test --test_output=errors --config=opt \
-  --copt=-DGRPC_BAZEL_BUILD \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
+bazel test \
+  --config=release_cpu_macos \
+  --repo_env=PYTHON_BIN_PATH="$(which python3.7)" \
   --build_tag_filters="${tag_filters}" \
-  --test_tag_filters="${tag_filters}" -- \
-  ${DEFAULT_BAZEL_TARGETS} \
-  -//tensorflow/lite/...
+  --test_tag_filters="${tag_filters}" \
+  --test_output=errors \
+  -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...

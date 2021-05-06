@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -77,6 +79,7 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     0,                  // TOKEN = 17
     sizeof(complex128)  // C128 = 18
 };
+constexpr int64 kAnnotationPrintInterval = 5;
 }  // namespace
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
@@ -309,9 +312,28 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
     int64 element_size_in_bits, int64 memory_space) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
-                                     tiles, element_size_in_bits, memory_space)
-      .ValueOrDie();
+  auto ret =
+      MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
+                                  tiles, element_size_in_bits, memory_space);
+  if (!ret.ok()) LOG(ERROR) << ret.status();
+  return ret.ValueOrDie();
+}
+
+/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64 dim) {
+  Shape ret = shape;
+  if (!ret.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&ret);
+  }
+  *ret.mutable_layout() = LayoutUtil::MoveDimToMajor(ret.layout(), dim);
+  DimensionVector minor_to_major;
+  for (int64 d : LayoutUtil::MinorToMajor(ret)) {
+    if (d != dim) {
+      minor_to_major.push_back(d);
+    }
+  }
+  minor_to_major.push_back(dim);
+  *ret.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+  return ret;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
@@ -577,10 +599,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
     string text = "(";
-    const char* prefix = "";
-    for (const Shape& elem_shape : shape.tuple_shapes()) {
-      StrAppend(&text, prefix, HumanString(elem_shape));
-      prefix = ", ";
+    const auto& tuple_shapes = shape.tuple_shapes();
+    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+      const Shape& elem_shape = tuple_shapes[i];
+      if (i != 0) {
+        StrAppend(&text, ", ");
+        if (i % kAnnotationPrintInterval == 0) {
+          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+        }
+      }
+      StrAppend(&text, HumanString(elem_shape));
     }
     text += ")";
     return text;
@@ -601,10 +629,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     string text = "(";
-    const char* prefix = "";
-    for (const Shape& elem_shape : shape.tuple_shapes()) {
-      StrAppend(&text, prefix, HumanStringWithLayout(elem_shape));
-      prefix = ", ";
+    const auto& tuple_shapes = shape.tuple_shapes();
+    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+      const Shape& elem_shape = tuple_shapes[i];
+      if (i != 0) {
+        StrAppend(&text, ", ");
+        if (i % kAnnotationPrintInterval == 0) {
+          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+        }
+      }
+      StrAppend(&text, HumanStringWithLayout(elem_shape));
     }
     text += ")";
     return text;
@@ -642,6 +676,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return absl::c_equal(lhs.dimensions(), rhs.dimensions());
 }
 
+/* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
+  CHECK(lhs.IsArray());
+  CHECK(rhs.IsArray());
+  return lhs.rank() == rhs.rank();
+}
+
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
   return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
 }
@@ -652,6 +692,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       .IgnoreDynamicDimension()
       .IgnoreElementType()
       .IgnoreLayout()(lhs, rhs);
+}
+
+/* static */ bool ShapeUtil::CompatibleKind(const Shape& lhs,
+                                            const Shape& rhs) {
+  return Shape::Equal()
+      .IgnoreElementType()
+      .IgnoreLayout()
+      .IgnoreDimensions()
+      .IgnoreDynamicDimension()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
@@ -1040,11 +1089,12 @@ Status ForEachMutableSubshapeHelper(
     absl::Span<const int64> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
-  for (auto dim : Permute(permutation, shape.dimensions())) {
+  for (auto dim : Permute(shape.dimensions(), permutation)) {
     new_shape.add_dimensions(dim);
   }
+  auto inv_permutation = InversePermutation(permutation);
   for (int64 i = 0; i < shape.rank(); i++) {
-    new_shape.set_dynamic_dimension(permutation[i],
+    new_shape.set_dynamic_dimension(inv_permutation[i],
                                     shape.is_dynamic_dimension(i));
   }
 
@@ -1082,12 +1132,12 @@ Status ForEachMutableSubshapeHelper(
     new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
     for (auto index : ComposePermutations(
-             permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
+             inv_permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
     // The permutation accepted by TransposeIsBitcast is the inverse of the
     // permutation here.
-    CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
+    CHECK(TransposeIsBitcast(shape, new_shape, permutation))
         << "shape=" << HumanStringWithLayout(shape)
         << ", new_shape=" << HumanStringWithLayout(new_shape)
         << ", permutation={" << absl::StrJoin(permutation, ",") << "}";
@@ -1245,7 +1295,9 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return false;
   }
 
-  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape))
+      << "input_shape=" << input_shape.ShortDebugString()
+      << ", output_shape=" << output_shape.ShortDebugString();
   if (ElementsIn(input_shape) == 0) {
     return true;
   }
@@ -1392,16 +1444,6 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   };
   return check_input_unit_indices(input_shape, output_shape) &&
          check_input_unit_indices(output_shape, input_shape);
-}
-
-/* static */ bool ShapeUtil::ShapeIsComatibleWithLayout(const Shape& shape,
-                                                        const Layout& layout) {
-  if (shape.rank() != layout.minor_to_major_size()) {
-    return false;
-  }
-  Shape new_shape = shape;
-  *new_shape.mutable_layout() = layout;
-  return ShapeUtil::ReshapeIsBitcast(shape, new_shape);
 }
 
 /* static */ absl::optional<Shape> ShapeUtil::AlignLayouts(
@@ -1721,13 +1763,11 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   return s;
 }
 
-/*static*/ bool ShapeUtil::CanUpcastIntegral(const Shape& from,
-                                             const Shape& to) {
-  return ElementIsIntegral(from) && ElementIsIntegral(to) &&
+/*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
+                                            const Shape& to) {
+  return ElementIsFloating(from) == ElementIsFloating(to) &&
          ElementIsSigned(from) == ElementIsSigned(to) &&
-         primitive_util::BitWidth(from.element_type()) <=
-             primitive_util::BitWidth(to.element_type()) &&
-         CompatibleIgnoringElementType(from, to);
+         HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 }  // namespace xla

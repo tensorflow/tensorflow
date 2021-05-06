@@ -288,7 +288,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding, 2 * self.evaluate(normalized))
+      self.assertAllClose(embedding, 2 * self.evaluate(normalized))
 
   @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedVariable(self):
@@ -1048,7 +1048,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCint32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1076,7 +1076,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInt32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])

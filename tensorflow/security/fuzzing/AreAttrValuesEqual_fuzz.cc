@@ -67,8 +67,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   const int content_size = fuzzed_data.ConsumeIntegralInRange(10, 300);
   const std::string test_string =
       fuzzed_data.ConsumeRandomLengthString(content_size);
-  const std::string test_string2 =
-      fuzzed_data.ConsumeRemainingBytesAsString();
+  const std::string test_string2 = fuzzed_data.ConsumeRemainingBytesAsString();
   compareValues(test_string, test_string2);
 
   return 0;

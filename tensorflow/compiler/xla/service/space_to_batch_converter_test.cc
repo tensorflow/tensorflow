@@ -29,10 +29,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConvolutionSpaceToBatchConverterTest = HloTestBase;
+using SpaceToBatchConverterTest = HloTestBase;
 namespace op = testing::opcode_matchers;
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch1) {
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1) {
   string hlo_string = R"(
   
   HloModule module
@@ -48,7 +48,7 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -64,13 +64,46 @@ ENTRY computation {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch2) {
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
+  string hlo_string = R"(
+  HloModule module  
+  adder (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+    lhs = bf16[] parameter(0)
+    rhs = bf16[] parameter(1)
+    ROOT add = bf16[] add(lhs, rhs)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[1,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+    %constant = bf16[3] constant({1.0, 2.0, 3.0})
+    %tuple = (bf16[1,256,256,32], bf16[3])tuple(%convolution, %constant)
+    ROOT %gte = bf16[1,256,256,32] get-tuple-element(%tuple), index=0
+    %gte2 = bf16[3]get-tuple-element(%tuple), index=1
+    %init = bf16[] constant(1.0)
+    %reduce-window = bf16[3] reduce-window(bf16[3] %gte2, bf16[] %init),
+      window={size=1}, to_apply=%adder
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
+  // Test that a reduce window consumer with different rank won't freeze the
+  // compiler.
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+}
+
+TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
   string hlo_string = R"(
   HloModule module
   ENTRY computation {
     %p0 = bf16[2,258,258,32] parameter(0)
     %p1 = bf16[3,3,32,32] parameter(1)
-    ROOT %convolution = bf16[2,256,256,32] convolution(%p0, %p1), window={size=3x3}, 
+    ROOT %convolution = bf16[2,256,256,32] convolution(%p0, %p1), window={size=3x3},
     dim_labels=b01f_01io->b01f
   }
 
@@ -78,11 +111,11 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch2) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 1});
   ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
+TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   string hlo_string = R"(
   HloModule module
   ENTRY computation {
@@ -97,7 +130,7 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter(/*limit_on_batch_size=*/4);
+  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 4});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -113,14 +146,14 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithBaseDilation) {
+TEST_F(SpaceToBatchConverterTest, Batch1WithBaseDilation) {
   string hlo_string = R"(
   
   HloModule module
 ENTRY computation {
-  %p2 = bf16[1,7,7,128]{3,0,2,1} parameter(0)
+  %p2 = bf16[1,28,28,128]{3,0,2,1} parameter(0)
   %p3 = bf16[1,1,512,128]{3,2,1,0} parameter(1)
-  ROOT %c = bf16[1,14,14,512]{3,0,2,1} convolution(%p2, %p3),
+  ROOT %c = bf16[1,56,56,512]{3,0,2,1} convolution(%p2, %p3),
     window={size=1x1 pad=0_1x0_1 lhs_dilate=2x2 rhs_reversal=1x1},
     dim_labels=b01f_01oi->b01f
 }
@@ -130,7 +163,7 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();

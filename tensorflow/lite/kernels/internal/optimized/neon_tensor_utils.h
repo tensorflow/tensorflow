@@ -228,11 +228,6 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return NEON_OR_PORTABLE(VectorVectorDotProduct, vector1, vector2, v_size);
 }
 
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector) {
-  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
 }
@@ -295,9 +290,11 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                    reduction_size);
 }
 
-void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch) {
-  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
+void MeanStddevNormalization(const float* __restrict__ input_vector,
+                             float* __restrict__ output_vector, int v_size,
+                             int n_batch) {
+  NEON_OR_PORTABLE(MeanStddevNormalization, input_vector, output_vector, v_size,
+                   n_batch);
 }
 
 void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

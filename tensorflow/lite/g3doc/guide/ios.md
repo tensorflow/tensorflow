@@ -72,7 +72,7 @@ builds, you can write:
 pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
 ```
 
-For nightly version, by default
+From 2.4.0 version and latest nightly releases, by default
 [GPU](https://www.tensorflow.org/lite/performance/gpu) and
 [Core ML delegates](https://www.tensorflow.org/lite/performance/coreml_delegate)
 are excluded from the pod to reduce the binary size. You can include them by

@@ -47,7 +47,7 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode();
+  std::string GetNormalizationCode(const GpuInfo& gpu_info);
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(

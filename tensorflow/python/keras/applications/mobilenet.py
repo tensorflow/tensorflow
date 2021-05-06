@@ -61,9 +61,6 @@ Reference:
      for Mobile Vision Applications](
       https://arxiv.org/abs/1704.04861)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
@@ -100,15 +97,23 @@ def MobileNet(input_shape=None,
      for Mobile Vision Applications](
       https://arxiv.org/abs/1704.04861)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in the `tf.keras.backend.image_data_format()`.
+  This function returns a Keras image classification model,
+  optionally loaded with weights pre-trained on ImageNet.
+
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For MobileNet, call `tf.keras.applications.mobilenet.preprocess_input`
   on your inputs before passing them to the model.
+  `mobilenet.preprocess_input` will scale input pixels between -1 and 1.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, only to be specified if `include_top`
       is False (otherwise the input shape has to be `(224, 224, 3)` (with
       `channels_last` data format) or (3, 224, 224) (with `channels_first`
@@ -148,15 +153,11 @@ def MobileNet(input_shape=None,
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
     **kwargs: For backwards compatibility only.
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   global layers
   if 'layers' in kwargs:
@@ -315,7 +316,7 @@ def MobileNet(input_shape=None,
 def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """Adds an initial convolution layer (with batch normalization and relu6).
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, 3)` (with `channels_last`
       data format) or (3, rows, cols) (with `channels_first` data format).
       It should have exactly 3 inputs channels, and width and height should
@@ -373,7 +374,7 @@ def _depthwise_conv_block(inputs,
   batch normalization, relu6, pointwise convolution,
   batch normalization and relu6 activation.
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, channels)` (with
       `channels_last` data format) or (channels, rows, cols) (with
       `channels_first` data format).

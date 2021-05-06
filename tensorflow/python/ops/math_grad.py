@@ -187,7 +187,7 @@ def _SumGrad(op, grad):
 
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
-            if tensor_util.is_tensor(t):
+            if tensor_util.is_tf_type(t):
               value = c_api.TF_TryEvaluateConstant_wrapper(
                   t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
               assert value is not None
@@ -330,9 +330,10 @@ def _SegmentMeanGrad(op, grad):
   input_rank = array_ops.rank(op.inputs[0])
   ones_shape = array_ops.concat([
       array_ops.shape(op.inputs[1]),
-      array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
+      array_ops.ones(
+          array_ops.expand_dims(input_rank - 1, 0), dtype=dtypes.int32)
   ], 0)
-  ones = array_ops.fill(ones_shape, constant_op.constant(1, dtype=grad.dtype))
+  ones = array_ops.ones(ones_shape, dtype=grad.dtype)
   scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
@@ -1178,7 +1179,7 @@ def _SigmoidGradGrad(op, grad):
 def _SignGrad(op, _):
   """Returns 0."""
   x = op.inputs[0]
-  return array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  return array_ops.zeros_like(x)
 
 
 @ops.RegisterGradient("Sin")
@@ -1560,11 +1561,9 @@ def _MaximumMinimumGrad(op, grad, selector_op):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  gradshape = array_ops.shape(grad)
-  zeros = array_ops.zeros(gradshape, gdtype)
+  zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   if skip_input_indices is not None and 0 in skip_input_indices:
@@ -1845,6 +1844,7 @@ def _BatchMatMul(op, grad):
 
 
 @ops.RegisterGradient("BatchMatMulV2")
+@ops.RegisterGradient("BatchMatMulV3")
 def _BatchMatMulV2(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""
   x = op.inputs[0]

@@ -68,6 +68,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT64;
     case kTfLiteInt32:
       return TensorType_INT32;
+    case kTfLiteUInt32:
+      return TensorType_UINT32;
     case kTfLiteUInt8:
       return TensorType_UINT8;
     case kTfLiteInt8:
@@ -86,6 +88,10 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_COMPLEX64;
     case kTfLiteComplex128:
       return TensorType_COMPLEX128;
+    case kTfLiteResource:
+      return TensorType_RESOURCE;
+    case kTfLiteVariant:
+      return TensorType_VARIANT;
   }
   // TODO(aselle): consider an error
 }

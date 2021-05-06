@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -35,14 +39,18 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
 class InterpreterTest;  // Class for friend declarations.
+
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
+
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
 }  // namespace test_utils
@@ -67,7 +75,9 @@ class TestDelegate;  // Class for friend declarations.
 /// if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
 ///   // Return failure.
 /// }
-/// interpreter->AllocateTensors();
+/// if (interpreter->AllocateTensors() != kTfLiteOk) {
+///   // Return failure.
+/// }
 ///
 /// auto input = interpreter->typed_tensor<float>(0);
 /// for (int i = 0; i < input_size; i++) {
@@ -76,9 +86,11 @@ class TestDelegate;  // Class for friend declarations.
 /// interpreter.Invoke();
 /// </code></pre>
 ///
-/// Note: for nearly all practical use cases, one should not directly construct
+/// Note: For nearly all practical use cases, one should not directly construct
 /// an Interpreter object, but rather use the InterpreterBuilder.
-
+///
+/// WARNING: This class is *not* thread-safe. The client is responsible for
+/// ensuring serialized interaction to avoid data races and undefined behavior.
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -420,7 +432,9 @@ class Interpreter {
   // expensive. This *must be* called after the interpreter has been created
   // and before running inference (and accessing tensor buffers), and *must be*
   // called again if (and only if) an input tensor is resized. Returns status of
-  // success or failure.
+  // success or failure.  Will fail if any of the ops in the model (other than
+  // those which were rewritten by delegates, if any) are not supported by the
+  // Interpreter's OpResolver.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -433,9 +447,10 @@ class Interpreter {
 
   /// Set the number of threads available to the interpreter.
   ///
-  /// NOTE: num_threads should be >= -1.
-  /// User may pass -1 to let the TFLite interpreter set the no of threads
-  /// available to itself.
+  /// NOTE: num_threads should be >= -1. Setting num_threads to 0 has the effect
+  /// to disable multithreading, which is equivalent to setting num_threads
+  /// to 1. If set to the value -1, the number of threads used will be
+  /// implementation-defined and platform-dependent.
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -469,7 +484,8 @@ class Interpreter {
   /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
-  /// delegate. The Interpreter has been restored to its pre-delegation state.
+  /// delegate, or the delegate parameter was null. The Interpreter has been
+  /// restored to its pre-delegation state.
   /// NOTE: This undoes all delegates previously applied to the Interpreter.
   /// 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
@@ -590,13 +606,12 @@ class Interpreter {
                           TfLiteExternalContext* ctx);
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // If AllocateTensors() is called after this, the runtime does not consider
-  // the tensor during internal memory planning and will continue using the
-  // provided allocation for the tensor (assuming it satisfies the expected
-  // tensor byte length).
+  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
-  // Note that while this function can be called again to set a new allocation
-  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // NOTE: User needs to call AllocateTensors() after this. In case of input
+  // resizing, buffers will be checked for required data size during
+  // AllocateTensors().
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -607,10 +622,13 @@ class Interpreter {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  //    set through `flags`.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
-      int tensor_index, const TfLiteCustomAllocation& allocation);
+      int tensor_index, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
@@ -672,7 +690,7 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  // Helper method that return the tensot index that corresponds to
+  // Helper method that return the tensor index that corresponds to
   // a name in a SignatureDef. Defined by 'signature_method_name', and
   // 'signature_tensor_name'.
   // If 'is_input' is true then the tensor is checked in input tensors,
@@ -709,6 +727,10 @@ class Interpreter {
   void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
+
+  // Enables preserving intermediates for debugging.  Should only be set by
+  // InterpreterBuilder before allocating any tensors.
+  TfLiteStatus PreserveAllTensorsExperimental();
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

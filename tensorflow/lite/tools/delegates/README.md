@@ -20,8 +20,9 @@ corresponding list of parameters that each supports to create a particular
 TFLite delegate.
 
 ### Common parameters
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running the inference on CPU.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running the inference on CPU. By default,
+    this is set to the platform default value -1.
 *   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
     The maximum number of partitions that will be delegated. \
     Currently supported by the GPU, Hexagon, CoreML and NNAPI delegate.
@@ -33,7 +34,8 @@ TFLite delegate.
 
 ### GPU delegate provider
 
-Only Android and iOS devices support GPU delegate.
+The GPU deleagte is supported on Android and iOS devices, or platforms where
+the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 
 #### Common options
 *   `use_gpu`: `bool` (default=false) \
@@ -45,6 +47,10 @@ Only Android and iOS devices support GPU delegate.
     will increase.
 *   `gpu_experimental_enable_quant`: `bool` (default=true) \
     Whether to allow the GPU delegate to run a 8-bit quantized model or not.
+*   `gpu_inference_for_sustained_speed`: `bool` (default=false) \
+    Whether to prefer maximizing the throughput. This mode will help when the
+    same delegate will be used repeatedly on multiple inputs. This is supported
+    on non-iOS platforms.
 
 #### Android options
 *  `gpu_backend`: `string` (default="") \
@@ -78,13 +84,18 @@ Only Android and iOS devices support GPU delegate.
     The relative priority for executions of the model in NNAPI. Should be one
     of the following: default, low, medium and high. This option requires
     Android 11+.
-*   `disable_nnapi_cpu`: `bool` (default=false) \
+*   `disable_nnapi_cpu`: `bool` (default=true) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This
     option is ignored if `nnapi_accelerator_name` is specified.
 *   `nnapi_allow_fp16`: `bool` (default=false) \
     Whether to allow FP32 computation to be run in FP16.
+*   `nnapi_use_burst_mode`: `bool` (default=false) \
+    use NNAPI Burst mode if supported. Burst mode allows accelerators to
+    efficiently manage resources, which would significantly reduce overhead
+    especially if the same delegate instance is to be used for multiple
+    inferences.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \

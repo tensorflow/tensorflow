@@ -52,7 +52,7 @@ class StackOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testSimple(self):
     np.random.seed(7)
-    with self.session(use_gpu=True):
+    with self.session():
       for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
         rank = len(shape)
         for axis in range(-rank, rank):
@@ -90,7 +90,7 @@ class StackOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConst(self):
     np.random.seed(7)
-    with self.session(use_gpu=True):
+    with self.session():
       # Verify that shape induction works with shapes produced via const stack
       a = constant_op.constant([1, 2, 3, 4, 5, 6])
       b = array_ops.reshape(a, array_ops.stack([2, 3]))
@@ -155,7 +155,7 @@ class StackOpTest(test.TestCase):
       data = np.random.randn(*shape)
       shapes = [shape[1:]] * shape[0]
       with self.subTest(shape=shape):
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(constant_op.constant, data))
           c = array_ops.stack(xs)
@@ -171,7 +171,7 @@ class StackOpTest(test.TestCase):
       out_shape = list(shape[1:])
       out_shape.insert(1, shape[0])
       with self.subTest(shape=shape):
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(constant_op.constant, data))
           c = array_ops.stack(xs, axis=1)
@@ -241,7 +241,7 @@ class StackOpTest(test.TestCase):
         for axis in range(-rank, rank):
           test_arrays = np_split_squeeze(expected, axis)
 
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             with self.subTest(shape=shape, dtype=dtype, axis=axis):
               actual_pack = array_ops.stack(test_arrays, axis=axis)
               self.assertEqual(expected.shape, actual_pack.get_shape())
@@ -265,7 +265,7 @@ class StackOpTest(test.TestCase):
 
   def testComplex(self):
     np.random.seed(7)
-    with self.session(use_gpu=True):
+    with self.session():
       for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
         for dtype in [np.complex64, np.complex128]:
           with self.subTest(shape=shape, dtype=dtype):
@@ -279,7 +279,7 @@ class AutomaticStackingTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSimple(self):
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(
           [1, 0, 2],
           ops.convert_to_tensor([1, constant_op.constant(0), 2]).eval())
@@ -299,7 +299,7 @@ class AutomaticStackingTest(test.TestCase):
                           ]).eval())
 
   def testWithNDArray(self):
-    with self.session(use_gpu=True):
+    with self.session():
       result = ops.convert_to_tensor([[[0., 0.],
                                        constant_op.constant([1., 1.])],
                                       np.array(
@@ -310,7 +310,7 @@ class AutomaticStackingTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testVariable(self):
-    with self.session(use_gpu=True):
+    with self.session():
       v = variables.Variable(17)
       result = ops.convert_to_tensor([[0, 0, 0], [0, v, 0], [0, 0, 0]])
       self.evaluate(v.initializer)
@@ -364,7 +364,7 @@ class AutomaticStackingTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testPlaceholder(self):
-    with self.session(use_gpu=True):
+    with self.session():
       # Test using placeholder with a defined shape.
       ph_0 = array_ops.placeholder(dtypes.int32, shape=[])
       result_0 = ops.convert_to_tensor([[0, 0, 0], [0, ph_0, 0], [0, 0, 0]])
@@ -391,7 +391,7 @@ class AutomaticStackingTest(test.TestCase):
     # Dynamic shape error.
     ph_1 = array_ops.placeholder(dtypes.int32)
     result_1 = ops.convert_to_tensor([[0, 0, 0], [0, ph_1, 0], [0, 0, 0]])
-    with self.session(use_gpu=True):
+    with self.session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         result_1.eval(feed_dict={ph_1: [1]})
 

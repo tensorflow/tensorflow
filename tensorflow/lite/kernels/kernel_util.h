@@ -288,6 +288,9 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 // Return the size of given type in bytes. Return 0 in in case of string.
 int TfLiteTypeGetSize(TfLiteType type);
 
+// Whether the current platform is mobile (Android or iOS).
+bool IsMobilePlatform();
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_

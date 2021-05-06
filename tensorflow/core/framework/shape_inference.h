@@ -490,9 +490,13 @@ class InferenceContext {
   inline DimensionHandle UnknownDim() { return MakeDim(kUnknownDim); }
 
   // Returns in <val> a scalar value from an input tensor <t>.  The input tensor
-  // must be a 1-dimensional int32 or int64 tensor.  Caller must ensure that the
+  // must be a 0-dimensional int32 or int64 tensor.  Caller must ensure that the
   // input tensor is not NULL.
   Status GetScalarFromTensor(const Tensor* t, int64* val);
+
+  // Returns in <val> a scalar value from a 1D input tensor <t> with int32 or
+  // int64 elements. Caller must ensure that the input tensor is not NULL.
+  Status GetScalarFromTensor(const Tensor* t, int64 idx, int64* val);
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get

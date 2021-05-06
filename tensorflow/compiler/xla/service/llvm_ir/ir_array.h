@@ -66,6 +66,13 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
+    // As before, but also take a multidim to reuse.  multidim.size()
+    // == shape.rank() must be true.  If some of the multidim element
+    // are null we will use the value that would be used if
+    // deliearized from linear.
+    Index(llvm::Value* linear, absl::Span<llvm::Value* const> multidim,
+          const Shape& shape, llvm::IRBuilder<>* b);
+
     // Similar to the above constructor except using "dynamic_dims" instead of
     // shape's static dimension to constructs the index.
     Index(llvm::Value* linear, const Shape& shape,
@@ -110,13 +117,12 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
-    static bool ShapeIsCompatible(const Shape& a, const Shape& b) {
-      return ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
-             ShapeUtil::ReshapeIsBitcast(a, b);
-    }
+    static bool ShapeIsCompatible(const Shape& a, const Shape& b);
 
     bool ShapeIsCompatible(const Shape& a) const {
-      return ShapeUtil::ShapeIsComatibleWithLayout(a, layout_);
+      return ShapeIsCompatible(
+          a, ShapeUtil::MakeShapeWithLayout(a.element_type(), dims_,
+                                            layout_.minor_to_major()));
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

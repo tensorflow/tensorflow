@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
@@ -234,12 +233,13 @@ class ForwardAccumulator():
   Consider a simple linear regression:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
   >>> with tf.autodiff.ForwardAccumulator(
   ...    primals=dense.kernel,
   ...    tangents=tf.constant([[1.], [0.]])) as acc:
-  ...   loss = tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  ...   loss = tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> acc.jvp(loss)
   <tf.Tensor: shape=(), dtype=float32, numpy=...>
 
@@ -258,9 +258,10 @@ class ForwardAccumulator():
   invocations:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
-  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> kernel_fprop = []
   >>> with tf.autodiff.ForwardAccumulator(
   ...     dense.kernel, tf.constant([[1.], [0.]])) as acc:
@@ -439,16 +440,11 @@ class ForwardAccumulator():
       if hasattr(tensor, "handle"):
         unwrapped_tensor = ops.convert_to_tensor(tensor.handle)
       else:
-        if isinstance(tensor, np_arrays.ndarray):
-          unwrapped_tensor = tensor.data
-        else:
-          unwrapped_tensor = tensor
+        unwrapped_tensor = tensor
       result = pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(self._accumulator,
                                                        unwrapped_tensor)
       if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
         result = array_ops.zeros_like(tensor)
-      if result is not None and isinstance(tensor, np_arrays.ndarray):
-        return np_arrays.tensor_to_ndarray(result)
       return result
 
     return nest.map_structure(_fetch_jvp, primals)

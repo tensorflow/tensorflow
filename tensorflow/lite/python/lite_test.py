@@ -32,6 +32,7 @@ from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
@@ -312,10 +313,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
       ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
       ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
-      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
-  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
+  def testIntegerQuantizationWithUnsupportedOps(self,
+                                                is_int_only,
                                                 is_int16_quantize,
-                                                inference_input_output_type):
+                                                inference_input_output_type,
+                                                enable_mlir_quantizer=False):
     with ops.Graph().as_default():
       in_tensor_a = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
       in_tensor_b = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
@@ -341,7 +346,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -352,7 +357,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -363,23 +368,58 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+    # Allow float32 for fallback on non-quantizable op.
+    expected_ceil_dtype = (
+        expected_dtype if enable_mlir_quantizer else dtypes.float32)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(input_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(input_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(input_details[1]['dtype'], expected_dtype)
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(output_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(output_details[1]['dtype'], expected_dtype)
+
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getIntegerQuantizeModel()
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
@@ -911,14 +951,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('UseTfliteBuiltinsIntDisableMLIR',
        [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
       # Quantize model to Int16: with disable mlir
-      ('UseTfliteBuiltinsInt16DisableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       False),
-      ('UseTfliteBuiltinsInt16EnableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       True))
+      ('UseTfliteBuiltinsInt16DisableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], False),
+      ('UseTfliteBuiltinsInt16EnableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], True))
   def testQuantizeInt8And16x8(self, supported_ops, enable_mlir_converter):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
@@ -1108,27 +1148,35 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
   @parameterized.named_parameters(
       # Quantize to Float16 even if rep data provided.
-      ('UseRepresentativeData', True, False, True, False, False, False),
+      ('UseRepresentativeData', True, False, True, False, False, False, False),
       # Quantize to Float16 if no rep data provided.
-      ('NoRepresentativeData', False, False, True, False, False, False),
+      ('NoRepresentativeData', False, False, True, False, False, False, False),
       # Post training quantization if both rep data and int8 included.
-      ('UseSampleDataIncludeInt8', True, True, False, False, True, False),
-
+      ('UseSampleDataIncludeInt8', True, True, False, False, True, False, False
+      ),
       # Quantize to Float16 even if rep data provided with mlir.
-      ('UseRepresentativeDataMlir', True, False, True, False, False, True),
+      ('UseRepresentativeDataMlir', True, False, True, False, False, True, False
+      ),
       # Quantize to Float16 if no rep data provided with mlir.
-      ('NoRepresentativeDataMlir', False, False, True, False, False, True),
+      ('NoRepresentativeDataMlir', False, False, True, False, False, True, False
+      ),
       # Post training quantization if both rep data and int8 included with mlir.
-      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True))
+      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True, False
+      ),
+      # Same as above, but using MLIR quantizer
+      ('SampleDataIncludeInt8MlirQuant', True, True, False, False, True, True,
+       True))
   def testQuantizeFloat16(self, use_rep_data, include_int8,
                           is_float16_quantized, is_error,
-                          is_post_training_quantized, enable_mlir_converter):
+                          is_post_training_quantized, enable_mlir_converter,
+                          enable_mlir_quantizer):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
       sess = session.Session()
 
-    idx = 1 if enable_mlir_converter else 0
-    node_name = 'Conv2D' if enable_mlir_converter else 'Conv2D_bias'
+    bias_idx = 1 if enable_mlir_converter else 0
+    bias_name = 'Conv2D' if enable_mlir_converter else 'Conv2D_bias'
+
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
     float_converter.experimental_new_converter = enable_mlir_converter
@@ -1136,13 +1184,20 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertIsNotNone(float_tflite_model)
     interpreter = Interpreter(model_content=float_tflite_model)
     interpreter.allocate_tensors()
-    self.assertEqual(interpreter.get_tensor_details()[idx]['name'], node_name)
-    self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
+    self.assertEqual(interpreter.get_tensor_details()[bias_idx]['name'],
+                     bias_name)
+    self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
                      dtypes.float32)
+
+    # MLIR quantizer has different bias index.
+    if enable_mlir_quantizer:
+      bias_idx = 2
+
     # Convert model to quantized version
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [dtypes.float16]
     if include_int8:
@@ -1162,15 +1217,16 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       self.assertIsNotNone(quantized_tflite_model)
       interpreter = Interpreter(model_content=quantized_tflite_model)
       interpreter.allocate_tensors()
-      self.assertEqual(interpreter.get_tensor_details()[idx]['name'], node_name)
+      self.assertEqual(interpreter.get_tensor_details()[bias_idx]['name'],
+                       bias_name)
 
       if is_float16_quantized:
         # Verify that bias constant is float16 type.
-        self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
+        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
                          dtypes.float16)
       elif is_post_training_quantized:
         # Verify that bias constants is int32 type.
-        self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
+        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
                          dtypes.int32)
       else:
         raise ValueError('Invalid test options.')
@@ -1217,18 +1273,22 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       quantized_converter.inference_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.{}` and '
+        '`inference_input_type=None`.'.format(quantized_type.name),
+        str(error.exception))
 
     with self.assertRaises(ValueError) as error:
       quantized_converter.inference_type = dtypes.float32
       quantized_converter.inference_input_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.float32` and '
+        '`inference_input_type=tf.{}`.'.format(quantized_type.name),
+        str(error.exception))
 
     quantized_converter.inference_type = quantized_type
     quantized_converter.inference_input_type = quantized_type
@@ -1284,7 +1344,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # trigger post-training quantization
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = calibration_gen
-    converter._experimental_new_quantizer = True
+    converter.experimental_new_quantizer = True
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
@@ -1891,6 +1951,44 @@ class FromFrozenGraphObjectDetection(LiteTest):
                      output_details[3]['name'])
     self.assertAllEqual([1], output_details[3]['shape'])
 
+  def testModifyIOToUint8(self):
+    # Tests the object detection model that cannot be loaded in TensorFlow.
+    self._initObjectDetectionArgs()
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield [np.random.uniform(low=0, high=1, size=(1, 300, 300, 3)).astype(
+            np.float32)]
+    converter = lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                                       self._input_arrays,
+                                                       self._output_arrays,
+                                                       self._input_shapes)
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = {lite.OpsSet.TFLITE_BUILTINS_INT8}
+    converter.inference_type = dtypes.int8
+    converter.inference_input_type = dtypes.uint8
+    converter.inference_output_type = dtypes.uint8
+    converter.experimental_new_quantizer = True
+    converter.quantized_input_stats = {
+        'normalized_input_image_tensor': (0., 1.)}  # mean, std_dev
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    self.assertIsNotNone(tflite_model)
+
+    model = util._convert_model_from_bytearray_to_object(tflite_model)
+    quant_opcode_idxs = util.get_quantize_opcode_idx(model)
+
+    subgraph = model.subgraphs[0]
+    tensors = subgraph.tensors
+    operators = subgraph.operators
+    for op in operators:
+      if op.opcodeIndex in quant_opcode_idxs:
+        input_type = util._convert_tflite_enum_type_to_tf_type(
+            tensors[op.inputs[0]].type)
+        if op.outputs[0] in subgraph.outputs:
+          self.assertEqual(input_type, dtypes.float32)
+
 
 class FromSavedModelTest(TestModels):
 
@@ -2472,7 +2570,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
     self.assertEqual((0., 0.), output_details[1]['quantization'])
 
   def testPartialShapeOverriding(self):
-    """Test a Functional tf.keras model with parital input shape overriding."""
+    """Test a Functional tf.keras model with partial input shape overriding."""
     self._getFunctionalModelMultipleInputs()
 
     # Convert to TFLite model.
@@ -2596,11 +2694,21 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
 
-  def testExperimentalSparsifyModel(self):
+  def testSparsifyModel(self):
     self._getSequentialModel()
 
-    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
-    converter._experimental_sparsify_model = True
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {lite.Optimize.EXPERIMENTAL_SPARSITY}
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+  def testSparsifyQuantizedModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {
+        lite.Optimize.DEFAULT, lite.Optimize.EXPERIMENTAL_SPARSITY
+    }
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
@@ -2738,6 +2846,41 @@ class DefaultConverterAttrsTest(LiteTest):
     self.assertIsNone(converter.dump_graphviz_dir)
     self.assertFalse(converter.dump_graphviz_video)
     self.assertIsNone(converter.conversion_summary_dir)
+
+
+class ControlFlowV1OpsTest(LiteTest):
+
+  def testConverterErrorOnControlFlowV1Ops(self):
+    graph_def_file = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1.pbtxt')
+    input_arrays = ['a', 'b', 'c', 'd']
+    output_arrays = ['Merge']
+
+    converter = lite.TFLiteConverter.from_frozen_graph(graph_def_file,
+                                                       input_arrays,
+                                                       output_arrays)
+    with self.assertRaises(ConverterError) as error:
+      converter.convert()
+    self.assertIn(
+        'Failed to functionalize Control Flow V1 ops. Consider using Control '
+        'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
+        'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
+
+
+class QuantizationModeTest(LiteTest, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('size', lite.Optimize.OPTIMIZE_FOR_SIZE),
+      ('latency', lite.Optimize.OPTIMIZE_FOR_LATENCY))
+  def testDeprecatedOptionWarning(self, optimization):
+    """Test if the warning message when using TOCO is logged."""
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'please use optimizations=[Optimize.DEFAULT] instead.'
+    lite.QuantizationMode([optimization], lite.TargetSpec(), None, None)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
 
 
 if __name__ == '__main__':

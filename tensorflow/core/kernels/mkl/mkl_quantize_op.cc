@@ -87,13 +87,13 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
@@ -263,7 +263,6 @@ class MklQuantizeV2Op : public OpKernel {
                     "MIN_FIRST mode for now."));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
-    const Tensor& input = ctx->input(0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
 
@@ -407,12 +406,12 @@ class MklQuantizeV2Op : public OpKernel {
     TensorShape output_tf_shape;
     if (src_mkl_shape.IsMklTensor()) {
       output_mkl_shape.SetMklTensor(true);
-      output_mkl_shape.SetMklLayout(&DST_MD);
+      output_mkl_shape.SetMklLayout(&dst_md);
       output_mkl_shape.SetElemType(MklDnnType<T>());
       output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                    src_mkl_shape.GetSizesAsMklDnnDims(),
                                    src_mkl_shape.GetTfDataFormat());
-      output_tf_shape.AddDim(DST_MD.get_size() / sizeof(T));
+      output_tf_shape.AddDim(dst_md.get_size() / sizeof(T));
     } else {
       output_mkl_shape.SetMklTensor(false);
       output_tf_shape = MklDnnDimsToTFShape(output_dims);
@@ -475,7 +474,8 @@ class MklQuantizeV2Op : public OpKernel {
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, reorder_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
                           cpu_stream);
 

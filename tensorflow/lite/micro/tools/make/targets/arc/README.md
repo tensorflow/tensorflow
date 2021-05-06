@@ -149,7 +149,7 @@ use a shell to execute the following command from the root directory of the
 TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_emsdp
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_emsdp OPTIMIZED_KERNEL_DIR=arc_mli
 ```
 
 The application project will be generated into
@@ -166,8 +166,8 @@ is used by default to speed up execution of some kernels for asymmetrically
 quantized layers. Kernels which use MLI-based implementations are kept in the
 *tensorflow/lite/micro/kernels/arc_mli* folder. For applications which may not
 benefit from MLI library, the project can be generated without these
-implementations by adding `TAGS=no_arc_mli` in the command line. This can reduce
-code size when the optimized kernels are not required.
+implementations by adding `ARC_TAGS=no_arc_mli` in the command line. This can
+reduce code size when the optimized kernels are not required.
 
 For more options on embARC MLI usage see
 [kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md).
@@ -279,7 +279,7 @@ For instance, to build **Person Detection** test application, use the following
 command from the root directory of the TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_custom TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_custom OPTIMIZED_KERNEL_DIR=arc_mli TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
 ```
 
 The application project will be generated into
@@ -291,8 +291,8 @@ is used by default to speed up execution of some kernels for asymmetrically
 quantized layers. Kernels which use MLI-based implementations are kept in the
 *tensorflow/lite/micro/kernels/arc_mli* folder. For applications which may not
 benefit from MLI library, the project can be generated without these
-implementations by adding `TAGS=no_arc_mli` in the command line. This can reduce
-code size when the optimized kernels are not required.
+implementations by adding `ARC_TAGS=no_arc_mli` in the command line. This can
+reduce code size when the optimized kernels are not required.
 
 For more options on embARC MLI usage see
 [kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md).

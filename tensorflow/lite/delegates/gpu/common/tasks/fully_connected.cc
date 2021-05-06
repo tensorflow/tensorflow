@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -31,8 +32,39 @@ namespace gpu {
 
 namespace {
 bool UseBufferForWeights(const GpuInfo& gpu_info) {
-  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
+  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali() ||
+         gpu_info.IsApple();
 }
+
+void RearrangeFCWeightsToOIO4I4(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, uint8_t* dst) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int i = 0; i < 4; ++i) {
+        const int src_ch = s * 4 + i;
+        for (int j = 0; j < 4; ++j) {
+          const int dst_ch = d * 4 + j;
+          if (src_ch < weights.shape.i && dst_ch < weights.shape.o) {
+            int t =
+                127 +
+                weights.data[weights.shape.LinearIndex({dst_ch, 0, 0, src_ch})];
+            if (t < 0) {
+              t = 0;
+            }
+            dst[counter++] = t;
+          } else {
+            dst[counter++] = 127;
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 FullyConnected::FullyConnected(const OperationDef& definition,
@@ -46,16 +78,12 @@ FullyConnected::FullyConnected(const OperationDef& definition,
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
-  } else if (gpu_info.IsIntel()) {
-    work_group_size_ = int3(8, 4, 1);
-  } else if (gpu_info.IsNvidia()) {
-    work_group_size_ = int3(8, 4, 1);
-  } else if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsIntel() || gpu_info.IsNvidia() ||
+             gpu_info.IsPowerVR() || gpu_info.IsApple()) {
     work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
-  code_ = GetFullyConnectedKernelCode(definition_, gpu_info);
 }
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
@@ -75,11 +103,15 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
 // optimized shaders
 
 std::string FullyConnected::GetFullyConnectedKernelCode(
-    const OperationDef& op_def, const GpuInfo& gpu_info) {
+    const OperationDef& op_def, const GpuInfo& gpu_info,
+    bool weights_are_buffer, bool quantized) {
+  const int wg_total_size = work_group_size_.x * work_group_size_.y;
+  const std::string barrier =
+      wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
+          ? "SIMD_LOCAL_MEM_BARRIER"
+          : "LOCAL_MEM_BARRIER";
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
-  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
   std::string c;
   switch (op_def.precision) {
@@ -95,20 +127,20 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   c += "#define WG_X " + std::to_string(work_group_size_.x) + "\n";
   c += "#define WG_Y " + std::to_string(work_group_size_.y) + "\n";
 
-  c += R"(__kernel void main_function($0) {
-  int gid = get_global_id(0);
-  int2 tid = (int2)(get_local_id(0), get_local_id(1));
-  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);
+  c += R"(MAIN_FUNCTION($0) {
+  int gid = GLOBAL_ID_0;
+  int2 tid = INIT_INT2v2(LOCAL_ID_0, LOCAL_ID_1);
+  ACCUM_FLT4 s = INIT_ACCUM_FLT4(0.0f);
   if (gid < args.dst_tensor.Slices()) {
     for (int c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
       FLT4 v = args.src_tensor.Read(0, 0, c);
 )";
   if (weights_are_buffer) {
     c += R"(FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);
-      FLT4 partial = v.s0 * w.s0123;
-      partial = mad(v.s1, w.s4567, partial);
-      partial = mad(v.s2, w.s89ab, partial);
-      partial = mad(v.s3, w.scdef, partial);
+      FLT4 partial = v.x * FLT16_0123(w);
+      partial += v.y * FLT16_4567(w);
+      partial += v.z * FLT16_89ab(w);
+      partial += v.w * FLT16_cdef(w);
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {
@@ -116,10 +148,18 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
       FLT4 w1 = args.weights.Read(c * 4 + 1, gid);
       FLT4 w2 = args.weights.Read(c * 4 + 2, gid);
       FLT4 w3 = args.weights.Read(c * 4 + 3, gid);
-      FLT4 partial = v.s0 * w0;
-      partial = mad(v.s1, w1, partial);
-      partial = mad(v.s2, w2, partial);
-      partial = mad(v.s3, w3, partial);
+      )";
+    if (quantized) {
+      c += R"(w0 = w0 * args.q0 + args.q1;
+      w1 = w1 * args.q0 + args.q1;
+      w2 = w2 * args.q0 + args.q1;
+      w3 = w3 * args.q0 + args.q1;
+)";
+    }
+    c += R"(FLT4 partial = v.x * w0;
+      partial += v.y * w1;
+      partial += v.z * w2;
+      partial += v.w * w3;
       s += TO_ACCUM_TYPE(partial);
 )";
   }
@@ -127,7 +167,9 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   }
   __local ACCUM_FLT4 temp[WG_X][WG_Y];
   temp[tid.x][tid.y] = s;
-  barrier(CLK_LOCAL_MEM_FENCE);
+)";
+  c += "  " + barrier + ";\n";
+  c += R"(
   if (gid >= args.dst_tensor.Slices()) {
     return;
   }
@@ -148,18 +190,75 @@ int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
+void FullyConnected::UploadQuantizedWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+    float zero_point) {
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  Texture2DDescriptor desc;
+  desc.element_type = DataType::UINT8;
+  desc.normalized = true;
+  desc.normalized_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.size = int2(src_depth * 4, dst_depth);
+  desc.data.resize(src_depth * 4 * dst_depth * 4);
+  RearrangeFCWeightsToOIO4I4(weights, desc.data.data());
+
+  if (definition_.precision == CalculationsPrecision::F32) {
+    args_.AddFloat("q0", scale * 255.0f);
+    args_.AddFloat("q1", -scale * (127.0 + zero_point));
+  } else {
+    args_.AddHalf("q0", half(scale * 255.0f));
+    args_.AddHalf("q1", half(-scale * (127.0 + zero_point)));
+  }
+  args_.AddObject("weights",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+}
+
 FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr) {
   FullyConnected result(definition, gpu_info);
   result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
+  result.code_ = result.GetFullyConnectedKernelCode(
+      definition, gpu_info, UseBufferForWeights(gpu_info), false);
 
   TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
+                                                : LinearStorageType::BUFFER;
+  if (gpu_info.IsApple()) {
+    desc.storage_type =
+        DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  }
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+
+  return result;
+}
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedInt8Attributes& attr) {
+  FullyConnected result(definition, gpu_info);
+  result.UploadQuantizedWeights(attr.weights, attr.scale, attr.zero_point);
+  result.code_ =
+      result.GetFullyConnectedKernelCode(definition, gpu_info, false, true);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
+                                                : LinearStorageType::BUFFER;
+  if (gpu_info.IsApple()) {
+    desc.storage_type =
+        DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  }
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+
+  return result;
 
   return result;
 }

@@ -135,6 +135,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncDoubleVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
@@ -142,6 +143,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncFloatVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)

@@ -20,18 +20,19 @@ namespace {
 
 bool IsUpcastConvert(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kConvert &&
-         ShapeUtil::CanUpcastIntegral(hlo->operand(0)->shape(), hlo->shape()) &&
-         ShapeUtil::EqualIgnoringElementType(hlo->operand(0)->shape(),
-                                             hlo->shape());
+         ShapeUtil::ElementIsFloating(hlo->shape()) ==
+             ShapeUtil::ElementIsFloating(hlo->operand(0)->shape()) &&
+         ShapeUtil::ElementIsSigned(hlo->shape()) ==
+             ShapeUtil::ElementIsSigned(hlo->operand(0)->shape()) &&
+         ShapeUtil::HigherPrecisionElementType(hlo->operand(0)->shape(),
+                                               hlo->shape()) ==
+             hlo->shape().element_type();
 }
 
 }  // namespace
 
 bool ConvertOperandFolding::InstructionMatchesPattern(
     HloInstruction* instruction) {
-  if (!ShapeUtil::ElementIsIntegral(instruction->shape())) {
-    return false;
-  }
   if (instruction->opcode() != HloOpcode::kDot &&
       instruction->opcode() != HloOpcode::kConvolution) {
     return false;

@@ -26,25 +26,22 @@ Here, we document how Renode is used as part of the TFLM project. For more
 general use of Renode, please refer to the [Renode
 documentation](https://renode.readthedocs.io/en/latest/).
 
+You can also read more about Renode from a [publicly available slide deck](https://docs.google.com/presentation/d/1j0gjI4pVkgF9CWvxaxr5XuCKakEB25YX2n-iFxlYKnE/edit).
+
 # Installation
 
-Renode can be installed and used in a variety of ways, as documented
-[here](https://renode.readthedocs.io/en/latest/). For the purpose of Tensorflow
-Lite Micro, we make use of a portable version for Linux.
+Renode can be installed and used in a variety of ways, as documented in the
+[Renode README](https://github.com/renode/renode/blob/master/README.rst#installation/). For the purpose of Tensorflow
+Lite Micro, we make use of the portable version for Linux.
 
- 1. Download portable version of Renode for Linux:
+Portable renode will be automatically installed when using the TfLite Micro
+Makefile to `tensorflow/lite/micro/tools/make/downloads/renode`.
 
-    ```
-    tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
-    ```
+The Makefile internally calls the `renode_download.sh` script:
 
- 2. Install the Renode test dependencies
-
-    ```
-    pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
-    ```
-
-At this point in time you will be ready to run TFLM tests with Renode.
+```
+tensorflow/lite/micro/tools/make/renode_download.sh tensorflow/lite/micro/tools/make/downloads
+```
 
 # Running Unit Tests
 
@@ -56,6 +53,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=bluepill test
 
  * This makes use of the robot framework from Renode.
  * Note that the tests can currently not be run in parallel.
+ * It takes about 25 second to complete all tests, including around 3 seconds for suite startup/teardown and average 0.38 second per test.
 
 ## Under the hood of the Testing Infrastructure
 
@@ -74,9 +72,46 @@ failing.
 
 # Running a non-test Binary with Renode
 
-It may be useful to run binaries on Renode that are not tests, independent of
-the robot framework. We will be adding some documentation for that in this
-section.
+Renode can also be used to run and debug binaries interactively. For example,
+to debug `kernel_addr_test` on Bluepill platform, run Renode:
+
+```
+tensorflow/lite/micro/tools/make/downloads/renode/renode
+```
+and issue following commands:
+```
+# Create platform
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
+# Load ELF file
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
+# Start simulation
+start
+
+# To run again:
+Clear
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
+start
+
+```
+
+To make repeat runs a bit easier, you can put all the commands into a
+single line (up arrow will show the last command in the Renode terminal):
+```
+Clear; include @tensorflow/lite/micro/testing/bluepill_nontest.resc; sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark; start
+```
+
+You can also connect GDB to the simulation.
+To do that, start the GDB server in Renode before issuing the `start` command:
+```
+machine StartGdbServer 3333
+```
+Than you can connect from GDB with:
+```
+target remote localhost:3333
+```
+
+For further reference please see the [Renode documentation](https://renode.readthedocs.io/en/latest/).
 
 # Useful External Links for Renode and Robot Documentation
 
@@ -102,4 +137,3 @@ section.
 
        * [Remove File](http://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#Remove%20File)
        * [List Files In Directory](https://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#List%20Files%20In%20Directory)
-

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
@@ -78,6 +79,37 @@ void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
 void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   ruy_profile_ = nullptr;
 }
+
+class InterpreterStatePrinter : public BenchmarkListener {
+ public:
+  explicit InterpreterStatePrinter(Interpreter* interpreter)
+      : interpreter_(interpreter) {}
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override {
+    params_ = &params;
+    if (params_->Get<bool>("print_preinvoke_state")) {
+      TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter pre-invoke "
+                          "state begins====";
+      tflite::PrintInterpreterState(interpreter_);
+      TFLITE_LOG(INFO) << "====Printing out TfLite interpreter pre-invoke "
+                          "state ends====\n";
+    }
+  }
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    if (params_->Get<bool>("print_postinvoke_state")) {
+      TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter post-invoke "
+                          "state begins====";
+      tflite::PrintInterpreterState(interpreter_);
+      TFLITE_LOG(INFO) << "====Printing out TfLite interpreter post-invoke "
+                          "state ends====\n";
+    }
+  }
+
+ private:
+  Interpreter* const interpreter_ = nullptr;  // not own the memory.
+  const BenchmarkParams* params_ = nullptr;   // not own the memory.
+};
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
   std::vector<std::string> results;
@@ -255,6 +287,11 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
 
+  default_params.AddParam("print_preinvoke_state",
+                          BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("print_postinvoke_state",
+                          BenchmarkParam::Create<bool>(false));
+
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
     default_params.Merge(delegate_provider->DefaultParams());
@@ -314,7 +351,16 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
-          "prints to stdout.")};
+          "prints to stdout."),
+      CreateFlag<bool>(
+          "print_preinvoke_state", &params_,
+          "print out the interpreter internals just before calling Invoke. The "
+          "internals will include allocated memory size of each tensor etc."),
+      CreateFlag<bool>(
+          "print_postinvoke_state", &params_,
+          "print out the interpreter internals just before benchmark completes "
+          "(i.e. after all repeated Invoke calls complete). The internals will "
+          "include allocated memory size of each tensor etc.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -349,6 +395,10 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Max profiling buffer entries", verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
+  LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
+                      "Print pre-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
+                      "Print post-invoke interpreter state", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -485,6 +535,12 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
       return CreateInputTensorData<int32_t>(
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
+    case kTfLiteUInt32: {
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      return CreateInputTensorData<uint32_t>(
+          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
+    }
     case kTfLiteInt16: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
@@ -506,8 +562,15 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
     case kTfLiteString: {
-      // TODO(haoliang): No need to cache string tensors right now.
+      // Don't populate input for string. Instead, return a default-initialized
+      // `InputTensorData` object directly.
       break;
+    }
+    case kTfLiteBool: {
+      // According to std::uniform_int_distribution specification, non-int type
+      // is not supported.
+      return CreateInputTensorData<bool>(
+          num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
     }
     default: {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
@@ -607,9 +670,17 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
 
+  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get()));
+  AddListener(interpreter_state_printer_.get());
+
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
+
+  // Contains all ids of TfLiteNodes that have been checked to see whether it's
+  // delegated or not.
+  std::unordered_set<int> checked_node_ids;
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
@@ -626,10 +697,19 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       int num_delegated_kernels = 0;
       for (int i = 0; i < interpreter_->execution_plan().size(); ++i) {
         int node_id = interpreter_->execution_plan()[i];
+        if (checked_node_ids.find(node_id) != checked_node_ids.end()) {
+          continue;
+        }
         const TfLiteNode& node =
             interpreter_->node_and_registration(node_id)->first;
-        if (delegate.get() == node.delegate) {
+
+        // Note that the 'delegate' here could be an ExternalDelegateWrapper
+        // object that wraps an actual external delegate, in which case,
+        // 'node.delegate' will be different from 'delegate' because
+        // 'node.delegate' refers to the actual external delegate.
+        if (node.delegate != nullptr) {
           num_delegated_kernels++;
+          checked_node_ids.insert(node_id);
         }
       }
       bool fully_delegated = (num_delegated_kernels == 1 &&
@@ -669,8 +749,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
-  // TODO(ycling): Consider to make this an error again when the new converter
-  // create tensors with consistent naming.
   for (int j = 0; j < inputs_.size(); ++j) {
     const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
@@ -678,6 +756,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     if (input.name != t->name) {
       TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
                        << " but flags call it " << input.name;
+    }
+
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
     }
   }
 

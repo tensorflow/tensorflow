@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -32,8 +33,8 @@ namespace TFTPU {
 // A pass that finds TPU clusters with write only resource access and adds an
 // associated resource read, so the resource can later be fused into TPUExecute.
 namespace {
-struct TPUResourceReadForWrite
-    : public PassWrapper<TPUResourceReadForWrite, OperationPass<ModuleOp>> {
+struct TPUResourceReadForWritePass
+    : public TF::TPUResourceReadForWritePassBase<TPUResourceReadForWritePass> {
   void runOnOperation() override;
 };
 
@@ -78,7 +79,7 @@ bool ClusterFuncHasResourceRead(tf_device::ClusterFuncOp cluster_func,
   return false;
 }
 
-void TPUResourceReadForWrite::runOnOperation() {
+void TPUResourceReadForWritePass::runOnOperation() {
   SmallVector<tf_device::ClusterFuncOp, 4> cluster_funcs;
   getOperation().walk([&](tf_device::ClusterFuncOp cluster_func) {
     cluster_funcs.push_back(cluster_func);
@@ -111,15 +112,15 @@ void TPUResourceReadForWrite::runOnOperation() {
 
     auto new_cluster_func = builder.create<tf_device::ClusterFuncOp>(
         cluster_func.getLoc(), cluster_func.getResultTypes(), operands,
-        cluster_func.getAttrs());
+        cluster_func->getAttrs());
     cluster_func.replaceAllUsesWith(new_cluster_func);
     FuncOp func = cluster_func.getFunc();
     Block& block = func.front();
     for (Value read_operand : read_operands)
       block.addArgument(read_operand.getType());
 
-    func.setType(FunctionType::get(block.getArgumentTypes(),
-                                   func.getCallableResults(), &getContext()));
+    func.setType(FunctionType::get(&getContext(), block.getArgumentTypes(),
+                                   func.getCallableResults()));
     cluster_func.erase();
   }
 }
@@ -127,13 +128,8 @@ void TPUResourceReadForWrite::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass() {
-  return std::make_unique<TPUResourceReadForWrite>();
+  return std::make_unique<TPUResourceReadForWritePass>();
 }
-
-static PassRegistration<TPUResourceReadForWrite> pass(
-    "tf-tpu-resource-read-for-write",
-    "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes "
-    "with no reads");
 
 }  // namespace TFTPU
 }  // namespace mlir

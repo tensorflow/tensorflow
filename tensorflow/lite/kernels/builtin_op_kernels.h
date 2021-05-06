@@ -28,6 +28,9 @@ namespace builtin {
 // needed. In such cases, the client can selectively add only the registrations
 // their model requires, using a custom `OpResolver` or `MutableOpResolver`.
 // Selective registration in turn allows the linker to strip unused kernels.
+//
+// TODO(b/184734878): auto-generate this header file from the BuiltinOperator
+// enum in the FlatBuffer schema.
 
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_ADD();
@@ -43,8 +46,10 @@ TfLiteRegistration* Register_BROADCAST_TO();
 TfLiteRegistration* Register_CALL_ONCE();
 TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_CEIL();
+TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_CONV_2D();
+TfLiteRegistration* Register_CONV_3D();
 TfLiteRegistration* Register_COS();
 TfLiteRegistration* Register_CUMSUM();
 TfLiteRegistration* Register_DENSIFY();
@@ -69,8 +74,13 @@ TfLiteRegistration* Register_GATHER_ND();
 TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_HARD_SWISH();
+TfLiteRegistration* Register_HASHTABLE();
+TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_LOOKUP();
+TfLiteRegistration* Register_HASHTABLE_IMPORT();
+TfLiteRegistration* Register_HASHTABLE_SIZE();
 TfLiteRegistration* Register_IF();
+TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_L2_POOL_2D();
 TfLiteRegistration* Register_LEAKY_RELU();
@@ -106,6 +116,8 @@ TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_RANK();
+TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_REDUCE_ALL();
 TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_REDUCE_MIN();

@@ -47,6 +47,7 @@ struct OpData {
   int32_t shift;
   int input_offset;
   int output_offset;
+  bool needs_rescale;
 };
 
 bool IsNumericSupportedType(const TfLiteType type) {
@@ -91,7 +92,11 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (!is_supported_type(input->type)) {
     TF_LITE_UNSUPPORTED_TYPE(context, input->type, op_name);
   }
-  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+  // For int16 type input, we support both quantized and non-quantized
+  // evaluation.
+  if (input->type == kTfLiteInt8 ||
+      (input->type == kTfLiteInt16 &&
+       input->quantization.type != kTfLiteNoQuantization)) {
     TfLiteTensor* output = GetOutput(context, node, 0);
     auto* op_data = static_cast<OpData*>(node->user_data);
     TF_LITE_ENSURE_EQ(context, input->quantization.type,
@@ -118,7 +123,8 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
     const float input_scale = input_params->scale->data[0];
     const float output_scale = output_params->scale->data[0];
-    if (op_name == kAbsName) {
+    op_data->needs_rescale = input_scale != output_scale;
+    if (op_name == kAbsName && op_data->needs_rescale) {
       SetAbsOutputMultiplier(input_scale, output_scale, &op_data->multiplier,
                              &op_data->shift);
     } else if (op_name == kRsqrtName) {
@@ -148,6 +154,24 @@ inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_ENSURE_OK(context, validate_input_func(in_data[i]));
     }
     out_data[i] = func(in_data[i]);
+  }
+  return kTfLiteOk;
+}
+
+// Non-quantized evaluation of Abs op when input is int16.
+inline TfLiteStatus AbsInt16EvalImpl(TfLiteContext* context, TfLiteNode* node,
+                                     TfLiteType expected_type) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
+  const int64_t num_elements = NumElements(input);
+  const int16_t* in_data = GetTensorData<int16_t>(input);
+  int16_t* out_data = GetTensorData<int16_t>(output);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    out_data[i] = static_cast<int16_t>(
+        std::abs<int32_t>(static_cast<int32_t>(in_data[i])));
   }
   return kTfLiteOk;
 }
@@ -188,10 +212,13 @@ TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   std::function<T(T)> func = [&](T i) {
     const int32_t value = std::abs(i - op_data->input_offset);
+    if (!op_data->needs_rescale) {
+      return static_cast<T>(
+          std::min(std::max(value + op_data->output_offset, kMin), kMax));
+    }
     const int32_t output = MultiplyByQuantizedMultiplier(
                                value, op_data->multiplier, op_data->shift) +
                            op_data->output_offset;
-
     return static_cast<T>(std::min(std::max(output, kMin), kMax));
   };
 
@@ -199,14 +226,17 @@ TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteType type = GetInput(context, node, 0)->type;
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteType type = input->type;
   switch (type) {
     case kTfLiteFloat32:
       return EvalImpl<float>(context, node, std::abs<float>, type);
     case kTfLiteInt8:
       return AbsEvalQuantized<int8_t>(context, node, type);
     case kTfLiteInt16:
-      return AbsEvalQuantized<int16_t>(context, node, type);
+      return input->quantization.type == kTfLiteNoQuantization
+                 ? AbsInt16EvalImpl(context, node, type)
+                 : AbsEvalQuantized<int16_t>(context, node, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));

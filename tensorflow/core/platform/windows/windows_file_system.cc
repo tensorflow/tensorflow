@@ -616,9 +616,9 @@ bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
 Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
                                FileStatistics* stat) {
   Status result;
-  struct _stat sbuf;
+  struct _stat64 sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
+  if (_wstat64(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;

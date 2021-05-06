@@ -36,7 +36,8 @@ StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
         continue;
       }
       if (comp->IsSafelyRemovable(instruction) &&
-          ShapeUtil::IsZeroElementArray(instruction->shape())) {
+          ShapeUtil::IsZeroElementArray(instruction->shape()) &&
+          instruction->shape().is_static()) {
         // If the instruction doesn't have a layout, use a default layout for
         // the literal.
         Shape shape = instruction->shape();

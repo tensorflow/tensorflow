@@ -27,19 +27,17 @@ limitations under the License.
 // Spatial Convolutions                                                       //
 // -------------------------------------------------------------------------- //
 
-void SpatialConvolution(int iters, int num_threads,
+void SpatialConvolution(::testing::benchmark::State& state, int num_threads,
                         /* Input dimensions: */
                         int input_batches, int input_height, int input_width,
                         int input_depth,
                         /* Filter (kernel) dimensions: */
                         int filter_count, int filter_height, int filter_width) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       SpatialConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(input_batches, input_height,
                                             input_width, input_depth);
@@ -52,23 +50,22 @@ void SpatialConvolution(int iters, int num_threads,
       (input_dims.TotalSize() / input_depth) * filter_count;
   auto flops =
       num_computed_elements * (input_depth * filter_height * filter_width);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
 
-void SpatialConvolutionBackwardInput(int iters, int num_threads,
+void SpatialConvolutionBackwardInput(::testing::benchmark::State& state,
+                                     int num_threads,
                                      /* Input dimensions: */
                                      int input_batches, int input_height,
                                      int input_width, int input_depth,
                                      /* Filter (kernel) dimensions: */
                                      int filter_count, int filter_height,
                                      int filter_width) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       SpatialConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(input_batches, input_height,
                                             input_width, input_depth);
@@ -80,23 +77,22 @@ void SpatialConvolutionBackwardInput(int iters, int num_threads,
   auto num_computed_elements = input_dims.TotalSize();
   auto flops =
       num_computed_elements * (input_depth * filter_height * filter_width);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
 
-void SpatialConvolutionBackwardKernel(int iters, int num_threads,
+void SpatialConvolutionBackwardKernel(::testing::benchmark::State& state,
+                                      int num_threads,
                                       /* Input dimensions: */
                                       int input_batches, int input_height,
                                       int input_width, int input_depth,
                                       /* Filter (kernel) dimensions: */
                                       int filter_count, int filter_height,
                                       int filter_width) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       SpatialConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(input_batches, input_height,
                                             input_width, input_depth);
@@ -108,7 +104,7 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
   auto num_computed_elements = filter_dims.TotalSize();
   auto flops =
       num_computed_elements * (input_batches * input_height * input_width);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
 
 // Macro arguments names: --------------------------------------------------- //
@@ -126,26 +122,26 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
 
 #define BM_SpatialConvolution(NT, N, H, W, C, FC, FH, FW, LABEL)          \
   static void BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, \
-                              FW)(int iters) {                            \
-    ::tensorflow::testing::SetLabel(LABEL);                               \
-    SpatialConvolution(iters, NT, N, H, W, C, FC, FH, FW);                \
+                              FW)(::testing::benchmark::State & state) {  \
+    state.SetLabel(LABEL);                                                \
+    SpatialConvolution(state, NT, N, H, W, C, FC, FH, FW);                \
   }                                                                       \
   BENCHMARK(BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, FW))
 
 #define BM_SpatialConvolutionBwdInput(NT, N, H, W, C, FC, FH, FW, LABEL)      \
   static void BM_SPATIAL_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, \
-                              FH, FW)(int iters) {                            \
-    ::tensorflow::testing::SetLabel(LABEL);                                   \
-    SpatialConvolutionBackwardInput(iters, NT, N, H, W, C, FC, FH, FW);       \
+                              FH, FW)(::testing::benchmark::State & state) {  \
+    state.SetLabel(LABEL);                                                    \
+    SpatialConvolutionBackwardInput(state, NT, N, H, W, C, FC, FH, FW);       \
   }                                                                           \
   BENCHMARK(                                                                  \
       BM_SPATIAL_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, FH, FW))
 
 #define BM_SpatialConvolutionBwdKernel(NT, N, H, W, C, FC, FH, FW, LABEL)      \
   static void BM_SPATIAL_NAME(SpatialConvolutionBwdKernel, NT, N, H, W, C, FC, \
-                              FH, FW)(int iters) {                             \
-    ::tensorflow::testing::SetLabel(LABEL);                                    \
-    SpatialConvolutionBackwardKernel(iters, NT, N, H, W, C, FC, FH, FW);       \
+                              FH, FW)(::testing::benchmark::State & state) {   \
+    state.SetLabel(LABEL);                                                     \
+    SpatialConvolutionBackwardKernel(state, NT, N, H, W, C, FC, FH, FW);       \
   }                                                                            \
   BENCHMARK(BM_SPATIAL_NAME(SpatialConvolutionBwdKernel, NT, N, H, W, C, FC,   \
                             FH, FW))
@@ -248,20 +244,18 @@ BM_SpatialConvolutionsBwdKernel(32, 7, 7, 192, 384, 3, 3, "conv5_00_3x3");
 // Cuboid Convolutions                                                        //
 // -------------------------------------------------------------------------- //
 
-void CuboidConvolution(int iters, int num_threads,
+void CuboidConvolution(::testing::benchmark::State& state, int num_threads,
                        /* Input dimensions: */
                        int input_batches, int input_height, int input_width,
                        int input_planes, int input_depth,
                        /* Filter (kernel) dimensions: */
                        int filter_count, int filter_height, int filter_width,
                        int filter_planes) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       CuboidConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(
       input_batches, input_height, input_width, input_planes, input_depth);
@@ -274,10 +268,11 @@ void CuboidConvolution(int iters, int num_threads,
       (input_dims.TotalSize() / input_depth) * filter_count;
   auto flops = num_computed_elements *
                (input_depth * filter_height * filter_width * filter_planes);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
 
-void CuboidConvolutionBackwardInput(int iters, int num_threads,
+void CuboidConvolutionBackwardInput(::testing::benchmark::State& state,
+                                    int num_threads,
                                     /* Input dimensions: */
                                     int input_batches, int input_height,
                                     int input_width, int input_planes,
@@ -285,13 +280,11 @@ void CuboidConvolutionBackwardInput(int iters, int num_threads,
                                     /* Filter (kernel) dimensions: */
                                     int filter_count, int filter_height,
                                     int filter_width, int filter_planes) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       CuboidConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(
       input_batches, input_height, input_width, input_planes, input_depth);
@@ -303,10 +296,11 @@ void CuboidConvolutionBackwardInput(int iters, int num_threads,
   auto num_computed_elements = input_dims.TotalSize();
   auto flops = num_computed_elements *
                (input_depth * filter_height * filter_width * filter_planes);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
 
-void CuboidConvolutionBackwardKernel(int iters, int num_threads,
+void CuboidConvolutionBackwardKernel(::testing::benchmark::State& state,
+                                     int num_threads,
                                      /* Input dimensions: */
                                      int input_batches, int input_height,
                                      int input_width, int input_planes,
@@ -314,13 +308,11 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
                                      /* Filter (kernel) dimensions: */
                                      int filter_count, int filter_height,
                                      int filter_width, int filter_planes) {
-  ::tensorflow::testing::StopTiming();
-
   CREATE_THREAD_POOL(num_threads);
 
   using Benchmark =
       CuboidConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
-  auto benchmark = Benchmark(iters, device);
+  auto benchmark = Benchmark(state, device);
 
   typename Benchmark::Dimensions input_dims(
       input_batches, input_height, input_width, input_planes, input_depth);
@@ -332,8 +324,15 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
   auto num_computed_elements = filter_dims.TotalSize();
   auto flops = num_computed_elements *
                (input_batches * input_height * input_width * input_planes);
-  ::tensorflow::testing::ItemsProcessed(flops * iters);
+  state.SetItemsProcessed(flops * state.iterations());
 }
+
+// The multiple #'s in the function names + the `::testing::benchmark::State&`
+// as parameters apparently confuses clang if they are not on the same line. So
+// we need to turn off LINT and clang-format for this block.
+//
+// clang-format off
+// NOLINTBEGIN
 
 // Macro arguments names: --------------------------------------------------- //
 //   NT: num threads
@@ -354,32 +353,32 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
             _f_##FC##_##FH##_##FW##_##FP)
 
 #define BM_CuboidConvolution(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL)         \
-  static void BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, \
-                             FP)(int iters) {                                  \
-    ::tensorflow::testing::SetLabel(LABEL);                                    \
-    CuboidConvolution(iters, NT, N, H, W, P, C, FC, FH, FW, FP);               \
+  static void BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, FP)(::testing::benchmark::State & state) {                   \
+    state.SetLabel(LABEL);                                    \
+    CuboidConvolution(state, NT, N, H, W, P, C, FC, FH, FW, FP);               \
   }                                                                            \
   BENCHMARK(                                                                   \
       BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, FP))
 
 #define BM_CuboidConvolutionBwdInput(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL) \
-  static void BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC, \
-                             FH, FW, FP)(int iters) {                          \
-    ::tensorflow::testing::SetLabel(LABEL);                                    \
-    CuboidConvolutionBackwardInput(iters, NT, N, H, W, P, C, FC, FH, FW, FP);  \
+  static void BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC, FH, FW, FP)(::testing::benchmark::State & state) {           \
+    state.SetLabel(LABEL);                                    \
+    CuboidConvolutionBackwardInput(state, NT, N, H, W, P, C, FC, FH, FW, FP);  \
   }                                                                            \
   BENCHMARK(BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC,   \
                            FH, FW, FP))
 
 #define BM_CuboidConvolutionBwdKernel(NT, N, H, W, P, C, FC, FH, FW, FP,       \
                                       LABEL)                                   \
-  static void BM_CUBOID_NAME(CuboidConvolutionBwdKernel, NT, N, H, W, P, C,    \
-                             FC, FH, FW, FP)(int iters) {                      \
-    ::tensorflow::testing::SetLabel(LABEL);                                    \
-    CuboidConvolutionBackwardKernel(iters, NT, N, H, W, P, C, FC, FH, FW, FP); \
+  static void BM_CUBOID_NAME(CuboidConvolutionBwdKernel, NT, N, H, W, P, C, FC, FH, FW, FP)(::testing::benchmark::State & state) {       \
+    state.SetLabel(LABEL);                                    \
+    CuboidConvolutionBackwardKernel(state, NT, N, H, W, P, C, FC, FH, FW, FP); \
   }                                                                            \
   BENCHMARK(BM_CUBOID_NAME(CuboidConvolutionBwdKernel, NT, N, H, W, P, C, FC,  \
                            FH, FW, FP))
+
+// NOLINTEND
+// clang-format on
 
 #define BM_CuboidConvolutions(N, H, W, P, C, FC, FH, FW, FP, LABEL) \
   BM_CuboidConvolution(2, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \

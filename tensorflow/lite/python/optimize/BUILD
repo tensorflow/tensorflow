@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -11,6 +11,7 @@ cc_library(
     hdrs = ["calibration_wrapper.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
@@ -22,6 +23,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -47,7 +49,7 @@ py_library(
     srcs = [
         "calibrator.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
@@ -65,7 +67,7 @@ py_test(
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",

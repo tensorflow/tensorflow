@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 TF_LITE_MICRO_TESTS_BEGIN
 
@@ -101,8 +100,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   const int kNoIndex = 3;
 
   // Make sure that the expected "Yes" score is higher than the other classes.
-  uint8_t silence_score = output->data.uint8[kSilenceIndex] + 128;
-  uint8_t unknown_score = output->data.uint8[kUnknownIndex] + 128;
+  uint8_t silence_score = output->data.int8[kSilenceIndex] + 128;
+  uint8_t unknown_score = output->data.int8[kUnknownIndex] + 128;
   uint8_t yes_score = output->data.int8[kYesIndex] + 128;
   uint8_t no_score = output->data.int8[kNoIndex] + 128;
   TF_LITE_MICRO_EXPECT_GT(yes_score, silence_score);

@@ -2528,6 +2528,21 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+
+  // Total 10 nodes: Four const, x, y, z, w, add, out.
+  ASSERT_EQ(cpu_state.temporary_memory_usage_trace.size(), 10);
+  const std::pair<std::string, int64_t>& x_usage =
+      cpu_state.temporary_memory_usage_trace.at(4);
+  EXPECT_EQ(x_usage.first, "x");
+  EXPECT_EQ(x_usage.second, one_input_node_size);
+  const std::pair<std::string, int64_t>& add_usage =
+      cpu_state.temporary_memory_usage_trace.at(8);
+  EXPECT_EQ(add_usage.first, "add");
+  EXPECT_EQ(add_usage.second, 5 * one_input_node_size);
+  const std::pair<std::string, int64_t>& out_usage =
+      cpu_state.temporary_memory_usage_trace.at(9);
+  EXPECT_EQ(out_usage.first, "out");
+  EXPECT_EQ(out_usage.second, one_input_node_size);
   ExpectUnorderedMapEq(
       {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
       scheduler_->GetPersistentMemoryUsage());
@@ -2982,9 +2997,10 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   // Same number of _Send and _Recv.
   EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at(kRecv), 4);
-  EXPECT_EQ(op_count.at(kSend), 4);
+  // Expect 3 Send and Recvs each: port 0, 1, and, 2.
+  // Control dependency bypasses the channel.
+  EXPECT_EQ(op_count.at(kRecv), 3);
+  EXPECT_EQ(op_count.at(kSend), 3);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {
@@ -3006,9 +3022,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
 
 TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {

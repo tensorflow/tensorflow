@@ -9,9 +9,17 @@ APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
 # with the hard interfaces.
 GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
-$(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+endif
+
 $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),$(AM_SDK_DEST),patch_am_sdk))
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
 
 ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
   $(eval $(call add_third_party_download,$(SF_BSPS_URL),$(SF_BSPS_MD5),$(AM_SDK_DEST)/$(SF_BSPS_DEST),))
@@ -25,13 +33,10 @@ PLATFORM_FLAGS = \
   -DAM_PART_APOLLO3 \
   -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
   -DTF_LITE_STATIC_MEMORY \
-  -DNDEBUG \
   -DTF_LITE_MCU_DEBUG_LOG \
   -D __FPU_PRESENT=1 \
   -DARM_MATH_CM4 \
-  -fno-rtti \
   -fmessage-length=0 \
-  -fno-exceptions \
   -fno-unwind-tables \
   -ffunction-sections \
   -fdata-sections \
@@ -41,24 +46,30 @@ PLATFORM_FLAGS = \
   -mthumb \
   -mfpu=fpv4-sp-d16 \
   -mfloat-abi=hard \
-  -std=gnu++11 \
   -Wvla \
   -Wall \
   -Wextra \
+  -Wno-implicit-fallthrough \
   -Wno-missing-field-initializers \
+  -Wno-return-type \
+  -Wno-sign-compare \
   -Wno-strict-aliasing \
   -Wno-type-limits \
   -Wno-unused-function \
   -Wno-unused-parameter \
   -fno-delete-null-pointer-checks \
-  -fno-threadsafe-statics \
   -fomit-frame-pointer \
-  -fno-use-cxa-atexit \
   -nostdlib \
   -ggdb \
   -O3
-CXXFLAGS += $(PLATFORM_FLAGS)
-CCFLAGS += $(PLATFORM_FLAGS)
+
+CXXFLAGS += \
+  $(PLATFORM_FLAGS) \
+  -fno-use-cxa-atexit
+
+CCFLAGS += $(PLATFORM_FLAGS) \
+  -Wno-int-conversion
+
 LDFLAGS += \
   -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
   -nostartfiles -static \
@@ -80,7 +91,7 @@ endif
 MICROLITE_LIBS := \
   $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
   $(APOLLO3_SDK)/mcu/apollo3/hal/gcc/bin/libam_hal.a \
-  $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/hard/crtbegin.o \
+  $(GCC_ARM)/lib/gcc/arm-none-eabi/10.2.1/thumb/v7e-m+fp/hard/crtbegin.o \
   -lm
 INCLUDES += \
   -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \

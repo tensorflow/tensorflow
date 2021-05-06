@@ -214,6 +214,17 @@ bool CompressTensorContent(float min_compression_ratio,
     --last_offset;
     --prev_offset;
   }
+  if (prev_offset == -1) {
+    // It this is a splat of value 0, it does not need an explicit value, just
+    // erase the content.
+    T splat_value;
+    port::CopySubrangeToArray(tensor->tensor_content(), 0, sizeof(T),
+                              reinterpret_cast<char*>(&splat_value));
+    if (splat_value == T(0)) {
+      tensor->clear_tensor_content();
+      return true;
+    }
+  }
   // Round up to the next whole number of element of type T.
   const int64 new_num_values = last_offset / sizeof(T) + 1;
   if (new_num_values * (is_complex<T>::value ? 2 : 1) * sizeof(FieldType) >
@@ -274,14 +285,14 @@ bool CompressRepeatedField(float min_compression_ratio,
   using TypeHelper = internal::TensorProtoHelper<T>;
   using FieldType = typename internal::TensorProtoHelper<T>::FieldType;
   const int64 num_tensor_values = shape.num_elements();
+  const int64 num_proto_values = TypeHelper::NumValues(*tensor);
+
   // Notice that for complex types the tensor is stored as an array of up to
   // 2 * num_tensor_values real values (real and imaginary parts), possibly
-  // truncated.
-  const int64 num_proto_values = TypeHelper::NumValues(*tensor);
-  if (num_proto_values != num_tensor_values) {
-    // Already compressed or invalid.
-    return false;
-  }
+  // truncated. A 0-splat does not need any value present and is maximally
+  // compressed.
+  if (num_proto_values == 0) return false;
+
   const T last_value = TypeHelper::GetValue(num_proto_values - 1, *tensor);
   int64 last_index = 0;
   for (int64 i = num_proto_values - 2; i >= 0 && last_index == 0; --i) {
@@ -290,6 +301,14 @@ bool CompressRepeatedField(float min_compression_ratio,
       last_index = i + 1;
     }
   }
+
+  // Detect all zeroes tensors: this is default value and the content can be
+  // erased entirely.
+  if (last_index == 0 && last_value == T(0)) {
+    TypeHelper::Truncate(0, tensor);
+    return true;
+  }
+
   const int64 num_truncated_proto_values = last_index + 1;
   const int64 num_bytes_as_field =
       num_truncated_proto_values * sizeof(FieldType);
@@ -302,8 +321,14 @@ bool CompressRepeatedField(float min_compression_ratio,
   if (num_bytes_as_field <= num_bytes_as_tensor_content) {
     TypeHelper::Truncate(num_truncated_proto_values, tensor);
   } else {
-    gtl::InlinedVector<T, 64> tmp(num_tensor_values);
-    TypeHelper::CopyValues(tmp.begin(), *tensor);
+    gtl::InlinedVector<T, 64> tmp;
+    if (num_proto_values == 1) {
+      // Splat case.
+      tmp.resize(num_tensor_values, last_value);
+    } else {
+      tmp.resize(num_tensor_values, T(0));
+      TypeHelper::CopyValues(tmp.begin(), *tensor);
+    }
     TypeHelper::Truncate(0, tensor);
     port::CopyFromArray(tensor->mutable_tensor_content(),
                         reinterpret_cast<const char*>(tmp.data()),

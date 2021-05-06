@@ -308,4 +308,29 @@ void AttrBuilder::InitializeNodeDef() {
   node_def_initialized_ = true;
 }
 
+void AttrBuilder::GetNameAttrList(
+    tensorflow::NameAttrList* name_and_attrs) const {
+  FillAttrValueMap(name_and_attrs->mutable_attr());
+  name_and_attrs->set_name(op_name());
+}
+
+bool AttrBuilder::GetInt(absl::string_view attr_name, int64_t* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetFloat(absl::string_view attr_name, float* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetBool(absl::string_view attr_name, bool* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+
+bool AttrBuilder::GetType(absl::string_view attr_name,
+                          tensorflow::DataType* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+
 }  // namespace tensorflow

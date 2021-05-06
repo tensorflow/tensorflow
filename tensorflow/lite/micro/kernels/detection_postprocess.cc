@@ -1,4 +1,5 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -80,7 +81,7 @@ struct CenterSizeEncoding {
   float h;
   float w;
 };
-// We make sure that the memory allocations are contiguous with static assert.
+// We make sure that the memory allocations are contiguous with static_assert.
 static_assert(sizeof(BoxCornerEncoding) == sizeof(float) * kNumCoordBox,
               "Size of BoxCornerEncoding is 4 float values");
 static_assert(sizeof(CenterSizeEncoding) == sizeof(float) * kNumCoordBox,

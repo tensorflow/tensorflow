@@ -53,7 +53,7 @@ def assert_stmt(expression1, expression2):
   if args or keywords:
     raise ValueError('{} may not have any arguments'.format(expression2))
 
-  if tensor_util.is_tensor(expression1):
+  if tensor_util.is_tf_type(expression1):
     return _tf_assert_stmt(expression1, expression2)
   else:
     return _py_assert_stmt(expression1, expression2)

@@ -800,6 +800,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
     Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
+    Output floordiv = ops::FloorDiv(s.WithOpName("floordiv"), x, ones);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
     Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);
@@ -814,10 +815,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
     Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
-    Output concat =
-        ops::Stack(s.WithOpName("stack"),
-                   {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
-                    matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
+    Output concat = ops::Stack(
+        s.WithOpName("stack"),
+        {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, floordiv, matmul1,
+         matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     item.fetch = {"stack",      "matmul3",    "matmul4",   "mul1_bcast",
@@ -836,7 +837,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
 
-    EXPECT_EQ(const_type == kFill ? 42 : 38, output.node_size());
+    EXPECT_EQ(const_type == kFill ? 43 : 39, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -880,6 +881,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Reciprocal", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ(ctrl_ones_name, node.input(1));
+      } else if (name == "floordiv") {
+        EXPECT_EQ("FloorDiv", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ(ones_name, node.input(1));
       } else if (name == "matmul1") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));
@@ -4364,6 +4369,43 @@ TEST_F(ConstantFoldingTest, SimplifySelect_BroadcastTo) {
                                         ? TensorShape({2, 4})
                                         : TensorShape({2, 2, 4}));
       test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, QuantizationEmulation) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(scope.WithOpName("x"), {0.0f, 1.0f, 2.0f, 3.0f}, {4});
+  Output min_range = ops::Const(scope.WithOpName("min_range"), 0.0f, {});
+  Output max_range = ops::Const(scope.WithOpName("max_range"), 3.0f, {});
+  Output y = ops::QuantizeAndDequantizeV2(scope.WithOpName("y"), x, min_range,
+                                          max_range);
+  Output id = ops::Identity(scope.WithOpName("id"), y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"id"};
+
+  std::vector<Tensor> expected_tensors = EvaluateNodes(item.graph, item.fetch);
+
+  for (const bool fold_quantization_emulation : {false, true}) {
+    ConstantFolding optimizer(/*cpu_device=*/nullptr,
+                              /*disable_compressed_tensor_optimization=*/false,
+                              fold_quantization_emulation);
+    GraphDef output;
+    Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+    int num_quantization_emulation_ops = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.op() == "QuantizeAndDequantizeV2") {
+        num_quantization_emulation_ops++;
+      }
+    }
+    EXPECT_EQ(fold_quantization_emulation ? 0 : 1,
+              num_quantization_emulation_ops);
+
+    std::vector<Tensor> actual_tensors = EvaluateNodes(output, item.fetch);
+    for (int i = 0; i < item.fetch.size(); ++i) {
+      test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
     }
   }
 }

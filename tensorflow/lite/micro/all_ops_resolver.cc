@@ -1,8 +1,11 @@
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,24 +23,33 @@ AllOpsResolver::AllOpsResolver() {
   // Please keep this list of Builtin Operators in alphabetical order.
   AddAbs();
   AddAdd();
+  AddAddN();
   AddArgMax();
   AddArgMin();
   AddAveragePool2D();
+  AddBatchToSpaceNd();
   AddCeil();
   AddConcatenation();
   AddConv2D();
   AddCos();
+  AddCumSum();
+  AddDepthToSpace();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
+  AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
+  AddFloorMod();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddL2Pool2D();
+  AddLeakyRelu();
   AddLess();
   AddLessEqual();
   AddLog();
@@ -45,8 +57,8 @@ AllOpsResolver::AllOpsResolver() {
   AddLogicalNot();
   AddLogicalOr();
   AddLogistic();
-  AddMaximum();
   AddMaxPool2D();
+  AddMaximum();
   AddMean();
   AddMinimum();
   AddMul();
@@ -61,20 +73,24 @@ AllOpsResolver::AllOpsResolver() {
   AddRelu();
   AddRelu6();
   AddReshape();
+  AddResizeBilinear();
   AddResizeNearestNeighbor();
   AddRound();
   AddRsqrt();
   AddShape();
   AddSin();
   AddSoftmax();
+  AddSpaceToBatchNd();
   AddSplit();
   AddSplitV();
   AddSqrt();
   AddSquare();
+  AddSqueeze();
   AddStridedSlice();
   AddSub();
   AddSvdf();
   AddTanh();
+  AddTransposeConv();
   AddUnpack();
 }
 

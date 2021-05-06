@@ -151,11 +151,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         `StructuredTensor`, providing the values for individual fields in each
         structure.  If `shape.rank > 0`, then every tensor in `fields` must have
         the same shape in the first `shape.rank` dimensions; and that shape must
-        be compatible with `shape`; and
-        `result[i1...iN][key] = fields[key][i1...iN]` (where `N==shape.rank`).
+        be compatible with `shape`; and `result[i1...iN][key] =
+        fields[key][i1...iN]` (where `N==shape.rank`).
       shape: A `TensorShape`: static information about the shape of the
-        `StructuredTensor`.  Must have a known `rank`.  Defaults to scalar
-        shape (i.e. `rank=0`).
+        `StructuredTensor`.  Must have a known `rank`.  Defaults to scalar shape
+        (i.e. `rank=0`).
       nrows: scalar integer tensor containing the number of rows in this
         `StructuredTensor`.  Should only be specified if `shape.rank > 0`.
         Default value is inferred from the `fields` values.  If `fields` is
@@ -271,9 +271,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         row_partitions,
         internal=_structured_tensor_factory_key)
 
-  def with_updates(self,
-                   updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
-                   validate: bool = False) -> 'StructuredTensor':    # pylint: disable=bad-whitespace
+  def with_updates(
+      self,
+      updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
+      validate: bool = False
+  ) -> 'StructuredTensor':
     """Creates a new `StructuredTensor` with the updated fields.
 
     If this `StructuredTensor` is a scalar, and `k` is the `FieldName` being
@@ -360,10 +362,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
                 prev_name, name))
     return self._with_updates_impl((), updates_items, validate)
 
-  def _with_updates_impl(self, error_prefix: Tuple[str],  # pylint: disable=invalid-sequence-index
-                         updates: List[Tuple[FieldName, Union[FieldValue,  # pylint: disable=invalid-sequence-index
-                                                              FieldFn]]],
-                         validate: bool) -> 'StructuredTensor':
+  def _with_updates_impl(
+      self,
+      error_prefix: Tuple[str],
+      updates: List[Tuple[FieldName, Union[FieldValue, FieldFn]]],
+      validate: bool) -> 'StructuredTensor':
     """Recursive part of `with_updates` implementation."""
     # Get current fields.
     new_fields = dict(self._fields)
@@ -692,6 +695,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     Args:
       key: Indicates which piece of the StructuredTensor to return.
+
     Returns:
       A `Tensor`, `StructuredTensor`, or `RaggedTensor`.
     """
@@ -752,11 +756,10 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     fields = ((k, str(v).replace('\n', '\n            ')) for k, v in fields)
     fields = ('"{}": {}'.format(k, v) for k, v in fields)
     dict_repr = ',\n        '.join(fields)
-    return (
-        '<StructuredTensor(\n'
-        '    fields={\n'
-        '        %s},\n'
-        '    shape=%s)>' % (dict_repr, self._shape))
+    return ('<StructuredTensor(\n'
+            '    fields={\n'
+            '        %s},\n'
+            '    shape=%s)>' % (dict_repr, self._shape))
 
   #=============================================================================
   # Conversion
@@ -845,36 +848,57 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     Returns:
       A `StructuredTensor`.
     """
+    return cls._from_pyval(pyval, typespec, ())
+
+  @classmethod
+  def _from_pyval(cls, pyval, typespec, path_so_far):
+    """Helper function for from_pyval.
+
+
+    Args:
+      pyval: The nested Python structure that should be used to create the new
+        `StructuredTensor`.
+      typespec: A `StructuredTensorSpec` specifying the expected type for each
+        field. If not specified, then all nested dictionaries are turned into
+        StructuredTensors, and all nested lists are turned into Tensors (if
+        rank<2) or RaggedTensors (if rank>=2).
+      path_so_far: the path of fields that led here (for error messages).
+
+    Returns:
+      A `StructuredTensor`.
+    """
     if isinstance(pyval, dict):
-      return cls._from_pydict(pyval, typespec)
+      return cls._from_pydict(pyval, typespec, path_so_far)
     elif isinstance(pyval, (list, tuple)):
       keys = set()
       rank = _pyval_find_struct_keys_and_depth(pyval, keys)
       if rank is not None:
-        return cls._from_pylist_of_dict(pyval, keys, rank, typespec)
+        return cls._from_pylist_of_dict(pyval, keys, rank, typespec,
+                                        path_so_far)
       else:
-        return cls._from_pylist_of_value(pyval, typespec)
+        return cls._from_pylist_of_value(pyval, typespec, path_so_far)
     else:
-      return cls._from_pyscalar(pyval, typespec)
+      return cls._from_pyscalar(pyval, typespec, path_so_far)
 
   @classmethod
-  def _from_pydict(cls, pyval, typespec):
+  def _from_pydict(cls, pyval, typespec, path_so_far):
     """Converts python dictionary `pyval` to a StructuredTensor with rank=0."""
     if typespec is None:
-      fields = dict((k, cls.from_pyval(v)) for (k, v) in pyval.items())
+      fields = dict((k, cls._from_pyval(v, None, path_so_far + (k,)))
+                    for (k, v) in pyval.items())
     else:
       spec_shape = typespec._shape  # pylint: disable=protected-access
       field_specs = typespec._field_specs  # pylint: disable=protected-access
       if not (isinstance(typespec, StructuredTensorSpec) and
               spec_shape.rank == 0 and set(pyval) == set(field_specs)):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (pyval, typespec))
-      fields = dict(
-          (k, cls.from_pyval(v, field_specs[k])) for (k, v) in pyval.items())
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, pyval, typespec))
+      fields = dict((k, cls._from_pyval(v, field_specs[k], path_so_far + (k,)))
+                    for (k, v) in pyval.items())
     return StructuredTensor.from_fields(fields=fields, shape=(), validate=False)
 
   @classmethod
-  def _from_pylist_of_dict(cls, pyval, keys, rank, typespec):
+  def _from_pylist_of_dict(cls, pyval, keys, rank, typespec, path_so_far):
     """Converts python list `pyval` to a StructuredTensor with rank>1."""
     fields = dict((key, []) for key in keys)
     for child in pyval:
@@ -882,62 +906,102 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     if typespec is None:
       shape = tensor_shape.TensorShape([None] * rank)
       for (key, target) in fields.items():
-        fields[key] = cls.from_pyval(target)
+        fields[key] = cls._from_pyval(target, None, path_so_far + (key,))
     else:
       field_specs = typespec._field_specs  # pylint: disable=protected-access
       if ((not isinstance(typespec, StructuredTensorSpec)) or
           (set(fields) - set(field_specs))):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (pyval, typespec))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, pyval, typespec))
       shape = typespec._shape
       if shape.rank < rank:
-        raise ValueError('Value does not match typespec (rank mismatch): '
-                         '%r vs %r' % (pyval, typespec))
+        raise ValueError('Value at %r does not match typespec (rank mismatch): '
+                         '%r vs %r' % (path_so_far, pyval, typespec))
       for (key, spec) in field_specs.items():
-        fields[key] = cls.from_pyval(fields.get(key, []), spec)
-    return StructuredTensor.from_fields(
-        fields=fields, shape=shape, validate=False)
+        fields[key] = cls._from_pyval(
+            fields.get(key, []), spec, path_so_far + (key,))
+    try:
+      if not fields and typespec is None:
+        # TODO(b/183245576): handle cases where the typespec is known
+        # but the dictionary is empty.
+        return StructuredTensor._from_pylist_of_empty_dict(pyval, rank)
+      return StructuredTensor.from_fields(
+          fields=fields, shape=shape, validate=False)
+    except Exception as exc:
+      raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
 
   @classmethod
-  def _from_pylist_of_value(cls, pyval, typespec):
+  def _from_pylist_of_empty_dict(cls, pyval, rank):
+    """Converts a pylist of empty dictionaries to StructuredTensors."""
+    if rank == 0:
+      return StructuredTensor.from_fields(fields={}, shape=(), validate=False)
+    elif rank == 1:
+      nrows = len(pyval)
+      shape = (nrows,)
+      return StructuredTensor.from_fields(fields={}, shape=shape, nrows=nrows)
+    elif rank > 1:
+      ragged_zeros = ragged_factory_ops.constant(_dicts_to_zeros(pyval))
+      nrows = len(pyval)
+      shape = tensor_shape.TensorShape([len(pyval)] + ([None] * (rank - 1)))
+      return StructuredTensor.from_fields(
+          fields={},
+          shape=shape,
+          row_partitions=ragged_zeros._nested_row_partitions,  # pylint:disable=protected-access
+          nrows=nrows)
+
+  @classmethod
+  def _from_pylist_of_value(cls, pyval, typespec, path_so_far):
     """Converts python list `pyval` to a Tensor or RaggedTensor with rank>1."""
     if typespec is None:
-      return ragged_factory_ops.constant(pyval)
+      try:
+        return ragged_factory_ops.constant(pyval)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     elif isinstance(typespec, tensor_spec.TensorSpec):
-      result = constant_op.constant(pyval, typespec.dtype)
+      try:
+        result = constant_op.constant(pyval, typespec.dtype)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
       if not typespec.shape.is_compatible_with(result.shape):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       return result
     elif isinstance(typespec, ragged_tensor.RaggedTensorSpec):
       # pylint: disable=protected-access
-      return ragged_factory_ops.constant(
-          pyval,
-          dtype=typespec._dtype,
-          ragged_rank=typespec._ragged_rank,
-          row_splits_dtype=typespec._row_splits_dtype,
-          inner_shape=typespec._shape[typespec._ragged_rank + 1:])
+      try:
+        return ragged_factory_ops.constant(
+            pyval,
+            dtype=typespec._dtype,
+            ragged_rank=typespec._ragged_rank,
+            row_splits_dtype=typespec._row_splits_dtype,
+            inner_shape=typespec._shape[typespec._ragged_rank + 1:])
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     elif isinstance(typespec, StructuredTensorSpec):
       empty_rank = _pyval_empty_list_depth(pyval)
       if empty_rank is None:
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       else:
-        return cls._from_pylist_of_dict(pyval, set(), empty_rank, typespec)
+        return cls._from_pylist_of_dict(pyval, set(), empty_rank, typespec,
+                                        path_so_far)
     else:
-      raise ValueError('Value does not match typespec: %r vs %r' %
-                       (typespec, pyval))
+      raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                       (path_so_far, typespec, pyval))
 
   @classmethod
-  def _from_pyscalar(cls, pyval, typespec):
+  def _from_pyscalar(cls, pyval, typespec, path_so_far):
     """Converts python scalar value `pyval` to a Tensor."""
     if typespec is None:
-      return constant_op.constant(pyval)
+      try:
+        return constant_op.constant(pyval)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     else:
       if not (isinstance(typespec, tensor_spec.TensorSpec) and
               typespec.shape.rank == 0):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       # TODO(edloper): Check that typespec.shape matches.
       return constant_op.constant(pyval, typespec.dtype)
 
@@ -1027,6 +1091,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     return StructuredTensorSpec.from_value(self)
 
 
+@type_spec.register('tf.StructuredTensorSpec')
 class StructuredTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `StructuredTensor`s."""
 
@@ -1067,10 +1132,26 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
     return StructuredTensor
 
   def _to_components(self, value):
-    return value._fields
+    if value._fields:
+      return value._fields
+    elif value.nrows() is None:
+      return ((), value.row_partitions)  # empty rank-0 structured tensor
+    else:
+      return (value.nrows(), value.row_partitions)
 
   def _from_components(self, components):
-    return StructuredTensor.from_fields(components, self._shape, validate=False)
+    if isinstance(components, dict):
+      fields = components
+      nrows = None
+      row_partitions = None
+    else:
+      fields = {}
+      nrows, row_partitions = components
+      if isinstance(nrows, tuple) and not nrows:
+        nrows = None  # empty rank-0 structured tensor
+    return StructuredTensor.from_fields(fields, self._shape, nrows=nrows,
+                                        row_partitions=row_partitions,
+                                        validate=False)
 
   @property
   def _component_specs(self):
@@ -1134,6 +1215,7 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
       value: A StructuredTensor (conforming to `self`).
       batched: A boolean. if True, produce `batched_tensor_list` for each field
         otherwise produce `tensor_list`.
+
     Returns:
       A dict.
     """
@@ -1149,11 +1231,11 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
 
     return result
 
+
 # Regular expression used to determine whether a string is a valid field name.
 # Note: we plan to relax (or possibly eliminate) this in the future; you
 # should not rely on the fact that some field names are currently disallowed.
 _FIELD_NAME_RE = re.compile('^[a-zA-Z][a-zA-Z0-9_]*$')
-
 
 #=============================================================================
 # Helper funtions
@@ -1227,8 +1309,8 @@ def _merge_nrows(nrows, static_nrows, value, dtype, validate):
     nrows = value_nrows  # No need to add an assertion op.
   elif validate:
     nrows = control_flow_ops.with_dependencies([
-        check_ops.assert_equal(nrows, value_nrows,
-                               message='fields have incompatible nrows')
+        check_ops.assert_equal(
+            nrows, value_nrows, message='fields have incompatible nrows')
     ], nrows)
   return nrows, static_nrows.merge_with(static_value_nrows)
 
@@ -1450,7 +1532,8 @@ def _replace_row_partitions(value, new_partitions):
         fields=new_fields,
         shape=value.shape,
         nrows=value.nrows(),
-        row_partitions=new_partitions,
+        row_partitions=new_partitions +
+        value.row_partitions[len(new_partitions):],
         internal=_structured_tensor_factory_key)
 
 
@@ -1494,8 +1577,8 @@ def _partition_outer_dimension(value, row_partition):
     assert isinstance(value, StructuredTensor)
     nrows = row_partition.static_nrows
     ncols = row_partition.static_uniform_row_length
-    shape = tensor_shape.TensorShape([nrows, ncols]).concatenate(
-        value.shape[1:])
+    shape = tensor_shape.TensorShape([nrows,
+                                      ncols]).concatenate(value.shape[1:])
     fields = dict((k, _partition_outer_dimension(v, row_partition))
                   for (k, v) in value._fields.items())
     return StructuredTensor(
@@ -1566,6 +1649,13 @@ def _normalize_field_name_to_tuple(name: 'FieldName') -> Sequence[str]:
   return name
 
 
+def _dicts_to_zeros(pyval):
+  """Replaces dictionaries zeros in a pylist."""
+  if isinstance(pyval, dict):
+    return 0
+  return [_dicts_to_zeros(x) for x in pyval]
+
+
 def _merge_dims_generic(source, outer, inner):
   """Merges outer_axis...inner_axis into a single dimension.
 
@@ -1574,8 +1664,8 @@ def _merge_dims_generic(source, outer, inner):
 
   Args:
     source: a tensor, ragged tensor, or structured tensor.
-    outer: a python int, indicating the first dimension to compress
-      (must be nonnegative).
+    outer: a python int, indicating the first dimension to compress (must be
+      nonnegative).
     inner: a python int, indicating the first dimension to keep (of the tail)
       (must be nonnegative).
 

@@ -49,10 +49,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform hlo operations on values to buffer based "
-                "ones.";
-  let constructor = "transforms::CreateHloBufferizePass()";
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
@@ -61,14 +61,14 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
-def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {
-  let summary = "Pass to materialize broadcasts";
-  let constructor = "transforms::CreateMaterializeBroadcastsPass()";
+def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to nvvm.";
+  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
 }
 
-def UnfuseBatchNormPass : FunctionPass<"unfuse-batch-norm"> {
-  let summary = "Pass to unfuse batch norm";
-  let constructor = "transforms::CreateUnfuseBatchNormPass()";
+def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to rocdl.";
+  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
 }
 
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
@@ -106,6 +106,51 @@ def PropagateShapeKnowledgeToKernels
 def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+}
+
+def MapParallelLoopsPass
+    : FunctionPass<"map-parallel-loops-to-gpu"> {
+  let summary = "Greedily maps loops to GPU hardware dimensions.";
+  let constructor = "transforms::CreateMapParallelLoopsPass()";
+  let description = [{
+    Greedily maps loops to GPU hardware dimensions.
+  }];
+}
+
+def FuseInnerParallelLoopsPass
+    : FunctionPass<"fuse-inner-parallel-loops"> {
+  let summary = "Limited pass to forward stores to loads.";
+  let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
+  let description = [{
+    Directs parallel loop fusion to the inner loops. This cannot be done with
+    a passmanager alone ATM, as nested pass managers require operations to
+    be closed from above.
+  }];
+}
+
+def ShapeSimplification
+    : FunctionPass<"kernelgen-shape-simplification"> {
+  let summary = "Simplify shape ops";
+  let constructor = "transforms::CreateShapeSimplification()";
+}
+
+def VectorizationPass : FunctionPass<"vectorization"> {
+  let summary = "Pass to create vectorized operations for CPU.";
+  let constructor = "transforms::CreateVectorizationPass()";
+  let description = [{
+    Takes linalg loops on buffers and vectorizes the loads/stores and operations
+    in between. This is intended for the CPU backend.
+  }];
+}
+
+def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
+  let summary = "Pass to remove dead code in VectorizationPass.";
+  let constructor = "transforms::CreateVectorizationCleanupPass()";
+  let description = [{
+    VectorizationPass creates some memory transfers that are unneeded but cannot
+    be safely removed by current generic infrastructure. This removes the
+    specific operations.
+  }];
 }
 
 #endif // TF_KERNEL_GEN_PASSES

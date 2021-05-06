@@ -94,9 +94,17 @@ class LiteralBase {
   // element Literals.
   string ToString() const;
 
+  // Similar to ToString, but return the result in a compact
+  // one-line form.
+  string ToStringOneline() const;
+
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
   string ToStringWithoutShape() const;
+
+  // Similar to ToStringWithoutShape, but return the result in a compact
+  // one-line form.
+  string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
@@ -227,6 +235,9 @@ class LiteralBase {
 
   // Literal consists entirely of an iota.
   bool IsR1Iota() const;
+
+  // Returns the stride if the literal is a strided iota.
+  absl::optional<int64> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -602,6 +613,11 @@ class MutableLiteralBase : public LiteralBase {
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
 
+  template <typename NativeT>
+  void MutableEachCell(
+      std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+          per_cell);
+
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
   // at 'dest_shape_index' must be compatible with the subshape of 'src_literal'
@@ -796,6 +812,10 @@ class Literal : public MutableLiteralBase {
   // this Literal is set to a nil shape (empty tuple)
   std::vector<Literal> DecomposeTuple();
 
+  // Returns a subliteral specified by given shape_index. No data is copied, the
+  // current literal becomes invalid after this function call.
+  Literal SubLiteral(ShapeIndexView shape_index);
+
  private:
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
@@ -978,6 +998,24 @@ void LiteralBase::EachCell(
   }
   do {
     per_cell(indices, Get<NativeT>(indices));
+  } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+}
+
+template <typename NativeT>
+void MutableLiteralBase::MutableEachCell(
+    std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+        per_cell) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return;
+  }
+  std::vector<int64> indices(shape().rank(), 0);
+
+  Shape shape_dynamic = shape();
+  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+    shape_dynamic.set_dimensions(i, GetDynamicSize(i));
+  }
+  do {
+    Set<NativeT>(indices, per_cell(indices, Get<NativeT>(indices)));
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
 }
 

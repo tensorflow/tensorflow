@@ -8,6 +8,9 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 visibility = [
@@ -16,7 +19,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_build_info_genrule(
@@ -27,6 +30,7 @@ tf_py_build_info_genrule(
 py_library(
     name = "build_info",
     srcs = ["build_info.py"],
+    srcs_version = "PY3",
 )
 
 py_library(
@@ -42,15 +46,17 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":build_info",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:_pywrap_util_port",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:_pywrap_util_port",
+        "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],
@@ -59,7 +65,7 @@ py_library(
 py_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":platform",
         "//tensorflow/python:client",
@@ -70,13 +76,13 @@ py_library(
 py_library(
     name = "analytics",
     srcs = ["analytics.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "device_context",
     srcs = ["device_context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
@@ -86,7 +92,7 @@ py_library(
 py_library(
     name = "test",
     srcs = ["googletest.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":benchmark",
         "@absl_py//absl/testing:absltest",
@@ -181,7 +187,7 @@ tf_python_pybind_extension(
 py_library(
     name = "client_testlib",
     srcs = ["test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":test",
         "//tensorflow/python:client",
@@ -228,5 +234,18 @@ tf_py_test(
     deps = [
         ":client_testlib",
         ":platform",
+    ],
+)
+
+pybind_extension(
+    name = "_pywrap_tf2",
+    srcs = ["enable_tf2.cc"],
+    hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
+    module_name = "_pywrap_tf2",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:enable_tf2_utils",
+        "@pybind11",
     ],
 )

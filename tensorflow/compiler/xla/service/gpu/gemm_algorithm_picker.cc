@@ -131,12 +131,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                  /*implements_whole_instruction=*/true,
-                  /*profile_index=*/-1,
-                  /*profiler=*/nullptr,
-                  /*profile_result=*/&profile_result, algorithm)
-              .ok());
+    Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                        /*implements_whole_instruction=*/true,
+                        /*profile_index=*/-1,
+                        /*profiler=*/nullptr,
+                        /*profile_result=*/&profile_result, algorithm);
+    CHECK(st.ok()) << st.ToString();
 
     if (!profile_result.is_valid()) {
       // Unsupported algorithm.
@@ -237,7 +237,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   // Don't run autotuning concurrently on the same GPU.
   tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
 
-
   GemmCacheKey key =
       std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                       instr->shape(), gemm_config.SerializeAsString());
@@ -253,7 +252,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   if (it != autotune_cache.end()) {
     cache_hits++;
     VLOG(4) << "Autotuning cache hit, using algorithm: "
-            << (it->second.has_value() ? absl::StrCat(it->second.value())
+            << (it->second.has_value() ? absl::StrCat(*(it->second))
                                        : "<generic>");
     return it->second;
   }

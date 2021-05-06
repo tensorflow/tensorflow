@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace ApiConverter {
@@ -161,7 +162,8 @@ class TpuExecutable : public TpuExecutableInterface {
       output.AddAliasedIndex(
           ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
     }
-    ApiConverter::Free(se_execution_output.aliased_indices);
+    ExecutorApiFn()->TpuExecutable_FreeXlaShapeIndexArrayFn(
+        se_execution_output.aliased_indices);
 
     for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
       output.AddToBeReleased(
@@ -170,7 +172,8 @@ class TpuExecutable : public TpuExecutableInterface {
               .Release()
               .value());
     }
-    delete[] se_execution_output.to_be_released;
+    ExecutorApiFn()->TpuExecutable_FreeMaybeOwningDeviceMemoryArrayFn(
+        se_execution_output.to_be_released);
 
     return output;
   }
@@ -203,49 +206,13 @@ class TpuExecutable : public TpuExecutableInterface {
   SE_Executable* se_executable_;
 };
 
-XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
-  XLA_HloModuleConfig hlo_config;
-
-  hlo_config.seed = config.seed();
-  hlo_config.launch_id = config.launch_id();
-  hlo_config.replica_count = config.replica_count();
-  hlo_config.num_partitions = config.num_partitions();
-  hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
-  hlo_config.has_static_device_assignment =
-      config.has_static_device_assignment();
-  hlo_config.has_entry_computation_layout =
-      config.has_entry_computation_layout();
-
-  if (config.has_static_device_assignment()) {
-    DeviceAssignmentProto dev_proto;
-    config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
-    hlo_config.static_device_assignment =
-        stream_executor::tpu::SerializeProto(dev_proto);
-  }
-  if (config.has_entry_computation_layout()) {
-    auto layout = config.entry_computation_layout();
-    ApiConverter::ToC(layout.result_layout().shape(),
-                      &hlo_config.entry_computation_layout.result_layout);
-    hlo_config.entry_computation_layout.parameter_layouts =
-        new XLA_Shape[layout.parameter_count()];
-    for (int i = 0; i < layout.parameter_count(); ++i) {
-      ApiConverter::ToC(
-          layout.parameter_layout(i).shape(),
-          &hlo_config.entry_computation_layout.parameter_layouts[i]);
-    }
-    hlo_config.entry_computation_layout.parameter_count =
-        layout.parameter_count();
-  }
-  return hlo_config;
-}
-
 class TpuCompiler : public Compiler {
  public:
   TpuCompiler() { compiler_ = ExecutorApiFn()->TpuCompiler_NewFn(); }
   ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
-    return tensorflow::tpu::TpuPlatform::kId;
+    return tensorflow::tpu::GetTpuPlatformId();
   }
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -253,15 +220,14 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
     XLA_HloModule hlo_module;
-    XLA_HloModule result;
-    auto cleanup = xla::MakeCleanup([&hlo_module, &result]() {
+    auto cleanup = xla::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
-      stream_executor::tpu::SerializedProto_Free(result.proto);
       ApiConverter::Free(&hlo_module.module_config);
     });
-    hlo_module.module_config = HloModuleConfigToC(module->config());
+    hlo_module.module_config = ApiConverter::ToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
     auto allocator = ApiConverter::ToC(options.device_allocator);
+    XLA_HloModule result;
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
@@ -273,6 +239,7 @@ class TpuCompiler : public Compiler {
     }
     HloModuleProto result_proto =
         stream_executor::tpu::DeserializeProto<HloModuleProto>(result.proto);
+    stream_executor::tpu::SerializedProto_Free(result.proto);
     return HloModule::CreateFromProto(result_proto, module->config());
   }
 
@@ -286,7 +253,7 @@ class TpuCompiler : public Compiler {
       ApiConverter::Free(&hlo_module.module_config);
     });
     SE_Executable* result;
-    hlo_module.module_config = HloModuleConfigToC(module->config());
+    hlo_module.module_config = ApiConverter::ToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
     auto allocator = ApiConverter::ToC(options.device_allocator);
 
@@ -324,7 +291,7 @@ class TpuCompiler : public Compiler {
         });
     for (int i = 0; i < module_group->size(); ++i) {
       const auto& config = module_group->module(i).config();
-      se_module_group.module_config[i] = HloModuleConfigToC(config);
+      se_module_group.module_config[i] = ApiConverter::ToC(config);
     }
     std::vector<SE_StreamExecutorList> se_lists(stream_exec.size());
     std::vector<std::vector<SE_StreamExecutor*>> se_lists_storage;
@@ -405,7 +372,7 @@ class TpuCompiler : public Compiler {
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      tensorflow::tpu::TpuPlatform::kId,
+      tensorflow::tpu::GetTpuPlatformId(),
       []() { return absl::make_unique<TpuCompiler>(); });
   return true;
 }

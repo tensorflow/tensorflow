@@ -217,6 +217,8 @@ class XLACompileContextTest(test.TestCase, parameterized.TestCase):
 class XlaCompileTest(test.TestCase):
 
   @test_util.run_v2_only
+  @test_util.disable_tfrt(
+      'Legacy XLA test. It depends on EncapsulateXlaComputationsPass.')
   def test_xla_compile_eager(self):
     """Tests that xla.compile raises proper exception when used eagerly."""
 
@@ -225,6 +227,8 @@ class XlaCompileTest(test.TestCase):
 
     self.assertEqual(self.evaluate(xla.compile(computation, [1, 2])[0]), 3)
 
+  @test_util.disable_tfrt(
+      'Legacy XLA test. It depends on EncapsulateXlaComputationsPass.')
   def test_xla_compile_in_function(self):
     """Tests that xla.compile works in tf.function."""
 
@@ -238,6 +242,8 @@ class XlaCompileTest(test.TestCase):
 
     self.assertEqual(self.evaluate(func_wrapper(1))[0], 2)
 
+  @test_util.disable_tfrt(
+      'Legacy XLA test. It depends on EncapsulateXlaComputationsPass.')
   def test_xla_compile_write_variable_in_function(self):
     """Tests that xla.compile works with variable in tf.function."""
     a = variable_scope.get_variable(

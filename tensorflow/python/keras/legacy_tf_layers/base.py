@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
+# pylint: disable=g-classes-have-attributes
 """Contains the base Layer class, from which all layers inherit."""
 from __future__ import absolute_import
 from __future__ import division
@@ -35,6 +36,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 # Avoid breaking users who directly import this symbol from this file.
@@ -44,6 +46,8 @@ InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
 _KERAS_STYLE_SCOPE = False
 
 
+@keras_export(
+    v1=['keras.__internal__.legacy.layers.experimental.keras_style_scope'])
 @tf_export(v1=['layers.experimental.keras_style_scope'])
 @tf_contextlib.contextmanager
 def keras_style_scope():
@@ -113,6 +117,8 @@ def keras_style_scope():
     _KERAS_STYLE_SCOPE = stack
 
 
+@keras_export(
+    v1=['keras.__internal__.legacy.layers.experimental.set_keras_style'])
 @tf_export(v1=['layers.experimental.set_keras_style'])
 def set_keras_style():
   """Use Keras-style variable management.
@@ -156,6 +162,7 @@ def _is_in_keras_style_scope():
   return _KERAS_STYLE_SCOPE
 
 
+@keras_export(v1=['keras.__internal__.legacy.layers.Layer'])
 @tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
@@ -163,7 +170,7 @@ class Layer(base_layer.Layer):
   It is considered legacy, and we recommend the use of `tf.keras.layers.Layer`
   instead.
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: Default dtype of the layer's weights (default of `None` means use the
@@ -334,7 +341,7 @@ class Layer(base_layer.Layer):
                  **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
-    Arguments:
+    Args:
       name: variable name.
       shape: variable shape.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -489,7 +496,7 @@ class Layer(base_layer.Layer):
   def __call__(self, inputs, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       inputs: input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
@@ -527,12 +534,20 @@ class Layer(base_layer.Layer):
         # rather than initializing to None we check for an AttributeError.
         scope_context_manager = self._always_reuse_variable_scope
       except AttributeError:
+        scope_context_manager = None
+
+      if scope_context_manager is None:
         # From this point we will always set reuse=True, so create a "final"
         # variable scope with this setting. We avoid re-creating variable scopes
         # after this point as an optimization.
-        self._always_reuse_variable_scope = vs.variable_scope(
+        scope_context_manager = vs.variable_scope(
             self._scope, reuse=True, auxiliary_name_scope=False)
-        scope_context_manager = self._always_reuse_variable_scope
+
+        # Do not cache variable scopes if Eager mode is enabled. If Eager mode
+        # is enabled then we don't want to reuse scopes because the cached scope
+        # might be from a FuncGraph or Eager scope we are no longer in.
+        if not ops.executing_eagerly_outside_functions():
+          self._always_reuse_variable_scope = scope_context_manager
     else:
       scope_context_manager = vs.variable_scope(
           self._scope, reuse=self._reuse, auxiliary_name_scope=False)

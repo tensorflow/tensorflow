@@ -1,6 +1,9 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],
+)
 
 package_group(
     name = "micro_top_level",
@@ -12,11 +15,15 @@ cc_library(
     hdrs = [
         "micro_benchmark.h",
     ],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:recording_allocators",
     ],
 )
 
@@ -43,6 +50,7 @@ cc_binary(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro/kernels:fully_connected",
     ],
 )
@@ -55,12 +63,12 @@ cc_binary(
     ],
     deps = [
         ":micro_benchmark",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro/examples/person_detection:model_settings",
         "//tensorflow/lite/micro/examples/person_detection:person_detect_model_data",
         "//tensorflow/lite/micro/examples/person_detection:simple_images_test_data",

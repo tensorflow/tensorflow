@@ -279,6 +279,17 @@ message OpMetadata {
   int32 source_line = 4;
 
   repeated ProfileType profile_type = 5;
+
+  // HloPassMetadata.pass_id of the pass that created this HLO instruction
+  // object. Should never be copied between HLO instructions. Zero if unset and
+  // -1 if the instruction was created before HLO passes began.
+  int64 creation_pass_id = 6;
+
+  // HloPassMetadata.pass_id of the pass that created the logical functionality
+  // that this HLO instruction represents. Should be copied between HLO
+  // instructions that correspond across compilation passes. Zero if unset and
+  // -1 if the instruction was created before HLO passes began.
+  int64 logical_creation_pass_id = 7;
 }
 
 // Profile data from the execution of a computation.
@@ -652,6 +663,12 @@ message OpSharding {
   // dimensions of tile_assignment(), but replicated across devices along the
   // last dimension. (Experimental)
   bool replicate_on_last_tile_dim = 6;
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings.  Metadata are to not be populated when
+  // type == TUPLE and instead metadata should be set on individual tuple
+  // elements.
+  repeated OpMetadata metadata = 7;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

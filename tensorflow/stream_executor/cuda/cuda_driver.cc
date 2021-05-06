@@ -70,73 +70,16 @@ constexpr bool kVerifyGpuContext = false;
 
 namespace stream_executor {
 namespace gpu {
-namespace {
-
-// Manages the singleton map of contexts that we've created, mapping
-// from the CUcontext to the GpuContext* that we pass around internally.
-// This also manages assignment of unique ids to GpuContexts, to allow
-// for fast comparison of a context against the current context.
-//
-// CUDA-runtime-created contexts are avoided, if triple angle
-// brace launches are required, by using the scoped activations in
-// gpu/gpu_activation.h.
-class CreatedContexts {
- public:
-  // Returns whether context is a member of the live set.
-  static bool Has(CUcontext context) {
-    absl::ReaderMutexLock lock(&mu_);
-    return Live()->find(context) != Live()->end();
-  }
-
-  // Adds context to the live set, or returns it if it's already present.
-  static GpuContext* Add(CUcontext context) {
-    CHECK(context != nullptr);
-    absl::MutexLock lock(&mu_);
-    auto insert_result = Live()->insert(std::make_pair(context, nullptr));
-    auto it = insert_result.first;
-    if (insert_result.second) {
-      // context was not present in the map.  Add it.
-      it->second = absl::make_unique<GpuContext>(context, next_id_++);
-    }
-    return it->second.get();
-  }
-
-  // Removes context from the live set.
-  static void Remove(CUcontext context) {
-    CHECK(context != nullptr);
-    absl::MutexLock lock(&mu_);
-    auto it = Live()->find(context);
-    CHECK(it != Live()->end()) << context;
-    Live()->erase(it);
-  }
-
- private:
-  // Returns the live map singleton.
-  static std::map<CUcontext, std::unique_ptr<GpuContext>>* Live() {
-    static auto singleton =
-        new std::map<CUcontext, std::unique_ptr<GpuContext>>;
-    return singleton;
-  }
-
-  // Lock that guards access-to/mutation-of the live set.
-  static absl::Mutex mu_;
-  static int64 next_id_;
-};
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
-// Formats CUresult to output prettified values into a log stream.
-std::string ToString(CUresult result) {
-  const char* error_name;
-  if (cuGetErrorName(result, &error_name)) {
-    return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
-  }
-  const char* error_string;
-  if (cuGetErrorString(result, &error_string)) {
-    return error_name;
-  }
-  return absl::StrCat(error_name, ": ", error_string);
+namespace {
+
+bool UseCudaMallocAsyncAllocator() {
+  static const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
+  return debug_allocator_str != nullptr &&
+         std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
 }
 
 // Returns the current context and checks that it is in the set of CUDA contexts
@@ -443,7 +386,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
   if (res == CUDA_SUCCESS) {
-    *context = CreatedContexts::Add(new_context);
+    *context = CreatedContexts::Add(new_context, device_ordinal);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
     VLOG(2) << "created or reused context " << new_context
@@ -916,11 +859,11 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
 }
 
 /* static */ port::StatusOr<uint64> GpuDriver::GetMinAllocationGranularity(
-    int device_ordinal) {
+    GpuDeviceHandle device) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device_ordinal;
+  props.location.id = device;
 
   size_t granularity;
   CUresult res = cuMemGetAllocationGranularity(
@@ -970,7 +913,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ port::Status GpuDriver::MapMemory(
     GpuContext* context, CUdeviceptr va,
     const GpuDriver::GenericMemoryHandle& handle,
-    const std::vector<int>& device_ordinals) {
+    const std::vector<GpuDeviceHandle>& device_handles) {
   ScopedActivateContext activation(context);
 
   auto device = DeviceFromContext(context);
@@ -986,9 +929,9 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
         "Failed to map %d bytes at %d: %s", handle.bytes, va, ToString(res)));
   }
 
-  std::vector<CUmemAccessDesc> access_descriptors(device_ordinals.size());
+  std::vector<CUmemAccessDesc> access_descriptors(device_handles.size());
   for (int i = 0; i < access_descriptors.size(); ++i) {
-    access_descriptors[i].location.id = device_ordinals[i];
+    access_descriptors[i].location.id = device_handles[i];
     access_descriptors[i].location.type = CU_MEM_LOCATION_TYPE_DEVICE;
     access_descriptors[i].flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
   }
@@ -1160,8 +1103,38 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
+
+  CUresult result;
+  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+  // This happens when the size is 0.
+  if (gpu_dst == 0 || gpu_src == 0 || !UseCudaMallocAsyncAllocator()) {
+    result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
+  } else {
+    // Any context work here.
+    CUcontext dst_context =
+        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
+    CUcontext src_context =
+        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
+
+    if (static_cast<void*>(dst_context) == nullptr) {
+      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      if (tmp_context.ok()) {
+        dst_context = tmp_context.ValueOrDie()->context();
+      }
+    }
+
+    if (static_cast<void*>(src_context) == nullptr) {
+      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      if (tmp_context.ok()) {
+        src_context = tmp_context.ValueOrDie()->context();
+      }
+    }
+
+    result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
+  }
+
   RETURN_IF_CUDA_RES_ERROR(
-      cuMemcpyDtoD(gpu_dst, gpu_src, size),
+      result,
       absl::StrFormat(
           "failed to synchronous memcpy from host to device: GPU dst: %p; "
           "GPU src: %p; size: %u=0x%x",
@@ -1216,7 +1189,35 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  CUresult result;
+  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+  // This happens when the size is 0.
+  if (gpu_dst == 0 || gpu_src == 0 || !UseCudaMallocAsyncAllocator()) {
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else {
+    // Any context work here.
+    CUcontext dst_context =
+        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
+    CUcontext src_context =
+        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
+
+    if (static_cast<void*>(dst_context) == nullptr) {
+      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      if (tmp_context.ok()) {
+        dst_context = tmp_context.ValueOrDie()->context();
+      }
+    }
+
+    if (static_cast<void*>(src_context) == nullptr) {
+      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      if (tmp_context.ok()) {
+        src_context = tmp_context.ValueOrDie()->context();
+      }
+    }
+
+    result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context, size,
+                               stream);
+  }
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
         "failed to enqueue async memcpy from device to device: %s"
@@ -1286,13 +1287,23 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
   CUresult result =
       cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT, pointer);
   if (result == CUDA_SUCCESS) {
-    CHECK(context != nullptr) << "success should entail non-null context";
+    // For cudaMallocAsync, the context returned is null.  For now
+    // return not-available. But how to manage that correctly
+    // everywhere in TF?  Currently this is only used during error
+    // handling.  So all is working fine, but TF have a different
+    // error then the original one.
+    if (context == nullptr) {
+      return port::Status(
+          port::error::UNAVAILABLE,
+          absl::StrCat("failed to query context for device pointer: ",
+                       ToString(result)));
+    }
     return context;
   }
 
   return port::Status(
       port::error::INTERNAL,
-      absl::StrCat("failed to query device pointer for context: ",
+      absl::StrCat("failed to query context for device pointer: ",
                    ToString(result)));
 }
 
@@ -1386,6 +1397,12 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
   return port::Status{
       port::error::INTERNAL,
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
+}
+
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
+  return port::Status{
+      port::error::INTERNAL,
+      "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
@@ -1568,7 +1585,6 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     return true;  // A context can always access its own memory.
   }
 
-  int can_access_peer = -1;
   auto from_device = DeviceFromContext(from);
   if (!from_device.ok()) {
     LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
@@ -1581,13 +1597,18 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
                << to_device.status();
     return false;
   }
-  CUresult res = cuDeviceCanAccessPeer(
-      &can_access_peer, from_device.ValueOrDie(), to_device.ValueOrDie());
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to detect peer access capability: " << ToString(res);
+  return CanEnablePeerAccess(from_device.ValueOrDie(), to_device.ValueOrDie());
+}
+
+/* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,
+                                                 GpuDeviceHandle to) {
+  int can_access_peer = -1;
+  CUresult result = cuDeviceCanAccessPeer(&can_access_peer, from, to);
+  if (result != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to detect peer access capability: "
+               << ToString(result);
     return false;
   }
-
   return can_access_peer;
 }
 

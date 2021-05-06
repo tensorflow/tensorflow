@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
@@ -75,6 +76,9 @@ struct XlaArgument {
   // host-memory tensor.
   Tensor constant_value;
 
+  // The upper bounds of the value.
+  absl::optional<Tensor> value_bound;
+
   // The name of this argument, used for debugging.
   string name;
 
@@ -99,10 +103,6 @@ struct XlaArgument {
   // as `tensor_array_gradients`.
   std::set<string> tensor_array_gradients;
 
-  // dynamic dims to arg number map. Empty if no dynamic shapes.
-  std::map<int32, int32> dynamic_dim_to_arg_num_map;
-  bool is_pad_arg = false;
-
   // Whether this argument will receive the same data across all replicas.
   bool is_same_data_across_replicas = false;
 
@@ -118,6 +118,9 @@ struct XlaArgument {
   // Returns the human-readable string for either TensorShape or xla::Shape.
   string ShapeHumanString() const;
 };
+
+// Returns true if any of `args` is an uninitialized resource variable.
+bool AnyUninitializedResourceArg(absl::Span<const XlaArgument> args);
 
 }  // end namespace tensorflow
 

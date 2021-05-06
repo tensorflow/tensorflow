@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "llvm/ADT/StringSet.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionSupport.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
@@ -33,6 +33,7 @@ namespace TFR {
 
 constexpr char kAttrArgumentNameAttr[] = "tfr.name";
 constexpr char kAttrArgumentDefaultAttr[] = "tfr.default";
+constexpr char kAttrArgumentTypeAttr[] = "tfr.type";
 
 class TFRDialect : public Dialect {
  public:

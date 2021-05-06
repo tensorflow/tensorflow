@@ -37,7 +37,9 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations as framework_combinations
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
 from tensorflow.python.framework import test_util
@@ -162,21 +164,36 @@ class GPUCombination(combinations_lib.TestCombination):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    required_gpus = kwargs.get("required_gpus", None)
+    required_gpus = kwargs.get("required_gpus", 0)
+    required_physical_gpus = kwargs.get("required_physical_gpus", 0)
 
     if distributions and required_gpus:
       raise ValueError("Do not use `required_gpus` and arguments of type "
                        "NamedDistribution together.")
 
-    number_of_required_gpus = max([required_gpus or 0] +
-                                  [d.required_gpus or 0 for d in distributions])
+    number_of_required_gpus = max(
+        [required_gpus] + [required_physical_gpus] +
+        [d.required_physical_gpus or 0 for d in distributions] +
+        [d.required_gpus or 0 for d in distributions])
+    number_of_required_physical_gpus = max(
+        [required_physical_gpus] +
+        [d.required_physical_gpus or 0 for d in distributions])
 
+    if (required_physical_gpus and required_gpus):
+      raise ValueError("Only one of `required_physical_gpus`(number of physical"
+                       " GPUs required) and `required_gpus`(total number of "
+                       "GPUs required) should be set. ")
     if not number_of_required_gpus and GPUCombination.GPU_TEST:
       return (False, "Test that doesn't require GPUs.")
     elif (number_of_required_gpus > 0
           and context.num_gpus() < number_of_required_gpus):
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
+    elif number_of_required_physical_gpus > len(
+        config.list_physical_devices("GPU")):
+      return (False,
+              ("Only {} of {} required physical GPUs are available.".format(
+                  config.list_physical_devices("GPU"), required_physical_gpus)))
     else:
       return (True, None)
 
@@ -253,6 +270,7 @@ class NamedDistribution(object):
                name,
                distribution_fn,
                required_gpus=None,
+               required_physical_gpus=0,
                required_tpu=False,
                use_cloud_tpu=False,
                has_chief=False,
@@ -264,7 +282,10 @@ class NamedDistribution(object):
     Args:
       name: Name that will be a part of the name of the test case.
       distribution_fn: A callable that creates a `tf.distribute.Strategy`.
-      required_gpus: The number of GPUs that the strategy requires.
+      required_gpus: The number of GPUs that the strategy requires. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
+      required_physical_gpus: Number of physical GPUs required. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
       required_tpu: Whether the strategy requires TPU.
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
@@ -277,6 +298,7 @@ class NamedDistribution(object):
     self._name = name
     self._distribution_fn = distribution_fn
     self.required_gpus = required_gpus
+    self.required_physical_gpus = required_physical_gpus
     self.required_tpu = required_tpu
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
@@ -296,6 +318,24 @@ class NamedDistribution(object):
 
   def __repr__(self):
     return self._name
+
+
+# This is to allow adding combinations that runs a function both as a
+# tf.function and eagerly.
+#
+# @combinations.generate(
+#   combinations.combine(
+#     tf_function = [combinations.tf_function, combinations.no_tf_function]
+#   )
+# )
+# def testXXX(tf_function):
+#   @tf_function
+#   def foo():
+#     tf.add(1., 1.)
+#
+#   foo()
+tf_function = combinations_lib.NamedObject("TfFunction", def_function.function)
+no_tf_function = combinations_lib.NamedObject("NoTfFunction", lambda f: f)
 
 
 def concat(*combined):
@@ -359,10 +399,50 @@ NamedObject = combinations_lib.NamedObject
 _running_in_worker = False
 
 
+def in_main_process():
+  """Whether it's in the main test process.
+
+  This is normally used to prepare the test environment which should only happen
+  in the main process.
+
+  Returns:
+    A boolean.
+  """
+  return not _running_in_worker
+
+
+class TestEnvironment(object):
+
+  def __init__(self):
+    self.tf_data_service_dispatcher = None
+
+  def __setattr__(self, name, value):
+    if not in_main_process():
+      raise ValueError(
+          "combinations.env() should only be modified in the main process. "
+          "Condition your code on combinations.in_main_process().")
+    super().__setattr__(name, value)
+
+
+_env = TestEnvironment()
+
+
+def env():
+  """Returns the object holds the test environment information.
+
+  Tests should modifies this in the main process if needed, and it will be
+  passed to the worker processes each time a test case is ran.
+
+  Returns:
+    a TestEnvironment object.
+  """
+  return _env
+
+
 _TestResult = collections.namedtuple("_TestResult", ["status", "message"])
 
 
-def _test_runner(test_id):
+def _test_runner(test_id, test_env):
   """Executes the test with the given test_id.
 
   This is a simple wrapper around TestRunner to be used with
@@ -372,14 +452,16 @@ def _test_runner(test_id):
 
   Args:
     test_id: TestCase.id()
+    test_env: a TestEnvironment object.
 
   Returns:
     A boolean indicates whether the test succeeds.
   """
-  global _running_in_worker
+  global _running_in_worker, _env
   # No need to restore the value of _running_in_worker since it should always be
   # True in worker processes.
   _running_in_worker = True
+  _env = test_env
   test = unittest.defaultTestLoader.loadTestsFromName(test_id)
   runner = unittest.TextTestRunner()
   result = runner.run(test)
@@ -453,7 +535,7 @@ def _multi_worker_test(test_method):
     #                   [sub process]test_method()
     test_id = self.id()
     if runner:
-      results = runner.run(_test_runner, args=(test_id,))
+      results = runner.run(_test_runner, args=(test_id, _env))
     else:
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
@@ -461,7 +543,7 @@ def _multi_worker_test(test_method):
           num_ps=0,
           has_eval=False)
       results = multi_process_runner.run(
-          _test_runner, cluster_spec, args=(test_id,)).return_value
+          _test_runner, cluster_spec, args=(test_id, _env)).return_value
 
     skip_reason = None
     for result in results:

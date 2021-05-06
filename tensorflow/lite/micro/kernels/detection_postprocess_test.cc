@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
 // See: tensorflow/lite/micro/kernels/detection_postprocess_test/README.md
-#include "tensorflow/lite/micro/kernels/flexbuffers_generated_data.h"
+#include "tensorflow/lite/micro/kernels/detection_postprocess_flexbuffers_generated_data.h"
 
 namespace tflite {
 namespace testing {
@@ -162,7 +162,7 @@ void TestDetectionPostprocess(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(*registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   // Using generated data as input to operator.
   int data_size = 0;

@@ -89,6 +89,76 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
+#define REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE(type, index_type) \
+  REGISTER_GPU_SPARSE_KERNELS(type, index_type, int32)                         \
+  REGISTER_GPU_SPARSE_KERNELS(type, index_type, int64)
+#define REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(type)       \
+  REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE(type, int32) \
+  REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE(type, int64)
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type)       \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("SparseSegmentSum")                                                \
+          .Device(DEVICE_GPU)                                                 \
+          .TypeConstraint<type>("T")                                          \
+          .TypeConstraint<index_type>("Tidx")                                 \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),                   \
+      SparseSegmentReductionSumOp<GPUDevice, type, index_type,                \
+                                  segment_ids_type>);                         \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("SparseSegmentSumWithNumSegments")                                 \
+          .Device(DEVICE_GPU)                                                 \
+          .HostMemory("num_segments")                                         \
+          .TypeConstraint<type>("T")                                          \
+          .TypeConstraint<index_type>("Tidx")                                 \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),                   \
+      SparseSegmentReductionSumWithNumSegmentsOp<GPUDevice, type, index_type, \
+                                                 segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type)        \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("SparseSegmentMean")                                                \
+          .Device(DEVICE_GPU)                                                  \
+          .TypeConstraint<type>("T")                                           \
+          .TypeConstraint<index_type>("Tidx")                                  \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),                    \
+      SparseSegmentReductionMeanOp<GPUDevice, type, index_type,                \
+                                   segment_ids_type>);                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("SparseSegmentMeanWithNumSegments")                                 \
+          .Device(DEVICE_GPU)                                                  \
+          .HostMemory("num_segments")                                          \
+          .TypeConstraint<type>("T")                                           \
+          .TypeConstraint<index_type>("Tidx")                                  \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),                    \
+      SparseSegmentReductionMeanWithNumSegmentsOp<GPUDevice, type, index_type, \
+                                                  segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSqrtN")                                        \
+          .Device(DEVICE_GPU)                                           \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentReductionSqrtNOp<GPUDevice, type, index_type,        \
+                                    segment_ids_type>);                 \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSqrtNWithNumSegments")                         \
+          .Device(DEVICE_GPU)                                           \
+          .HostMemory("num_segments")                                   \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentReductionSqrtNWithNumSegmentsOp<                     \
+          GPUDevice, type, index_type, segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("SparseSegmentMeanGrad")                                     \
@@ -99,6 +169,7 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
       SparseSegmentMeanGradOp<type, index_type, segment_ids_type>);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -111,6 +182,7 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
       SparseSegmentSqrtNGradOp<type, index_type, segment_ids_type>);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE

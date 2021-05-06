@@ -444,9 +444,6 @@ class StmtInferrer(gast.NodeVisitor):
   def visit_Expr(self, node):
     return self.visit(node.value)
 
-  def visit_Index(self, node):
-    return self.visit(node.value)
-
   def visit_Assign(self, node):
     self.rtype = self.visit(node.value)
 

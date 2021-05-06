@@ -26,11 +26,11 @@ namespace tflite {
 // regardless if selective registration is being used. C++ client will call
 // this method directly and Java client will call this method indirectly via
 // JNI code in interpreter_jni.cc.
-std::unique_ptr<OpResolver> CreateOpResolver() {
+std::unique_ptr<MutableOpResolver> CreateOpResolver() {
   std::unique_ptr<MutableOpResolver> resolver =
       std::unique_ptr<MutableOpResolver>(new MutableOpResolver());
   RegisterSelectedOps(resolver.get());
-  return std::move(resolver);
+  return resolver;
 }
 
 }  // namespace tflite

@@ -44,8 +44,9 @@ from __future__ import print_function
 import argparse
 import sys
 
+from absl import app
+
 from tensorflow.python.framework import dtypes
-from tensorflow.python.platform import app
 from tensorflow.python.tools import strip_unused_lib
 
 FLAGS = None

@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
@@ -386,7 +386,7 @@ void DenseToSparse::runOnFunction() {
       } else if (auto cst = dyn_cast<QConstOp>(inst)) {
         auto attr = cst.value();
         auto type = cst.getType().cast<ShapedType>();
-        std::vector<int8_t> dense_data(type.getNumElements());
+        std::vector<int8_t> dense_data;
         dense_data.reserve(type.getNumElements());
         for (const auto& val : attr.getValues<int8_t>())
           dense_data.push_back(val);

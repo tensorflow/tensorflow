@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -27,9 +28,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -68,6 +71,22 @@ void ConvertEndianShort(char* bytes, int64 size) {
   for (int64 i = 0; i < size; i += 2) {
     std::swap(bytes[i], bytes[i + 1]);
   }
+}
+
+string CompactOneline(const string& input) {
+  string result;
+  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+  bool first = true;
+  // Concatenate elements in "v" with spaces separating them, but ignoring
+  // empty entries.
+  for (const auto& s : v) {
+    if (s.empty()) {
+      continue;
+    }
+    absl::StrAppend(&result, (first ? "" : " "), s);
+    first = false;
+  }
+  return result;
 }
 
 // Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
@@ -382,6 +401,16 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
       }));
 
   return std::move(literal);
+}
+
+Literal Literal::SubLiteral(ShapeIndexView shape_index) {
+  if (!shape_index.empty()) {
+    auto decomposed = this->DecomposeTuple();
+    return decomposed.at(shape_index.front())
+        .SubLiteral(shape_index.ConsumeFront());
+  } else {
+    return std::move(*this);
+  }
 }
 
 std::vector<Literal> Literal::DecomposeTuple() {
@@ -830,15 +859,13 @@ StatusOr<Literal> LiteralBase::Reshape(
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
-  CHECK(IsPermutation(permutation, shape().rank()))
+  CHECK(shape().rank() == permutation.size() && IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
   // do a straight memory copy of the raw data set.
   // This is considerably faster than iterating over every array element using
   // the EachCell<>() and Set<>() APIs.
-  std::vector<int64> inverse_permutation = InversePermutation(permutation);
-  Shape permuted_shape =
-      ShapeUtil::PermuteDimensions(inverse_permutation, shape());
+  Shape permuted_shape = ShapeUtil::PermuteDimensions(permutation, shape());
   // Replace the layout with one affine to this shape, such that a
   // transpose operation can be performed by leaving the flat values
   // representation intact.
@@ -852,6 +879,7 @@ Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   // dimension has within the transposed array, a layout is affine if
   // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
   // vector of the affine layout.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
   CHECK(LayoutUtil::IsDenseArray(permuted_shape));
   Layout* layout = permuted_shape.mutable_layout();
   layout->clear_minor_to_major();
@@ -1281,12 +1309,20 @@ string LiteralBase::ToString() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringOneline() const {
+  return CompactOneline(ToString());
+}
+
 string LiteralBase::ToStringWithoutShape() const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/false,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
+}
+
+string LiteralBase::ToStringWithoutShapeOneline() const {
+  return CompactOneline(ToStringWithoutShape());
 }
 
 string LiteralBase::ToStringWithLayout() const {
@@ -1329,7 +1365,7 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(std::is_same<NativeSrcT, Eigen::half>::value) &&
+typename std::enable_if<std::is_same<NativeSrcT, Eigen::half>::value &&
                             (std::is_same<NativeDestT, complex64>::value ||
                              std::is_same<NativeDestT, complex128>::value),
                         Literal>::type
@@ -1342,9 +1378,46 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(!std::is_same<NativeSrcT, Eigen::half>::value) ||
-                            (!std::is_same<NativeDestT, complex64>::value &&
-                             !std::is_same<NativeDestT, complex128>::value),
+typename std::enable_if<std::is_floating_point<NativeSrcT>::value &&
+                            std::is_integral<NativeDestT>::value,
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    // C++ [conv.bool]p1:
+    //   A prvalue of arithmetic [...] type can be converted to a prvalue of
+    //   type bool. A zero value [...] is converted to false; any other value is
+    //   converted to true.
+    // C++ [conv.fpint]p1:
+    //   [...] The behavior is undefined if the truncated value cannot be
+    //   represented in the destination type.
+    //
+    // Using static_cast to convert a float to an integral type other than bool
+    // may be undefined if the value's magnitude is too large or it is a NaN.
+    // Let's choose saturating arithmetic as it captures the spirit of infinity
+    // and arbitrarily map NaN to zero.
+    if (!std::is_same<NativeDestT, bool>::value) {
+      if (src != src) {
+        return NativeDestT{0};
+      }
+      if (src >= std::numeric_limits<NativeDestT>::max()) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <= std::numeric_limits<NativeDestT>::lowest()) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
+    }
+    return static_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<!(std::is_floating_point<NativeSrcT>::value &&
+                          std::is_integral<NativeDestT>::value) &&
+                            !(std::is_same<NativeSrcT, Eigen::half>::value &&
+                              (std::is_same<NativeDestT, complex64>::value ||
+                               std::is_same<NativeDestT, complex128>::value)),
                         Literal>::type
 ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
@@ -1944,6 +2017,60 @@ bool LiteralBase::IsR1Iota() const {
   }
 
   return true;
+}
+
+// Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
+// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// literal is not a strided iota.
+absl::optional<int64> LiteralBase::IsR1StridedIota() const {
+  if (!shape().IsArray() || shape().rank() != 1) {
+    return absl::nullopt;
+  }
+
+  const int64 elements = ShapeUtil::ElementsIn(shape());
+  const PrimitiveType type = shape().element_type();
+  if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
+    return absl::nullopt;
+  }
+
+  auto get_element_at = [&](const int64 idx) -> int64 {
+    switch (type) {
+      case U8:
+        return static_cast<int64>(Get<uint8>({idx}));
+      case U16:
+        return static_cast<int64>(Get<uint16>({idx}));
+      case U32:
+        return static_cast<int64>(Get<uint32>({idx}));
+      case U64:
+        return static_cast<int64>(Get<uint64>({idx}));
+      case S8:
+        return Get<int8>({idx});
+      case S16:
+        return Get<int16>({idx});
+      case S32:
+        return Get<int32>({idx});
+      case S64:
+        return Get<int64>({idx});
+      default:
+        CHECK(0);
+        return 0;
+    }
+  };
+
+  // Infer the stride as the second element (since first element is supposed
+  // to be zero).
+  int64 stride = get_element_at(1);
+  if (stride == 0) {
+    return absl::nullopt;
+  }
+
+  for (int64 idx = 0; idx < elements; ++idx) {
+    if (get_element_at(idx) != idx * stride) {
+      return absl::nullopt;
+    }
+  }
+
+  return stride;
 }
 
 bool LiteralBase::IsZero(absl::Span<const int64> indices) const {

@@ -190,7 +190,7 @@ void PropagateDevicesInGraph(
       if (new_device.empty()) continue;
 
       auto new_device_attr =
-          mlir::StringAttr::get(new_device, op_to_update->getContext());
+          mlir::StringAttr::get(op_to_update->getContext(), new_device);
       op_to_update->setAttr(kDeviceAttr, new_device_attr);
       PopulateDeviceForOpResults(*op_to_update, new_device_attr.getValue(),
                                  value_to_device);
@@ -198,7 +198,7 @@ void PropagateDevicesInGraph(
       if (auto sink =
               llvm::dyn_cast<tf_executor::NextIterationSinkOp>(op_to_update)) {
         auto source = sink.GetSource();
-        source.setAttr(kDeviceAttr, new_device_attr);
+        source->setAttr(kDeviceAttr, new_device_attr);
         PopulateDeviceForOpResults(*source, new_device_attr.getValue(),
                                    value_to_device);
         updated_next_iteration = true;
@@ -219,7 +219,7 @@ void PropagateDevicesToResults(
           operand.getOperandNumber(), kFuncDeviceAttr);
       if (device_attr && !device_attr.getValue().empty()) continue;
       func.setResultAttr(operand.getOperandNumber(), kFuncDeviceAttr,
-                         StringAttr::get(it->getSecond(), func.getContext()));
+                         StringAttr::get(func.getContext(), it->getSecond()));
     }
   }
 }

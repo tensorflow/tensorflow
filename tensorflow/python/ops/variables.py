@@ -27,7 +27,6 @@ import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
@@ -361,11 +361,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   """
 
   @deprecated_args(
-      None,
-      "A variable's value can be manually cached by calling "
+      None, "A variable's value can be manually cached by calling "
       "tf.Variable.read_value() under a tf.device scope. The caching_device "
-      "argument does not work properly.",
-      "caching_device")
+      "argument does not work properly.", "caching_device")
   def __init__(self,
                initial_value=None,
                trainable=None,
@@ -394,10 +392,11 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
-      caching_device: Optional device string describing where the Variable
-        should be cached for reading.  Defaults to the Variable's device. If not
-        `None`, caches on another device.  Typical use is to cache on the device
-        where the Ops using the Variable reside, to deduplicate copying through
+      caching_device: Note: This argument is only valid when using a v1-style
+        `Session`. Optional device string describing where the Variable should
+        be cached for reading. Defaults to the Variable's device. If not `None`,
+        caches on another device. Typical use is to cache on the device where
+        the Ops using the Variable reside, to deduplicate copying through
         `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.

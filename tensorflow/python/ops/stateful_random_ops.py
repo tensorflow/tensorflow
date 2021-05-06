@@ -20,24 +20,20 @@ from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
 
-import numpy as np
 import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -45,9 +41,10 @@ from tensorflow.python.util.tf_export import tf_export
 # bits, all of which will be sent to the C++ code. The actual C++
 # implementation of some algorithms may only use a lower part of the bits.
 
-MAX_INT64 = 2**63 - 1
-MIN_INT64 = -(2**63)
-UINT64_SPAN = 2**64
+UINT64_HALF_SPAN = 2**63
+MAX_INT64 = UINT64_HALF_SPAN - 1
+MIN_INT64 = -UINT64_HALF_SPAN
+UINT64_SPAN = UINT64_HALF_SPAN * 2
 # 'Variable' doesn't support uint32 or uint64 yet (due to reasons explained in
 # b/111604096 and cl/171681867), so I use signed int here. I choose int64
 # instead of int32 here because `VarHandleOp` doesn't support int32 on GPU.
@@ -95,7 +92,7 @@ def non_deterministic_ints(shape, dtype=dtypes.int64):
 
 
 def _uint_to_int(n):
-  if n > SEED_MAX:
+  if isinstance(n, int) and n > SEED_MAX:
     n = n - SEED_UINT_SPAN
   return n
 
@@ -117,12 +114,10 @@ def _make_1d_state(state_size, seed):
       ls.append(seed & SEED_BIT_MASK)
       seed >>= SEED_TYPE_BITS
     seed = ls
-  # to avoid overflow error from np.asarray
-  seed = list(map(_uint_to_int, seed))
-  seed = np.asarray(seed, dtype=STATE_TYPE)
-  if len(seed.shape) != 1:
-    raise ValueError(
-        "seed should only have one dimension; got shape: %s" % seed.shape)
+  # to avoid overflow error from ops.convert_to_tensor
+  seed = nest.map_structure(_uint_to_int, seed)
+  seed = math_ops.cast(seed, STATE_TYPE)
+  seed = array_ops.reshape(seed, [-1])
   seed = seed[0:state_size]
   # Padding with zeros on the *left* if too short. Padding on the right would
   # cause a small seed to be used as the "counter" while the "key" is always
@@ -130,12 +125,13 @@ def _make_1d_state(state_size, seed):
   # layout counter is stored before key. In such a situation two RNGs with
   # two different small seeds may generate overlapping outputs.
   seed_size = seed.shape[0]
-  if seed_size < state_size:
-    seed = np.pad(
-        seed, [(state_size - seed_size, 0)],
-        mode="constant",
-        constant_values=0)
-  assert seed.shape == (state_size,), "Wrong seed.shape: %s" % seed.shape
+  if seed_size is None:
+    seed_size = array_ops.shape(seed)[0]
+  padding_size = math_ops.maximum(state_size - seed_size, 0)
+  padding = array_ops.zeros([padding_size], seed.dtype)
+  # can't use `pad` because it doesn't support integer dtypes on GPU
+  seed = array_ops.concat([padding, seed], axis=0)
+  seed.set_shape([state_size])
   return seed
 
 
@@ -203,10 +199,10 @@ def create_rng_state(seed, alg):
 
   >>> tf.random.create_rng_state(
   ...     1234, "philox")
-  array([1234,    0,    0])
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([1234,    0,    0])>
   >>> tf.random.create_rng_state(
   ...     [12, 34], "threefry")
-  array([12, 34])
+  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([12, 34])>
 
   Args:
     seed: an integer or 1-D numpy array.
@@ -229,46 +225,20 @@ def _shape_tensor(shape):
 
 
 def _convert_to_state_tensor(t):
-  if isinstance(t, list):
-    # to avoid out-of-range error from ops.convert_to_tensor
-    t = list(map(_uint_to_int, t))
-  return ops.convert_to_tensor(t, dtype=STATE_TYPE)
+  # to avoid out-of-range error from ops.convert_to_tensor
+  t = nest.map_structure(_uint_to_int, t)
+  return math_ops.cast(t, STATE_TYPE)
 
 
-class GeneratorSpec(type_spec.TypeSpec):
-  """TypeSpec for Generator."""
-
-  def __init__(self, shape=None, dtype=None, alg=None):
-    self.shape = shape
-    self.dtype = dtype
-    self.alg = alg
-
-  @property
-  def _component_specs(self):
-    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),)
-
-  def _to_components(self, value):
-    return (value.state.handle,)
-
-  def _from_components(self, components):
-    assert isinstance(components, (list, tuple))
-    assert len(components) == 1
-    handle = components[0]
-    state_var = resource_variable_ops.BaseResourceVariable(
-        handle=handle, shape=self.shape, dtype=self.dtype,
-        trainable=False, handle_deleter=object(), handle_name="RNGVar")
-    return Generator(state=state_var, alg=self.alg)
-
-  @property
-  def value_type(self):
-    return Generator
-
-  def _serialize(self):
-    return (self.shape, self.dtype, self.alg)
+def get_replica_id():
+  rctx = ds_context.get_replica_context()
+  if rctx is None:
+    return None
+  return rctx.replica_id_in_sync_group
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
-class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
+class Generator(tracking.AutoTrackable):
   """Random-number generator.
 
   Example:
@@ -320,7 +290,136 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
   >>> g = tf.random.get_global_generator()
   >>> g.normal(shape=(2, 3))
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...>
+
+  When creating a generator inside a `tf.distribute.Strategy` scope, each
+  replica will get a different stream of random numbers.
+
+  Note: `tf.distribute.experimental.CentralStorageStrategy` and
+  `tf.distribute.experimental.ParameterServerStrategy` are not supported yet.
+
+  For example, in this code:
+
+  ```
+  strat = tf.distribute.MirroredStrategy(devices=["cpu:0", "cpu:1"])
+  with strat.scope():
+    g = tf.random.Generator.from_seed(1)
+    def f():
+      return g.normal([])
+    results = strat.run(f).values
+  ```
+
+  `results[0]` and `results[1]` will have different values.
+
+  If the generator is seeded (e.g. created via `Generator.from_seed`), the
+  random numbers will be determined by the seed, even though different replicas
+  get different numbers.  One can think of a random number generated on a
+  replica as a hash of the replica ID and a "master" random number that may be
+  common to all replicas. Hence, the whole system is still deterministic.
+
+  (Note that the random numbers on different replicas are not correlated, even
+  if they are deterministically determined by the same seed. They are not
+  correlated in the sense that no matter what statistics one calculates on them,
+  there won't be any discernable correlation.)
+
+  Generators can be freely saved and restored using `tf.train.Checkpoint`. The
+  checkpoint can be restored in a distribution strategy with a different number
+  of replicas than the original strategy. If a replica ID is present in both the
+  original and the new distribution strategy, its state will be properly
+  restored (i.e. the random-number stream from the restored point will be the
+  same as that from the saving point) unless the replicas have already diverged
+  in their RNG call traces before saving (e.g. one replica has made one RNG call
+  while another has made two RNG calls). We don't have such guarantee if the
+  generator is saved in a strategy scope and restored outside of any strategy
+  scope, or vice versa.
   """
+
+  @classmethod
+  def from_state(cls, state, alg):
+    """Creates a generator from a state.
+
+    See `__init__` for description of `state` and `alg`.
+
+    Args:
+      state: the new state.
+      alg: the RNG algorithm.
+
+    Returns:
+      The new generator.
+    """
+    return cls(alg=alg, state=state)
+
+  @classmethod
+  def from_seed(cls, seed, alg=None):
+    """Creates a generator from a seed.
+
+    A seed is a 1024-bit unsigned integer represented either as a Python
+    integer or a vector of integers. Seeds shorter than 1024-bit will be
+    padded. The padding, the internal structure of a seed and the way a seed
+    is converted to a state are all opaque (unspecified). The only semantics
+    specification of seeds is that two different seeds are likely to produce
+    two independent generators (but no guarantee).
+
+    Args:
+      seed: the seed for the RNG.
+      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    if alg is None:
+      # TODO(b/170668986): more sophisticated algorithm selection
+      alg = DEFAULT_ALGORITHM
+    alg = _convert_alg_to_int(alg)
+    state = create_rng_state(seed, alg)
+    return cls(state=state, alg=alg)
+
+  @classmethod
+  def from_non_deterministic_state(cls, alg=None):
+    """Creates a generator by non-deterministically initializing its state.
+
+    The source of the non-determinism will be platform- and time-dependent.
+
+    Args:
+      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    if alg is None:
+      # TODO(b/170668986): more sophisticated algorithm selection
+      alg = DEFAULT_ALGORITHM
+    alg = _convert_alg_to_int(alg)
+    state = non_deterministic_ints(shape=[_get_state_size(alg)],
+                                   dtype=SEED_TYPE)
+    return cls(state=state, alg=alg)
+
+  @classmethod
+  def from_key_counter(cls, key, counter, alg):
+    """Creates a generator from a key and a counter.
+
+    This constructor only applies if the algorithm is a counter-based algorithm.
+    See method `key` for the meaning of "key" and "counter".
+
+    Args:
+      key: the key for the RNG, a scalar of type STATE_TYPE.
+      counter: a vector of dtype STATE_TYPE representing the initial counter for
+        the RNG, whose length is algorithm-specific.,
+      alg: the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    counter = _convert_to_state_tensor(counter)
+    key = _convert_to_state_tensor(key)
+    alg = _convert_alg_to_int(alg)
+    counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
+    key.shape.assert_is_compatible_with([])
+    key = array_ops.reshape(key, [1])
+    state = array_ops.concat([counter, key], 0)
+    return cls(state=state, alg=alg)
 
   def __init__(self, copy_from=None, state=None, alg=None):
     """Creates a generator.
@@ -346,24 +445,26 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         The string names `"philox"` and `"threefry"` can also be used.
         Note `PHILOX` guarantees the same numbers are produced (given
         the same random state) across all architectures (CPU, GPU, XLA etc).
-
-    Throws:
-      ValueError: if the generator is created inside a synchronous
-        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
-        because there is ambiguity on how to replicate a generator (e.g. should
-        it be copied so such each replica will get the same random numbers, or
-        should it be "split" into different generators that generate
-        different random numbers).
     """
+    # TODO(b/175072242): Remove distribution-strategy dependencies in this file.
+    if ds_context.has_strategy():
+      self._distribution_strategy = ds_context.get_strategy()
+    else:
+      self._distribution_strategy = None
     if copy_from is not None:
       # All other arguments should be None
       assert (alg or state) is None
       self._state_var = self._create_variable(copy_from.state, dtype=STATE_TYPE,
                                               trainable=False)
       self._alg = copy_from.algorithm
-
     else:
       assert alg is not None and state is not None
+      if ds_context.has_strategy():
+        strat_name = type(ds_context.get_strategy()).__name__
+        # TODO(b/174610856): Support CentralStorageStrategy and
+        #   ParameterServerStrategy.
+        if "CentralStorage" in strat_name or "ParameterServer" in strat_name:
+          raise ValueError("%s is not supported yet" % strat_name)
       alg = _convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
@@ -376,7 +477,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       self._alg = alg
 
   def _create_variable(self, *args, **kwargs):
-    """Creates a variable, and check that it's not MirroredVariable.
+    """Creates a variable.
 
     Args:
       *args: positional arguments passed along to `variables.Variable.
@@ -385,135 +486,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     Returns:
       The created variable.
     """
-    if ds_context.has_strategy():
-      raise ValueError(
-          "Creating a generator within a strategy scope is disallowed, because "
-          "there is ambiguity on how to replicate a generator (e.g. should it "
-          "be copied so that each replica gets the same random numbers, or "
-          "'split' so that each replica gets different random numbers).")
-      # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
-    var = variables.Variable(*args, **kwargs)
-    return var
-
-  @classmethod
-  def from_state(cls, state, alg):
-    """Creates a generator from a state.
-
-    See `__init__` for description of `state` and `alg`.
-
-    Args:
-      state: the new state.
-      alg: the RNG algorithm.
-
-    Returns:
-      The new generator.
-
-    Throws:
-      ValueError: if the generator is created inside a synchronous
-        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
-        because there is ambiguity on how to replicate a generator (e.g. should
-        it be copied so such each replica will get the same random numbers, or
-        should it be "split" into different generators that generate
-        different random numbers).
-    """
-    return cls(alg=alg, state=state)
-
-  @classmethod
-  def from_seed(cls, seed, alg=None):
-    """Creates a generator from a seed.
-
-    A seed is a 1024-bit unsigned integer represented either as a Python
-    integer or a vector of integers. Seeds shorter than 1024-bit will be
-    padded. The padding, the internal structure of a seed and the way a seed
-    is converted to a state are all opaque (unspecified). The only semantics
-    specification of seeds is that two different seeds are likely to produce
-    two independent generators (but no guarantee).
-
-    Args:
-      seed: the seed for the RNG.
-      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
-        `__init__` for its possible values.
-
-    Returns:
-      The new generator.
-
-    Throws:
-      ValueError: if the generator is created inside a synchronous
-        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
-        because there is ambiguity on how to replicate a generator (e.g. should
-        it be copied so such each replica will get the same random numbers, or
-        should it be "split" into different generators that generate
-        different random numbers).
-    """
-    if alg is None:
-      # TODO(wangpeng): more sophisticated algorithm selection
-      alg = DEFAULT_ALGORITHM
-    alg = _convert_alg_to_int(alg)
-    state = create_rng_state(seed, alg)
-    return cls(state=state, alg=alg)
-
-  @classmethod
-  def from_non_deterministic_state(cls, alg=None):
-    """Creates a generator by non-deterministically initializing its state.
-
-    The source of the non-determinism will be platform- and time-dependent.
-
-    Args:
-      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
-        `__init__` for its possible values.
-
-    Returns:
-      The new generator.
-
-    Throws:
-      ValueError: if the generator is created inside a synchronous
-        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
-        because there is ambiguity on how to replicate a generator (e.g. should
-        it be copied so such each replica will get the same random numbers, or
-        should it be "split" into different generators that generate
-        different random numbers).
-    """
-    if alg is None:
-      # TODO(wangpeng): more sophisticated algorithm selection
-      alg = DEFAULT_ALGORITHM
-    alg = _convert_alg_to_int(alg)
-    state = non_deterministic_ints(shape=[_get_state_size(alg)],
-                                   dtype=SEED_TYPE)
-    return cls(state=state, alg=alg)
-
-  @classmethod
-  def from_key_counter(cls, key, counter, alg):
-    """Creates a generator from a key and a counter.
-
-    This constructor only applies if the algorithm is a counter-based algorithm.
-    See method `key` for the meaning of "key" and "counter".
-
-    Args:
-      key: the key for the RNG, a scalar of type STATE_TYPE.
-      counter: a vector of dtype STATE_TYPE representing the initial counter for
-        the RNG, whose length is algorithm-specific.,
-      alg: the RNG algorithm. If None, it will be auto-selected. See
-        `__init__` for its possible values.
-
-    Returns:
-      The new generator.
-
-    Throws:
-      ValueError: if the generator is created inside a synchronous
-        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
-        because there is ambiguity on how to replicate a generator (e.g. should
-        it be copied so such each replica will get the same random numbers, or
-        should it be "split" into different generators that generate
-        different random numbers).
-    """
-    counter = _convert_to_state_tensor(counter)
-    key = _convert_to_state_tensor(key)
-    alg = _convert_alg_to_int(alg)
-    counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
-    key.shape.assert_is_compatible_with([])
-    key = array_ops.reshape(key, [1])
-    state = array_ops.concat([counter, key], 0)
-    return cls(state=state, alg=alg)
+    return variables.Variable(*args, **kwargs)
 
   def reset(self, state):
     """Resets the generator by a new state.
@@ -557,11 +530,6 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     self._state_var.assign(state)
 
   @property
-  def _type_spec(self):
-    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype,
-                         alg=self.algorithm)
-
-  @property
   def state(self):
     """The internal state of the RNG."""
     return self._state_var
@@ -572,12 +540,9 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     return self._alg
 
   def _standard_normal(self, shape, dtype):
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter = self._prepare_key_counter(shape)
-      return gen_stateless_random_ops_v2.stateless_random_normal_v2(
-          shape, key=key, counter=counter, dtype=dtype, alg=self.algorithm)
-    return gen_stateful_random_ops.stateful_standard_normal_v2(
-        self.state.handle, self.algorithm, shape, dtype=dtype)
+    key, counter = self._prepare_key_counter(shape)
+    return gen_stateless_random_ops_v2.stateless_random_normal_v2(
+        shape, key=key, counter=counter, dtype=dtype, alg=self.algorithm)
 
   @property
   def key(self):
@@ -602,8 +567,13 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     else:
       raise ValueError("Unsupported algorithm id: %s" % alg)
 
-  # TODO(wangpeng): Add "Returns" section to docstring once new version kicks in
-  # pylint: disable=g-doc-return-or-yield
+  def _skip_single_var(self, var, delta):
+    # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
+    return gen_stateful_random_ops.rng_read_and_skip(
+        var.handle,
+        alg=math_ops.cast(self.algorithm, dtypes.int32),
+        delta=math_ops.cast(delta, dtypes.uint64))
+
   def skip(self, delta):
     """Advance the counter of a counter-based RNG.
 
@@ -612,16 +582,43 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         `skip(n)` will be the same as that after `normal([n])`
         (or any other distribution). The actual increment added to the
         counter is an unspecified implementation detail.
+
+    Returns:
+      A `Tensor` of type `int64`.
     """
-    if compat.forward_compatible(2020, 10, 25):
-      return gen_stateful_random_ops.rng_read_and_skip(
-          self.state.handle,
-          alg=math_ops.cast(self.algorithm, dtypes.int32),
-          delta=math_ops.cast(delta, dtypes.uint64))
-    gen_stateful_random_ops.rng_skip(
-        self.state.handle, math_ops.cast(self.algorithm, dtypes.int64),
-        math_ops.cast(delta, dtypes.int64))
-  # pylint: enable=g-doc-return-or-yield
+
+    def update_fn(v):
+      return self._skip_single_var(v, delta)
+    # TODO(b/170515001): Always call strategy.extended.update after calling it
+    #   from both replica context and cross-replica context is supported.
+    if values_util.is_saving_non_distributed():
+      # Assumes replica context with replica_id=0, since we only save the first
+      # replica.
+      return update_fn(self.state)
+    if self._distribution_strategy is not None:
+      with ds_context.enter_or_assert_strategy(self._distribution_strategy):
+        if ds_context.in_cross_replica_context():
+          # Code that operates on all replicas of a variable cannot be saved
+          # without retracing.
+          values_util.mark_as_unsaveable()
+          # In cross-replica context we need to use strategy.extended.update.
+          return ds_context.get_strategy().extended.update(
+              self.state, update_fn)
+    return update_fn(self.state)
+
+  def _preprocess_key(self, key):
+    if self._distribution_strategy is None:
+      return key
+    with ds_context.enter_or_assert_strategy(self._distribution_strategy):
+      replica_id = get_replica_id()
+      if replica_id is not None:
+        replica_id = array_ops.stack([replica_id, 0], axis=0)
+        replica_id = math_ops.cast(replica_id, dtypes.uint64)
+        # Conceptually: key = hash(key, replica_id)
+        key = gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
+            shape=[1], key=key, counter=replica_id, dtype=dtypes.uint64,
+            alg=self.algorithm)
+      return key
 
   def _prepare_key_counter(self, shape):
     delta = math_ops.reduce_prod(shape)
@@ -630,6 +627,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     counter = array_ops.bitcast(counter_key[:counter_size], dtypes.uint64)
     key = array_ops.bitcast(counter_key[counter_size:counter_size + 1],
                             dtypes.uint64)
+    key = self._preprocess_key(key)
     return key, counter
 
   # The following functions return a tensor and as a side effect update
@@ -659,16 +657,9 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       return math_ops.add(rnd * stddev, mean, name=name)
 
   def _truncated_normal(self, shape, dtype):
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter = self._prepare_key_counter(shape)
-      return gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
-          shape=shape,
-          key=key,
-          counter=counter,
-          dtype=dtype,
-          alg=self.algorithm)
-    return gen_stateful_random_ops.stateful_truncated_normal(
-        self.state.handle, self.algorithm, shape, dtype=dtype)
+    key, counter = self._prepare_key_counter(shape)
+    return gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
+        shape=shape, key=key, counter=counter, dtype=dtype, alg=self.algorithm)
 
   def truncated_normal(self, shape,
                        mean=0.0,
@@ -705,30 +696,19 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       return math_ops.add(mul, mean_tensor, name=name)
 
   def _uniform(self, shape, dtype):
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter = self._prepare_key_counter(shape)
-      return gen_stateless_random_ops_v2.stateless_random_uniform_v2(
-          shape=shape,
-          key=key,
-          counter=counter,
-          dtype=dtype,
-          alg=self.algorithm)
-    return gen_stateful_random_ops.stateful_uniform(
-        self.state.handle, self.algorithm, shape=shape, dtype=dtype)
+    key, counter = self._prepare_key_counter(shape)
+    return gen_stateless_random_ops_v2.stateless_random_uniform_v2(
+        shape=shape, key=key, counter=counter, dtype=dtype, alg=self.algorithm)
 
   def _uniform_full_int(self, shape, dtype, name=None):
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter = self._prepare_key_counter(shape)
-      return gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
-          shape=shape,
-          key=key,
-          counter=counter,
-          dtype=dtype,
-          alg=self.algorithm,
-          name=name)
-    return gen_stateful_random_ops.stateful_uniform_full_int(
-        self.state.handle, self.algorithm, shape=shape,
-        dtype=dtype, name=name)
+    key, counter = self._prepare_key_counter(shape)
+    return gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
+        shape=shape,
+        key=key,
+        counter=counter,
+        dtype=dtype,
+        alg=self.algorithm,
+        name=name)
 
   def uniform(self, shape, minval=0, maxval=None,
               dtype=dtypes.float32, name=None):
@@ -789,19 +769,15 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
-        if compat.forward_compatible(2020, 10, 25):
-          key, counter = self._prepare_key_counter(shape)
-          return gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
-              shape=shape,
-              key=key,
-              counter=counter,
-              minval=minval,
-              maxval=maxval,
-              alg=self.algorithm,
-              name=name)
-        return gen_stateful_random_ops.stateful_uniform_int(
-            self.state.handle, self.algorithm, shape=shape,
-            minval=minval, maxval=maxval, name=name)
+        key, counter = self._prepare_key_counter(shape)
+        return gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
+            shape=shape,
+            key=key,
+            counter=counter,
+            minval=minval,
+            maxval=maxval,
+            alg=self.algorithm,
+            name=name)
       else:
         rnd = self._uniform(shape=shape, dtype=dtype)
         return math_ops.add(rnd * (maxval - minval), minval, name=name)
@@ -969,7 +945,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
-              for key in keys.numpy()]
+              for key in array_ops.unstack(keys, num=count)]
     else:
       raise ValueError("Unsupported algorithm id: %s" % alg)
 

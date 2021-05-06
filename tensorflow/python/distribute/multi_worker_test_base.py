@@ -21,7 +21,6 @@ from __future__ import print_function
 import contextlib
 import copy
 import json
-import multiprocessing
 import os
 import subprocess
 import sys
@@ -166,8 +165,8 @@ def create_in_process_cluster(num_workers,
 
   # The cluster may hang if workers don't have enough inter_op threads. See
   # b/172296720 for more details.
-  if multiprocessing.cpu_count() < 4:
-    worker_config.inter_op_parallelism_threads = 4
+  if worker_config.inter_op_parallelism_threads < num_workers + 1:
+    worker_config.inter_op_parallelism_threads = num_workers + 1
 
   # Enable collective ops which has no impact on non-collective ops.
   # TODO(yuefengz, tucker): removing this after we move the initialization of
@@ -242,11 +241,6 @@ class MultiProcessCluster(object):
       # TODO(yuefengz): support GPU clusters.
       server_config = config_pb2.ConfigProto()
       server_config.device_count['GPU'] = 0
-
-      # Set the environment variable to prevent hanging upon job failure and
-      # restart. Note that it defaults to 'use_caller' at Google, but defaults
-      # to False in OSS.
-      os.environ['GRPC_FAIL_FAST'] = 'use_caller'
 
       server_lib.Server(
           cluster_spec,
@@ -387,7 +381,7 @@ def create_cluster_spec(has_chief=False,
   This util is useful when creating the `cluster_spec` arg for
   `tf.__internal__.distribute.multi_process_runner.run`.
 
-  Arguments:
+  Args:
     has_chief: Whether the generated cluster spec should contain "chief" task
       type.
     num_workers: Number of workers to use in the cluster spec.
@@ -699,7 +693,7 @@ class IndependentWorkerTestBase(test.TestCase):
     from `cluster_spec`, `task_type`, and `task_id`, and provide it to the new
     thread to be set as `TF_CONFIG` environment.
 
-    Arguments:
+    Args:
       task_fn: The function to run in the new thread.
       cluster_spec: The cluster spec.
       task_type: The task type.
@@ -810,7 +804,7 @@ class MultiWorkerMultiProcessTest(test.TestCase):
     In that case, this function only prints stderr from the first process of
     each type.
 
-    Arguments:
+    Args:
       processes: A dictionary from process type string -> list of processes.
       print_only_first: If true, only print output from first process of each
         type.

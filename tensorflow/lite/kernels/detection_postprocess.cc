@@ -41,6 +41,9 @@ constexpr int kInputTensorClassPredictions = 1;
 constexpr int kInputTensorAnchors = 2;
 
 // Output tensors
+// When max_classes_per_detection > 1, detection boxes will be replicated by the
+// number of detected classes of that box. Dummy data will be appended if the
+// number of classes is smaller than max_classes_per_detection.
 constexpr int kOutputTensorDetectionBoxes = 0;
 constexpr int kOutputTensorDetectionClasses = 1;
 constexpr int kOutputTensorDetectionScores = 2;
@@ -198,7 +201,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensorNumDetections,
                                   &num_detections));
   num_detections->type = kTfLiteFloat32;
-  // TODO (chowdhery): Make it a scalar when available
   SetTensorSizes(context, num_detections, {1});
 
   // Temporary tensors
@@ -267,14 +269,12 @@ void DequantizeBoxEncodings(const TfLiteTensor* input_box_encodings, int idx,
 
 template <class T>
 T ReInterpretTensor(const TfLiteTensor* tensor) {
-  // TODO (chowdhery): check float
   const float* tensor_base = GetTensorData<float>(tensor);
   return reinterpret_cast<T>(tensor_base);
 }
 
 template <class T>
 T ReInterpretTensor(TfLiteTensor* tensor) {
-  // TODO (chowdhery): check float
   float* tensor_base = GetTensorData<float>(tensor);
   return reinterpret_cast<T>(tensor_base);
 }
@@ -319,6 +319,7 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
         const float* boxes =
             &(GetTensorData<float>(input_box_encodings)[box_encoding_idx]);
         box_centersize = *reinterpret_cast<const CenterSizeEncoding*>(boxes);
+        TF_LITE_ENSURE_EQ(context, input_anchors->type, kTfLiteFloat32);
         anchor =
             ReInterpretTensor<const CenterSizeEncoding*>(input_anchors)[idx];
         break;
@@ -351,6 +352,7 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
 
     TfLiteTensor* decoded_boxes =
         &context->tensors[op_data->decoded_boxes_index];
+    TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
     auto& box = ReInterpretTensor<BoxCornerEncoding*>(decoded_boxes)[idx];
     box.ymin = ycenter - half_h;
     box.xmin = xcenter - half_w;
@@ -382,9 +384,11 @@ void SelectDetectionsAboveScoreThreshold(const std::vector<float>& values,
 
 bool ValidateBoxes(const TfLiteTensor* decoded_boxes, const int num_boxes) {
   for (int i = 0; i < num_boxes; ++i) {
-    // ymax>=ymin, xmax>=xmin
     auto& box = ReInterpretTensor<const BoxCornerEncoding*>(decoded_boxes)[i];
-    if (box.ymin >= box.ymax || box.xmin >= box.xmax) {
+    // Note: `ComputeIntersectionOverUnion` properly handles degenerated boxes
+    // (xmin == xmax and/or ymin == ymax) as it just returns 0 in case the box
+    // area is <= 0.
+    if (box.ymin > box.ymax || box.xmin > box.xmax) {
       return false;
     }
   }
@@ -436,11 +440,12 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   TF_LITE_ENSURE(context, (intersection_over_union_threshold > 0.0f) &&
                               (intersection_over_union_threshold <= 1.0f));
   // Validate boxes
+  TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context, ValidateBoxes(decoded_boxes, num_boxes));
 
   // threshold scores
   std::vector<int> keep_indices;
-  // TODO (chowdhery): Remove the dynamic allocation and replace it
+  // TODO(b/177068807): Remove the dynamic allocation and replace it
   // with temporaries, esp for std::vector<float>
   std::vector<float> keep_scores;
   SelectDetectionsAboveScoreThreshold(
@@ -474,6 +479,7 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
     }
     for (int j = i + 1; j < num_boxes_kept; ++j) {
       if (active_box_candidate[j] == 1) {
+        TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
         float intersection_over_union = ComputeIntersectionOverUnion(
             decoded_boxes, keep_indices[sorted_indices[i]],
             keep_indices[sorted_indices[j]]);
@@ -605,6 +611,8 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
       const float selected_score =
           scores_after_regular_non_max_suppression[output_box_index];
       // detection_boxes
+      TF_LITE_ENSURE_EQ(context, detection_boxes->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
       ReInterpretTensor<BoxCornerEncoding*>(detection_boxes)[output_box_index] =
           ReInterpretTensor<const BoxCornerEncoding*>(
               decoded_boxes)[anchor_index];
@@ -613,6 +621,7 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
       // detection_scores
       GetTensorData<float>(detection_scores)[output_box_index] = selected_score;
     } else {
+      TF_LITE_ENSURE_EQ(context, detection_boxes->type, kTfLiteFloat32);
       ReInterpretTensor<BoxCornerEncoding*>(
           detection_boxes)[output_box_index] = {0.0f, 0.0f, 0.0f, 0.0f};
       // detection_classes
@@ -701,8 +710,10 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
         sorted_class_indices.data() + selected_index * num_classes;
 
     for (int col = 0; col < num_categories_per_anchor; ++col) {
-      int box_offset = num_categories_per_anchor * output_box_index + col;
+      int box_offset = max_categories_per_anchor * output_box_index + col;
       // detection_boxes
+      TF_LITE_ENSURE_EQ(context, detection_boxes->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
       ReInterpretTensor<BoxCornerEncoding*>(detection_boxes)[box_offset] =
           ReInterpretTensor<const BoxCornerEncoding*>(
               decoded_boxes)[selected_index];
@@ -711,8 +722,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
       // detection_scores
       GetTensorData<float>(detection_scores)[box_offset] =
           box_scores[class_indices[col]];
-      output_box_index++;
     }
+    output_box_index++;
   }
   GetTensorData<float>(num_detections)[0] = output_box_index;
   return kTfLiteOk;
@@ -780,7 +791,7 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(chowdhery): Generalize for any batch size
+  // TODO(b/177068051):  Generalize for any batch size.
   TF_LITE_ENSURE(context, (kBatchSize == 1));
   auto* op_data = static_cast<OpData*>(node->user_data);
   // These two functions correspond to two blocks in the Object Detection model.
@@ -808,6 +819,13 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
       detection_postprocess::Init, detection_postprocess::Free,
       detection_postprocess::Prepare, detection_postprocess::Eval};
   return &r;
+}
+
+// Since the op is named "TFLite_Detection_PostProcess", the selective build
+// tool will assume the register function is named
+// "Register_TFLITE_DETECTION_POST_PROCESS".
+TfLiteRegistration* Register_TFLITE_DETECTION_POST_PROCESS() {
+  return Register_DETECTION_POSTPROCESS();
 }
 
 }  // namespace custom

@@ -44,24 +44,23 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
   op->AddDstTensor("dst_tensor", dst_desc);
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int linear_id_1 = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
     c += "  int Z = linear_id_1 % args.dst_tensor.Depth();\n";
     c += "  int src_z = (Z + args.padding_z) / args.stride_z;\n";
   } else {
-    c += "  int Y = get_global_id(1);\n";
+    c += "  int Y = GLOBAL_ID_1;\n";
   }
-  c += "  int S = get_global_id(2);\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id_0 = get_global_id(0);\n";
+    c += "  int linear_id_0 = GLOBAL_ID_0;\n";
     c += "  int X0 = linear_id_0 / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id_0 % args.dst_tensor.Batch();\n";
     c += "  int src_x0 = (X0 + args.padding_x * args.dst_tensor.Batch()) / "
@@ -83,16 +82,17 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
       c += "  bool outside = src_x < 0 || src_y < 0 || src_x >= "
            "args.src_tensor.Width() || src_y >= args.src_tensor.Height();\n";
     }
-    c += "  FLT4 src = (FLT4)(0.0f);\n";
-    c += "  int4 ind = (int4)(0);\n";
+    c += "  FLT4 src = INIT_FLT4(0.0f);\n";
+    c += "  int4 ind = INIT_INT4v4(0, 0, 0, 0);\n";
     c += "  if (!outside) {\n";
     c += "    src = args.src_tensor.Read(" + src_args + ");\n";
-    c += "    ind = convert_int4(args.src_indices.Read(" + src_args + "));\n";
+    c +=
+        "    ind = CONVERT_TO_INT4(args.src_indices.Read(" + src_args + "));\n";
     c += "  }\n";
   } else {
     c += "  FLT4 src = args.src_tensor.Read(" + src_args + ");\n";
-    c +=
-        "  int4 ind = convert_int4(args.src_indices.Read(" + src_args + "));\n";
+    c += "  int4 ind = CONVERT_TO_INT4(args.src_indices.Read(" + src_args +
+         "));\n";
   }
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int t_x = X0 - (src_x0 * args.stride_x - args.padding_x * "

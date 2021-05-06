@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -142,11 +143,83 @@ class UniqueOp : public XlaOpKernel {
     return builder->Build().ConsumeValueOrDie();
   }
 
+  xla::XlaOp DataOutputFastPath(XlaOpKernelContext* ctx, xla::XlaOp input,
+                                const xla::Shape& input_shape) {
+    // Generate data output using a sub-quadratic sorting algorithm. If only the
+    // data output is used (meaning the indices output is ignored, which is
+    // common), DCE will only keep the fastpath.
+    auto iota_shape = input_shape;
+    iota_shape.set_element_type(xla::S32);
+    int64 input_count = input_shape.dimensions(0);
+    xla::XlaOp iota = xla::Iota(ctx->builder(), iota_shape, 0);
+    std::vector<xla::XlaOp> to_sort = {input, iota};
+    std::vector<xla::PrimitiveType> types_to_sort = {input_shape.element_type(),
+                                                     xla::S32};
+    xla::XlaOp sorted = xla::Sort(
+        to_sort, xla::CreateScalarLtComputation(types_to_sort, ctx->builder()),
+        /*dimension=*/0,
+        /*is_stable=*/true);
+    xla::XlaOp sorted_data = xla::GetTupleElement(sorted, 0);
+    xla::XlaOp sorted_iota = xla::GetTupleElement(sorted, 1);
+    // Calculate unique_indices, unique_indices[i] is true when sorted_data[i]
+    // != sorted_data[i - 1]. unique_indices[0] is always true.
+    // We do this by shifting sorted_data by 1 position and then compare it with
+    // itself.
+
+    // A[0:n-1]
+    auto shifted = xla::SliceInDim(sorted_data, 0, input_count - 1,
+                                   /*stride=*/1, /*dimno=*/0);
+
+    auto zero =
+        xla::Zeros(ctx->builder(),
+                   xla::ShapeUtil::MakeShape(input_shape.element_type(), {1}));
+    // shifted = concat(0, A[0:n-1]),
+    shifted = xla::ConcatInDim(ctx->builder(), {zero, shifted}, 0);
+    xla::XlaOp unique_indices = xla::Ne(shifted, sorted_data);
+    xla::XlaOp true_r1 = xla::One(ctx->builder(), xla::PRED);
+    true_r1 = xla::Reshape(true_r1, {1});
+    // First element is always unique(true).
+    unique_indices = xla::DynamicUpdateSlice(
+        unique_indices, true_r1, {xla::Zero(ctx->builder(), xla::S32)});
+    unique_indices = xla::ConvertElementType(unique_indices, xla::S32);
+
+    // Do a reverse sort using iota as key, this moves `changed` to its original
+    // positions in input space.
+    std::vector<xla::XlaOp> to_sort_reverse = {sorted_iota, unique_indices};
+    std::vector<xla::PrimitiveType> types_to_sort_reverse = {xla::S32,
+                                                             xla::S32};
+    xla::XlaOp sort_reverse = xla::Sort(
+        to_sort_reverse,
+        xla::CreateScalarLtComputation(types_to_sort_reverse, ctx->builder()),
+        /*dimension=*/0,
+        /*is_stable=*/true);
+    // Now unique_indices are scattered back to original positions.
+    unique_indices = xla::GetTupleElement(sort_reverse, 1);
+    // Do a final sort to move unique items together.
+    std::vector<xla::XlaOp> to_sort_final = {unique_indices, input};
+    std::vector<xla::PrimitiveType> types_to_sort_final = {
+        xla::S32, input_shape.element_type()};
+    xla::XlaOp final_sort = xla::Sort(
+        to_sort_final,
+        xla::CreateScalarGtComputation(types_to_sort_final, ctx->builder()),
+        /*dimension=*/0,
+        /*is_stable=*/true);
+    xla::XlaOp output = xla::GetTupleElement(final_sort, 1);
+    xla::XlaOp unique_count = xla::ReduceAll(
+        unique_indices, xla::Zero(ctx->builder(), xla::S32),
+        xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
+    xla::XlaOp output_dynamic = xla::SetDimensionSize(output, unique_count, 0);
+    return output_dynamic;
+  }
+
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
     xla::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
+    ctx->SetOutput(0, DataOutputFastPath(ctx, input, input_shape));
+
+    // Slow path to generate indices.
     xla::Shape single_index_shape = xla::ShapeUtil::MakeScalarShape(xla::S32);
     xla::Shape single_element_shape =
         xla::ShapeUtil::MakeScalarShape(input_shape.element_type());
@@ -174,11 +247,7 @@ class UniqueOp : public XlaOpKernel {
     auto init_indices = xla::Broadcast(zero, {list_size});
     auto init = xla::Tuple(ctx->builder(), {input, init_indices, zero, zero});
     auto outer_while = xla::While(outer_loop_cond, outer_loop_body, init);
-    auto output = xla::GetTupleElement(outer_while, 0);
     auto output_indices = xla::GetTupleElement(outer_while, 1);
-    auto output_size = xla::GetTupleElement(outer_while, 3);
-    auto output_dynamic = xla::SetDimensionSize(output, output_size, 0);
-    ctx->SetOutput(0, output_dynamic);
     ctx->SetOutput(1, output_indices);
   }
 };

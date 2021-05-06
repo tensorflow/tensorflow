@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import errno
+import glob
 import os
 import platform
 import re
@@ -38,7 +39,9 @@ _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -46,7 +49,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '3.1.0'
+_TF_MIN_BAZEL_VERSION = '3.7.2'
 _TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
@@ -55,8 +58,7 @@ NCCL_LIB_PATHS = [
 
 # List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
-    'tensorflow/lite/ios/BUILD',
-    'tensorflow/lite/objc/BUILD',
+    'tensorflow/lite/ios/BUILD', 'tensorflow/lite/objc/BUILD',
     'tensorflow/lite/swift/BUILD',
     'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
@@ -184,6 +186,8 @@ def get_python_path(environ_cp, python_bin_path):
     ]
 
   all_paths = set(python_paths + library_paths)
+  # Sort set so order is deterministic
+  all_paths = sorted(all_paths)
 
   paths = []
   for path in all_paths:
@@ -526,7 +530,12 @@ def set_cc_opt_flags(environ_cp):
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
   else:
-    default_cc_opt_flags = '-march=native -Wno-sign-compare'
+    # On all other platforms, no longer use `-march=native` as this can result
+    # in instructions that are too modern being generated. Users that want
+    # maximum performance should compile TF in their environment and can pass
+    # `-march=native` there.
+    # See https://github.com/tensorflow/tensorflow/issues/45744 and duplicates
+    default_cc_opt_flags = '-Wno-sign-compare'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
              ) % default_cc_opt_flags
@@ -534,10 +543,7 @@ def set_cc_opt_flags(environ_cp):
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
-  # It should be safe on the same build host.
-  if not is_ppc64le() and not is_windows():
-    write_to_bazelrc('build:opt --host_copt=-march=native')
-  write_to_bazelrc('build:opt --define with_default_optimizations=true')
+    write_to_bazelrc('build:opt --host_copt=%s' % opt)
 
 
 def set_tf_cuda_clang(environ_cp):
@@ -1174,7 +1180,9 @@ def set_windows_build_flags(environ_cp):
   # First available in VS 16.4. Speeds up Windows compile times by a lot. See
   # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
   # pylint: disable=line-too-long
-  write_to_bazelrc('build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions')
+  write_to_bazelrc(
+      'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
+  )
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1195,12 +1203,11 @@ def config_info_line(name, help_text):
   print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
-def configure_ios():
-  """Configures TensorFlow for iOS builds.
-
-  This function will only be executed if `is_macos()` is true.
-  """
+def configure_ios(environ_cp):
+  """Configures TensorFlow for iOS builds."""
   if not is_macos():
+    return
+  if not get_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False):
     return
   for filepath in APPLE_BAZEL_FILES:
     existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
@@ -1234,9 +1241,12 @@ def validate_cuda_config(environ_cp):
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
+  paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
+  if not paths:
+    raise FileNotFoundError(
+        "Can't find 'find_cuda_config.py' script inside working directory")
   proc = subprocess.Popen(
-      [environ_cp['PYTHON_BIN_PATH'], 'third_party/gpus/find_cuda_config.py'] +
-      cuda_libraries,
+      [environ_cp['PYTHON_BIN_PATH'], paths[0]] + cuda_libraries,
       stdout=subprocess.PIPE,
       env=maybe_encode_env(environ_cp))
 
@@ -1317,11 +1327,11 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
-  else:
-    environ_cp['TF_CONFIGURE_IOS'] = '0'
 
-  if environ_cp.get('TF_ENABLE_XLA', '1') == '1':
-    write_to_bazelrc('build --config=xla')
+  with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
+  if with_xla_support is not None:
+    write_to_bazelrc('build --define=with_xla_support=%s' %
+                     ('true' if int(with_xla_support) else 'false'))
 
   set_action_env_var(
       environ_cp, 'TF_NEED_ROCM', 'ROCm', False, bazel_config_name='rocm')
@@ -1333,12 +1343,6 @@ def main():
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
-
-  if ((environ_cp.get('TF_NEED_ROCM') == '1') and
-      (environ_cp.get('TF_ENABLE_MLIR_GENERATED_GPU_KERNELS') == '1')):
-    write_to_bazelrc(
-        'build:rocm --define tensorflow_enable_mlir_generated_gpu_kernels=1')
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
@@ -1446,15 +1450,15 @@ def main():
 
   system_specific_test_config(environ_cp)
 
-  set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
-  if environ_cp.get('TF_CONFIGURE_IOS') == '1':
-    configure_ios()
+  configure_ios(environ_cp)
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '
         'details.')
   config_info_line('mkl', 'Build with MKL support.')
-  config_info_line('mkl_aarch64', 'Build with oneDNN support for Aarch64.')
+  config_info_line(
+      'mkl_aarch64',
+      'Build with oneDNN and Compute Library for the Arm Architecture (ACL).')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
@@ -1463,9 +1467,7 @@ def main():
   config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
-  config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
-  config_info_line('nohdfs', 'Disable HDFS support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
 

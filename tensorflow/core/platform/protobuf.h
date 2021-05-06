@@ -37,7 +37,9 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_field.h"
 #include "google/protobuf/text_format.h"
+#include "google/protobuf/util/field_comparator.h"
 #include "google/protobuf/util/json_util.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "google/protobuf/util/type_resolver_util.h"
 
 namespace tensorflow {
@@ -116,7 +118,6 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
 
   tstring* target_;
 };
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_

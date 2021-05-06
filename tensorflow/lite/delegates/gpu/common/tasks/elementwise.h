@@ -27,7 +27,8 @@ namespace gpu {
 
 // Creates simple one input operation without any parameters, for example
 // log, sin, cos, etc.
-GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
+GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
+                                       const OperationDef& definition,
                                        const OperationType& op_type);
 
 // Creates simple two input(first input is runtime tensor and second input is

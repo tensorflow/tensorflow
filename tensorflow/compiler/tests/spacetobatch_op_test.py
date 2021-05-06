@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
@@ -248,19 +247,16 @@ class SpaceToBatchNDTest(xla_test.XLATestCase):
         outputs=[[[0, 0], [2, 21]], [[0, 0], [5, 51]], [[1, 11], [3, 31]],
                  [[4, 41], [6, 61]]])
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testDirect0(self):
     # Test with zero-size remaining dimension.
     self._testDirect(
         input_shape=[3, 1, 2, 0], block_shape=[3], paddings=[[0, 2]])
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testDirect1(self):
     # Test with zero-size blocked dimension.
     self._testDirect(
         input_shape=[3, 0, 2, 5], block_shape=[3], paddings=[[0, 0]])
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testDirect2(self):
     # Test with padding up from zero size.
     self._testDirect(

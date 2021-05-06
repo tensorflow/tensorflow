@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,8 +38,9 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -84,8 +86,20 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public PassWrapper<Optimize, FunctionPass> {
+class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
+ public:
+  OptimizePass() = default;
+  OptimizePass(const OptimizePass &) {}
+  explicit OptimizePass(bool enable_canonicalization) {
+    enable_canonicalization_ = enable_canonicalization;
+  }
   void runOnFunction() override;
+
+ private:
+  Option<bool> enable_canonicalization_{
+      *this, "enable-canonicalization",
+      llvm::cl::desc("Enable canonicalization during optimization pass."),
+      llvm::cl::init(false)};
 };
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -198,6 +212,50 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
   return true;
 }
 
+// Returns true if we can eliminate the SliceOp. When the values of `begin` are
+// all 0s and `size[i]` is equal to either -1 or `input.shape[i]`
+// for each dim i, the output tensor is identical to `input`.
+bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
+  // Checks if `begin` and `size` are i32 or i64.
+  auto begin_attr = begin.dyn_cast<DenseIntElementsAttr>();
+  auto size_attr = size.dyn_cast<DenseIntElementsAttr>();
+  if (!begin_attr || !size_attr) {
+    return false;
+  }
+
+  auto begin_elem_ty = begin_attr.getType().getElementType();
+  if (!begin_elem_ty.isInteger(32) && !begin_elem_ty.isInteger(64)) {
+    return false;
+  }
+  auto size_elem_ty = size_attr.getType().getElementType();
+  if (!size_elem_ty.isInteger(32) && !size_elem_ty.isInteger(64)) {
+    return false;
+  }
+
+  // Checks if `input` is ranked and its rank is equal to number of elements in
+  // `begin` and `size`.
+  auto input_ty = input.getType().cast<ShapedType>();
+  if (!input_ty.hasRank()) {
+    return false;
+  }
+
+  int64_t rank = input_ty.getRank();
+  if (rank != begin_attr.getNumElements() ||
+      rank != size_attr.getNumElements()) {
+    return false;
+  }
+
+  // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
+  // `input.shape[i]`.
+  for (uint64_t i = 0; i < rank; ++i) {
+    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (si != -1 && si != input_ty.getDimSize(i)) return false;
+  }
+
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -243,7 +301,7 @@ DenseElementsAttr GetShape(Value output_val) {
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
-          mlir::IntegerType::get(32, output_val.getContext())),
+          mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::makeArrayRef(shape));
 }
 
@@ -299,6 +357,11 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   return llvm::all_of(fp_attr.getFloatValues(), [value](const APFloat &f) {
     return f.isExactlyValue(value);
   });
+}
+
+// Returns true if the value's element type is F32.
+bool IsF32Value(Value value) {
+  return value.getType().cast<ShapedType>().getElementType().isF32();
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -385,7 +448,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), add_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/filter,
@@ -395,6 +458,75 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
         /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
     rewriter.replaceOp(add_op, fc.output());
+
+    return success();
+  }
+};
+
+// Replace ..
+// FC(Add(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, filter, FC(rhs, filter, bias))
+// .. if rhs, filter, and bias are all constants.
+// The second FC will be constant folded to a single vector.
+// TODO(b/136285429): Move to tablegen when variadic is supported
+struct FuseAddAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Add.
+    auto add_op = dyn_cast_or_null<TFL::AddOp>(fc_op.input().getDefiningOp());
+    if (!add_op) return failure();
+    if (add_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match adds where the added constant is not 1D.
+    {
+      auto addend_shape = add_op.rhs().getType().cast<ShapedType>();
+      if (!addend_shape.hasStaticShape()) return failure();
+      if (addend_shape.getShape().size() != 1) return failure();
+    }
+
+    // Calculate new bias.  Generate a new FC; it will be constant folded.
+    auto old_bias = fc_op.bias();
+    if (!old_bias || old_bias.getType().isa<NoneType>()) {
+      // TODO(b/180752069): Figure out new bias' type when old bias is empty.
+      return failure();
+    }
+
+    // The FC relies on constant folding, which is implemented on F32. Checks
+    // types to be F32.
+    {
+      if (!IsF32Value(add_op.rhs()) || !IsF32Value(fc_op.filter()) ||
+          !IsF32Value(old_bias))
+        return failure();
+    }
+
+    auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
+        fc_op.getLoc(), old_bias.getType(),
+        /*input=*/add_op.rhs(),
+        /*filter=*/fc_op.filter(),
+        /*bias=*/old_bias,
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(true));
+
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        FusedLoc::get(add_op.getContext(), {add_op.getLoc(), fc_op.getLoc()}),
+        fc_op.output().getTypes(),
+        /*input=*/add_op.lhs(),
+        /*filter=*/fc_op.filter(),
+        /*bias=*/*new_bias.output().begin(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
   }
@@ -419,8 +551,8 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto new_keep_num_dims =
         rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
     auto fc = rewriter.create<FullyConnectedOp>(
-        FusedLoc::get({fully_connected_op.getLoc(), relu_op.getLoc()},
-                      relu_op.getContext()),
+        FusedLoc::get(relu_op.getContext(),
+                      {fully_connected_op.getLoc(), relu_op.getLoc()}),
         relu_op.getType(), fully_connected_op.input(),
         fully_connected_op.filter(), fully_connected_op.bias(),
         new_activation_func, new_weights_format, new_keep_num_dims);
@@ -493,7 +625,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), mul_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), mul_op.getLoc()}),
         mul_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/new_filter,
@@ -647,10 +779,16 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&bias_cst)))
       return failure();
+    auto binary_op_activation_func =
+        binary_op->template getAttrOfType<StringAttr>(
+            "fused_activation_function");
+    if (!binary_op_activation_func ||
+        binary_op_activation_func.getValue() != "NONE")
+      return failure();
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
-      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      auto padding = fc_op->template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
       // The fusion of add/sub is actually applying the following
@@ -945,53 +1083,235 @@ struct ConvertTrivialTransposeOpToReshapeOp
   }
 };
 
+// Remove Reshape before FullyConnected when `keep_num_dims=false` and Reshape
+// does not alter the last dimension as FullyConnected will collapse all other
+// dimensions into a single dimension. For example,
+//
+//   %shape = constant dense<[1, 128, 64]> : tensor<3xi32>
+//   %reshape = tfl.reshape(%input, %shape) // %input: tensor<128x64xf32>
+//   %fc = tfl.fully_connected(%reshape, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+//
+// can be canonicalized to
+//
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+struct RemoveReshapeBeforeFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fully_connected_op,
+                                PatternRewriter &) const override {
+    auto input = fully_connected_op.input();
+    auto input_ty = input.getType().dyn_cast<ShapedType>();
+    auto output_ty = fully_connected_op.output()[0]
+                         .getType()
+                         .template dyn_cast<ShapedType>();
+    if (!input_ty.hasStaticShape() ||
+        fully_connected_op.weights_format() != "DEFAULT" ||
+        fully_connected_op.keep_num_dims() || !output_ty.hasStaticShape() ||
+        output_ty.getRank() != 2) {
+      return failure();
+    }
+
+    auto reshape_op = input.getDefiningOp<TFL::ReshapeOp>();
+    if (!reshape_op) return failure();
+
+    // Check if the last dimension does not change after reshape.
+    auto reshape_input = reshape_op.input();
+    auto reshape_input_ty = reshape_input.getType().dyn_cast<ShapedType>();
+    if (!reshape_input_ty.hasStaticShape() || input_ty.getRank() == 0 ||
+        reshape_input_ty.getRank() == 0 ||
+        input_ty.getDimSize(input_ty.getRank() - 1) !=
+            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1)) {
+      return failure();
+    }
+
+    // Connect the input to the one of reshape.
+    fully_connected_op.setOperand(0, reshape_input);
+    return success();
+  }
+};
+
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// does not alter the last dimension and it restores the batch dimensions
+// collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
+//
+//   // %input: tensor<4x16x32xf32>
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+//   %shape = constant dense<[4, 16, 32]> : tensor<3xi32>
+//   %rs = tfl.reshape(%fc, %shape)
+//
+// can be canonicalized to
+//
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = true, weights_format = "DEFAULT"}
+struct RemoveReshapeAfterFullyConnected
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
+                                PatternRewriter &rewriter) const override {
+    auto fully_connected_op = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape_op.input().getDefiningOp());
+    if (!fully_connected_op || fully_connected_op.getNumResults() != 1 ||
+        fully_connected_op.weights_format() != "DEFAULT" ||
+        fully_connected_op.keep_num_dims())
+      return failure();
+    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+
+    auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
+    auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();
+    auto reshape_shape = reshape_op.getType().cast<ShapedType>();
+    if (!input_shape.hasStaticShape() || !output_shape.hasStaticShape() ||
+        !reshape_shape.hasStaticShape())
+      return failure();
+
+    // Check that the reshape doesn't modify the last dimension and it restores
+    // the input (batch) dimension with the exception of the feature (last)
+    // dimension.
+    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+        input_shape.getShape().drop_back() !=
+            reshape_shape.getShape().drop_back())
+      return failure();
+
+    llvm::SmallVector<Type, 1> output_type{reshape_op.getType()};
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        reshape_op, output_type, fully_connected_op.input(),
+        fully_connected_op.filter(), fully_connected_op.bias(),
+        fully_connected_op.fused_activation_function(),
+        fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+    return success();
+  }
+};
+
+// Fuses Unpack with proceeding Concatenation to Reshape if output type has
+// static shape and activation function is none. For example:
+//
+//   // %input: tensor<1x3x2xf32>
+//   %unpack:3 = "tfl.unpack"(%input) {axis = 1 : i32, num = 3 : i32}
+//   %res = "tfl.concatenation"(%unpack#0, %unpack#1, %unpack#2)
+//        {axis = -1 : i32, fused_activation_function = "NONE"}
+//
+// can be optimized to
+//
+//   %cst = constant dense<[1, 6]> : tensor<2xi32>
+//   %res = "tfl.reshape"(%input, %cst)
+struct FuseUnpackAndConcatToReshape
+    : public OpRewritePattern<TFL::ConcatenationOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ConcatenationOp concat_op,
+                                PatternRewriter &rewriter) const override {
+    if (concat_op.fused_activation_function() != "NONE") {
+      return failure();
+    }
+
+    // Checks all operands come from the same unpack op.
+    auto first_operand = concat_op.values().front();
+    auto unpack_op =
+        dyn_cast_or_null<TFL::UnpackOp>(first_operand.getDefiningOp());
+    if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
+      return failure();
+    }
+    for (auto &index_and_value : llvm::enumerate(concat_op.values())) {
+      if (index_and_value.value() !=
+          unpack_op.getResult(index_and_value.index())) {
+        return failure();
+      }
+    }
+
+    auto output_type = concat_op.getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return failure();
+    }
+
+    auto new_shape_array = output_type.getShape();
+    // This is to workaround the unnecessary cast i64 -> i32.
+    SmallVector<int32_t, 4> new_shape_array_i32;
+    for (auto size : new_shape_array) {
+      new_shape_array_i32.push_back(static_cast<int32_t>(size));
+    }
+    auto new_shape = rewriter.create<TFL::ConstOp>(
+        concat_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get(new_shape_array_i32.size(),
+                                  rewriter.getIntegerType(32)),
+            new_shape_array_i32));
+
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(concat_op, output_type,
+                                                unpack_op.input(), new_shape);
+    return success();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
     FuseBinaryOpToFollowingAffineOp<DepthwiseConv2DOp>;
 using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
-void Optimize::runOnFunction() {
-  OwningRewritePatternList patterns;
+// Adds canonicalization patterns to the list of patterns.
+void AddCanonicalizationPatterns(MLIRContext *context,
+                                 OwningRewritePatternList *patterns) {
+  for (auto *op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
+
+void OptimizePass::runOnFunction() {
+  OwningRewritePatternList patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getFunction();
+
+  // Merge reshapes into fully connected ops before we start moving them past
+  // binary ops.
+  OwningRewritePatternList phase_0_patterns(&getContext());
+  phase_0_patterns.insert<RemoveReshapeAfterFullyConnected,
+                          RemoveReshapeBeforeFullyConnected>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
-  TFL::populateWithGenerated(ctx, patterns);
-  patterns.insert<FuseFullyConnectedAndAdd,
+  TFL::populateWithGenerated(patterns);
+  patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  OwningRewritePatternList phase_2_patterns;
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  OwningRewritePatternList phase_2_patterns(&getContext());
+  TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.insert<
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
-      FuseFullyConnectedAndAdd, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
       FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
       FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
-      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
-      ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
+      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
+      FuseUnpackAndConcatToReshape>(ctx);
+  if (enable_canonicalization_)
+    AddCanonicalizationPatterns(ctx, &phase_2_patterns);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
-
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
-  return std::make_unique<Optimize>();
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+    bool enable_canonicalization) {
+  return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<Optimize> pass(
+static PassRegistration<OptimizePass> pass(
     "tfl-optimize", "Optimize within the TensorFlow Lite dialect");
 
 }  // namespace TFL

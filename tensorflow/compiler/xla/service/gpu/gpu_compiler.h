@@ -20,9 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -81,10 +83,13 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
 
+  // TODO(timshen): Replace `debug_module` with some portable debug information
+  // that accommodates both HLO and MLIR.
   virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
-  CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
-                      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
-                      bool relocatable) = 0;
+  CompileTargetBinary(const HloModuleConfig& module_config,
+                      llvm::Module* llvm_module, GpuVersion gpu_version,
+                      se::StreamExecutor* stream_exec, bool relocatable,
+                      const HloModule* debug_module) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
@@ -97,8 +102,10 @@ class GpuCompiler : public LLVMCompiler {
                      AotCompilationOptions const& options) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
-      const HloModule& module, std::unique_ptr<llvm::Module> llvm_module,
-      se::StreamExecutor* stream_exec, const CompileOptions& options);
+      const HloModuleConfig& module_config,
+      std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options,
+      const HloModule* debug_module);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
@@ -139,6 +146,8 @@ class GpuCompiler : public LLVMCompiler {
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };
 
+GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);
+
 // Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
 // The GpuExecutable (and the Thunks that are part of it) are not returned.
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
@@ -147,6 +156,21 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
     absl::optional<CudaComputeCapability> cuda_compute_capability,
     int pointer_size);
+
+// Compiles the given LMHLO module to an executable.
+// ir_emitter_context should be partially populated: buffer_assignment
+// or buffer_allocations should not be populated, while other fields should be
+// populated (or left empty if that field is optional).
+//
+// NOTE: buffer_assignment will be gone from ir_emitter_context once LMHLO
+// transition is done.
+StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
+    GpuCompiler* compiler, mlir::ModuleOp module, std::string module_name,
+    const HloModuleConfig& module_config,
+    const Compiler::CompileOptions& options,
+    absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
+    std::unique_ptr<llvm::Module> llvm_module,
+    IrEmitterContext* ir_emitter_context);
 
 }  // namespace gpu
 }  // namespace xla

@@ -199,6 +199,20 @@ class RestoredFunction(def_function.Function):
     # warnings.
     self._omit_frequent_tracing_warning = True
 
+  @property
+  def _run_functions_eagerly(self):
+    # We do not have access to the original python function, and thus, we
+    # cannot meaningfully do anything but call our concrete function graphs
+    # under the hood.
+    #
+    # Attempting to call our bespoke python function (i.e.
+    # `restored_function_body`) will work so long as the user passes in all
+    # required and optional arguments. If an optional argument is missing,
+    # however, the call will break. For this reason, we instead skip the
+    # eager call path altogether if a user has enabled eager function execution
+    # via `tf.config.run_functions_eagerly`.
+    return False
+
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 
@@ -352,7 +366,12 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # signatures, respectively). ConcreteFunction that are part of a saved
     # function is set up later by recreate_function(); and bare ConcreteFunction
     # is set up by by setup_bare_concrete_function().
-    func = function_lib.ConcreteFunction(func_graph)
+    # However, we copy the FunctionDef attributes to the new ConcreteFunction,
+    # excluding the "_input_shapes", which may cause an error during input shape
+    # initialization at a later stage.
+    if "_input_shapes" in copy.attr:
+      del copy.attr["_input_shapes"]
+    func = function_lib.ConcreteFunction(func_graph, attrs=copy.attr)
     func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func

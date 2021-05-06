@@ -122,33 +122,39 @@ inline const char *EnumNameAccessType(AccessType e) {
 
 enum class DataType : int8_t {
   UNKNOWN = 0,
-  FLOAT32 = 1,
-  FLOAT16 = 2,
+  FLOAT16 = 1,
+  FLOAT32 = 2,
+  FLOAT64 = 3,
+  UINT8 = 4,
+  INT8 = 5,
+  UINT16 = 6,
+  INT16 = 7,
+  UINT32 = 8,
+  INT32 = 9,
+  UINT64 = 10,
+  INT64 = 11,
   MIN = UNKNOWN,
-  MAX = FLOAT16
+  MAX = INT64
 };
 
-inline const DataType (&EnumValuesDataType())[3] {
+inline const DataType (&EnumValuesDataType())[12] {
   static const DataType values[] = {
-    DataType::UNKNOWN,
-    DataType::FLOAT32,
-    DataType::FLOAT16
-  };
+      DataType::UNKNOWN, DataType::FLOAT16, DataType::FLOAT32,
+      DataType::FLOAT64, DataType::UINT8,   DataType::INT8,
+      DataType::UINT16,  DataType::INT16,   DataType::UINT32,
+      DataType::INT32,   DataType::UINT64,  DataType::INT64};
   return values;
 }
 
 inline const char * const *EnumNamesDataType() {
-  static const char * const names[4] = {
-    "UNKNOWN",
-    "FLOAT32",
-    "FLOAT16",
-    nullptr
-  };
+  static const char *const names[13] = {
+      "UNKNOWN", "FLOAT16", "FLOAT32", "FLOAT64", "UINT8", "INT8", "UINT16",
+      "INT16",   "UINT32",  "INT32",   "UINT64",  "INT64", nullptr};
   return names;
 }
 
 inline const char *EnumNameDataType(DataType e) {
-  if (flatbuffers::IsOutRange(e, DataType::UNKNOWN, DataType::FLOAT16)) return "";
+  if (flatbuffers::IsOutRange(e, DataType::UNKNOWN, DataType::INT64)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDataType()[index];
 }
@@ -367,7 +373,7 @@ inline const char *EnumNameTensorToGrid(TensorToGrid e) {
 enum class CompilerOptions : int8_t {
   ADRENO_FULL_SIMD_LINE = 0,
   ADRENO_MORE_WAVES = 1,
-  POWERVR_FP16 = 2,
+  CL_FAST_RELAXED_MATH = 2,
   CL_OPT_DISABLE = 3,
   CL_2_0 = 4,
   CL_3_0 = 5,
@@ -379,7 +385,7 @@ inline const CompilerOptions (&EnumValuesCompilerOptions())[6] {
   static const CompilerOptions values[] = {
       CompilerOptions::ADRENO_FULL_SIMD_LINE,
       CompilerOptions::ADRENO_MORE_WAVES,
-      CompilerOptions::POWERVR_FP16,
+      CompilerOptions::CL_FAST_RELAXED_MATH,
       CompilerOptions::CL_OPT_DISABLE,
       CompilerOptions::CL_2_0,
       CompilerOptions::CL_3_0};
@@ -389,7 +395,7 @@ inline const CompilerOptions (&EnumValuesCompilerOptions())[6] {
 inline const char *const *EnumNamesCompilerOptions() {
   static const char *const names[7] = {"ADRENO_FULL_SIMD_LINE",
                                        "ADRENO_MORE_WAVES",
-                                       "POWERVR_FP16",
+                                       "CL_FAST_RELAXED_MATH",
                                        "CL_OPT_DISABLE",
                                        "CL_2_0",
                                        "CL_3_0",

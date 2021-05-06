@@ -22,6 +22,8 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
+TfLiteRegistration* RegisterDenseImageWarp();
+TfLiteRegistration* RegisterMaxPoolWithArgmax();
 TfLiteRegistration* RegisterMaxUnpooling2D();
 
 extern "C" void AddPerceptionOps(::tflite::MutableOpResolver* resolver);

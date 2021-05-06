@@ -40,25 +40,11 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-typedef enum TfLiteStatus {
-  kTfLiteOk = 0,
-
-  // Generally referring to an error in the runtime (i.e. interpreter)
-  kTfLiteError = 1,
-
-  // Generally referring to an error from a TfLiteDelegate itself.
-  kTfLiteDelegateError = 2,
-
-  // Generally referring to an error in applying a delegate due to
-  // incompatibility between runtime and delegate, e.g., this error is returned
-  // when trying to apply a TfLite delegate onto a model graph that's already
-  // immutable.
-  kTfLiteApplicationError = 3
-} TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
@@ -98,7 +84,8 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
+    defined(HEXAGON) ||                                           \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -254,22 +241,6 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
-// Define TFL_CAPI_EXPORT macro to export a function properly with a shared
-// library.
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
-
 // Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
@@ -284,24 +255,6 @@ typedef struct TfLiteComplex128 {
 typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
-
-// Types supported by tensor
-typedef enum {
-  kTfLiteNoType = 0,
-  kTfLiteFloat32 = 1,
-  kTfLiteInt32 = 2,
-  kTfLiteUInt8 = 3,
-  kTfLiteInt64 = 4,
-  kTfLiteString = 5,
-  kTfLiteBool = 6,
-  kTfLiteInt16 = 7,
-  kTfLiteComplex64 = 8,
-  kTfLiteInt8 = 9,
-  kTfLiteFloat16 = 10,
-  kTfLiteFloat64 = 11,
-  kTfLiteComplex128 = 12,
-  kTfLiteUInt64 = 13,
-} TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
@@ -319,21 +272,11 @@ typedef enum TfLiteQuantizationType {
 typedef struct TfLiteQuantization {
   // The type of quantization held by params.
   TfLiteQuantizationType type;
-  // Holds a reference to one of the quantization param structures specified
-  // below.
+  // Holds an optional reference to a quantization param structure. The actual
+  // type depends on the value of the `type` field (see the comment there for
+  // the values and corresponding types).
   void* params;
 } TfLiteQuantization;
-
-// Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
-// If per-layer quantization is specified this field will still be populated in
-// addition to TfLiteAffineQuantization.
-// Parameters for asymmetric quantization. Quantized values can be converted
-// back to float using:
-//     real_value = scale * (quantized_value - zero_point)
-typedef struct TfLiteQuantizationParams {
-  float scale;
-  int32_t zero_point;
-} TfLiteQuantizationParams;
 
 // Parameters for asymmetric quantization across a dimension (i.e per output
 // channel quantization).
@@ -354,6 +297,7 @@ typedef union TfLitePtrUnion {
    * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
    * members are deprecated. */
   int32_t* i32;
+  uint32_t* u32;
   int64_t* i64;
   uint64_t* u64;
   float* f;
@@ -432,6 +376,17 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
+// The flags used in `Interpreter::SetCustomAllocationForTensor`.
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum TfLiteCustomAllocationFlags {
+  kTfLiteCustomAllocationFlagsNone = 0,
+  // Skips checking whether allocation.data points to an aligned buffer as
+  // expected by the TFLite runtime.
+  // NOTE: Setting this flag can cause crashes when calling Invoke().
+  // Use with caution.
+  kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
+} TfLiteCustomAllocationFlags;
+
 // A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
@@ -501,8 +456,8 @@ typedef struct TfLiteTensor {
 } TfLiteTensor;
 
 // A structure representing an instance of a node.
-// This structure only exhibits the inputs, outputs and user defined data, not
-// other features like the type.
+// This structure only exhibits the inputs, outputs, user defined data and some
+// node properties (like statefulness), not other features like the type.
 typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
@@ -535,8 +490,11 @@ typedef struct TfLiteNode {
   // created by calling `interpreter.ModifyGraphWithDelegate`.
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
+
+  // Whether this op might have side effect (e.g. stateful op).
+  bool might_have_side_effect;
 } TfLiteNode;
-#else  // defined(TF_LITE_STATIC_MEMORY)?
+#else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
@@ -685,6 +643,7 @@ typedef struct TfLiteContext {
   // TfLiteDelegates can traverse the current execution plan by iterating
   // through each member of this array and using GetNodeAndRegistration() to
   // access details about a node. i.e.
+  //
   // TfLiteIntArray* execution_plan;
   // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
   // for (int exec_index = 0; exec_index < execution_plan->size; exec_index++) {
@@ -693,6 +652,28 @@ typedef struct TfLiteContext {
   //    TfLiteRegistration* reg;
   //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
   // }
+  // Note: the memory pointed by '`*execution_plan` is OWNED by TfLite runtime.
+  // Future calls to GetExecutionPlan invalidates earlier outputs. The following
+  // code snippet shows the issue of such an invocation pattern. After calling
+  // CheckNode, subsequent access to `plan_1st` is undefined.
+  //
+  // void CheckNode(const TfLiteNode* node) {
+  //   ...
+  //   TfLiteIntArray* plan_2nd;
+  //   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_2nd));
+  //   ...
+  // }
+  //
+  // TfLiteIntArray* plan_1st;
+  // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_1st));
+  // for (int exec_index = 0; exec_index < plan_1st->size; exec_index++) {
+  //    int node_index = plan_1st->data[exec_index];
+  //    TfLiteNode* node;
+  //    TfLiteRegistration* reg;
+  //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
+  //    CheckNode(node);
+  // }
+  //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
                                    TfLiteIntArray** execution_plan);

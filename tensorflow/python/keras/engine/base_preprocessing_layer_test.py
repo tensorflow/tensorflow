@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras' base preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 
@@ -30,10 +26,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -59,6 +55,9 @@ class AddingPreprocessingLayer(
         shape=(1,),
         dtype=dtypes.float32,
         initializer=init_ops.zeros_initializer)
+
+  def reset_state(self):
+    self._sum.assign([0.])
 
   def set_total(self, sum_value):
     """This is an example of how a subclass would implement a direct setter.
@@ -116,44 +115,40 @@ class AddingPreprocessingLayer(
       return json.loads(compat.as_text(encoded_accumulator))
 
 
-class AddingPreprocessingLayerV1(
-    AddingPreprocessingLayer,
-    base_preprocessing_layer_v1.CombinerPreprocessingLayer):
-  pass
-
-
-def get_layer(**kwargs):
-  if context.executing_eagerly():
-    return AddingPreprocessingLayer(**kwargs)
-  else:
-    return AddingPreprocessingLayerV1(**kwargs)
-
-
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class PreprocessingLayerTest(keras_parameterized.TestCase):
 
   def test_adapt_bad_input_fails(self):
     """Test that non-Dataset/Numpy inputs cause a reasonable error."""
     input_dataset = {"foo": 0}
 
-    layer = get_layer()
-    with self.assertRaisesRegex(ValueError, "requires a"):
-      layer.adapt(input_dataset)
+    layer = AddingPreprocessingLayer()
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(ValueError, "Failed to find data adapter"):
+        layer.adapt(input_dataset)
+    else:
+      with self.assertRaisesRegex(ValueError, "requires a"):
+        layer.adapt(input_dataset)
 
   def test_adapt_infinite_dataset_fails(self):
     """Test that preproc layers fail if an infinite dataset is passed."""
     input_dataset = dataset_ops.Dataset.from_tensor_slices(
         np.array([[1], [2], [3], [4], [5], [0]])).repeat()
 
-    layer = get_layer()
-    with self.assertRaisesRegex(ValueError, ".*infinite number of elements.*"):
-      layer.adapt(input_dataset)
+    layer = AddingPreprocessingLayer()
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(ValueError, "infinite dataset"):
+        layer.adapt(input_dataset)
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  ".*infinite number of elements.*"):
+        layer.adapt(input_dataset)
 
   def test_pre_build_injected_update_with_no_build_fails(self):
     """Test external update injection before build() is called fails."""
     input_dataset = np.array([1, 2, 3, 4, 5])
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     combiner = layer._combiner
     updates = combiner.extract(combiner.compute(input_dataset))
 
@@ -163,7 +158,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
   def test_setter_update(self):
     """Test the prototyped setter method."""
     input_data = keras.Input(shape=(1,))
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
@@ -176,7 +171,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     """Test that preproc layers can adapt() before build() is called."""
     input_dataset = np.array([1, 2, 3, 4, 5])
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     layer.adapt(input_dataset)
 
     input_data = keras.Input(shape=(1,))
@@ -191,7 +186,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     input_dataset = np.array([1, 2, 3, 4, 5])
 
     input_data = keras.Input(shape=(1,))
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
@@ -204,7 +199,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     """Test external update injection before build() is called."""
     input_dataset = np.array([1, 2, 3, 4, 5])
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     combiner = layer._combiner
     updates = combiner.extract(combiner.compute(input_dataset))
 
@@ -222,7 +217,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     """Test external update injection after build() is called."""
     input_dataset = np.array([1, 2, 3, 4, 5])
     input_data = keras.Input(shape=(1,))
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
@@ -238,7 +233,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     input_dataset = dataset_ops.Dataset.from_tensor_slices(
         np.array([[1], [2], [3], [4], [5], [0]]))
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     layer.adapt(input_dataset)
 
     input_data = keras.Input(shape=(1,))
@@ -248,24 +243,13 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
 
-  def test_adapt_dataset_of_tuples_fails(self):
-    """Test that preproc layers can adapt() before build() is called."""
-    input_dataset = dataset_ops.Dataset.from_tensor_slices((
-        np.array([[1], [2], [3], [4], [5], [0]]),
-        np.array([[1], [2], [3], [4], [5], [0]])))
-
-    layer = get_layer()
-
-    with self.assertRaisesRegex(TypeError, "single-Tensor elements"):
-      layer.adapt(input_dataset)
-
   def test_post_build_adapt_update_dataset(self):
     """Test that preproc layers can adapt() after build() is called."""
     input_dataset = dataset_ops.Dataset.from_tensor_slices(
         np.array([[1], [2], [3], [4], [5], [0]]))
 
     input_data = keras.Input(shape=(1,))
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
@@ -279,7 +263,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     input_dataset = np.array([1, 2, 3, 4, 5])
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     layer.adapt(input_dataset)
 
     input_data = keras.Input(shape=(1,))
@@ -297,7 +281,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     input_dataset = np.array([1, 2, 3, 4, 5])
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
 
     input_data = keras.Input(shape=(1,))
     output = layer(input_data)
@@ -317,7 +301,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     def get_model():
       input_data = keras.Input(shape=(1,))
-      layer = get_layer()
+      layer = AddingPreprocessingLayer()
       output = layer(input_data)
       model = keras.Model(input_data, output)
       model._run_eagerly = testing_utils.should_run_eagerly()
@@ -342,7 +326,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     def get_model():
       input_data = keras.Input(shape=(1,))
-      layer = get_layer()
+      layer = AddingPreprocessingLayer()
       output = layer(input_data)
       model = keras.Model(input_data, output)
       model._run_eagerly = testing_utils.should_run_eagerly()
@@ -364,7 +348,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
   def test_loading_without_providing_class_fails(self):
     input_data = keras.Input(shape=(1,))
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     output = layer(input_data)
     model = keras.Model(input_data, output)
 
@@ -384,7 +368,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
                               [[3., 4.]],
                               [[5., 6.]]], dtype=np.float32)
 
-    layer = get_layer()
+    layer = AddingPreprocessingLayer()
     layer.adapt(adapt_dataset)
 
     input_dataset = np.array([[[1., 2.], [3., 4.]],
@@ -402,7 +386,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
                               [[3., 4.]],
                               [[5., 6.]]], dtype=np.float32)
 
-    layer = get_layer(input_shape=[1, 2])
+    layer = AddingPreprocessingLayer(input_shape=[1, 2])
     layer.adapt(adapt_dataset)
 
     model = keras.Sequential([layer])
@@ -410,7 +394,20 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     self.assertEqual(model.input_shape, (None, 1, 2))
 
 
-@keras_parameterized.run_all_keras_modes
+class PreprocessingLayerV1Test(keras_parameterized.TestCase):
+
+  def test_adapt_fails(self):
+    """Test that calling adapt leads to a runtime error."""
+    input_dataset = {"foo": 0}
+
+    with ops.Graph().as_default():
+      layer = AddingPreprocessingLayer()
+      with self.assertRaisesRegex(RuntimeError,
+                                  "`adapt` is only supported in tensorflow v2"):
+        layer.adapt(input_dataset)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class ConvertToListTest(keras_parameterized.TestCase):
 
   # Note: We need the inputs to be lambdas below to avoid some strangeness with

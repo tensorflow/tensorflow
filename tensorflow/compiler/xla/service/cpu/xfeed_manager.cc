@@ -80,6 +80,14 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
   current_buffer_ = nullptr;
 }
 
+int64 GetByteSizeRequirement(const Shape& shape, int64 pointer_size) {
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, pointer_size);
+  }
+  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+}
+
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla

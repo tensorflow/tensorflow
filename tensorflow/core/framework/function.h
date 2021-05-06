@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -123,6 +123,11 @@ class FunctionDefHelper {
   // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
+  //
+  // If the op has no inputs, then name is be specified.
+  //  Node n = {{}, "AssignVariable", {"resource", "val"}, {{"dtype",
+  //  "DT_FLOAT"},
+  //            {"update0"}, "CPU:0", "update1"}}
   struct Node {
     // When constructing a NodeDef, the first entry in ret is used as
     // the node name, the remaining values are ignored.
@@ -132,6 +137,16 @@ class FunctionDefHelper {
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
     std::string device;
+
+    // Required if the op has zero outputs. Otherwise, ret[0] used as name if
+    // name is left empty.
+    std::string name;
+
+    std::string GetName() const {
+      if (!name.empty()) return name;
+      CHECK(!ret.empty());
+      return ret[0];
+    }
 
     NodeDef ToNodeDef() const;
   };
@@ -422,7 +437,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const std::string& func, const FunctionDef& fdef)
+  Status ReplaceFunction(const std::string& func, const FunctionDef& fdef,
+                         const StackTracesMap& stack_traces = {})
       TF_LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
@@ -736,6 +752,9 @@ class FunctionLibraryRuntime {
     // `FunctionLibraryRuntime::DebugString(handle)` contains the optimized
     // Graph. Otherwise, the unoptimized function Graph will be returned.
     bool include_optimized_graph_in_debug_string = false;
+
+    // If true, the function library runtime cache the function instantiation.
+    bool use_function_cache = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -915,13 +934,12 @@ std::string GetFunctionResourceInputDevice(
     const Tensor& input, const int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<string, std::vector<string>>* composite_devices);
 
-// Returns a canonicalized string for the instantiation of the
-// function of the given "name", attributes "attrs", and "options".
+// Returns a canonicalized string for the instantiation of the function of the
+// given "name", attributes "attrs", and "options".
 //
-// The returned string is guaranteed to be stable within one address
-// space. But it may be change as the implementation
-// evolves. Therefore, it should not be persisted or compared across
-// address spaces.
+// The returned string is guaranteed to be stable within one address space. But
+// it may be change as the implementation evolves. Therefore, it should not be
+// persisted or compared across address spaces.
 std::string Canonicalize(
     const std::string& funcname, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options);

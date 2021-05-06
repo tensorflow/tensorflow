@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_types.h"
+
 #ifndef TF_LITE_STATIC_MEMORY
 #include <stdlib.h>
 #include <string.h>
@@ -43,8 +45,10 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  TfLiteIntArray* ret =
-      (TfLiteIntArray*)malloc(TfLiteIntArrayGetSizeInBytes(size));
+  int alloc_size = TfLiteIntArrayGetSizeInBytes(size);
+  if (alloc_size <= 0) return NULL;
+  TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
+  if (!ret) return ret;
   ret->size = size;
   return ret;
 }
@@ -197,6 +201,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "INT16";
     case kTfLiteInt32:
       return "INT32";
+    case kTfLiteUInt32:
+      return "UINT32";
     case kTfLiteUInt8:
       return "UINT8";
     case kTfLiteInt8:
@@ -217,6 +223,10 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "FLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
+    case kTfLiteResource:
+      return "RESOURCE";
+    case kTfLiteVariant:
+      return "VARIANT";
   }
   return "Unknown type";
 }

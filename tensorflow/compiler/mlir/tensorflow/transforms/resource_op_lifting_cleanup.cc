@@ -146,7 +146,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.first,
-                  FlatSymbolRefAttr::get(cloned.getName(), op->getContext()));
+                  FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }
   }
@@ -184,9 +184,9 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
   for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -217,8 +217,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(cloned_cond.getName(), op.getContext()));
-  op.bodyAttr(FlatSymbolRefAttr::get(cloned_body.getName(), op.getContext()));
+  op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be
@@ -232,9 +232,9 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   // Patch up branch function types.
   for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }
@@ -377,20 +377,21 @@ LogicalResult CanonicalizeWhileRegion(TF::WhileRegionOp op) {
   for (OpResult result : llvm::reverse(op.getResults())) {
     if (!IsResource(result)) continue;
     int result_idx = result.getResultNumber();
-    auto body_arg = body.front()
-                        .getTerminator()
-                        ->getOperand(result_idx)
-                        .dyn_cast<BlockArgument>();
-    if (!body_arg || body_arg.getArgNumber() != result_idx) {
+    Operation *yield_op = body.front().getTerminator();
+    Value yield_operand = yield_op->getOperand(result_idx);
+    Value while_operand = op.getOperand(result_idx);
+    Value body_arg = body.getArgument(result_idx);
+    Value cond_arg = cond.getArgument(result_idx);
+    if (yield_operand != body_arg && yield_operand != while_operand) {
       return op.emitOpError("Result #") << result_idx << " is not tied to arg #"
                                         << result_idx << " of the body";
     }
-    body.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
-    cond.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
+    body_arg.replaceAllUsesWith(while_operand);
+    cond_arg.replaceAllUsesWith(while_operand);
+    result.replaceAllUsesWith(while_operand);
     body.front().getTerminator()->eraseOperand(result_idx);
     body.eraseArgument(result_idx);
     cond.eraseArgument(result_idx);
-    result.replaceAllUsesWith(op.getOperand(result_idx));
     op.getOperation()->eraseOperand(result_idx);
     can_eliminate.set(result_idx);
   }
@@ -434,7 +435,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       if (while_region.cond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
-      CanonicalizeWhileRegion(while_region);
+      result = CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();

@@ -2,13 +2,13 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
     name = "resnet50",
     srcs = ["resnet50.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
     ],
@@ -17,7 +17,7 @@ py_library(
 py_library(
     name = "resnet50_test_util",
     srcs = ["resnet50_test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":resnet50",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -27,7 +27,7 @@ py_library(
 py_library(
     name = "resnet50_test_lib",
     srcs = ["resnet50_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":resnet50",
         ":resnet50_test_util",

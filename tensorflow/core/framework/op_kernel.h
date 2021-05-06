@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -701,6 +702,8 @@ class OpKernelContext {
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
 
+    absl::optional<ManagedStackTrace> stack_trace = {};
+
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
@@ -716,6 +719,11 @@ class OpKernelContext {
   int64 step_id() const { return params_->step_id; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
+
+  // Stack trace of where the op was defined (if defined in eager mode).
+  const absl::optional<ManagedStackTrace>& stack_trace() const {
+    return params_->stack_trace;
+  }
 
   // Input/output signature.
 
@@ -928,6 +936,14 @@ class OpKernelContext {
   bool output_required(int index) const {
     return !params_->outputs_required_array ||
            params_->outputs_required_array[index];
+  }
+
+  // If output_expects_forwarding returns true, the OpKernel's Compute() method
+  // should not allocate the output with allocate_output but instead needs to
+  // use forward_input.
+  bool output_expects_forwarding(int index) const {
+    return params_->forward_from_array != nullptr &&
+           params_->forward_from_array[index] >= 0;
   }
 
   // Allocation of tensors during kernel execution inside the Compute

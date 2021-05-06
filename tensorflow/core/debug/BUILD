@@ -34,7 +34,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Check that tensorflow/core:tensorflow does not depend on grpc.
@@ -292,6 +292,21 @@ tf_cc_binary(
         "//tensorflow/core/platform:regexp",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "debug_service_py_pb2",
+#     has_services = 1,
+#     api_version = 2,
+#     deps = [":debug_service_proto"],
+# )
+#
+# py_proto_library(
+#     name = "debugger_event_metadata_py_pb2",
+#     api_version = 2,
+#     deps = [":debugger_event_metadata_proto"],
+# )
+# copybara:uncomment_end
 
 # TODO(cais): Add the following back in when tfdbg is supported on Android.
 # filegroup(

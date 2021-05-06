@@ -58,4 +58,36 @@ operation is only added by the ContractionFusion pass.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF__TfrtSetResourceOp : TF_Op<"_TfrtSetResource", []> {
+  let summary = "Set values as TFRT runtime's static resource.";
+
+  let description = [{
+    Setting a tensor value in TFRT runtime's static resource manager, using
+    index as its identifier. It can be retrieved by _TfrtGetResource using the
+    same index.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$arg,
+    I64Attr:$index
+  );
+}
+
+def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource", []> {
+  let summary = "Get values from TFRT runtime's static resource.";
+
+  let description = [{
+    Getting tensor values from TFRT runtime's static resource manager, using
+    the indices that are previously set in _TfrtSetResource op.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+}
+
 #endif // TFRT_OPS

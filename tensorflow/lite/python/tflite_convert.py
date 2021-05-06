@@ -24,8 +24,10 @@ import os
 import sys
 import warnings
 
+from absl import app
 import six
 from six.moves import zip
+import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import register_custom_opdefs
@@ -33,8 +35,9 @@ from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.platform import app
 from tensorflow.python.util import keras_deps
+
+# Needed to enable TF2 by default.
 
 
 def _parse_array(values, type_fn=str):
@@ -69,8 +72,39 @@ def _parse_inference_type(value, flag):
   if value == "UINT8" or value == "QUANTIZED_UINT8":
     return dtypes.uint8
   raise ValueError(
-      "Unsupported value for `{}` flag. Expected FLOAT, INT8 or UINT8, instead "
-      "got {}.".format(flag, value))
+      "Unsupported value for `{}` flag. Expected FLOAT, INT8, UINT8, or "
+      "QUANTIZED_UINT8 instead got {}.".format(flag, value))
+
+
+class _ParseBooleanFlag(argparse.Action):
+  """Helper class to parse boolean flag that optionally accepts truth value."""
+
+  def __init__(self, option_strings, dest, nargs=None, **kwargs):
+    if nargs != "?":
+      # This should never happen. This class is only used once below with
+      # nargs="?".
+      raise ValueError(
+          "This parser only supports nargs='?' (0 or 1 additional arguments)")
+    super(_ParseBooleanFlag, self).__init__(
+        option_strings, dest, nargs=nargs, **kwargs)
+
+  def __call__(self, parser, namespace, values, option_string=None):
+    if values is None:
+      # Handling `--boolean_flag`.
+      # Without additional arguments, it implies true.
+      flag_value = True
+    elif values.lower() == "true":
+      # Handling `--boolean_flag=true`.
+      # (Case insensitive after the equal sign)
+      flag_value = True
+    elif values.lower() == "false":
+      # Handling `--boolean_flag=false`.
+      # (Case insensitive after the equal sign)
+      flag_value = False
+    else:
+      raise ValueError("Invalid argument to --{}. Must use flag alone,"
+                       " or specify true/false.".format(self.dest))
+    setattr(namespace, self.dest, flag_value)
 
 
 def _get_tflite_converter(flags):
@@ -222,8 +256,10 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter is not None:
-    converter.experimental_new_converter = flags.experimental_new_converter
+  converter.experimental_new_converter = flags.experimental_new_converter
+
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
 
   # Convert model.
   output_data = converter.convert()
@@ -242,13 +278,18 @@ def _convert_tf2_model(flags):
   """
   # Load the model.
   if flags.saved_model_dir:
-    converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        flags.saved_model_dir,
+        signature_keys=_parse_array(flags.saved_model_signature_key),
+        tags=_parse_set(flags.saved_model_tag_set))
   elif flags.keras_model_file:
     model = keras_deps.get_load_model_function()(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter is not None:
-    converter.experimental_new_converter = flags.experimental_new_converter
+  converter.experimental_new_converter = flags.experimental_new_converter
+
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -486,7 +527,8 @@ def _get_tf1_flags(parser):
   # Permitted ops flags.
   parser.add_argument(
       "--allow_custom_ops",
-      action="store_true",
+      action=_ParseBooleanFlag,
+      nargs="?",
       help=("Boolean indicating whether to allow custom operations. When false "
             "any unknown operation is an error. When true, custom ops are "
             "created for any op that is unknown. The developer will need to "
@@ -549,42 +591,24 @@ def _get_tf2_flags(parser):
       "--keras_model_file",
       type=str,
       help="Full filepath of HDF5 file containing tf.Keras model.")
+  # SavedModel related flags.
+  parser.add_argument(
+      "--saved_model_tag_set",
+      type=str,
+      help=("Comma-separated set of tags identifying the MetaGraphDef within "
+            "the SavedModel to analyze. All tags must be present. In order to "
+            "pass in an empty tag set, pass in \"\". (default \"serve\")"))
+  parser.add_argument(
+      "--saved_model_signature_key",
+      type=str,
+      help=("Key identifying the SignatureDef containing inputs and outputs. "
+            "(default DEFAULT_SERVING_SIGNATURE_DEF_KEY)"))
 
   # Enables 1.X converter in 2.X.
   parser.add_argument(
       "--enable_v1_converter",
       action="store_true",
       help=("Enables the TensorFlow V1 converter in 2.0"))
-
-
-class _ParseExperimentalNewConverter(argparse.Action):
-  """Helper class to parse --experimental_new_converter argument."""
-
-  def __init__(self, option_strings, dest, nargs=None, **kwargs):
-    if nargs != "?":
-      # This should never happen. This class is only used once below with
-      # nargs="?".
-      raise ValueError(
-          "This parser only supports nargs='?' (0 or 1 additional arguments)")
-    super(_ParseExperimentalNewConverter, self).__init__(
-        option_strings, dest, nargs=nargs, **kwargs)
-
-  def __call__(self, parser, namespace, values, option_string=None):
-    if values is None:
-      # Handling `--experimental_new_converter`.
-      # Without additional arguments, it implies enabling the new converter.
-      experimental_new_converter = True
-    elif values.lower() == "true":
-      # Handling `--experimental_new_converter=true`.
-      # (Case insensitive after the equal sign)
-      experimental_new_converter = True
-    elif values.lower() == "false":
-      # Handling `--experimental_new_converter=false`.
-      # (Case insensitive after the equal sign)
-      experimental_new_converter = False
-    else:
-      raise ValueError("Invalid --experimental_new_converter argument.")
-    setattr(namespace, self.dest, experimental_new_converter)
 
 
 def _get_parser(use_v2_converter):
@@ -611,10 +635,18 @@ def _get_parser(use_v2_converter):
 
   parser.add_argument(
       "--experimental_new_converter",
-      action=_ParseExperimentalNewConverter,
+      action=_ParseBooleanFlag,
       nargs="?",
+      default=True,
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion. (default True)"))
+
+  parser.add_argument(
+      "--experimental_new_quantizer",
+      action=_ParseBooleanFlag,
+      nargs="?",
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "quantizer instead of flatbuffer conversion. (default True)"))
   return parser
 
 

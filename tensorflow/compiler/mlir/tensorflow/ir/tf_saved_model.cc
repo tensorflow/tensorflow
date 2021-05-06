@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -342,7 +342,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       continue;
     }
     if (func.getArgAttr(i, "tf.resource_name")) {
-      if (module.getAttr("tf_saved_model.under_construction")) continue;
+      if (module->getAttr("tf_saved_model.under_construction")) continue;
       return func.emitError() << "'tf.resource_name' attribute is not allowed "
                                  "unless it is being under construction";
     }
@@ -355,7 +355,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
-        if (module.getAttr("tf_saved_model.under_construction")) continue;
+        if (module->getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }
@@ -431,7 +431,7 @@ bool IsExported(Operation *op) {
 }
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
-  return module.getAttr("tf_saved_model.semantics") != nullptr;
+  return module->getAttr("tf_saved_model.semantics") != nullptr;
 }
 
 Operation *LookupBoundInput(FuncOp func, int arg_index,
@@ -468,10 +468,11 @@ class OptimizeSessionInitializerPattern
       // ops have no other uses or have one NoOp only, they can be simply
       // erased.
       auto &operations = init_func_op.front().getOperations();
-      if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
+      if ((operations.size() == 1 &&
+           operations.front().hasTrait<OpTrait::IsTerminator>()) ||
           (operations.size() == 2 &&
            dyn_cast<mlir::TF::NoOp>(operations.front()) &&
-           operations.back().isKnownTerminator())) {
+           operations.back().hasTrait<OpTrait::IsTerminator>())) {
         to_remove.push_back(init_func_op);
       } else {
         to_keep.push_back(sym_ref);
@@ -483,7 +484,7 @@ class OptimizeSessionInitializerPattern
     if (to_keep.empty())
       rewriter.eraseOp(op);
     else
-      op.setAttr("initializers", rewriter.getArrayAttr(to_keep));
+      op->setAttr("initializers", rewriter.getArrayAttr(to_keep));
 
     return success();
   }

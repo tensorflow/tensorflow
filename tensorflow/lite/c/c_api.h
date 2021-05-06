@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdlib.h>
 
-#include "common.h"
+#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
 
 // --------------------------------------------------------------------------
 /// C API for TensorFlow Lite.
@@ -71,13 +72,28 @@ extern "C" {
 #endif  // __cplusplus
 
 // --------------------------------------------------------------------------
+// Opaque types used by the C API.
+
+// TfLiteModel wraps a loaded TensorFlow Lite model.
+typedef struct TfLiteModel TfLiteModel;
+
+// TfLiteInterpreterOptions allows customized interpreter configuration.
+typedef struct TfLiteInterpreterOptions TfLiteInterpreterOptions;
+
+// Allows delegation of nodes to alternative backends.
+typedef struct TfLiteDelegate TfLiteDelegate;
+
+// TfLiteInterpreter provides inference from a provided model.
+typedef struct TfLiteInterpreter TfLiteInterpreter;
+
+// A tensor in the interpreter system which is a wrapper around a buffer of
+// data including a dimensionality (or NULL if not currently defined).
+typedef struct TfLiteTensor TfLiteTensor;
+
+// --------------------------------------------------------------------------
 // TfLiteVersion returns a string describing version information of the
 // TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
-
-// --------------------------------------------------------------------------
-// TfLiteModel wraps a loaded TensorFlow Lite model.
-typedef struct TfLiteModel TfLiteModel;
 
 // Returns a model from the provided buffer, or null on failure.
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
@@ -89,10 +105,6 @@ TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
 
 // Destroys the model instance.
 TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
-
-// --------------------------------------------------------------------------
-// TfLiteInterpreterOptions allows customized interpreter configuration.
-typedef struct TfLiteInterpreterOptions TfLiteInterpreterOptions;
 
 // Returns a new interpreter options instances.
 TFL_CAPI_EXPORT extern TfLiteInterpreterOptions*
@@ -126,10 +138,6 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),
     void* user_data);
-
-// --------------------------------------------------------------------------
-// TfLiteInterpreter provides inference from a provided model.
-typedef struct TfLiteInterpreter TfLiteInterpreter;
 
 // Returns a new interpreter using the provided model and options, or null on
 // failure.

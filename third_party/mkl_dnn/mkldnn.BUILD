@@ -5,14 +5,6 @@ load(
     "template_rule",
 )
 
-config_setting(
-    name = "clang_linux_x86_64",
-    values = {
-        "cpu": "k8",
-        "define": "using_clang=true",
-    },
-)
-
 template_rule(
     name = "mkldnn_config_h",
     src = "include/mkldnn_config.h.in",

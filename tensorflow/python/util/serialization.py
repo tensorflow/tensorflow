@@ -29,7 +29,7 @@ from tensorflow.python.util.compat import collections_abc
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
 
-  Arguments:
+  Args:
       obj: the object to serialize
 
   Returns:

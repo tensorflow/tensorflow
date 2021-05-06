@@ -11,7 +11,7 @@ message TPUEmbeddingConfiguration {
     // Name of the table.
     string name = 1;
     // Size of the vocabulary (i.e., number of rows) in the table.
-    int32 vocabulary_size = 2;
+    int64 vocabulary_size = 2;
     // The embedding dimension (i.e., the width of the embedding table).
     int32 dimension = 3;
     // Number of features mapped to this table.

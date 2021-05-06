@@ -33,6 +33,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
@@ -82,11 +83,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
     self._test_unary_cwise_ops(complex_ops, True)
 
   def test_unary_cwise_real_ops_1(self):
-    if test.is_built_with_rocm():
-      # TODO(rocm):
-      # This fails on ROCm...see JIRA ticket 236756
-      self.skipTest("Fails on ROCM")
-
     real_ops = [
         lambda x: math_ops.acosh(1 + math_ops.square(x)),
         math_ops.abs,
@@ -243,6 +239,21 @@ class MathTest(PForTestCase, parameterized.TestCase):
       x1 = array_ops.gather(x, i)
       y1 = array_ops.gather(y, i)
       return math_ops.approximate_equal(x1, y1)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_abs_complex(self):
+    r = pfor_control_flow_ops.vectorized_map(
+        math_ops.abs, math_ops.cast([0, -1], dtype=dtypes.complex128))
+    self.assertAllEqual(self.evaluate(r), [0, 1])
+
+  def test_colocate_with(self):
+    a = random_ops.random_uniform([3, 5])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(a, i)
+      with framework_ops.colocate_with(x1):
+        return x1 * 2
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -689,15 +700,15 @@ class LinalgTest(PForTestCase):
       self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_inverse(self):
-    x = (random_ops.random_uniform([3, 4, 2, 2]) +
-         10 * linalg_ops.eye(2))  # Ensure well-conditioned.
+    x = (random_ops.random_uniform([3, 4, 2, 2]) + 10 * linalg_ops.eye(2)
+        )  # Ensure well-conditioned.
 
     for adjoint in (True, False):
 
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
-        return linalg_ops.matrix_inverse(array_ops.gather(x, i),
-                                         adjoint=adjoint)
+        return linalg_ops.matrix_inverse(
+            array_ops.gather(x, i), adjoint=adjoint)
 
       # pylint: enable=cell-var-from-loop
       self._test_loop_fn(loop_fn, 2)
@@ -708,8 +719,8 @@ class LinalgTest(PForTestCase):
         for stack_b in (True, False):
           shape_a = (2, 4, 3, 3) if stack_a else (4, 3, 3)
           shape_b = (2, 4, 3, 5) if stack_b else (4, 3, 5)
-          x = (random_ops.random_uniform(shape_a) +
-               10 * linalg_ops.eye(3))  # Ensure well-conditioned.
+          x = (random_ops.random_uniform(shape_a) + 10 * linalg_ops.eye(3)
+              )  # Ensure well-conditioned.
           y = random_ops.random_uniform(shape_b)
 
           # pylint: disable=cell-var-from-loop
@@ -769,12 +780,13 @@ class LinalgTest(PForTestCase):
       y = array_ops.gather(y_series, 0)  # invariant.
       x_i = array_ops.gather(x_series, i)
       y_i = array_ops.gather(y_series, i)
+      z0 = special_math_ops.einsum("ab->b", x_i)
       z1 = special_math_ops.einsum("ab,bc->ac", x_i, y)
       z2 = special_math_ops.einsum("ab,bc->ac", x, y_i)
       z3 = special_math_ops.einsum("ab,bc->ac", x, y)
       z4 = special_math_ops.einsum("ab,bc->ac", x_i, y_i)
       z5 = special_math_ops.einsum("cd,ce->de", y_i, x_i)  # Includes transpose.
-      outputs = [z1, z2, z3, z4, z5]
+      outputs = [z0, z1, z2, z3, z4, z5]
       return outputs
 
     self._test_loop_fn(loop_fn, b)

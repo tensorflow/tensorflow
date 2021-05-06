@@ -58,7 +58,7 @@ void ValidateLogisticGoldens(TfLiteTensor* tensors, const int tensor_count,
   const TfLiteRegistration registration =
       tflite::ops::micro::Register_LOGISTIC();
   micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

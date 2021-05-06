@@ -32,6 +32,9 @@ namespace tensorflow {
 
 class OpKernelContext;
 
+bool RequireDeterminism();
+bool DisableSegmentReductionOpDeterminismExceptions();
+
 namespace functor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -54,6 +57,8 @@ struct SegmentReductionFunctor {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output);
+  static constexpr bool atomic_reduction_is_associative =
+      AtomicReductionF::is_associative;
 };
 
 #endif
@@ -76,6 +81,7 @@ struct AtomicSumOpGpu {
                                                         const T& value) {
     GpuAtomicAdd(dest, value);
   }
+  static constexpr bool is_associative = std::is_integral<T>::value;
 };
 
 template <typename T>
@@ -84,6 +90,7 @@ struct AtomicProdOpGpu {
                                                         const T& value) {
     GpuAtomicMul(dest, value);
   }
+  static constexpr bool is_associative = std::is_integral<T>::value;
 };
 
 template <typename T>
@@ -92,6 +99,7 @@ struct AtomicMaxOpGpu {
                                                         const T& value) {
     GpuAtomicMax(dest, value);
   }
+  static constexpr bool is_associative = true;
 };
 
 template <typename T>
@@ -100,6 +108,7 @@ struct AtomicMinOpGpu {
                                                         const T& value) {
     GpuAtomicMin(dest, value);
   }
+  static constexpr bool is_associative = true;
 };
 
 // Non-atomic reduction functors for the gpu.
@@ -160,6 +169,15 @@ struct Highest {
   EIGEN_STRONG_INLINE T operator()() const {
     return Eigen::NumTraits<T>::highest();
   }
+};
+
+template <typename T, typename Index, typename SegmentId>
+struct SparseSegmentReductionFunctor {
+  Status operator()(OpKernelContext* context, bool is_mean, bool is_sqrtn,
+                    T default_value, typename TTypes<T, 2>::ConstTensor input,
+                    typename TTypes<Index>::ConstVec indices,
+                    typename TTypes<SegmentId>::ConstVec segment_ids,
+                    typename TTypes<T, 2>::Tensor output);
 };
 
 }  // namespace functor

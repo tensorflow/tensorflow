@@ -20,9 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 
 namespace tflite {
 namespace gpu {
@@ -120,41 +123,11 @@ OpenClVersion ParseCLVersion(const std::string& version) {
   }
 }
 
-GpuVendor ParseVendor(const std::string& device_name,
-                      const std::string& vendor_name) {
-  std::string d_name = device_name;
-  std::string v_name = vendor_name;
-  std::transform(d_name.begin(), d_name.end(), d_name.begin(), ::tolower);
-  std::transform(v_name.begin(), v_name.end(), v_name.begin(), ::tolower);
-  if (d_name.find("qualcomm") != std::string::npos ||
-      v_name.find("qualcomm") != std::string::npos) {
-    return GpuVendor::kQualcomm;
-  } else if (d_name.find("mali") != std::string::npos ||
-             v_name.find("mali") != std::string::npos) {
-    return GpuVendor::kMali;
-  } else if (d_name.find("power") != std::string::npos ||
-             v_name.find("power") != std::string::npos) {
-    return GpuVendor::kPowerVR;
-  } else if (d_name.find("nvidia") != std::string::npos ||
-             v_name.find("nvidia") != std::string::npos) {
-    return GpuVendor::kNvidia;
-  } else if (d_name.find("advanced micro devices") != std::string::npos ||
-             v_name.find("advanced micro devices") != std::string::npos) {
-    return GpuVendor::kAMD;
-  } else if (d_name.find("intel") != std::string::npos ||
-             v_name.find("intel") != std::string::npos) {
-    return GpuVendor::kIntel;
-  } else {
-    return GpuVendor::kUnknown;
-  }
-}
-
 // check that gpu_version belong to range min_version-max_version
 // min_version is included and max_version is excluded.
 bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
-}  // namespace
 
 GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   GpuInfo info;
@@ -162,13 +135,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  info.gpu_api = GpuApi::kOpenCl;
-  info.vendor = ParseVendor(device_name, vendor_name);
-  if (info.IsAdreno()) {
-    info.adreno_info = AdrenoInfo(opencl_c_version);
-  } else if (info.IsMali()) {
-    info.mali_info = MaliInfo(device_name);
-  }
+  const std::string gpu_description =
+      absl::StrCat(device_name, " ", vendor_name, " ", opencl_c_version);
+  GetGpuInfoFromDeviceDescription(gpu_description, GpuApi::kOpenCl, &info);
   info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
@@ -182,6 +151,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       info.opencl_info.supports_image3d_writes = true;
     }
   }
+
+  info.opencl_info.supports_images =
+      GetDeviceInfo<cl_bool>(id, CL_DEVICE_IMAGE_SUPPORT);
 
   cl_device_fp_config f32_config =
       GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
@@ -227,6 +199,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   info.opencl_info.buffer_max_size =
       GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
+  info.opencl_info.max_allocation_size =
+      GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
   if (info.opencl_info.cl_version >= OpenClVersion::kCl1_2) {
     info.opencl_info.image_buffer_max_size =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_BUFFER_SIZE);
@@ -246,6 +220,21 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
+
+  info.opencl_info.image_pitch_alignment = 0;
+  if (info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_1 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_2) {
+    info.opencl_info.image_pitch_alignment =
+        GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT);
+  } else if (info.SupportsExtension("cl_khr_image2d_from_buffer")) {
+    cl_uint result;
+    auto status =
+        GetDeviceInfo(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT_KHR, &result);
+    if (status.ok()) {
+      info.opencl_info.image_pitch_alignment = result;
+    }
+  }
 
   if (info.IsIntel()) {
     if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
@@ -269,8 +258,19 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   return info;
 }
 
+}  // namespace
+
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
+    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {
+  if (info_.IsAdreno() &&
+      info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
+    acceleration::AndroidInfo android_info;
+    if (acceleration::RequestAndroidInfo(&android_info).ok()) {
+      info_.adreno_info.compiler_bugs_in_a6xx =
+          android_info.android_sdk_version == "26";
+    }
+  }
+}
 
 CLDevice::CLDevice(const CLDevice& device)
     : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}
@@ -313,23 +313,40 @@ void CLDevice::DisableOneLayerTextureArray() {
 
 absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_platforms;
-  clGetPlatformIDs(0, nullptr, &num_platforms);
+  cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
+  if (status != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrFormat("clGetPlatformIDs returned %d", status));
+  }
   if (num_platforms == 0) {
     return absl::UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
-  clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+  status = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+  if (status != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrFormat("clGetPlatformIDs returned %d", status));
+  }
 
   cl_platform_id platform_id = platforms[0];
   cl_uint num_devices;
-  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  status =
+      clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  if (status != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrFormat("clGetDeviceIDs returned %d", status));
+  }
   if (num_devices == 0) {
     return absl::UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
-  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
-                 nullptr);
+  status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices,
+                          devices.data(), nullptr);
+  if (status != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrFormat("clGetDeviceIDs returned %d", status));
+  }
 
   *result = CLDevice(devices[0], platform_id);
   return absl::OkStatus();

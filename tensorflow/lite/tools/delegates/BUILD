@@ -1,13 +1,13 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-common_copts = ["-Wall"] + tflite_copts()
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 cc_library(
     name = "delegate_provider_hdr",
@@ -58,6 +58,9 @@ cc_library(
         "//tensorflow:ios": [
             "-xobjective-c++",
         ],
+        "//tensorflow:macos_arm64": [
+            "-xobjective-c++",
+        ],
         "//conditions:default": [],
     }),
     deps = [
@@ -70,6 +73,9 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//tensorflow:macos_arm64": [
             "//tensorflow/lite/delegates/gpu:metal_delegate",
         ],
         "//conditions:default": [],
@@ -116,6 +122,9 @@ cc_library(
         "//tensorflow:ios": [
             "-xobjective-c++",
         ],
+        "//tensorflow:macos_arm64": [
+            "-xobjective-c++",
+        ],
         "//conditions:default": [],
     }),
     deps = [
@@ -123,6 +132,9 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//tensorflow:macos_arm64": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
         "//conditions:default": [],

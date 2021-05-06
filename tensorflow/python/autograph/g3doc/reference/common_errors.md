@@ -10,6 +10,11 @@ This warning is output when AutoGraph could not convert a function, for an
 unexpected reason. The error message contains the reason why the function could
 not be converted, as well as guidance on how to proceed next.
 
+The exact error message may vary from version to version but in general, the
+cause of the failure appears somewhere in the text, for example as
+"Cause: could not get source code" or "Original error: could not get source
+code".
+
 Note: AutoGraph does not always output a warning. For example, constructors
 are silently called without conversion.
 
@@ -23,6 +28,16 @@ supported in AutoGraph, expect subsequent exceptions.
 Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
 logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 `tf.autograph.set_verbosity(0, True)`.
+
+### "Unable to locate the source code" or "Source not found" errors
+
+Newer versions of AutoGraph raise a `ConversionError`. Older versions print a
+warning. In both cases, a similar message about finding the source code is
+included.
+
+These errors are raised when AutoGraph is unable to find the source code of
+functions it needs to transform. See [Limitations](limitations.md) for more
+details.
 
 ### "WARNING: Large unrolled loop detected"
 
