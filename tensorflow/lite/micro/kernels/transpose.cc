@@ -70,44 +70,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     params.perm[i] = perm_data[i];
   }
 
-#define TF_LITE_TRANSPOSE(type)                                      \
-  reference_ops::Transpose(params, GetTensorShape(op_context.input), \
-                           GetTensorData<type>(op_context.input),    \
-                           GetTensorShape(op_context.output),        \
-                           GetTensorData<type>(op_context.output))
-
   // Transpose kernel only does rearranging values not numeric evaluations
   // on each cell. It's safe to implement per size of scalar type and this
   // trick keeps the total code size in a reasonable range.
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-    case kTfLiteInt32:
-      TF_LITE_TRANSPOSE(int32_t);
+      reference_ops::Transpose(params, GetTensorShape(op_context.input),
+                               GetTensorData<float>(op_context.input),
+                               GetTensorShape(op_context.output),
+                               GetTensorData<float>(op_context.output));
       break;
-    case kTfLiteUInt8:
     case kTfLiteInt8:
-      TF_LITE_TRANSPOSE(int8_t);
-      break;
-    case kTfLiteInt16:
-      TF_LITE_TRANSPOSE(int16_t);
-      break;
-    case kTfLiteInt64:
-      TF_LITE_TRANSPOSE(int64_t);
-      break;
-    case kTfLiteBool:
-      if (sizeof(bool) == 1) {
-        TF_LITE_TRANSPOSE(int8_t);
-      } else {
-        TF_LITE_TRANSPOSE(bool);
-      }
+      reference_ops::Transpose(params, GetTensorShape(op_context.input),
+                               GetTensorData<int8_t>(op_context.input),
+                               GetTensorShape(op_context.output),
+                               GetTensorData<int8_t>(op_context.output));
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
-                         "Type %s is currently not supported by Transpose.",
+                         "Type %s is currently not supported by Transpose. "
+                         "Only float32 and int8 is supported",
                          TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
-#undef TF_LITE_TRANSPOSE
 
   return kTfLiteOk;
 }
