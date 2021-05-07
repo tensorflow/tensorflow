@@ -185,8 +185,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
+                                 SelectOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     populateTensorBufferizePatterns(converter, patterns);
