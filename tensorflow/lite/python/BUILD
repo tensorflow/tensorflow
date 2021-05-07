@@ -483,6 +483,7 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
+        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -491,6 +492,7 @@ py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"],
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
