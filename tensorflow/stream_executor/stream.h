@@ -1470,8 +1470,8 @@ class Stream {
       int ldc, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
-    HostOrDeviceScalar<OutputType> alpha{static_cast<OutputType>(1)};
-    HostOrDeviceScalar<OutputType> beta{static_cast<OutputType>(0)};
+    OutputType alpha{1};
+    OutputType beta{0};
     return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
                                      ldb, beta, c, ldc, computation_type,
                                      algorithm, output_profile_result);
