@@ -174,7 +174,8 @@ def Eigh(
     a: XlaOp,
     lower: bool = ...,
     max_iter: int = ...,
-    epsilon: float = ...) -> Tuple[XlaOp, XlaOp]: ...
+    epsilon: float = ...,
+    sort_eigenvalues: bool = ...) -> Tuple[XlaOp, XlaOp]: ...
 def Fft(
     operand: XlaOp,
     fft_type: FftType,

@@ -132,15 +132,18 @@ XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
 }
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
-  XlaBuilder builder(TestName());
+  for (bool sort_eigenvalues : {false, true}) {
+    XlaBuilder builder(TestName());
 
-  XlaOp a;
-  auto a_data = CreateR3Parameter<float>(batch_3d_4x4_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEig(a);
-  ComputeMatmulVWVt(result, &builder);
+    XlaOp a;
+    auto a_data = CreateR3Parameter<float>(batch_3d_4x4_, 0, "a", &builder, &a);
+    auto result = SelfAdjointEig(a, /*lower=*/true, /*max_iter=*/15,
+                                 /*tol=*/1e-5, sort_eigenvalues);
+    ComputeMatmulVWVt(result, &builder);
 
-  ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+    ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
+                               ErrorSpec(1e-3, 1e-3));
+  }
 }
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
