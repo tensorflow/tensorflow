@@ -47,11 +47,11 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
     std::vector<Output> this_stage;
     for (int j = 0; j < width; j++) {
       if (last_stage.size() == 1) {
-        Output unary_op = Square(
-            s.WithDevice(
-                device_names[use_multiple_devices ? j % device_names.size()
-                                                  : 0]),
-            last_stage[0]);
+        Output unary_op =
+            Sign(s.WithDevice(
+                     device_names[use_multiple_devices ? j % device_names.size()
+                                                       : 0]),
+                 last_stage[0]);
         this_stage.push_back(unary_op);
       } else {
         Output combine =

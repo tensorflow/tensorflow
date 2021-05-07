@@ -60,7 +60,7 @@ struct WorkerEnv {
 
   // Generates per-step CollectiveExecutors and has access to utilities
   // supporting collective operations.
-  CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr;
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr;
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;

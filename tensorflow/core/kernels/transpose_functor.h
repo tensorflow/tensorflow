@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -166,7 +167,6 @@ template <typename Device>
 Status DoTransposeImpl(const Device& d, const Tensor& in,
                        const gtl::ArraySlice<int32> perm, bool conjugate,
                        Tensor* out) {
-  CHECK_GE(in.dims(), 2);
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
@@ -191,11 +191,13 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_FLOAT:
     case DT_INT32:
     case DT_QINT32:
+    case DT_UINT32:
       Transpose<Device, uint32>::run(d, in, perm, out);
       break;
 
     case DT_DOUBLE:
     case DT_INT64:
+    case DT_UINT64:
       Transpose<Device, uint64>::run(d, in, perm, out);
       break;
 
@@ -244,14 +246,6 @@ inline Status DoMatrixTransposeImpl(const Device& device, const Tensor& in,
   std::swap(perm[ndims - 2], perm[ndims - 1]);
   return DoTransposeImpl(device, in, perm, conjugate, out);
 }
-
-#ifdef TENSORFLOW_USE_SYCL
-// For SYCL lets always go through Eigen
-template <typename Device, typename T>
-void TransposeSYCL(const Device& d, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, bool conjugate,
-                   Tensor* out);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace internal
 }  // namespace tensorflow

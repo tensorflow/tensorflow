@@ -32,7 +32,12 @@ Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
 // proto.
 Status ParseTextProto(absl::string_view text_proto,
                       absl::string_view prefix_to_strip,
-                      protobuf::MessageLite* parsed_proto);
+                      protobuf::Message* parsed_proto);
+inline Status ParseTextProto(absl::string_view /* text_proto */,
+                             absl::string_view /* prefix_to_strip */,
+                             protobuf::MessageLite* /* parsed_proto */) {
+  return errors::Unavailable("Cannot parse text protos on mobile.");
+}
 
 }  // namespace tensorflow
 

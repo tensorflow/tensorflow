@@ -38,7 +38,7 @@ namespace benchmark {
 struct Options {
   // kDefaultMicros specifies the default time to run the benchmark, and is used
   // if neither max_iters nor max_micros is set.
-  static const int64 kDefaultMicros = 3000000;
+  static constexpr int64 kDefaultMicros = 3000000;
 
   int64 max_iters = 0;   // Maximum iterations to run, ignored if <= 0.
   int64 max_micros = 0;  // Maximum microseconds to run, ignored if <= 0.

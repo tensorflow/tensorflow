@@ -14,14 +14,9 @@
 # ==============================================================================
 """Tests for Keras utilities to split v1 and v2 classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 import numpy as np
-import six
 
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
@@ -53,12 +48,41 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     inputs = keras.Input(10)
     outputs = keras.layers.Dense(1)(inputs)
     model = keras.Model(inputs, outputs)
-    self._check_model_class(model.__class__)
+    self._check_model_class(model.__class__.__bases__[0])
+    self._check_layer_class(model)
+
+  def test_subclass_model_with_functional_init(self):
+    inputs = keras.Input(10)
+    outputs = keras.layers.Dense(1)(inputs)
+
+    class MyModel(keras.Model):
+      pass
+
+    model = MyModel(inputs, outputs)
+    model_class = model.__class__.__bases__[0].__bases__[0]
+    self._check_model_class(model_class)
+    self._check_layer_class(model)
+
+  def test_subclass_model_with_functional_init_interleaved_v1_functional(self):
+    with ops.Graph().as_default():
+      inputs = keras.Input(10)
+      outputs = keras.layers.Dense(1)(inputs)
+      _ = keras.Model(inputs, outputs)
+
+    inputs = keras.Input(10)
+    outputs = keras.layers.Dense(1)(inputs)
+
+    class MyModel(keras.Model):
+      pass
+
+    model = MyModel(inputs, outputs)
+    model_class = model.__class__.__bases__[0].__bases__[0]
+    self._check_model_class(model_class)
     self._check_layer_class(model)
 
   def test_sequential_model(self):
     model = keras.Sequential([keras.layers.Dense(1)])
-    model_class = model.__class__.__bases__[0]
+    model_class = model.__class__.__bases__[0].__bases__[0]
     self._check_model_class(model_class)
     self._check_layer_class(model)
 
@@ -104,8 +128,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
 
   def test_user_provided_metaclass(self):
 
-    @six.add_metaclass(abc.ABCMeta)
-    class AbstractModel(keras.Model):
+    class AbstractModel(keras.Model, metaclass=abc.ABCMeta):
 
       @abc.abstractmethod
       def call(self, inputs):
@@ -116,8 +139,8 @@ class SplitUtilsTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return 2 * inputs
 
-    with self.assertRaisesRegexp(TypeError, 'instantiate abstract class'):
-      AbstractModel()
+    with self.assertRaisesRegex(TypeError, 'instantiate abstract class'):
+      AbstractModel()  # pylint: disable=abstract-class-instantiated
 
     model = MyModel()
     model_class = model.__class__.__bases__[0].__bases__[0]
@@ -152,7 +175,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse')
     x, y = np.ones((10, 10)), np.ones((10, 1))
     with ops.get_default_graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'instance was constructed with eager mode enabled'):
         model.fit(x, y, batch_size=2)
 

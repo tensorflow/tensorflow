@@ -20,6 +20,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.lite.python import wrap_toco
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -32,6 +33,11 @@ class SupportedOp(collections.namedtuple("SupportedOp", ["op"])):
 
 
 @tf_export(v1=["lite.experimental.get_potentially_supported_ops"])
+@deprecation.deprecated(
+    None, "Deprecated in TF 2.4 and targeted to remove after TF 2.5. This"
+    "experimental function in TF v1 is to get a list of op names without real "
+    "conversion. To check whether a model can be convertable or not indeed, "
+    "please run `tf.lite.TFLiteConverter`.")
 def get_potentially_supported_ops():
   """Returns operations potentially supported by TensorFlow Lite.
 

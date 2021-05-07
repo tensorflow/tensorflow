@@ -55,7 +55,7 @@ class SharedBufferData {
   bool empty() const { return shared_data_.empty(); }
 
   // Returns a single GlBuffer that owns entire shared data.
-  Status CreateSharedGlBuffer(GlBuffer* gl_buffer) {
+  absl::Status CreateSharedGlBuffer(GlBuffer* gl_buffer) {
     // Upload data to a buffer
     gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER,
                                             buffer_id_.id());
@@ -64,7 +64,7 @@ class SharedBufferData {
                                        GL_STATIC_READ));
     *gl_buffer = GlBuffer(GL_SHADER_STORAGE_BUFFER, buffer_id_.Release(),
                           shared_data_.size(), 0, /*has_ownership=*/true);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

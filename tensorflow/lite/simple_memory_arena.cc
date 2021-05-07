@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/simple_memory_arena.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <vector>
+
+#include "tensorflow/lite/c/common.h"
 
 namespace {
 
@@ -136,6 +143,8 @@ TfLiteStatus SimpleMemoryArena::ResolveAlloc(
     char** output_ptr) {
   TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
+  TF_LITE_ENSURE(context,
+                 underlying_buffer_size_ >= (alloc.offset + alloc.size));
   if (alloc.size == 0) {
     *output_ptr = nullptr;
   } else {

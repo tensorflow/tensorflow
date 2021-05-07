@@ -93,9 +93,6 @@ class RendezvousMgrInterface {
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
   virtual void Cleanup(int64 step_id) = 0;
-
-  // Removes all rendezvous.
-  virtual void CleanupAll() = 0;
 };
 
 }  // end namespace tensorflow

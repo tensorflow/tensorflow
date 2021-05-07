@@ -34,11 +34,13 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor);
 
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
                               const std::vector<int32_t>& shape,
+                              const std::vector<int32_t>& shape_signature,
                               const TensorType& type, float scale,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor);
@@ -56,6 +58,18 @@ bool HasMinMax(const TensorT* tensor);
 // Set version of OperatorCode. The version will only be applied for operations
 // that have been quantized.
 void SetOperatorCodeVersion(ModelT* model);
+
+// Writes model buffer to file.
+void WriteFile(const std::string& out_file, const uint8_t* bytes,
+               size_t num_bytes);
+
+// Finishes model buffer and returns its builder.
+std::unique_ptr<flatbuffers::FlatBufferBuilder> FinishModel(
+    const tflite::ModelT* model);
+
+// Reads TensorFlow Lite model from the given path.
+std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
+    const string& model_filepath);
 
 }  // namespace utils
 }  // namespace optimize

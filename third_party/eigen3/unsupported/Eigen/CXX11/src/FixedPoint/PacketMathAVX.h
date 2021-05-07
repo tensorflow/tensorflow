@@ -11,19 +11,8 @@
 namespace Eigen {
 namespace internal {
 
-typedef struct Packet32q8i {
-  __m256i val;
-  operator __m256i() const { return val; }
-  Packet32q8i() : val(_mm256_setzero_si256()){};
-  Packet32q8i(__m256i val) : val(val) {}
-} Packet32q8i;
-
-typedef struct Packet16q8i {
-  __m128i val;
-  operator __m128i() const { return val; }
-  Packet16q8i() : val(_mm_setzero_si128()) {}
-  Packet16q8i(__m128i val) : val(val) {}
-} Packet16q8i;
+typedef eigen_packet_wrapper<__m256i, 10> Packet32q8i;
+typedef eigen_packet_wrapper<__m128i, 11> Packet16q8i;
 
 template <>
 struct packet_traits<QInt8> : default_packet_traits {
@@ -102,23 +91,23 @@ EIGEN_STRONG_INLINE Packet16q8i pload<Packet16q8i>(const QInt8* from) {
 template <>
 EIGEN_STRONG_INLINE void pstoreu<QInt8>(QInt8* to, const Packet32q8i& from) {
   EIGEN_DEBUG_UNALIGNED_STORE _mm256_storeu_si256(
-      reinterpret_cast<__m256i*>(to), from.val);
+      reinterpret_cast<__m256i*>(to), from.m_val);
 }
 template <>
 EIGEN_STRONG_INLINE void pstoreu<QInt8>(QInt8* to, const Packet16q8i& from) {
   EIGEN_DEBUG_UNALIGNED_STORE _mm_storeu_si128(reinterpret_cast<__m128i*>(to),
-                                               from.val);
+                                               from.m_val);
 }
 
 template <>
 EIGEN_STRONG_INLINE void pstore<QInt8>(QInt8* to, const Packet32q8i& from) {
   EIGEN_DEBUG_ALIGNED_STORE _mm256_store_si256(reinterpret_cast<__m256i*>(to),
-                                               from.val);
+                                               from.m_val);
 }
 template <>
 EIGEN_STRONG_INLINE void pstore<QInt8>(QInt8* to, const Packet16q8i& from) {
   EIGEN_DEBUG_ALIGNED_STORE _mm_store_si128(reinterpret_cast<__m128i*>(to),
-                                            from.val);
+                                            from.m_val);
 }
 
 typedef __m256 Packet8f;

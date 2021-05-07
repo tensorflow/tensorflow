@@ -34,6 +34,6 @@ If needed, the PNG-encoded image is transformed to match the requested number
 of color channels.
 
 This op also supports decoding JPEGs and non-animated GIFs since the interface
-is the same, though it is cleaner to use `tf.image.decode_image`.
+is the same, though it is cleaner to use `tf.io.decode_image`.
 END
 }

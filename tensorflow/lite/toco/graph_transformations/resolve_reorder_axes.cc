@@ -27,19 +27,19 @@ namespace toco {
 
 namespace {
 
-void RenameArray(Model* model, const string& oldname,
-                 const string& desired_newname) {
-  const string& newname = AvailableArrayName(*model, desired_newname);
+void RenameArray(Model* model, const std::string& oldname,
+                 const std::string& desired_newname) {
+  const std::string& newname = AvailableArrayName(*model, desired_newname);
   auto& arrays = model->GetMutableArrayMap();
   arrays[newname] = std::move(arrays[oldname]);
   arrays.erase(oldname);
   for (const auto& op : model->operators) {
-    for (string& input : op->inputs) {
+    for (std::string& input : op->inputs) {
       if (input == oldname) {
         input = newname;
       }
     }
-    for (string& output : op->outputs) {
+    for (std::string& output : op->outputs) {
       if (output == oldname) {
         output = newname;
       }
@@ -89,8 +89,8 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   auto* reorder_op = static_cast<ReorderAxesOperator*>(op);
 
   // Intentionally copies, not references.
-  const string input_array_name = reorder_op->inputs[0];
-  const string output_array_name = reorder_op->outputs[0];
+  const std::string input_array_name = reorder_op->inputs[0];
+  const std::string output_array_name = reorder_op->outputs[0];
 
   auto& input_array = model->GetArray(input_array_name);
   auto& output_array = model->GetArray(output_array_name);

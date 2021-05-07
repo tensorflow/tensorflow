@@ -12,10 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -91,7 +97,7 @@ TEST(MatrixDiagTest, Int32TestTwoDimDiag) {
   EXPECT_THAT(model.GetOutputType(), TfLiteType::kTfLiteInt32);
 }
 
-TEST(MatrixDiagTest, DegenenerateCase) {
+TEST(MatrixDiagTest, DegenerateCase) {
   MatrixDiagOpModel<uint8_t> model({TensorType_UINT8, {1}});
   model.PopulateTensor<uint8_t>(model.input(), {1});
   model.Invoke();

@@ -22,16 +22,16 @@ pip --version
 pip install portpicker
 pip install *.whl
 
-# Make bazel version the same as the env that invokes this script
-rm -rf ~/bazel
-mkdir ~/bazel
-pushd ~/bazel
-wget https://github.com/bazelbuild/bazel/releases/download/"${BAZEL_VERSION}"/bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-chmod +x bazel-*.sh
-./bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh --user
-rm bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-PATH="/bazel_pip/bin:$PATH"
-popd
+# Install bazelisk
+rm -rf ~/bin/bazel
+mkdir ~/bin/bazel
+wget --no-verbose -O "~/bin/bazel" \
+    "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/bazelisk-linux-amd64"
+chmod u+x "~/bin/bazel"
+if [[ ! ":$PATH:" =~ :"~"/bin/?: ]]; then
+  PATH="~/bin:$PATH"
+fi
+which bazel
 bazel version
 
 # Use default configuration
@@ -40,17 +40,18 @@ yes "" | python configure.py
 PIP_TEST_ROOT=pip_test_root
 mkdir -p ${PIP_TEST_ROOT}
 ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
-bazel test --define=no_tensorflow_py_deps=true \
+bazel --output_base=/tmp test --define=no_tensorflow_py_deps=true \
       --test_lang_filters=py \
       --build_tests_only \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_pip,-nopip \
+      --test_tag_filters=-no_oss,-oss_serial,-no_pip,-nopip,-gpu,-tpu \
       --test_size_filters=small,medium \
       --test_timeout 300,450,1200,3600 \
       --test_output=errors \
       -- //${PIP_TEST_ROOT}/tensorflow/python/... \
+      -//${PIP_TEST_ROOT}/tensorflow/python/compiler/xla:xla_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/distribute:parameter_server_strategy_test \
       -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu \
-      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test_gpu
-
+      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test
+# The above tests are excluded because they seem to require a GPU.
+# TODO(yifeif): Investigate and potentially add an unconditional 'gpu' tag.

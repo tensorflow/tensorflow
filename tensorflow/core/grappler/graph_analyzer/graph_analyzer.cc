@@ -92,7 +92,8 @@ void GraphAnalyzer::FindSubgraphs() {
 }
 
 void GraphAnalyzer::ExtendSubgraph(Subgraph* parent) {
-  bool will_complete = (parent->id().size() + 1 == subgraph_size_);
+  const int next_parent_id = parent->id().size() + 1;
+  bool will_complete = (next_parent_id == subgraph_size_);
   SubgraphPtrSet& sg_set = will_complete ? result_ : partial_;
 
   const GenNode* last_all_or_none_node = nullptr;
@@ -151,7 +152,8 @@ void GraphAnalyzer::ExtendSubgraphAllOrNone(Subgraph* parent,
     // point in growing it more, can just skip over the rest of the links.
     for (const auto& link : nbit->second) {
       id.insert(link.node);
-      if (id.size() > subgraph_size_) {
+      const int id_size = id.size();
+      if (id_size > subgraph_size_) {
         return;  // Too big.
       }
     }
@@ -177,7 +179,8 @@ void GraphAnalyzer::ExtendSubgraphPortAllOrNone(Subgraph* parent,
   // point in growing it more, can just skip over the rest of the links.
   for (const auto& link : nbit->second) {
     id.insert(link.node);
-    if (id.size() > subgraph_size_) {
+    const int id_size = id.size();
+    if (id_size > subgraph_size_) {
       return;  // Too big.
     }
   }
@@ -198,8 +201,8 @@ void GraphAnalyzer::AddExtendedSubgraph(Subgraph* parent,
     // This subgraph was already found by extending from a different path.
     return;
   }
-
-  if (id.size() != subgraph_size_) {
+  const int id_size = id.size();
+  if (id_size != subgraph_size_) {
     todo_.push_back(sg.get());
   }
   spec_sg_set.insert(std::move(sg));

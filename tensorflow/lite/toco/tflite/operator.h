@@ -30,7 +30,7 @@ class BaseOperator;
 // Return a map contained all know TF Lite Operators, keyed by their names.
 // TODO(ycling): The pattern to propagate parameters (e.g. enable_select_tf_ops)
 // is ugly here. Consider refactoring.
-std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
+std::map<std::string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
     bool enable_select_tf_ops = false);
 
 // Return a map contained all know TF Lite Operators, keyed by the type of
@@ -41,7 +41,7 @@ std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
 // Write the custom option FlexBuffer with a serialized TensorFlow NodeDef
 // for a Flex op.
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
-    const string& tensorflow_node_def);
+    const std::string& tensorflow_node_def);
 
 // These are the flatbuffer types for custom and builtin options.
 using CustomOptions = flatbuffers::Vector<uint8_t>;
@@ -71,11 +71,11 @@ struct Options {
 class BaseOperator {
  public:
   // Build an operator with the given TF Lite name and tf.mini type.
-  BaseOperator(const string& name, OperatorType type)
+  BaseOperator(const std::string& name, OperatorType type)
       : name_(name), type_(type) {}
   virtual ~BaseOperator() = default;
 
-  string name() const { return name_; }
+  std::string name() const { return name_; }
   OperatorType type() const { return type_; }
 
   // Given a tf.mini operator, create the corresponding flatbuffer options and
@@ -111,7 +111,7 @@ class BaseOperator {
   }
 
  private:
-  string name_;
+  std::string name_;
   OperatorType type_;
 };
 
@@ -123,7 +123,7 @@ class BaseOperator {
 // Helper function to determine if a unsupported TensorFlow op should be
 // exported as an Flex op or a regular custom op.
 bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
-                          const string& tensorflow_op_name);
+                          const std::string& tensorflow_op_name);
 
 }  // namespace tflite
 

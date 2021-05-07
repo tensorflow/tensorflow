@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -48,36 +48,34 @@ class CLKernel {
 
   cl_kernel kernel() const { return kernel_; }
 
-  Status CreateFromProgram(const CLProgram& program,
-                           const std::string& function_name);
+  absl::Status CreateFromProgram(const CLProgram& program,
+                                 const std::string& function_name);
 
-  Status SetMemory(int index, cl_mem memory);
-  Status SetMemoryAuto(cl_mem memory);
+  absl::Status SetMemory(int index, cl_mem memory);
+  absl::Status SetMemoryAuto(cl_mem memory);
   template <typename T>
-  Status SetBytes(int index, const T& value) const {
+  absl::Status SetBytes(int index, const T& value) const {
     return SetBytes(index, static_cast<const void*>(&value), sizeof(T));
   }
   template <typename T>
-  Status SetBytesAuto(const T& value) {
+  absl::Status SetBytesAuto(const T& value) {
     return SetBytesAuto(static_cast<const void*>(&value), sizeof(T));
   }
 
-  int GetPrivateMemorySize() const { return private_memory_size_; }
-  int GetMaxWorkGroupSize() const { return max_work_group_size_; }
-
+  int GetBindingCounter() const { return binding_counter_; }
   void ResetBindingCounter() { binding_counter_ = 0; }
 
   // Do not use this function
   // workaround for Mali memory leak
-  Status ReInit() const;
+  absl::Status ReInit() const;
+
+  KernelInfo info_;
 
  private:
   void Release();
-  Status SetBytes(int index, const void* ptr, int length) const;
-  Status SetBytesAuto(const void* ptr, int length);
+  absl::Status SetBytes(int index, const void* ptr, int length) const;
+  absl::Status SetBytesAuto(const void* ptr, int length);
 
-  int private_memory_size_;
-  int max_work_group_size_;
   int binding_counter_ = -1;
 
   std::string function_name_;
@@ -85,24 +83,6 @@ class CLKernel {
   cl_program program_ = nullptr;
   cl_kernel kernel_ = nullptr;
 };
-
-template <>
-Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const;
-
-template <>
-Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const;
-
-template <>
-Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const;
-
-template <>
-Status CLKernel::SetBytesAuto<FLT>(const FLT& value);
-
-template <>
-Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value);
-
-template <>
-Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value);
 
 }  // namespace cl
 }  // namespace gpu

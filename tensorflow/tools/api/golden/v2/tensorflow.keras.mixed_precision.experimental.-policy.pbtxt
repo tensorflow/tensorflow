@@ -1,6 +1,7 @@
 path: "tensorflow.keras.mixed_precision.experimental.Policy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.policy.Policy\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.policy.PolicyV1\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.policy.Policy\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "compute_dtype"
@@ -15,16 +16,12 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "should_cast_variables"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "variable_dtype"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'USE_DEFAULT\'], "
+    argspec: "args=[\'self\', \'name\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'auto\'], "
   }
   member_method {
     name: "from_config"

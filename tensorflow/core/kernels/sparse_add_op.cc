@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -101,6 +102,10 @@ class SparseAddOp : public OpKernel {
     std::vector<T> out_values;
     const int num_dims = a_shape->dim_size(0);
 
+    OP_REQUIRES(ctx, num_dims > 0,
+                errors::InvalidArgument("Invalid input_a shape. Received: ",
+                                        a_shape->DebugString()));
+
     // The input and output sparse tensors are assumed to be ordered along
     // increasing dimension number.
     int64 i = 0, j = 0;
@@ -159,7 +164,9 @@ class SparseAddOp : public OpKernel {
       out_indices_mat.chip<0>(i) =
           from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
     }
-    std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));
+    if (sum_nnz > 0) {
+      std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));
+    }
     ctx->set_output(2, *a_shape);
   }
 };

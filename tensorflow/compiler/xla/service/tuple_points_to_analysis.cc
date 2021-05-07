@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -470,6 +472,36 @@ Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   points_to_set.AddPointedToBuffer(
       logical_buffer_analysis_->GetBuffer(tuple_select, /*index=*/{}),
       /*index=*/{});
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+  auto ccall = Cast<HloCustomCallInstruction>(custom_call);
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
+  absl::flat_hash_map<ShapeIndex, std::pair<int64, ShapeIndex>> aliased_outputs;
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    auto it = aliased_outputs.find(index);
+    if (it == aliased_outputs.end()) {
+      points_to_set.AddPointedToBuffer(
+          logical_buffer_analysis_->GetBuffer(custom_call, index), index);
+    } else {
+      const PointsToSet& input_set =
+          *PerInst(ccall->operand(it->second.first))->points_to_set;
+      for (const LogicalBuffer* input_buffer :
+           input_set.element(it->second.second)) {
+        points_to_set.AddPointedToBuffer(*input_buffer, index);
+      }
+
+      for (HloInstruction* tuple : input_set.tuple_sources(it->second.second)) {
+        points_to_set.add_tuple_source(index, tuple);
+      }
+    }
+  });
+  points_to_set.add_tuple_source({}, custom_call);
   return Status::OK();
 }
 

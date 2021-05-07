@@ -6,13 +6,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-exports_files([
-    "LICENSE",
-    "placeholder.txt",
-])
+exports_files(["placeholder.txt"])
 
 tf_cc_binary(
     name = "tomlpbtxt",

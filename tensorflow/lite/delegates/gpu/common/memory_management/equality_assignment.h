@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_EQUALITY_ASSIGNMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_EQUALITY_ASSIGNMENT_H_
 
+#include <stddef.h>
+
+#include <cstddef>
 #include <queue>
 #include <vector>
 
@@ -29,7 +32,7 @@ namespace gpu {
 
 // Fast version of Equality Assignments for hashable types.
 template <typename TensorSizeT>
-Status EqualityAssignmentWithHash(
+absl::Status EqualityAssignmentWithHash(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -69,12 +72,12 @@ Status EqualityAssignmentWithHash(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Slower version of Equality Assignments for unhashable types.
 template <typename TensorSizeT>
-Status EqualityAssignment(
+absl::Status EqualityAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -109,7 +112,7 @@ Status EqualityAssignment(
       dealloc_task[best_obj] = usage_records[i].last_task;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

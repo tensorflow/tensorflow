@@ -110,7 +110,8 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
       ShapeInference::InferConvolveShape(
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
-          tf_default_dnums_for_backward_filter_)
+          tf_default_dnums_for_backward_filter_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -135,86 +136,6 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
       << md_after_opt.DebugString() << " vs " << metadata.DebugString();
 }
 
-TEST_F(GpuConvRewriterTest, BackwardFilterGroupConvolve) {
-  // In a nutshell, before pass:
-  // Input->batch_dim: 3 input_shape(3) = 4
-  // Input->feature_dim: 0 input_shape(0) = 32
-  // Kernel(gradient)->kernel_input_feature_dim (gradient_batch_dimension): 0
-  // Kernel(gradient)->kernel_output_feature_dim (gradient_feature_dimension): 3
-  // Output(dkernel)->output_batch_dim (dkernel_input_feature_dim): 2
-  // Output(dkernel)->output_feature_dim (dkernel_output_feature_dim): 3
-
-  // After pass: All shapes and dimension layout is brought
-  // back to normal as would be acceptable by cudnn
-  // Input->batch_dim: 0 input_shape(0) = 8
-  // Input->feature_dim: 3 input_shape(3) = 16
-  // Kernel(gradient)->kernel_input_feature_dim (gradient_batch_dimension): 2
-  // Kernel(gradient)->kernel_output_feature_dim (gradient_feature_dimension): 3
-  // Output(dkernel)->output_batch_dim (dkernel_input_feature_dim): 0
-  // Output(dkernel)->output_feature_dim (dkernel_output_feature_dim): 3
-  HloComputation::Builder builder(TestName());
-  HloInstruction* activations =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {32, 1, 3, 4}), "activations"));
-  HloInstruction* gradients =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {8, 1, 2, 16}), "gradients"));
-  Window conv_window = default_conv_window_;
-  conv_window.mutable_dimensions(1)->set_size(2);
-  conv_window.mutable_dimensions(1)->set_window_dilation(2);
-  auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(
-          activations->shape(), gradients->shape(), /*feature_group_count=*/4,
-          /*batch_group_count=*/1, conv_window,
-          tf_default_dnums_for_backward_filter_)
-          .ConsumeValueOrDie(),
-      activations, gradients, /*feature_group_count=*/4,
-      /*batch_group_count=*/1, conv_window,
-      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
-  OpMetadata metadata;
-  metadata.set_op_name("bar");
-  conv->set_metadata(metadata);
-  auto module = CreateNewVerifiedModule();
-  HloComputation* entry_computation =
-      module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
-  ASSERT_THAT(entry_computation->root_instruction(),
-              op::GetTupleElement(
-                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
-  // Check that metadata was preserved.
-  const auto& md_after_opt =
-      entry_computation->root_instruction()->operand(0)->metadata();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(md_after_opt, metadata))
-      << md_after_opt.DebugString() << " vs " << metadata.DebugString();
-  const HloInstruction* custom_call =
-      entry_computation->root_instruction()->operand(0);
-  const ConvolutionDimensionNumbers conv_dim =
-      custom_call->convolution_dimension_numbers();
-  const auto lhs_a = custom_call->operand(0);
-  const auto input_shape = lhs_a->shape();
-  // The input (lhs) batch_dim(dim 0 in the original NHWC layout) gets mapped to
-  // be the feature_dim(dim 3) with a value of N*g = 32 in tf2xla. As described
-  // in conv_grad_ops.h, this swap is required to implement backprop using fwd
-  // conv. After the pass the batch_dim gets remapped to dim 0. The batch_dim
-  // value gets scaled to N = N*g/g = 32/4 = 8 to be compatible with cudnn
-  EXPECT_EQ(0, conv_dim.input_batch_dimension());
-  EXPECT_EQ(8, input_shape.dimensions(conv_dim.input_batch_dimension()));
-  // Similarly, the input (lhs) feature_dim(dim 3 in the original NHWC layout)
-  // gets mapped to be the batch_dim(dim 0) with a value of C/g = 4 in tf2xla.
-  // After the pass the batch_dim gets remapped to dim 0. The feature_dim value
-  // gets scaled to C = C/g*g = 4*4 = 16 to be compatible with cudnn
-  EXPECT_EQ(3, conv_dim.input_feature_dimension());
-  EXPECT_EQ(16, input_shape.dimensions(conv_dim.input_feature_dimension()));
-  // Similarly, the feature and batch dims of the incoming gradients (used as
-  // rhs) and the in/out dims of the output of convolution i.e, dgrad have been
-  // been modified in tf2xla (as described in conv_grad_ops.h). This pass remaps
-  // everything back for the layout to be compatible with cudnn backprop APIs.
-  EXPECT_EQ(2, conv_dim.kernel_input_feature_dimension());
-  EXPECT_EQ(3, conv_dim.kernel_output_feature_dimension());
-  EXPECT_EQ(0, conv_dim.output_batch_dimension());
-  EXPECT_EQ(3, conv_dim.output_feature_dimension());
-}
-
 TEST_F(GpuConvRewriterTest,
        BackwardFilterConvolveEquivalentToForwardConvolution) {
   HloComputation::Builder builder(TestName());
@@ -230,7 +151,8 @@ TEST_F(GpuConvRewriterTest,
       ShapeInference::InferConvolveShape(
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
-          tf_default_dnums_for_backward_filter_)
+          tf_default_dnums_for_backward_filter_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -240,9 +162,9 @@ TEST_F(GpuConvRewriterTest,
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(RunPass(module.get()));
-  EXPECT_THAT(entry_computation->root_instruction(),
-              op::GetTupleElement(
-                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
+  EXPECT_THAT(
+      entry_computation->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
 // Extracted from block35 training.
@@ -372,11 +294,12 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
       DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, conv_dnums)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          conv_dnums, /*preferred_element_type=*/absl::nullopt)
+          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -417,10 +340,12 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
   conv_window.mutable_dimensions(1)->set_base_dilation(2);
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(output->shape(), kernel->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, conv_window,
-                                         tf_default_dnums_for_backward_input_)
+      ShapeInference::InferConvolveShape(
+          output->shape(), kernel->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -454,7 +379,8 @@ TEST_F(GpuConvRewriterTest,
       ShapeInference::InferConvolveShape(
           output->shape(), kernel->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, default_conv_window_,
-          tf_default_dnums_for_backward_input_)
+          tf_default_dnums_for_backward_input_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
@@ -511,7 +437,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -561,7 +488,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -615,7 +543,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -670,7 +599,8 @@ TEST_F(GpuConvRewriterTest,
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -726,6 +656,25 @@ TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
 
   ASSERT_FALSE(GpuConvRewriter().Run(m.get()).ok());
 }
+
+TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
+  const string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,120,256,256] parameter(0)
+      filter = f32[8,120,256,256] parameter(1)
+
+      ROOT conv = f32[120,120,3,3] convolution(input, filter), window={size=256x256 pad=1_1x1_1}, dim_labels=fb01_io01->fb01
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget, _, _), 0));
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

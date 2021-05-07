@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -428,8 +429,18 @@ FunctionDef* FuseFunctions(
     StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
     const SetInputFn& set_input, const SetOutputFn& set_output,
     const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
-  if (first_function.attr_size() != 0 || second_function.attr_size() != 0)
-    return nullptr;  // Functions with attributes are currently not supported
+  auto has_unknown_attrs = [](const FunctionDef& func) {
+    int known_attribute_size = 0;
+
+    if (data::IsTFDataFunction(func)) known_attribute_size += 1;
+    if (func.attr().contains("_construction_context"))
+      known_attribute_size += 1;
+
+    return func.attr_size() > known_attribute_size;
+  };
+  if (has_unknown_attrs(first_function) || has_unknown_attrs(second_function)) {
+    return nullptr;  // Functions with attributes are currently not supported.
+  }
 
   // This function will be used as a clone of second function, having unique
   // names.
@@ -467,6 +478,28 @@ FunctionDef* FuseFunctions(
               fused_function->mutable_ret());
 
   set_nodes(first_function, setup_function, fused_function, library);
+  (*fused_function->mutable_attr())[data::kTFDataFunction].set_b(true);
+
+  // Preserve `_construction_context` attribute in the fused function.
+  auto get_construction_context = [](const FunctionDef& func) {
+    auto iter = func.attr().find("_construction_context");
+    if (iter == func.attr().cend()) return std::string();
+    return iter->second.s();
+  };
+  std::string first_construction_context =
+      get_construction_context(first_function);
+  std::string second_construction_context =
+      get_construction_context(second_function);
+  if (first_construction_context != second_construction_context) {
+    LOG(ERROR) << "_construction_context attribute mismatch during fused "
+                  "function optimization pass. First function: "
+               << first_construction_context
+               << " Second function: " << first_construction_context;
+  }
+  if (!first_construction_context.empty()) {
+    (*fused_function->mutable_attr())["_construction_context"].set_s(
+        first_construction_context);
+  }
 
   return fused_function;
 }

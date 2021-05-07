@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_ABSL_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_ABSL_H_
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
 #ifndef ABSL_USES_STD_STRING_VIEW

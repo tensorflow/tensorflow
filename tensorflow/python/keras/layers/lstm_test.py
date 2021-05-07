@@ -14,16 +14,13 @@
 # ==============================================================================
 """Tests for LSTM layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import copy
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -45,10 +42,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_v2_only
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Double type is yet not supported in ROCm')
+  @testing_utils.run_v2_only
   def test_float64_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Double type is yet not supported in ROCm')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -142,10 +140,10 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
   @parameterized.parameters([True, False])
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input.')
   def test_with_masking_layer_LSTM(self, unroll):
-    if test.is_built_with_rocm():
-      self.skipTest(
-          'Skipping the test as ROCm MIOpen does not support padded input.')
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -181,6 +179,12 @@ class LSTMLayerTest(keras_parameterized.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+  def test_deep_copy_LSTM(self):
+    cell = keras.layers.LSTMCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
 
   def test_specify_initial_state_keras_tensor(self):
     num_states = 2
@@ -378,10 +382,10 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input.')
   def test_statefulness_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest(
-          'Skipping the test as ROCm MIOpen does not support padded input.')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4

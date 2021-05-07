@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -21,7 +21,7 @@ py_strict_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",

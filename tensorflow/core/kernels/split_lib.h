@@ -48,16 +48,6 @@ struct Split<Eigen::ThreadPoolDevice, T, NDims> {
                   const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes);
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, int NDims>
-struct Split<Eigen::SyclDevice, T> {
-  void operator()(const Eigen::SyclDevice& d,
-                  typename TTypes<T, NDims>::Tensor output,
-                  typename TTypes<T, NDims>::ConstTensor input,
-                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
-                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes);
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

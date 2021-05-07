@@ -55,12 +55,20 @@ void DumpToFileInDirOrStdout(const HloModule& module,
                              absl::string_view file_suffix,
                              absl::string_view contents);
 
+// Like DumpToFileInDir, except if debug_options doesn't have an xla_dump_to
+// directory specified, or if that directory is equal to "-", writes to stdout
+// instead.
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             absl::string_view file_prefix,
+                             absl::string_view file_suffix,
+                             absl::string_view contents);
+
 // Dumps the given execution options if dumping is enabled. Exactly
 // where and in what formats it's dumped is determined by the debug options.
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
                           const DebugOptions& debug_options);
 
-// Dumps the given HLO module if dumping is enabled for the module.  Exactly
+// Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
 //
 // If you pass an HloExecutionProfile, note that currently only DOT-based output
@@ -75,11 +83,11 @@ void DumpHloModuleIfEnabled(const HloModule& module,
                             absl::string_view name);
 
 // Dumps the given HLO module after running one HLO pass and before running
-// another, if that's enabled.
-void DumpHloModuleBetweenPassesIfEnabled(absl::string_view pipeline_name,
-                                         absl::string_view before_pass_name,
-                                         absl::string_view after_pass_name,
-                                         const HloModule& module);
+// another, if that's enabled. Returns the full file paths of all dumps of the
+// module, or an empty vector if nothing was dumped.
+std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
+    absl::string_view pipeline_name, absl::string_view before_pass_name,
+    absl::string_view after_pass_name, const HloModule& module);
 
 // Dumps the given HLO module during the given HLO pass, if that's enabled.
 //
@@ -99,6 +107,8 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
                               const HloSnapshot& snapshot);
 void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                               const DebugOptions& opts);
+
+void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 
 // Returns true if we should dump data for an HloModule.  This is useful if you
 // want to check if DumpToFileInDir{,OrStdout} will do anything before

@@ -27,11 +27,13 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -90,9 +92,8 @@ class ZeroFractionTest(test_lib.TestCase):
     value = array_ops.placeholder(dtype=dtypes.float32)
     sparsity = nn_impl.zero_fraction(value)
     with self.cached_session() as sess:
-      self.assertAllClose(
-          0.25,
-          sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
+      self.assertAllClose(0.25,
+                          sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
 
 
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
@@ -129,6 +130,18 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     eps = 1e-3
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
+  def testSoftmaxExtendType(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+
+    x_f32_tf = constant_op.constant(x_np)
+    x_bf16_tf = math_ops.cast(x_f32_tf, dtypes.bfloat16)
+    y_f32_tf = self.evaluate(nn_ops.softmax(x_f32_tf))
+    y_bf16_tf = self.evaluate(nn_ops.softmax(x_bf16_tf))
+    expected = math_ops.cast(y_f32_tf, dtypes.bfloat16)
+    tol = x_shape[1] * 1e-3
+    self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
   @test_util.run_deprecated_v1
@@ -235,8 +248,10 @@ class L2LossTest(test_lib.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testL2Loss(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(
-          [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
+      x = constant_op.constant([1.0, 0.0, 3.0, 2.0],
+                               shape=[2, 2],
+                               name="x",
+                               dtype=dtype)
       l2loss = nn_ops.l2_loss(x)
       value = self.evaluate(l2loss)
       self.assertAllClose(7.0, value)
@@ -275,7 +290,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       y_np = self._l2Normalize(x_np, dim)
       x_tf = constant_op.constant(x_np, name="x")
-      y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+      y_tf = nn_impl.l2_normalize(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_in_graph_and_eager_modes
@@ -286,7 +301,7 @@ class L2NormalizeTest(test_lib.TestCase):
     dim = [1, 2]
     y_np = self._l2Normalize(x_np, dim)
     x_tf = constant_op.constant(x_np, name="x")
-    y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+    y_tf = nn_impl.l2_normalize(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_deprecated_v1
@@ -297,11 +312,25 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       with self.cached_session():
         x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        y_tf = nn_impl.l2_normalize(x_tf, dim)
         err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (
+          np.random.random_sample(x_shape).astype(dtype) +
+          np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
 
 
 class DropoutTest(test_lib.TestCase):
@@ -514,6 +543,8 @@ class DropoutTest(test_lib.TestCase):
       _ = nn_ops.dropout(x, 0.5)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests _compute_sampled_logits and related functions, which call matmul")
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
@@ -533,7 +564,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       labels: A list of batch_size * num_true ints. The target classes.
       sampled: A list of indices in [0, num_classes).
       subtract_log_q: A bool corresponding to the parameter in
-          _compute_sampled_logits().
+        _compute_sampled_logits().
 
     Returns:
       weights: Embedding weights to use as test input. It is a numpy array
@@ -573,8 +604,8 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       sampled_logits -= np.log(sampled_exp[np.newaxis, :])
 
     exp_logits = np.concatenate([true_logits, sampled_logits], axis=1)
-    exp_labels = np.hstack((np.ones_like(true_logits) / num_true,
-                            np.zeros_like(sampled_logits)))
+    exp_labels = np.hstack(
+        (np.ones_like(true_logits) / num_true, np.zeros_like(sampled_logits)))
 
     return weights, biases, hidden_acts, sampled_vals, exp_logits, exp_labels
 
@@ -600,7 +631,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
           initializer=constant_op.constant(biases))
       with self.session(graph=g) as sess:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         return self.evaluate([list(sharded_weights), list(sharded_biases)])
 
   def testShapes(self):
@@ -853,8 +884,8 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     def _SoftmaxCrossEntropyWithLogits(logits, targets):
       # logits, targets: float arrays of the same shape.
       assert logits.shape == targets.shape
-      stable_exp_logits = np.exp(
-          logits - np.amax(logits, axis=1, keepdims=True))
+      stable_exp_logits = np.exp(logits -
+                                 np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
@@ -910,8 +941,8 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     def _SoftmaxCrossEntropyWithLogits(logits, targets):
       # logits, targets: float arrays of the same shape.
       assert logits.shape == targets.shape
-      stable_exp_logits = np.exp(
-          logits - np.amax(logits, axis=1, keepdims=True))
+      stable_exp_logits = np.exp(logits -
+                                 np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
@@ -978,12 +1009,15 @@ class ReluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.relu(constant_op.constant(x)))
     self.assertAllEqual(y, z)
 
+  @test_util.disable_xla(
+      "This test relies on undefined behavior that XLA does not replicate")
   @test_util.run_deprecated_v1
   def testNaNs(self):
     # Test that relu(nan) = nan for various sizes.
     for i in range(18):
       x = np.zeros(i) + np.nan
-      with self.cached_session():
+      # TODO(b/178335491): This is broken on GPU today.
+      with self.cached_session(use_gpu=False):
         z = nn_ops.relu(constant_op.constant(x)).eval()
         self.assertTrue(np.isnan(z).all())
 
@@ -994,12 +1028,12 @@ class LeakyReluTest(test_lib.TestCase):
     batch_size = 3
     height, width = 4, 4
     np.random.seed(1)  # Make it reproducible.
-    inputs = np.random.uniform(size=(batch_size, height, width, 3)).astype(
-        np.float32)
+    inputs = np.random.uniform(size=(batch_size, height, width,
+                                     3)).astype(np.float32)
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
-    self.assertEquals(inputs.shape, outputs.shape)
+    self.assertEqual(inputs.shape, outputs.shape)
 
     inputs, outputs = self.evaluate([inputs, outputs])
 
@@ -1023,12 +1057,34 @@ class LeakyReluTest(test_lib.TestCase):
   def testName(self):
     np_values = np.array([-2, -1, 0, 1, 2], dtype=np.float64)
     outputs_with_name_set = nn_ops.leaky_relu(
-        constant_op.constant(np_values),
-        name='test_relu_op')
-    self.assertEqual(outputs_with_name_set.name, 'test_relu_op:0')
+        constant_op.constant(np_values), name="test_relu_op")
+    self.assertEqual(outputs_with_name_set.name, "test_relu_op:0")
     outputs_without_name_set = nn_ops.leaky_relu(
         constant_op.constant(np_values))
-    self.assertEqual(outputs_without_name_set.name, 'LeakyRelu:0')
+    self.assertEqual(outputs_without_name_set.name, "LeakyRelu:0")
+
+
+class GeluTest(test_lib.TestCase):
+
+  def test(self):
+
+    def gelu(x, approximate=False):
+      if approximate:
+        return 0.5 * x * (1.0 + np.tanh(
+            np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3))))
+      else:
+        from scipy.stats import norm  # pylint: disable=g-import-not-at-top
+        return x * norm.cdf(x)
+
+    np.random.seed(1)  # Make it reproducible.
+    x = np.random.randn(3, 4).astype(np.float32)
+    y = gelu(x)
+    z = self.evaluate(nn_ops.gelu(x))
+    self.assertAllClose(y, z)
+
+    y = gelu(x, True)
+    z = self.evaluate(nn_ops.gelu(x, True))
+    self.assertAllClose(y, z)
 
 
 class SwishTest(test_lib.TestCase):
@@ -1179,6 +1235,34 @@ class DataFormatDimMapTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)
 
+  def testNDHWCtoNCDHW(self):
+    x_val = [1, -4, -3, -2]
+    y_val_expected = [2, 2, 3, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNDHWCtoDHWNC(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [3, 0, 1, 2, 4, 3, 0, 1, 2, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="DHWNC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testDNHWCtoWHDCN(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [4, 2, 1, 0, 3, 4, 2, 1, 0, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="WHDCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
   def testArbitraryASCII(self):
     x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
     y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
@@ -1187,6 +1271,46 @@ class DataFormatDimMapTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testInvalidLength(self):
+    x = [-4, -3, -2, -1, 0, 1, 2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Source format must be of length 4 or 5"):
+      op = nn_ops.data_format_dim_map(
+          x, src_format="12345678", dst_format="87654321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testDuplicateSrc(self):
+    x = [-4, -3, -2, -1, 0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_dim_map(x, src_format="1233", dst_format="4321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testDuplicateDst(self):
+    x = [-4, -3, -2, -1, 0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_dim_map(x, src_format="1234", dst_format="3321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testExtraSpecifiers(self):
+    x = [-4, -3, -2, -1, 0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_dim_map(x, src_format="1234", dst_format="5321")
+      with test_util.use_gpu():
+        self.evaluate(op)
 
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):
@@ -1199,6 +1323,32 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4, 3, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1206,6 +1356,14 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    x_val = [9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]
@@ -1255,6 +1413,60 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testInvalidLength(self):
+    x = [0, 1, 2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Source format must be of length 4 or 5"):
+      op = nn_ops.data_format_vec_permute(
+          x, src_format="12345678", dst_format="87654321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testDuplicateSrc(self):
+    x = [0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_vec_permute(
+          x, src_format="1233", dst_format="4321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testDuplicateDst(self):
+    x = [0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_vec_permute(
+          x, src_format="1234", dst_format="3321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testExtraSpecifiers(self):
+    x = [0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Destination and source format must determine a permutation"):
+      op = nn_ops.data_format_vec_permute(
+          x, src_format="1234", dst_format="5321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def test2DNoWH(self):
+    x = [[0, 1], [2, 3]]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Format specifier must contain H and W for 2D case"):
+      op = nn_ops.data_format_vec_permute(
+          x, src_format="1234", dst_format="4321")
+      with test_util.use_gpu():
+        self.evaluate(op)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class AvgPoolTest(test_lib.TestCase):
@@ -1284,13 +1496,12 @@ class AvgPoolTest(test_lib.TestCase):
 
   def test1DNumpyWithGolden(self):
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-    x = np.array([[[3], [6], [5]],
-                  [[1], [0], [1]]], dtype=dtype)
+    x = np.array([[[3], [6], [5]], [[1], [0], [1]]], dtype=dtype)
     ksize = 2
     strides = 1
     y = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
-    expected_y = np.array([[[4.5], [5.5], [5.0]],
-                           [[0.5], [0.5], [1.0]]], dtype=dtype)
+    expected_y = np.array([[[4.5], [5.5], [5.0]], [[0.5], [0.5], [1.0]]],
+                          dtype=dtype)
     self.assertAllEqual(self.evaluate(y), expected_y)
 
   def test2DTensor(self):
@@ -1317,8 +1528,6 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
-    if test_lib.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1329,8 +1538,6 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
-    if test_lib.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1369,13 +1576,11 @@ class MaxPoolTest(test_lib.TestCase):
 
   def test1DNumpyWithGolden(self):
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-    x = np.array([[[3], [6], [5]],
-                  [[1], [0], [1]]], dtype=dtype)
+    x = np.array([[[3], [6], [5]], [[1], [0], [1]]], dtype=dtype)
     ksize = 2
     strides = 1
     y = nn_ops.max_pool1d(x, ksize, strides, "SAME")
-    expected_y = np.array([[[6], [6], [5]],
-                           [[1], [1], [1]]], dtype=dtype)
+    expected_y = np.array([[[6], [6], [5]], [[1], [1], [1]]], dtype=dtype)
     self.assertAllEqual(self.evaluate(y), expected_y)
 
   def test2DTensor(self):
@@ -1402,8 +1607,6 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
-    if test_lib.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1414,8 +1617,6 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
-    if test_lib.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1442,11 +1643,8 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
-    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
-    k = np.ones([3, 6, 6, 5], dtype=dtype)
+    k = np.ones([3, 6, 6, 5], dtype=np.float32)
 
     @def_function.function
     def F(value):
@@ -1531,8 +1729,7 @@ class ConvTransposeTest(test_lib.TestCase):
 
   def testTensorsNoShape(self):
     with self.assertRaisesRegex(
-        ValueError,
-        "output_shape must be a tensor or sized collection."):
+        ValueError, "output_shape must be a tensor or sized collection."):
       nn_ops.conv_transpose(None, None, None, None)
 
 
@@ -1591,32 +1788,116 @@ class RaggedEmbeddingTest(test_lib.TestCase):
       nn.embedding_lookup_ragged(weights, ragged_ids)
 
   def testMaxNormForEmbeddings(self):
-    weights = constant_op.constant([[0, 0, 0, 0], [1, 1, 1, 1],
-                                    [2, 2, 2, 2], [3, 3, 3, 3]],
-                                   dtype=dtypes.float32)
+    weights = constant_op.constant(
+        [[0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3]],
+        dtype=dtypes.float32)
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
                                              ragged_rank=1)
 
     actual_embeddings = [
         nn.embedding_lookup(weights, ragged_ids, max_norm=max_norm)
-        for max_norm in [1, 2, 5]]
+        for max_norm in [1, 2, 5]
+    ]
 
     expected_embeddings = (
         # max_norm = 1
-        [[[.5, .5, .5, .5], [.5, .5, .5, .5], [.5, .5, .5, .5]],
-         [[0, 0, 0, 0]], [[.5, .5, .5, .5], [.5, .5, .5, .5]]],
+        [[[.5, .5, .5, .5], [.5, .5, .5, .5], [.5, .5, .5, .5]], [[0, 0, 0, 0]],
+         [[.5, .5, .5, .5], [.5, .5, .5, .5]]],
         # max_norm = 2
-        [[[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
-         [[0, 0, 0, 0]], [[1, 1, 1, 1], [1, 1, 1, 1]]],
+        [[[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], [[0, 0, 0, 0]],
+         [[1, 1, 1, 1], [1, 1, 1, 1]]],
         # max_norm = 5
-        [[[1, 1, 1, 1], [2, 2, 2, 2], [2.5, 2.5, 2.5, 2.5]],
-         [[0, 0, 0, 0]], [[1, 1, 1, 1], [2, 2, 2, 2]]],
-        )
+        [[[1, 1, 1, 1], [2, 2, 2, 2], [2.5, 2.5, 2.5, 2.5]], [[0, 0, 0, 0]],
+         [[1, 1, 1, 1], [2, 2, 2, 2]]],
+    )
 
     for expected, actual in zip(expected_embeddings, actual_embeddings):
       self.assertAllClose(
           ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
           actual)
+
+
+class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_increasing_and_decreasing(self):
+    x = constant_op.constant([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=False)
+    self.assertAllClose(y, x)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True)
+    self.assertAllClose(
+        y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=True)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    self.assertAllClose(y, -x)
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=False)
+    self.assertAllClose(
+        -y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_different_axis(self):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True, axis=0)
+    self.assertAllClose(
+        y,
+        [
+            [2.5, 6, 4.5, 8, 6.5],  # Either identity or average.
+            [2.5, 1, 4.5, 3, 6.5]
+        ])
+    self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
+  @test_util.run_v2_only
+  def testGradientV2(self, dtype=np.float64, batch_size=30, dimensions=50):
+
+    @def_function.function
+    def ComputeIsotonicFn(x):
+      y, _ = nn_ops.isotonic_regression(x)  # No gradient wrt segments.
+      return y
+
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+        ComputeIsotonicFn, [x_init], delta=1e-5)
+    self.assertAllClose(grad_theoretical, grad_numerical)
+
+  @test_util.run_v1_only("compute_gradient_error is v1 only")
+  def testGradientV1(self, dtype=np.float64, batch_size=30, dimensions=50):
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    with self.cached_session():
+      x = array_ops.placeholder(dtype, (batch_size, dimensions))
+      y, _ = nn_ops.isotonic_regression(x)  # Segments have no gradient.
+      max_error = gradient_checker.compute_gradient_error(
+          x, (batch_size, dimensions), y, (batch_size, dimensions), x_init)
+    self.assertAllClose(max_error, 0.)
+
+  @parameterized.parameters([[dtypes.half, dtypes.half],
+                             [dtypes.bfloat16, dtypes.bfloat16],
+                             [dtypes.float32, dtypes.float32],
+                             [dtypes.float64, dtypes.float64],
+                             [dtypes.int32, dtypes.float64],
+                             [dtypes.int16, dtypes.float32]])
+  def testTypePromotion(self, dtype_in, expected_dtype_out):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]], dtype=dtype_in)
+    y, segments = nn_ops.isotonic_regression(x)
+    self.assertEqual(y.dtype, expected_dtype_out)
+    self.assertEqual(segments.dtype, dtypes.int32)
 
 
 if __name__ == "__main__":

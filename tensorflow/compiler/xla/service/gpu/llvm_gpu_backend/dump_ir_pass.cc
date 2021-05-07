@@ -48,7 +48,7 @@ class DumpIrPass : public llvm::FunctionPass {
 
   bool doInitialization(llvm::Module &M) override {
     out_.reset(new llvm::raw_fd_ostream(llvm::StringRef(output_filename_), ec_,
-                                        llvm::sys::fs::F_None));
+                                        llvm::sys::fs::OF_None));
     if (ec_) {
       LOG(FATAL) << "Unable to open " << output_filename_
                  << " to dump LLVM IR: " << ec_.message();

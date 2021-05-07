@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Main abstraction controlling the tflite interpreter.
-// See context.h for the API for defining operations (TfLiteRegistration).
+/// \file
+/// Memory management for TF Lite.
 #ifndef TENSORFLOW_LITE_ALLOCATION_H_
 #define TENSORFLOW_LITE_ALLOCATION_H_
+
+#include <stddef.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
-#include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -57,9 +56,18 @@ class Allocation {
   const Type type_;
 };
 
+// Note that not all platforms support MMAP-based allocation.
+// Use `IsSupported()` to check.
 class MMAPAllocation : public Allocation {
  public:
+  // Loads and maps the provided file to a memory region.
   MMAPAllocation(const char* filename, ErrorReporter* error_reporter);
+
+  // Maps the provided file descriptor to a memory region.
+  // Note: The provided file descriptor will be dup'ed for usage; the caller
+  // retains ownership of the provided descriptor and should close accordingly.
+  MMAPAllocation(int fd, ErrorReporter* error_reporter);
+
   virtual ~MMAPAllocation();
   const void* base() const override;
   size_t bytes() const override;
@@ -74,10 +82,15 @@ class MMAPAllocation : public Allocation {
   int mmap_fd_ = -1;  // mmap file descriptor
   const void* mmapped_buffer_;
   size_t buffer_size_bytes_ = 0;
+
+ private:
+  // Assumes ownership of the provided `owned_fd` instance.
+  MMAPAllocation(ErrorReporter* error_reporter, int owned_fd);
 };
 
 class FileCopyAllocation : public Allocation {
  public:
+  // Loads the provided file into a heap memory region.
   FileCopyAllocation(const char* filename, ErrorReporter* error_reporter);
   virtual ~FileCopyAllocation();
   const void* base() const override;
@@ -85,16 +98,15 @@ class FileCopyAllocation : public Allocation {
   bool valid() const override;
 
  private:
-  // Data required for mmap.
   std::unique_ptr<const char[]> copied_buffer_;
   size_t buffer_size_bytes_ = 0;
 };
 
 class MemoryAllocation : public Allocation {
  public:
-  // Allocates memory with the pointer and the number of bytes of the memory.
-  // The pointer has to remain alive and unchanged until the destructor is
-  // called.
+  // Provides a (read-only) view of the provided buffer region as an allocation.
+  // Note: The caller retains ownership of `ptr`, and must ensure it remains
+  // valid for the lifetime of the class instance.
   MemoryAllocation(const void* ptr, size_t num_bytes,
                    ErrorReporter* error_reporter);
   virtual ~MemoryAllocation();

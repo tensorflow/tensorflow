@@ -147,12 +147,10 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 
   hm01b0_power_up(&s_HM01B0Cfg);
 
-  // TODO(njeff): check the delay time to just fit the spec.
   am_util_delay_ms(1);
 
   hm01b0_mclk_enable(&s_HM01B0Cfg);
 
-  // TODO(njeff): check the delay time to just fit the spec.
   am_util_delay_ms(1);
 
   hm01b0_init_if(&s_HM01B0Cfg);

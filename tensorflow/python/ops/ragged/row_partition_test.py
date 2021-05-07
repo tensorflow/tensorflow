@@ -77,24 +77,23 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRaggedTensorConstructionErrors(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'RaggedTensor constructor is private'):
+    with self.assertRaisesRegex(ValueError,
+                                'RaggedTensor constructor is private'):
       RowPartition(row_splits=row_splits)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'Row-partitioning argument must be a Tensor'):
+    with self.assertRaisesRegex(TypeError,
+                                'Row-partitioning argument must be a Tensor'):
       RowPartition(
           row_splits=[0, 2, 2, 5, 6, 7],
           internal=row_partition._row_partition_factory_key)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Shape \(6, 1\) must have rank 1'):
+    with self.assertRaisesRegex(ValueError, r'Shape \(6, 1\) must have rank 1'):
       RowPartition(
           row_splits=array_ops.expand_dims(row_splits, 1),
           internal=row_partition._row_partition_factory_key)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'Cached value must be a Tensor or None.'):
+    with self.assertRaisesRegex(TypeError,
+                                'Cached value must be a Tensor or None.'):
       RowPartition(
           row_splits=row_splits,
           row_lengths=[2, 3, 4],
@@ -202,7 +201,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testFromRowSplitsWithEmptySplits(self):
     err_msg = 'row_splits tensor may not be empty'
-    with self.assertRaisesRegexp(ValueError, err_msg):
+    with self.assertRaisesRegex(ValueError, err_msg):
       RowPartition.from_row_splits([])
 
   def testFromRowStarts(self):
@@ -280,27 +279,26 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     nrows = constant_op.constant(5, dtypes.int64)
 
-    with self.assertRaisesRegexp(ValueError, r'Expected nrows >= 0; got -2'):
+    with self.assertRaisesRegex(ValueError, r'Expected nrows >= 0; got -2'):
       RowPartition.from_value_rowids(
           value_rowids=array_ops.placeholder_with_default(value_rowids, None),
           nrows=-2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Expected nrows >= value_rowids\[-1\] \+ 1; got nrows=2, '
         r'value_rowids\[-1\]=4'):
       RowPartition.from_value_rowids(value_rowids=value_rowids, nrows=2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Expected nrows >= value_rowids\[-1\] \+ 1; got nrows=4, '
         r'value_rowids\[-1\]=4'):
       RowPartition.from_value_rowids(value_rowids=value_rowids, nrows=4)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Shape \(7, 1\) must have rank 1'):
+    with self.assertRaisesRegex(ValueError, r'Shape \(7, 1\) must have rank 1'):
       RowPartition.from_value_rowids(
           value_rowids=array_ops.expand_dims(value_rowids, 1), nrows=nrows)
 
-    with self.assertRaisesRegexp(ValueError, r'Shape \(1,\) must have rank 0'):
+    with self.assertRaisesRegex(ValueError, r'Shape \(1,\) must have rank 0'):
       RowPartition.from_value_rowids(
           value_rowids=value_rowids, nrows=array_ops.expand_dims(nrows, 0))
 
@@ -626,9 +624,9 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Errors that are caught by static shape checks.
     x = x()
     y = y()
-    with self.assertRaisesRegexp(ValueError, message):
+    with self.assertRaisesRegex(ValueError, message):
       x.merge_precomputed_encodings(y).row_splits()
-    with self.assertRaisesRegexp(ValueError, message):
+    with self.assertRaisesRegex(ValueError, message):
       y.merge_precomputed_encodings(x).row_splits()
 
   @parameterized.named_parameters([
@@ -662,9 +660,9 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Errors that are caught by runtime value checks.
     x = x()
     y = y()
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, message):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, message):
       self.evaluate(x.merge_precomputed_encodings(y).row_splits())
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, message):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, message):
       self.evaluate(y.merge_precomputed_encodings(x).row_splits())
 
 
@@ -713,7 +711,7 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
                             uniform_row_length=None,
                             dtype=dtypes.int64,
                             error=None):
-    with self.assertRaisesRegexp(ValueError, error):
+    with self.assertRaisesRegex(ValueError, error):
       RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
 
   def testValueType(self):
@@ -841,7 +839,7 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
       (RowPartitionSpec(), RowPartitionSpec(dtype=dtypes.int32)),
   ])
   def testMostSpecificCompatibleTypeError(self, spec1, spec2):
-    with self.assertRaisesRegexp(ValueError, 'not compatible'):
+    with self.assertRaisesRegex(ValueError, 'not compatible'):
       spec1.most_specific_compatible_type(spec2)
 
   def testFromValue(self):

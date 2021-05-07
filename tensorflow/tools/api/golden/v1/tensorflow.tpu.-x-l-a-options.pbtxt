@@ -1,0 +1,23 @@
+path: "tensorflow.tpu.XLAOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "enable_xla_dynamic_padder"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "use_spmd_for_xla_partitioning"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

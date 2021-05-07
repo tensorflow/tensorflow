@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import os
+import sys
 import tempfile
 import zipfile
 
@@ -43,7 +45,41 @@ from tensorflow.python.util import tf_inspect
 
 
 def line_number_above():
-  return tf_inspect.stack()[1][2] - 1
+  """Get lineno of the AST node immediately above this function's call site.
+
+  It is assumed that there is no empty line(s) between the call site and the
+  preceding AST node.
+
+  Returns:
+    The lineno of the preceding AST node, at the same level of the AST.
+    If the preceding AST spans multiple lines:
+      - In Python 3.8+, the lineno of the first line is returned.
+      - In older Python versions, the lineno of the last line is returned.
+  """
+  # https://bugs.python.org/issue12458: In Python 3.8, traceback started
+  # to return the lineno of the first line of a multi-line continuation block,
+  # instead of that of the last line. Therefore, in Python 3.8+, we use `ast` to
+  # get the lineno of the first line.
+  call_site_lineno = tf_inspect.stack()[1][2]
+  if sys.version_info < (3, 8):
+    return call_site_lineno - 1
+  else:
+    with open(__file__, "rb") as f:
+      source_text = f.read().decode("utf-8")
+    source_tree = ast.parse(source_text)
+    prev_node = _find_preceding_ast_node(source_tree, call_site_lineno)
+    return prev_node.lineno
+
+
+def _find_preceding_ast_node(node, lineno):
+  """Find the ast node immediately before and not including lineno."""
+  for i, child_node in enumerate(node.body):
+    if child_node.lineno == lineno:
+      return node.body[i - 1]
+    if hasattr(child_node, "body"):
+      found_node = _find_preceding_ast_node(child_node, lineno)
+      if found_node:
+        return found_node
 
 
 class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
@@ -70,7 +106,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Tensor.op is not available in TF 2.x")
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
@@ -90,10 +126,16 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
         source_utils.guess_is_tensorflow_py_library(os.path.normpath(
             "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
 
-  def testNonPythonFileRaisesException(self):
-    with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
-      source_utils.guess_is_tensorflow_py_library(
-          os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
+  def testReturnsFalseForNonPythonFile(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(
+            os.path.join(os.path.dirname(self.curr_file_path), "foo.cc")))
+
+  def testReturnsFalseForStdin(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library("<stdin>"))
+
+  def testReturnsFalseForEmptyFileName(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library(""))
 
 
 class SourceHelperTest(test_util.TensorFlowTestCase):
@@ -245,8 +287,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testLoadNonexistentNonParPathFailsWithIOError(self):
     bad_path = os.path.join(self.get_temp_dir(), "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(bad_path)
 
   def testLoadingPythonSourceFileInParFileSucceeds(self):
@@ -273,12 +315,12 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
 
     source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(source_path)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def createAndRunGraphWithWhileLoop(self):
@@ -364,7 +406,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def testGenerateSourceListWithNodeNameFilter(self):
     source_list = source_utils.list_source_files_against_dump(
-        self.dump, node_name_regex_whitelist=r"while/Add.*")
+        self.dump, node_name_regex_allowlist=r"while/Add.*")
 
     # Assert that the file paths are sorted.
     file_paths = [item[0] for item in source_list]
@@ -391,8 +433,8 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     curr_file_basename = os.path.basename(self.curr_file_path)
     source_list = source_utils.list_source_files_against_dump(
         self.dump,
-        path_regex_whitelist=(
-            ".*" + curr_file_basename.replace(".", "\\.") + "$"))
+        path_regex_allowlist=(".*" + curr_file_basename.replace(".", "\\.") +
+                              "$"))
 
     self.assertEqual(1, len(source_list))
     (file_path, is_tf_py_library, num_nodes, num_tensors, num_dumps,

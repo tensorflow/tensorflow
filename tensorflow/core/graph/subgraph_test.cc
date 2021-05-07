@@ -18,12 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -342,14 +342,14 @@ TEST_F(SubgraphTest, Errors) {
 REGISTER_OP("In").Output("o: float");
 REGISTER_OP("Op").Input("i: float").Output("o: float");
 
-static void BM_SubgraphHelper(int iters, int num_nodes,
-                              bool use_function_convention) {
+void BM_SubgraphHelper(::testing::benchmark::State& state,
+                       bool use_function_convention) {
+  const int num_nodes = state.range(0);
   DeviceAttributes device_info;
   device_info.set_name("/job:a/replica:0/task:0/cpu:0");
   device_info.set_device_type(DeviceType(DEVICE_CPU).type());
   device_info.set_incarnation(0);
 
-  testing::StopTiming();
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -371,8 +371,8 @@ static void BM_SubgraphHelper(int iters, int num_nodes,
   }
   std::vector<string> fetch;
   std::vector<string> targets = {strings::StrCat("N", num_nodes - 1)};
-  testing::StartTiming();
-  while (--iters > 0) {
+
+  for (auto s : state) {
     Graph* subgraph = new Graph(OpRegistry::Global());
     CopyGraph(g, subgraph);
     subgraph::RewriteGraphMetadata metadata;
@@ -383,11 +383,11 @@ static void BM_SubgraphHelper(int iters, int num_nodes,
   }
 }
 
-static void BM_Subgraph(int iters, int num_nodes) {
-  BM_SubgraphHelper(iters, num_nodes, false /* use_function_convention */);
+void BM_Subgraph(::testing::benchmark::State& state) {
+  BM_SubgraphHelper(state, false /* use_function_convention */);
 }
-static void BM_SubgraphFunctionConvention(int iters, int num_nodes) {
-  BM_SubgraphHelper(iters, num_nodes, true /* use_function_convention */);
+void BM_SubgraphFunctionConvention(::testing::benchmark::State& state) {
+  BM_SubgraphHelper(state, true /* use_function_convention */);
 }
 BENCHMARK(BM_Subgraph)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_SubgraphFunctionConvention)

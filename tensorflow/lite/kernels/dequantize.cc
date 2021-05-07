@@ -14,15 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/dequantize.h"
 
-#include <string.h>
+#include <stddef.h>
 
-#include <cstdint>
-#include <vector>
-
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -63,6 +59,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               op_context.input->type == kTfLiteInt8 ||
                               op_context.input->type == kTfLiteInt16 ||
                               op_context.input->type == kTfLiteFloat16);
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+  }
 
   op_context.output->type = kTfLiteFloat32;
   // If the input tensor is constant, we can persist the dequantized value in

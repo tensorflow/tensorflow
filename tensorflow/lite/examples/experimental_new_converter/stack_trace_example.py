@@ -22,16 +22,7 @@ import sys
 
 from absl import app
 
-import tensorflow as tf # TF2
-# Try to enable TensorFlow V2 behavior.
-try:
-  from tensorflow import enable_v2_behavior  # pylint: disable=g-import-not-at-top
-  enable_v2_behavior()
-except ImportError:
-  # `enable_v2_behavior` is not available in pip build.
-  # Ignore if the symbole isn't found. This should work in
-  # TensorFlow 2 nightly pip.
-  pass
+import tensorflow as tf
 
 
 def suppress_exception(f):
@@ -63,7 +54,6 @@ def test_from_saved_model():
 
   # load the model and convert
   converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
-  converter.experimental_new_converter = True
   converter.convert()
 
 
@@ -78,7 +68,6 @@ def test_from_concrete_function():
 
   func = model.get_concrete_function()
   converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
-  converter.experimental_new_converter = True
   converter.convert()
 
 

@@ -49,19 +49,48 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
+  struct ConstantInfo {
+    std::string symbol_name;
+    std::vector<uint8> content;
+    int allocation_index = -1;
+  };
+
+  struct OutputInfo {
+    // Corresponding allocation index.
+    int allocation_index;
+
+    // Output is passed-through from a parameter.
+    bool passthrough = false;
+
+    // Whether this output is hinted to alias a parameter (BufferAllocation*
+    // would indicate the aliased parameter), and what kind of alias it is.
+    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
+  };
+
+  struct Params {
+    std::string asm_text;
+    std::vector<uint8> binary;
+    GpuVersion gpu_version;
+    std::unique_ptr<const ThunkSchedule> thunk_schedule;
+    std::vector<ConstantInfo> constants;
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
+    std::string module_name;
+    xla::Shape output_shape;
+    std::vector<BufferAllocation> allocations;
+    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
+    std::unique_ptr<HloModule> debug_module = nullptr;
+    size_t entry_computation_profile_index = 0;
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
+  };
+
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
-  GpuExecutable(const string& text, const std::vector<uint8>& binary,
-                GpuVersion gpu_version,
-                std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::shared_ptr<HloModule> hlo_module,
-                std::shared_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  explicit GpuExecutable(Params params);
   ~GpuExecutable() override;
 
-  int64 SizeOfGeneratedCodeInBytes() override;
+  int64 SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -87,8 +116,19 @@ class GpuExecutable : public Executable {
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
-    return assignment_;
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile);
+
+  using VariantArguments = absl::variant<absl::Span<const ShapedBuffer* const>,
+                                         absl::Span<ExecutionInput>>;
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
+      const ServiceExecutableRunOptions* run_options,
+      VariantArguments arguments, HloExecutionProfile* hlo_execution_profile);
+
+  absl::Span<const BufferAllocation> GetAllocations() const {
+    return allocations_;
   }
 
  private:
@@ -102,10 +142,6 @@ class GpuExecutable : public Executable {
                        bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
-  // Returns the value set of the root instruction of the entry
-  // computation. Uses dataflow analysis from buffer assignment.
-  const InstructionValueSet& GetRootValueSet() const;
-
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
@@ -115,18 +151,28 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
-  // Computes annotations for each thunk and store them in thunk_annotations_.
-  void ComputeThunkAnnotations();
-
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
-  // The LLVM IR, in string format, of the unoptimized module generated for this
-  // GpuExecutable. We save a string instead of an llvm::Module* because leaving
-  // llvm::Module* in a singleton can cause the heap checker to emit false
-  // positives.
+  StatusOr<BufferAllocations> GenerateBufferAllocations(
+      VariantArguments arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      se::DeviceMemoryAllocator* const memory_allocator,
+      se::StreamExecutor* executor);
+
+  StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+      VariantArguments arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      const BufferAllocation& allocation,
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+      int64 arg_idx);
+
+  // The LLVM IR, in string format, of the unoptimized module generated for
+  // this GpuExecutable. We save a string instead of an llvm::Module* because
+  // leaving llvm::Module* in a singleton can cause the heap checker to emit
+  // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
@@ -147,13 +193,17 @@ class GpuExecutable : public Executable {
   // IrEmitter.
   const std::unique_ptr<const ThunkSchedule> thunk_schedule_;
 
+  std::string module_name_;
+
+  xla::Shape output_shape_;
+
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::shared_ptr<const BufferAssignment> assignment_;
+  const std::vector<BufferAllocation> allocations_;
 
-  // Maps a thunk to a string describing the thunk.  This is useful when
-  // constructing ScopeAnnotation objects.
-  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
+  std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+
+  size_t entry_computation_profile_index_ = -1;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
@@ -163,8 +213,14 @@ class GpuExecutable : public Executable {
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
       module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
+  std::vector<ConstantInfo> constants_;
+  const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };
+
+StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
+GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment);
 
 }  // namespace gpu
 }  // namespace xla

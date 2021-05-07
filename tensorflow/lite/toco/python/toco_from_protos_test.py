@@ -85,7 +85,7 @@ class TocoFromProtosTest(googletest.TestCase):
       val = img + tf.constant([1., 2., 3.]) + tf.constant([1., 4., 4.])
       out = tf.identity(val, name="out")
       out2 = tf.sin(val, name="out2")
-      # This is a valid mdoel
+      # This is a valid model
       self._run(sess, img, out, True)
       # This uses an invalid function.
       # TODO(aselle): Check to make sure a warning is included.

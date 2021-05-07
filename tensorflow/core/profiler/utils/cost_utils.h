@@ -15,12 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_COST_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_COST_UTILS_H_
 
-#include <set>
+#include <string>
 
-#include "absl/strings/string_view.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -46,7 +47,8 @@ class TfOpRoofLineCostEstimator
   OpRoofLineStats Predict(const XEventVisitor& event);
 
  private:
-  std::set<string> unsupported_ops_;  // summary for unsupported ops.
+  absl::flat_hash_set<std::string>
+      unsupported_ops_;  // summary for unsupported ops.
 
   TF_DISALLOW_COPY_AND_ASSIGN(TfOpRoofLineCostEstimator);
 };

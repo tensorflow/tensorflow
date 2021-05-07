@@ -14,18 +14,19 @@
 # ==============================================================================
 """Tests for convolutional layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -37,28 +38,65 @@ class Conv1DTest(keras_parameterized.TestCase):
     stack_size = 3
     length = 7
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv1D,
           kwargs=kwargs,
           input_shape=(num_samples, length, stack_size),
           expected_output_shape=expected_output_shape)
 
+  def _run_test_extra_batch_dim(self, kwargs, expected_output_shape):
+    batch_shape = (2, 11)
+    stack_size = 3
+    length = 7
+
+    with self.cached_session():
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+
+      testing_utils.layer_test(
+          keras.layers.Conv1D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (length, stack_size),
+          expected_output_shape=expected_output_shape)
+
   @parameterized.named_parameters(
-      ('padding_valid', {'padding': 'valid'}, (None, 5, 2)),
-      ('padding_same', {'padding': 'same'}, (None, 7, 2)),
-      ('padding_same_dilation_2', {'padding': 'same', 'dilation_rate': 2},
-       (None, 7, 2)),
-      ('padding_same_dilation_3', {'padding': 'same', 'dilation_rate': 3},
-       (None, 7, 2)),
-      ('padding_causal', {'padding': 'causal'}, (None, 7, 2)),
-      ('strides', {'strides': 2}, (None, 3, 2)),
-      ('dilation_rate', {'dilation_rate': 2}, (None, 3, 2)),
+      ('padding_valid', {
+          'padding': 'valid'
+      }, (None, 5, 2)),
+      ('padding_same', {
+          'padding': 'same'
+      }, (None, 7, 2)),
+      ('padding_same_dilation_2', {
+          'padding': 'same',
+          'dilation_rate': 2
+      }, (None, 7, 2)),
+      ('padding_same_dilation_3', {
+          'padding': 'same',
+          'dilation_rate': 3
+      }, (None, 7, 2)),
+      ('padding_causal', {
+          'padding': 'causal'
+      }, (None, 7, 2)),
+      ('strides', {
+          'strides': 2
+      }, (None, 3, 2)),
+      ('dilation_rate', {
+          'dilation_rate': 2
+      }, (None, 3, 2)),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {
+          'groups': 3,
+          'filters': 6
+      }, (None, 5, 6), True),
   )
-  def test_conv1d(self, kwargs, expected_output_shape):
-    kwargs['filters'] = 2
+  def test_conv1d(self, kwargs, expected_output_shape, requires_gpu=False):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = 3
-    self._run_test(kwargs, expected_output_shape)
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape)
 
   def test_conv1d_regularizers(self):
     kwargs = {
@@ -70,7 +108,7 @@ class Conv1DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -89,45 +127,136 @@ class Conv1DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv1d_recreate_conv(self):
+    with self.cached_session():
+      layer = keras.layers.Conv1D(filters=1,
+                                  kernel_size=3,
+                                  strides=1,
+                                  dilation_rate=2,
+                                  padding='causal')
+      inpt1 = np.random.normal(size=[1, 2, 1])
+      inpt2 = np.random.normal(size=[1, 1, 1])
+      outp1_shape = layer(inpt1).shape
+      _ = layer(inpt2).shape
+      self.assertEqual(outp1_shape, layer(inpt1).shape)
+
+  def test_conv1d_recreate_conv_unknown_dims(self):
+    with self.cached_session():
+      layer = keras.layers.Conv1D(filters=1,
+                                  kernel_size=3,
+                                  strides=1,
+                                  dilation_rate=2,
+                                  padding='causal')
+
+      inpt1 = np.random.normal(size=[1, 9, 1]).astype(np.float32)
+      inpt2 = np.random.normal(size=[1, 2, 1]).astype(np.float32)
+      outp1_shape = layer(inpt1).shape
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec([1, None, 1])])
+      def fn(inpt):
+        return layer(inpt)
+
+      fn(inpt2)
+      self.assertEqual(outp1_shape, layer(inpt1).shape)
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv2DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, expected_output_shape):
+  def _run_test(self, kwargs, expected_output_shape, spatial_shape=(7, 6)):
     num_samples = 2
     stack_size = 3
-    num_row = 7
-    num_col = 6
+    num_row, num_col = spatial_shape
+    input_data = None
+    # Generate valid input data.
+    if None in spatial_shape:
+      input_data_shape = (num_samples, num_row or 7, num_col or 6, stack_size)
+      input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv2D,
           kwargs=kwargs,
           input_shape=(num_samples, num_row, num_col, stack_size),
+          input_data=input_data,
+          expected_output_shape=expected_output_shape)
+
+  def _run_test_extra_batch_dim(self,
+                                kwargs,
+                                expected_output_shape,
+                                spatial_shape=(7, 6)):
+    batch_shape = (2, 11)
+    stack_size = 3
+    num_row, num_col = spatial_shape
+    input_data = None
+    # Generate valid input data.
+    if None in spatial_shape:
+      input_data_shape = batch_shape + (num_row or 7, num_col or 6, stack_size)
+      input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
+
+    with self.cached_session():
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+      testing_utils.layer_test(
+          keras.layers.Conv2D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (num_row, num_col, stack_size),
+          input_data=input_data,
           expected_output_shape=expected_output_shape)
 
   @parameterized.named_parameters(
-      ('padding_valid', {'padding': 'valid'}, (None, 5, 4, 2)),
-      ('padding_same', {'padding': 'same'}, (None, 7, 6, 2)),
-      ('padding_same_dilation_2', {'padding': 'same', 'dilation_rate': 2},
-       (None, 7, 6, 2)),
-      ('strides', {'strides': (2, 2)}, (None, 3, 2, 2)),
-      ('dilation_rate', {'dilation_rate': (2, 2)}, (None, 3, 2, 2)),
+      ('padding_valid', {
+          'padding': 'valid'
+      }, (None, 5, 4, 2)),
+      ('padding_same', {
+          'padding': 'same'
+      }, (None, 7, 6, 2)),
+      ('padding_same_dilation_2', {
+          'padding': 'same',
+          'dilation_rate': 2
+      }, (None, 7, 6, 2)),
+      ('strides', {
+          'strides': (2, 2)
+      }, (None, 3, 2, 2)),
+      ('dilation_rate', {
+          'dilation_rate': (2, 2)
+      }, (None, 3, 2, 2)),
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
-      ('data_format', {'data_format': 'channels_first'}),
+      ('data_format', {
+          'data_format': 'channels_first'
+      }, None, True),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {
+          'groups': 3,
+          'filters': 6
+      }, (None, 5, 4, 6), True),
+      ('dilation_2_unknown_width', {
+          'dilation_rate': (2, 2)
+      }, (None, None, 2, 2), False, (None, 6)),
+      ('dilation_2_unknown_height', {
+          'dilation_rate': (2, 2)
+      }, (None, 3, None, 2), False, (7, None)),
   )
-  def test_conv2d(self, kwargs, expected_output_shape=None):
-    kwargs['filters'] = 2
+  def test_conv2d(self,
+                  kwargs,
+                  expected_output_shape=None,
+                  requires_gpu=False,
+                  spatial_shape=(7, 6)):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3)
-    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, expected_output_shape)
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape, spatial_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape,
+                                     spatial_shape)
 
   def test_conv2d_regularizers(self):
     kwargs = {
@@ -139,7 +268,7 @@ class Conv2DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -158,7 +287,7 @@ class Conv2DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -173,34 +302,76 @@ class Conv2DTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes
 class Conv3DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, expected_output_shape):
+  def _run_test(self, kwargs, expected_output_shape, validate_training=True):
     num_samples = 2
     stack_size = 3
     num_row = 7
     num_col = 6
     depth = 5
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv3D,
           kwargs=kwargs,
           input_shape=(num_samples, depth, num_row, num_col, stack_size),
-          expected_output_shape=expected_output_shape)
+          expected_output_shape=expected_output_shape,
+          validate_training=validate_training)
+
+  def _run_test_extra_batch_dim(self,
+                                kwargs,
+                                expected_output_shape,
+                                validate_training=True):
+    batch_shape = (2, 11)
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+    depth = 5
+
+    with self.cached_session():
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+
+      testing_utils.layer_test(
+          keras.layers.Conv3D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (depth, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape,
+          validate_training=validate_training)
 
   @parameterized.named_parameters(
-      ('padding_valid', {'padding': 'valid'}, (None, 3, 5, 4, 2)),
-      ('padding_same', {'padding': 'same'}, (None, 5, 7, 6, 2)),
-      ('strides', {'strides': (2, 2, 2)}, (None, 2, 3, 2, 2)),
-      ('dilation_rate', {'dilation_rate': (2, 2, 2)}, (None, 1, 3, 2, 2)),
+      ('padding_valid', {
+          'padding': 'valid'
+      }, (None, 3, 5, 4, 2)),
+      ('padding_same', {
+          'padding': 'same'
+      }, (None, 5, 7, 6, 2)),
+      ('strides', {
+          'strides': (2, 2, 2)
+      }, (None, 2, 3, 2, 2)),
+      ('dilation_rate', {
+          'dilation_rate': (2, 2, 2)
+      }, (None, 1, 3, 2, 2)),
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
-      ('data_format', {'data_format': 'channels_first'}),
+      ('data_format', {
+          'data_format': 'channels_first'
+      }, None, True),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {
+          'groups': 3,
+          'filters': 6
+      }, (None, 3, 5, 4, 6), True),
   )
-  def test_conv3d(self, kwargs, expected_output_shape=None):
-    kwargs['filters'] = 2
+  def test_conv3d(self, kwargs, expected_output_shape=None, requires_gpu=False):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3, 3)
-    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, expected_output_shape)
+    # train_on_batch currently fails with XLA enabled on GPUs
+    test_training = 'groups' not in kwargs or not test_util.is_xla_enabled()
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape, test_training)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape,
+                                     test_training)
 
   def test_conv3d_regularizers(self):
     kwargs = {
@@ -212,7 +383,7 @@ class Conv3DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -232,7 +403,7 @@ class Conv3DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -240,7 +411,7 @@ class Conv3DTest(keras_parameterized.TestCase):
 
   def test_conv3d_dynamic_shape(self):
     input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Won't raise error here.
       testing_utils.layer_test(
           keras.layers.Conv3D,
@@ -263,6 +434,124 @@ class Conv3DTest(keras_parameterized.TestCase):
             input_data=input_data)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class GroupedConvTest(keras_parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('Conv1D', keras.layers.Conv1D),
+      ('Conv2D', keras.layers.Conv2D),
+      ('Conv3D', keras.layers.Conv3D),
+  )
+  def test_group_conv_incorrect_use(self, layer):
+    with self.assertRaisesRegex(ValueError, 'The number of filters'):
+      layer(16, 3, groups=3)
+    with self.assertRaisesRegex(ValueError, 'The number of input channels'):
+      layer(16, 3, groups=4).build((32, 12, 12, 3))
+
+  @parameterized.named_parameters(
+      ('Conv1D', keras.layers.Conv1D, (32, 12, 32)),
+      ('Conv2D', keras.layers.Conv2D, (32, 12, 12, 32)),
+      ('Conv3D', keras.layers.Conv3D, (32, 12, 12, 12, 32)),
+  )
+  def test_group_conv(self, layer_cls, input_shape):
+    if test.is_gpu_available(cuda_only=True):
+      with testing_utils.use_gpu():
+        inputs = random_ops.random_uniform(shape=input_shape)
+
+        layer = layer_cls(16, 3, groups=4, use_bias=False)
+        layer.build(input_shape)
+
+        input_slices = array_ops.split(inputs, 4, axis=-1)
+        weight_slices = array_ops.split(layer.kernel, 4, axis=-1)
+        expected_outputs = array_ops.concat([
+            nn.convolution_v2(inputs, weights)
+            for inputs, weights in zip(input_slices, weight_slices)
+        ],
+                                            axis=-1)
+        self.assertAllClose(
+            layer(inputs), expected_outputs, rtol=3e-5, atol=3e-5)
+
+  def test_group_conv_depthwise(self):
+    if test.is_gpu_available(cuda_only=True):
+      with testing_utils.use_gpu():
+        inputs = random_ops.random_uniform(shape=(3, 27, 27, 32))
+
+        layer = keras.layers.Conv2D(32, 3, groups=32, use_bias=False)
+        layer.build((3, 27, 27, 32))
+
+        weights_dw = array_ops.reshape(layer.kernel, [3, 3, 32, 1])
+        expected_outputs = nn.depthwise_conv2d(
+            inputs, weights_dw, strides=[1, 1, 1, 1], padding='VALID')
+
+        self.assertAllClose(layer(inputs), expected_outputs, rtol=1e-5)
+
+
+@keras_parameterized.run_all_keras_modes
+class Conv1DTransposeTest(keras_parameterized.TestCase):
+
+  def _run_test(self, kwargs, expected_output_shape):
+    num_samples = 2
+    stack_size = 3
+    num_col = 6
+
+    with testing_utils.use_gpu():
+      testing_utils.layer_test(
+          keras.layers.Conv1DTranspose,
+          kwargs=kwargs,
+          input_shape=(num_samples, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 8, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 6, 2)),
+      ('strides', {'strides': 2}, (None, 13, 2)),
+      # Only runs on GPU with CUDA, dilation_rate>1 is not supported on CPU.
+      ('dilation_rate', {'dilation_rate': 2}, (None, 10, 2)),
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      ('data_format', {'data_format': 'channels_first'}),
+  )
+  def test_conv1d_transpose(self, kwargs, expected_output_shape=None):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = 3
+    if (('data_format' not in kwargs and 'dilation_rate' not in kwargs) or
+        test.is_gpu_available(cuda_only=True)):
+      self._run_test(kwargs, expected_output_shape)
+
+
+@keras_parameterized.run_all_keras_modes
+class Conv3DTransposeTest(keras_parameterized.TestCase):
+
+  def _run_test(self, kwargs, expected_output_shape):
+    num_samples = 2
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+    depth = 5
+
+    with testing_utils.use_gpu():
+      testing_utils.layer_test(
+          keras.layers.Conv3DTranspose,
+          kwargs=kwargs,
+          input_shape=(num_samples, depth, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 7, 9, 8, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 5, 7, 6, 2)),
+      ('strides', {'strides': (2, 2, 2)}, (None, 11, 15, 13, 2)),
+      ('dilation_rate', {'dilation_rate': (2, 2, 2)}, (None, 7, 9, 8, 2)),
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      ('data_format', {'data_format': 'channels_first'}),
+  )
+  def test_conv3d_transpose(self, kwargs, expected_output_shape=None):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = (3, 3, 3)
+    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
+
+
 @keras_parameterized.run_all_keras_modes
 class ConvSequentialTest(keras_parameterized.TestCase):
 
@@ -271,7 +560,7 @@ class ConvSequentialTest(keras_parameterized.TestCase):
     kwargs['filters'] = 1
     kwargs['kernel_size'] = 3
     kwargs['dilation_rate'] = 2
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = conv_layer_cls(**kwargs)
       output1 = layer(np.zeros(input_shape1))
       self.assertEqual(output1.shape, expected_output_shape1)
@@ -314,7 +603,7 @@ class ConvSequentialTest(keras_parameterized.TestCase):
                    expected_output_shape1, expected_output_shape2)
 
   def test_dynamic_shape(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(2, 3)
       input_shape = (5, None, None, 2)
       inputs = keras.Input(shape=input_shape)
@@ -333,7 +622,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
     shape = (num_samples, num_steps, input_dim)
     inputs = np.ones(shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # basic test
       testing_utils.layer_test(
           keras.layers.ZeroPadding1D,
@@ -376,114 +665,179 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.ZeroPadding1D(padding=None)
 
-  def test_zero_padding_2d(self):
+  @parameterized.named_parameters(('channels_first', 'channels_first'),
+                                  ('channels_last', 'channels_last'))
+  def test_zero_padding_2d(self, data_format):
     num_samples = 2
     stack_size = 2
     input_num_row = 4
     input_num_col = 5
-    for data_format in ['channels_first', 'channels_last']:
-      inputs = np.ones((num_samples, input_num_row, input_num_col, stack_size))
+    if data_format == 'channels_first':
       inputs = np.ones((num_samples, stack_size, input_num_row, input_num_col))
+    elif data_format == 'channels_last':
+      inputs = np.ones((num_samples, input_num_row, input_num_col, stack_size))
 
-      # basic test
-      with self.cached_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.ZeroPadding2D,
-            kwargs={'padding': (2, 2),
-                    'data_format': data_format},
-            input_shape=inputs.shape)
-        testing_utils.layer_test(
-            keras.layers.ZeroPadding2D,
-            kwargs={'padding': ((1, 2), (3, 4)),
-                    'data_format': data_format},
-            input_shape=inputs.shape)
-
-      # correctness test
-      with self.cached_session(use_gpu=True):
-        layer = keras.layers.ZeroPadding2D(
-            padding=(2, 2), data_format=data_format)
-        layer.build(inputs.shape)
-        output = layer(keras.backend.variable(inputs))
-        if context.executing_eagerly():
-          np_output = output.numpy()
-        else:
-          np_output = keras.backend.eval(output)
-        if data_format == 'channels_last':
-          for offset in [0, 1, -1, -2]:
-            np.testing.assert_allclose(np_output[:, offset, :, :], 0.)
-            np.testing.assert_allclose(np_output[:, :, offset, :], 0.)
-          np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, :], 1.)
-        elif data_format == 'channels_first':
-          for offset in [0, 1, -1, -2]:
-            np.testing.assert_allclose(np_output[:, :, offset, :], 0.)
-            np.testing.assert_allclose(np_output[:, :, :, offset], 0.)
-          np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, :], 1.)
-
-        layer = keras.layers.ZeroPadding2D(
-            padding=((1, 2), (3, 4)), data_format=data_format)
-        layer.build(inputs.shape)
-        output = layer(keras.backend.variable(inputs))
-        if context.executing_eagerly():
-          np_output = output.numpy()
-        else:
-          np_output = keras.backend.eval(output)
-        if data_format == 'channels_last':
-          for top_offset in [0]:
-            np.testing.assert_allclose(np_output[:, top_offset, :, :], 0.)
-          for bottom_offset in [-1, -2]:
-            np.testing.assert_allclose(np_output[:, bottom_offset, :, :], 0.)
-          for left_offset in [0, 1, 2]:
-            np.testing.assert_allclose(np_output[:, :, left_offset, :], 0.)
-          for right_offset in [-1, -2, -3, -4]:
-            np.testing.assert_allclose(np_output[:, :, right_offset, :], 0.)
-          np.testing.assert_allclose(np_output[:, 1:-2, 3:-4, :], 1.)
-        elif data_format == 'channels_first':
-          for top_offset in [0]:
-            np.testing.assert_allclose(np_output[:, :, top_offset, :], 0.)
-          for bottom_offset in [-1, -2]:
-            np.testing.assert_allclose(np_output[:, :, bottom_offset, :], 0.)
-          for left_offset in [0, 1, 2]:
-            np.testing.assert_allclose(np_output[:, :, :, left_offset], 0.)
-          for right_offset in [-1, -2, -3, -4]:
-            np.testing.assert_allclose(np_output[:, :, :, right_offset], 0.)
-          np.testing.assert_allclose(np_output[:, :, 1:-2, 3:-4], 1.)
-
-      # test incorrect use
-      with self.assertRaises(ValueError):
-        keras.layers.ZeroPadding2D(padding=(1, 1, 1))
-      with self.assertRaises(ValueError):
-        keras.layers.ZeroPadding2D(padding=None)
-
-  def test_zero_padding_3d(self):
-    num_samples = 2
-    stack_size = 2
-    input_len_dim1 = 4
-    input_len_dim2 = 5
-    input_len_dim3 = 3
-
-    inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
-                      input_len_dim3, stack_size))
-
-    with self.cached_session(use_gpu=True):
-      # basic test
+    # basic test
+    with self.cached_session():
       testing_utils.layer_test(
-          keras.layers.ZeroPadding3D,
-          kwargs={'padding': (2, 2, 2)},
+          keras.layers.ZeroPadding2D,
+          kwargs={
+              'padding': (2, 2),
+              'data_format': data_format
+          },
+          input_shape=inputs.shape)
+      testing_utils.layer_test(
+          keras.layers.ZeroPadding2D,
+          kwargs={
+              'padding': ((1, 2), (3, 4)),
+              'data_format': data_format
+          },
           input_shape=inputs.shape)
 
-      # correctness test
-      layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2))
+    # correctness test
+    with self.cached_session():
+      layer = keras.layers.ZeroPadding2D(
+          padding=(2, 2), data_format=data_format)
       layer.build(inputs.shape)
       output = layer(keras.backend.variable(inputs))
       if context.executing_eagerly():
         np_output = output.numpy()
       else:
         np_output = keras.backend.eval(output)
-      for offset in [0, 1, -1, -2]:
-        np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
-        np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
-        np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
-      np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, 2:-2, :], 1.)
+      if data_format == 'channels_last':
+        for offset in [0, 1, -1, -2]:
+          np.testing.assert_allclose(np_output[:, offset, :, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, offset, :], 0.)
+        np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, :], 1.)
+      elif data_format == 'channels_first':
+        for offset in [0, 1, -1, -2]:
+          np.testing.assert_allclose(np_output[:, :, offset, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, :, offset], 0.)
+        np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, :], 1.)
+
+      layer = keras.layers.ZeroPadding2D(
+          padding=((1, 2), (3, 4)), data_format=data_format)
+      layer.build(inputs.shape)
+      output = layer(keras.backend.variable(inputs))
+      if context.executing_eagerly():
+        np_output = output.numpy()
+      else:
+        np_output = keras.backend.eval(output)
+      if data_format == 'channels_last':
+        for top_offset in [0]:
+          np.testing.assert_allclose(np_output[:, top_offset, :, :], 0.)
+        for bottom_offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, bottom_offset, :, :], 0.)
+        for left_offset in [0, 1, 2]:
+          np.testing.assert_allclose(np_output[:, :, left_offset, :], 0.)
+        for right_offset in [-1, -2, -3, -4]:
+          np.testing.assert_allclose(np_output[:, :, right_offset, :], 0.)
+        np.testing.assert_allclose(np_output[:, 1:-2, 3:-4, :], 1.)
+      elif data_format == 'channels_first':
+        for top_offset in [0]:
+          np.testing.assert_allclose(np_output[:, :, top_offset, :], 0.)
+        for bottom_offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, :, bottom_offset, :], 0.)
+        for left_offset in [0, 1, 2]:
+          np.testing.assert_allclose(np_output[:, :, :, left_offset], 0.)
+        for right_offset in [-1, -2, -3, -4]:
+          np.testing.assert_allclose(np_output[:, :, :, right_offset], 0.)
+        np.testing.assert_allclose(np_output[:, :, 1:-2, 3:-4], 1.)
+
+    # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding2D(padding=(1, 1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding2D(padding=None)
+
+  @parameterized.named_parameters(('channels_first', 'channels_first'),
+                                  ('channels_last', 'channels_last'))
+  def test_zero_padding_3d(self, data_format):
+    num_samples = 2
+    stack_size = 2
+    input_len_dim1 = 4
+    input_len_dim2 = 5
+    input_len_dim3 = 3
+
+    if data_format == 'channels_first':
+      inputs = np.ones((num_samples, stack_size, input_len_dim1, input_len_dim2,
+                        input_len_dim3))
+    elif data_format == 'channels_last':
+      inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
+                        input_len_dim3, stack_size))
+
+    with self.cached_session():
+      # basic test
+      testing_utils.layer_test(
+          keras.layers.ZeroPadding3D,
+          kwargs={
+              'padding': (2, 2, 2),
+              'data_format': data_format
+          },
+          input_shape=inputs.shape)
+      testing_utils.layer_test(
+          keras.layers.ZeroPadding3D,
+          kwargs={
+              'padding': ((1, 2), (3, 4), (0, 2)),
+              'data_format': data_format
+          },
+          input_shape=inputs.shape)
+
+    with self.cached_session():
+      # correctness test
+      layer = keras.layers.ZeroPadding3D(
+          padding=(2, 2, 2), data_format=data_format)
+      layer.build(inputs.shape)
+      output = layer(keras.backend.variable(inputs))
+      if context.executing_eagerly():
+        np_output = output.numpy()
+      else:
+        np_output = keras.backend.eval(output)
+      if data_format == 'channels_last':
+        for offset in [0, 1, -1, -2]:
+          np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+        np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, 2:-2, :], 1.)
+      elif data_format == 'channels_first':
+        for offset in [0, 1, -1, -2]:
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+          np.testing.assert_allclose(np_output[:, :, :, :, offset], 0.)
+        np.testing.assert_allclose(np_output[:, :, 2:-2, 2:-2, 2:-2], 1.)
+
+      layer = keras.layers.ZeroPadding3D(
+          padding=((1, 2), (3, 4), (0, 2)), data_format=data_format)
+      layer.build(inputs.shape)
+      output = layer(keras.backend.variable(inputs))
+      if context.executing_eagerly():
+        np_output = output.numpy()
+      else:
+        np_output = keras.backend.eval(output)
+      if data_format == 'channels_last':
+        for offset in [0]:
+          np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+        for offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+        for offset in [0, 1, 2]:
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+        for offset in [-1, -2, -3, -4]:
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+        for offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+        np.testing.assert_allclose(np_output[:, 1:-2, 3:-4, 0:-2, :], 1.)
+      elif data_format == 'channels_first':
+        for offset in [0]:
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+        for offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+        for offset in [0, 1, 2]:
+          np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+        for offset in [-1, -2, -3, -4]:
+          np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+        for offset in [-1, -2]:
+          np.testing.assert_allclose(np_output[:, :, :, :, offset], 0.)
+        np.testing.assert_allclose(np_output[:, :, 1:-2, 3:-4, 0:-2], 1.)
 
     # test incorrect use
     with self.assertRaises(ValueError):
@@ -498,7 +852,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
 class UpSamplingTest(keras_parameterized.TestCase):
 
   def test_upsampling_1d(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.UpSampling1D, kwargs={'size': 2}, input_shape=(3, 5, 4))
 
@@ -517,7 +871,7 @@ class UpSamplingTest(keras_parameterized.TestCase):
                                 stack_size)
 
       # basic test
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         testing_utils.layer_test(
             keras.layers.UpSampling2D,
             kwargs={'size': (2, 2),
@@ -602,7 +956,7 @@ class UpSamplingTest(keras_parameterized.TestCase):
                                 input_len_dim3, stack_size)
 
       # basic test
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         testing_utils.layer_test(
             keras.layers.UpSampling3D,
             kwargs={'size': (2, 2, 2),
@@ -652,7 +1006,7 @@ class CroppingTest(keras_parameterized.TestCase):
     input_len_dim1 = 2
     inputs = np.random.rand(num_samples, time_length, input_len_dim1)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Cropping1D,
           kwargs={'cropping': (2, 2)},
@@ -678,7 +1032,7 @@ class CroppingTest(keras_parameterized.TestCase):
       else:
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # basic test
         testing_utils.layer_test(
             keras.layers.Cropping2D,
@@ -711,7 +1065,7 @@ class CroppingTest(keras_parameterized.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
       # another correctness test (no cropping)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         cropping = ((0, 0), (0, 0))
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
@@ -747,7 +1101,7 @@ class CroppingTest(keras_parameterized.TestCase):
           inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                   input_len_dim3, stack_size)
         # basic test
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           testing_utils.layer_test(
               keras.layers.Cropping3D,
               kwargs={'cropping': cropping,
@@ -756,7 +1110,7 @@ class CroppingTest(keras_parameterized.TestCase):
 
         if len(croppings) == 3 and len(croppings[0]) == 2:
           # correctness test
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             layer = keras.layers.Cropping3D(
                 cropping=cropping, data_format=data_format)
             layer.build(inputs.shape)
@@ -788,17 +1142,18 @@ class CroppingTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes
 class DepthwiseConv2DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs):
+  def _run_test(self, kwargs, expected_output_shape=None):
     num_samples = 2
     stack_size = 3
     num_row = 7
     num_col = 6
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.DepthwiseConv2D,
           kwargs=kwargs,
-          input_shape=(num_samples, num_row, num_col, stack_size))
+          input_shape=(num_samples, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
 
   @parameterized.named_parameters(
       ('padding_valid', {'padding': 'valid'}),
@@ -809,17 +1164,19 @@ class DepthwiseConv2DTest(keras_parameterized.TestCase):
       ('data_format', {'data_format': 'channels_first'}),
       ('depth_multiplier_1', {'depth_multiplier': 1}),
       ('depth_multiplier_2', {'depth_multiplier': 2}),
+      ('dilation_rate', {'dilation_rate': (2, 2)}, (None, 3, 2, 3)),
   )
-  def test_depthwise_conv2d(self, kwargs):
+  def test_depthwise_conv2d(self, kwargs, expected_output_shape=None):
     kwargs['kernel_size'] = (3, 3)
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs)
+      self._run_test(kwargs, expected_output_shape)
 
   def test_depthwise_conv2d_full(self):
     kwargs = {
         'kernel_size': 3,
         'padding': 'valid',
         'data_format': 'channels_last',
+        'dilation_rate': (1, 1),
         'activation': None,
         'depthwise_regularizer': 'l2',
         'bias_regularizer': 'l2',

@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/lite/error_reporter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/error_reporter.h"  // Legacy.
+#include "tensorflow/lite/model.h"           // Legacy.
 
 namespace tflite {
 
@@ -44,8 +46,27 @@ class AlwaysTrueResolver : public OpResolver {
 // * The file is following a legit flatbuffer schema.
 // * The model is in supported version.
 // * All ops used in the model are supported by OpResolver.
+// DEPRECATED:
+//   This function is deprecated, because it doesn't take delegates into
+//   account, and as a result may report errors if the model contains
+//   operators that are not supported by the OpResolver but that would be
+//   rewritten by any TfLiteDelegate that you are using.
+// Suggested replacement:
+//   Use the version below that doesn't takes an OpResolver (and
+//   doesn't check the validity of the ops) instead of this function,
+//   and delay verification of the ops until after you have constructed
+//   the Interpreter.  To verify that the operators in the model are supported
+//   by the delegate(s) and/or by the OpResolver, construct the Interpreter,
+//   applying the TfLiteDelegate(s) using InterpreterBuilder::AddDelegate,
+//   and then just check the return value from Interpreter::AllocateTensors().
 bool Verify(const void* buf, size_t len, const OpResolver& resolver,
             ErrorReporter* error_reporter);
+
+// Verifies the integrity of a Tensorflow Lite flatbuffer model file.
+// Currently, it verifies:
+// * The file is following a legit flatbuffer schema.
+// * The model is in supported version.
+bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter);
 
 }  // namespace tflite
 

@@ -31,6 +31,24 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+GrapplerItem::OptimizationOptions CreateOptOptionsForEager() {
+  GrapplerItem::OptimizationOptions optimization_options;
+  // Tensorflow 2.0 in eager mode with automatic control dependencies will
+  // prune all nodes that are not in the transitive fanin of the fetch nodes.
+  // However because the function will be executed via FunctionLibraryRuntime,
+  // and current function implementation does not prune stateful and dataset
+  // ops, we rely on Grappler to do the correct graph pruning.
+  optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+  optimization_options.is_eager_mode = true;
+
+  // All the nested function calls will be executed and optimized via
+  // PartitionedCallOp, there is no need to optimize functions now.
+  optimization_options.optimize_function_library = false;
+
+  return optimization_options;
+}
+
 GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
   GrapplerItem item;
   item.id = id;
@@ -50,7 +68,9 @@ GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
-  return ComputeTransitiveFanin(graph, fetch);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, fetch, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
@@ -60,15 +80,20 @@ std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
       enqueue_ops.push_back(enqueue_op);
     }
   }
-  return ComputeTransitiveFanin(graph, enqueue_ops);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, fetch, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
-  return ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, init_ops, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
-  std::vector<const NodeDef*> fanin = ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> fanin;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, init_ops, &fanin));
   std::vector<const NodeDef*> vars;
   for (const NodeDef* node : fanin) {
     if (IsVariable(*node)) {
@@ -198,23 +223,6 @@ const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
 
 GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
   return optimization_options_;
-}
-
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes) {
-  bool ill_formed = false;
-  std::vector<const NodeDef*> result =
-      ComputeTransitiveFanin(graph, terminal_nodes, &ill_formed);
-  CHECK(!ill_formed);
-  return result;
-}
-
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    bool* ill_formed) {
-  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
-  return ComputeTransitiveFanin(graph, terminal_nodes, &name_to_fanin_node,
-                                ill_formed);
 }
 
 }  // end namespace grappler

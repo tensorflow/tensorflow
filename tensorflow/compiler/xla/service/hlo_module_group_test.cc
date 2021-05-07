@@ -27,6 +27,8 @@ namespace xla {
 namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
+using ::testing::Property;
+using ::testing::StrEq;
 
 class HloModuleGroupTest : public HloTestBase {
  protected:
@@ -200,6 +202,31 @@ ENTRY entry {
       EXPECT_TRUE(absl::c_equal(companion_order, module_ids));
     }
   }
+}
+
+// Test that metadata is transferred when a module is replaced.
+TEST_F(HloModuleGroupTest, ReplaceModuleMetadata) {
+  auto old_module = CreateNewVerifiedModule();
+  int old_module_id = old_module->unique_id();
+  old_module->metadata()->RecordPassStart();
+  TF_EXPECT_OK(old_module->metadata()->set_current_pass_name("fake pass"));
+
+  HloModuleGroup group(std::move(old_module));
+  EXPECT_EQ(group.module(0).metadata()->proto().module_group_name(),
+            group.name());
+
+  auto new_module = CreateNewVerifiedModule();
+  group.ReplaceModule(0, std::move(new_module));
+
+  EXPECT_NE(group.module(0).unique_id(), old_module_id);
+  const HloModuleMetadataProto& module_metadata =
+      group.module(0).metadata()->proto();
+  EXPECT_EQ(module_metadata.canonical_module_id(), old_module_id);
+
+  const HloPassMetadata& pass_metadata =
+      *module_metadata.pass_metadata().rbegin();
+  EXPECT_THAT(pass_metadata,
+              Property(&HloPassMetadata::pass_name, StrEq("fake pass")));
 }
 
 }  // namespace

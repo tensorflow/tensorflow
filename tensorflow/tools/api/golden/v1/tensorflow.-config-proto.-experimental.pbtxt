@@ -76,6 +76,13 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "mlir_bridge_rollout"
+      number: 17
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.ConfigProto.Experimental.MlirBridgeRollout"
+    }
+    field {
       name: "enable_mlir_graph_optimization"
       number: 16
       label: LABEL_OPTIONAL
@@ -92,6 +99,35 @@ tf_proto {
       number: 15
       label: LABEL_OPTIONAL
       type: TYPE_INT64
+    }
+    field {
+      name: "use_tfrt"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    enum_type {
+      name: "MlirBridgeRollout"
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_ENABLED"
+        number: 1
+      }
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_DISABLED"
+        number: 2
+      }
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
+        number: 3
+      }
+      value {
+        name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED"
+        number: 4
+      }
     }
     reserved_range {
       start: 2

@@ -8,14 +8,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "is_dynamic_op"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "max_batch_size"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "max_workspace_size_bytes"
     mtype: "<type \'property\'>"
   }
@@ -29,10 +21,6 @@ tf_class {
   }
   member {
     name: "precision_mode"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "rewriter_config_template"
     mtype: "<type \'property\'>"
   }
   member {

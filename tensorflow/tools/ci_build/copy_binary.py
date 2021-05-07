@@ -46,7 +46,7 @@ def check_existence(filename):
 def copy_binary(directory, origin_tag, new_tag, version, package):
   """Rename and copy binaries for different python versions.
 
-  Arguments:
+  Args:
     directory: string of directory
     origin_tag: str of the old python version tag
     new_tag: str of the new tag

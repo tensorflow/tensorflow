@@ -22,7 +22,7 @@ import os
 
 from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -66,6 +66,29 @@ class TFConfigClusterResolverTest(test.TestCase):
     job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
                          tasks { key: 1 value: 'worker1:2222' }
                          tasks { key: 2 value: 'worker2:2222' } }
+    """
+    actual_cluster_spec = cluster_resolver.cluster_spec()
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
+  def testSparseClusterSpecRead(self):
+    os.environ['TF_CONFIG'] = """
+    {
+      "cluster": {
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": {"1": "worker1:2222"}
+      },
+      "task": {
+        "type": "worker",
+        "index": 1
+      }
+    }
+    """
+
+    cluster_resolver = TFConfigClusterResolver()
+    expected_proto = """
+    job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                     tasks { key: 1 value: 'ps1:2222' } }
+    job { name: 'worker' tasks { key: 1 value: 'worker1:2222' } }
     """
     actual_cluster_spec = cluster_resolver.cluster_spec()
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)

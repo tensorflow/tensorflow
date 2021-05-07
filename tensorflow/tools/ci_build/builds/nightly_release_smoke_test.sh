@@ -18,16 +18,28 @@
 set -e
 set -x
 
-MAX_WHL_SIZE=550M
+# Get size check function
+source tensorflow/tools/ci_build/release/common.sh
 
 function run_smoke_test() {
-  VENV_TMP_DIR=$(mktemp -d)
 
-  ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
+  if [[ -z "${WHL_NAME}" ]]; then
+    echo "TF WHL path not given, unable to install and test."
+    exit 1
+  fi
 
-  source "${VENV_TMP_DIR}/bin/activate" || \
-      die "FAILED: Unable to activate virtualenv "
+  # Upload the PIP package if whl test passes.
+  if [ ${IN_VENV} -eq 0 ]; then
+    VENV_TMP_DIR=$(mktemp -d)
+
+    ${PYTHON_BIN_PATH} -m pip install virtualenv
+
+    ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
+        die "FAILED: Unable to create virtualenv"
+
+    source "${VENV_TMP_DIR}/bin/activate" || \
+        die "FAILED: Unable to activate virtualenv "
+  fi
 
   # install tensorflow
   python -m pip install ${WHL_NAME} || \
@@ -38,12 +50,17 @@ function run_smoke_test() {
   test_tf_imports
 
   # Test TensorFlow whl file size
-  test_tf_whl_size
+  test_tf_whl_size ${WHL_NAME}
 
   RESULT=$?
-  # Deactivate from virtualenv.
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
-  sudo rm -rf "${KOKORO_GFILE_DIR}/venv"
+
+  # Upload the PIP package if whl test passes.
+  if [ ${IN_VENV} -eq 0 ]; then
+    # Deactivate from virtualenv.
+    deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+    sudo rm -rf "${KOKORO_GFILE_DIR}/venv"
+  fi
+
   return $RESULT
 }
 
@@ -54,13 +71,15 @@ function test_tf_imports() {
   # test for basic import and perform tf.add operation.
   RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
   if ! [[ ${RET_VAL} == *'(4,)'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
      return 1
   fi
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow.python.keras.api._v2.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'tensorflow.keras'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -68,6 +87,7 @@ function test_tf_imports() {
   # similar test for estimator
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.estimator.__name__)")
   if ! [[ ${RET_VAL} == *'tensorflow_estimator.python.estimator.api._v2.estimator'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -78,21 +98,10 @@ function test_tf_imports() {
   return $RESULT
 }
 
-function test_tf_whl_size() {
-  if [[ $(find $WHL_NAME -type f -size +${MAX_WHL_SIZE}) ]]; then
-    echo "The whl size has exceeded 550MB. To keep within pypi's CDN
-distribution limit, we must not exceed that threshold."
-    return 1
-  fi
-}
-
 ###########################################################################
 # Main
 ###########################################################################
-if [[ -z "${1}" ]]; then
-  echo "TF WHL path not given, unable to install and test."
-  return 1
-fi
 
+IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 WHL_NAME=${1}
 run_smoke_test

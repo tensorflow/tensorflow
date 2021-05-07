@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
@@ -25,6 +27,24 @@ from tensorflow.python.platform import googletest
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
+
+  def testEqualityOperators(self):
+    a = ragged_factory_ops.constant([[1, 2], [3]])
+    b = ragged_factory_ops.constant([[4, 5], [3]])
+    c = 2
+
+    if tf2.enabled() and ops.executing_eagerly_outside_functions():
+      # Value-based equality:
+      self.assertAllEqual(a == b, [[False, False], [True]])
+      self.assertAllEqual(a != b, [[True, True], [False]])
+
+      # Value-based equality (w/ broadcasting):
+      self.assertAllEqual(a == c, [[False, True], [False]])
+      self.assertAllEqual(a != c, [[True, False], [True]])
+    else:
+      # Identity-based equality:
+      self.assertAllEqual(a == b, False)
+      self.assertAllEqual(a != b, True)
 
   def testOrderingOperators(self):
     x = ragged_factory_ops.constant([[1, 5], [3]])
@@ -87,11 +107,11 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
 
   def testDummyOperators(self):
     a = ragged_factory_ops.constant([[True, True], [False]])
-    with self.assertRaisesRegexp(TypeError,
-                                 'RaggedTensor may not be used as a boolean.'):
+    with self.assertRaisesRegex(TypeError,
+                                'RaggedTensor may not be used as a boolean.'):
       bool(a)
-    with self.assertRaisesRegexp(TypeError,
-                                 'RaggedTensor may not be used as a boolean.'):
+    with self.assertRaisesRegex(TypeError,
+                                'RaggedTensor may not be used as a boolean.'):
       if a:
         pass
 

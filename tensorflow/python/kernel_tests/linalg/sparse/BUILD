@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cuda_py_test(
@@ -40,7 +40,9 @@ cuda_py_test(
     srcs = ["csr_sparse_matrix_ops_test.py"],
     main = "csr_sparse_matrix_ops_test.py",
     shard_count = 10,
-    tags = ["notsan"],  # b/149115441
+    tags = [
+        "notsan",  # b/149115441
+    ],
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",

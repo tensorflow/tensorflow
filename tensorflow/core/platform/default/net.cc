@@ -28,6 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 
+// https://en.wikipedia.org/wiki/Ephemeral_port
+#define MAX_EPHEMERAL_PORT 60999
+#define MIN_EPHEMERAL_PORT 32768
+
 namespace tensorflow {
 namespace internal {
 
@@ -41,7 +45,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int actual_port;
 
   CHECK_GE(*port, 0);
-  CHECK_LE(*port, 65535);
+  CHECK_LE(*port, MAX_EPHEMERAL_PORT);
   if (fd < 0) {
     LOG(ERROR) << "socket() failed: " << strerror(errno);
     return false;
@@ -109,9 +113,11 @@ int PickUnusedPortOrDie() {
     CHECK_LE(trial, kMaximumTrials)
         << "Failed to pick an unused port for testing.";
     if (trial == 1) {
-      port = getpid() % (65536 - 30000) + 30000;
+      port = getpid() % (MAX_EPHEMERAL_PORT - MIN_EPHEMERAL_PORT) +
+             MIN_EPHEMERAL_PORT;
     } else if (trial <= kNumRandomPortsToPick) {
-      port = rand() % (65536 - 30000) + 30000;
+      port = rand() % (MAX_EPHEMERAL_PORT - MIN_EPHEMERAL_PORT) +
+             MIN_EPHEMERAL_PORT;
     } else {
       port = 0;
     }

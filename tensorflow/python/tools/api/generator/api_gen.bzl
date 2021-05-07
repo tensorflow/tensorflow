@@ -42,8 +42,15 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
-        package_deps = ["//tensorflow/python:no_contrib"],
+        packages = [
+            "tensorflow.python",
+            "tensorflow.lite.python.lite",
+            "tensorflow.python.modules_with_exports",
+        ],
+        package_deps = [
+            "//tensorflow/python:no_contrib",
+            "//tensorflow/python:modules_with_exports",
+        ],
         output_package = "tensorflow",
         output_dir = "",
         root_file_name = "__init__.py"):
@@ -93,7 +100,7 @@ def gen_api_init_files(
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",
         python_version = "PY3",
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         visibility = ["//visibility:public"],
         deps = package_deps + [
             "//tensorflow/python:util",
@@ -117,7 +124,12 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    # copybara:uncomment_begin(configurable API loading)
+    # native.vardef("TF_API_INIT_LOADING", "default")
+    # loading_flag = " --loading=$(TF_API_INIT_LOADING)"
+    # copybara:uncomment_end_and_comment_begin
     loading_flag = " --loading=default"
+    # copybara:comment_end
 
     native.genrule(
         name = name,
@@ -127,7 +139,7 @@ def gen_api_init_files(
             root_init_template_flag + " --apidir=$(@D)" + output_dir +
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
             compat_api_version_flags + " " + compat_init_template_flags +
-            loading_flag + " --package=" + ",".join(packages) +
+            loading_flag + " --packages=" + ",".join(packages) +
             " --output_package=" + output_package +
             " --use_relative_imports=True $(OUTS)"
         ),

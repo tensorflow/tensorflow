@@ -38,10 +38,21 @@ string GetColocationGroupRoot(std::unordered_map<string, string>* map,
     map->insert({node_name, node_name});
     return node_name;
   }
+  std::list<string> nodes_to_root;
   string cur = node_name;
   while ((*map)[cur] != cur) {
     // Backtracing the map until we reach the root node.
+    nodes_to_root.push_back(cur);
     cur = (*map)[cur];
+  }
+
+  // Update the nodes on the path to the root node to point to the root as well,
+  // so the further lookups can be faster.
+  if (!nodes_to_root.empty()) {
+    nodes_to_root.pop_back();
+    for (const string& node : nodes_to_root) {
+      (*map)[node] = cur;
+    }
   }
   return cur;
 }

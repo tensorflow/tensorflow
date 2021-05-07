@@ -62,16 +62,6 @@ class TransposeGpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-class TransposeSyclOp : public TransposeOp {
- public:
-  explicit TransposeSyclOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
-
- protected:
-  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 // Conjugating transpose ops.
 class ConjugateTransposeCpuOp : public TransposeOp {
@@ -109,18 +99,6 @@ class ConjugateTransposeGpuOp : public TransposeOp {
   bool IsConjugate() const override { return true; }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-class ConjugateTransposeSyclOp : public TransposeOp {
- public:
-  explicit ConjugateTransposeSyclOp(OpKernelConstruction* ctx)
-      : TransposeOp(ctx) {}
-
- protected:
-  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
-  bool IsConjugate() const override { return true; }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

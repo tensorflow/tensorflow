@@ -120,6 +120,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return n / batch_size_ + (n % batch_size_ == 0 ? 0 : 1);
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -289,9 +295,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(Iterator::SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(Iterator::SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 

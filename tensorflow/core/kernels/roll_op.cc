@@ -119,9 +119,9 @@ namespace functor {
 //    back to the front
 template <typename T>
 void DoRoll(const OpKernelContext* context, const int64 num_elements,
-            const int num_dims, const gtl::ArraySlice<int32>& dim_size,
-            const T* input, T* output, const gtl::ArraySlice<int32>& threshold,
-            const gtl::ArraySlice<int64>& dim_range) {
+            const int num_dims, const gtl::ArraySlice<int32> dim_size,
+            const T* input, T* output, const gtl::ArraySlice<int32> threshold,
+            const gtl::ArraySlice<int64> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64 start, int64 end) {
     // array of indices for each dimension
@@ -182,11 +182,10 @@ void DoRoll(const OpKernelContext* context, const int64 num_elements,
 template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
 void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
-                      const int num_dims,
-                      const gtl::ArraySlice<int32>& dim_size, const T* input,
-                      T* output, const gtl::ArraySlice<int32>& threshold,
-                      const gtl::ArraySlice<int64>& dim_range,
-                      const int64 isd) {
+                      const int num_dims, const gtl::ArraySlice<int32> dim_size,
+                      const T* input, T* output,
+                      const gtl::ArraySlice<int32> threshold,
+                      const gtl::ArraySlice<int64> dim_range, const int64 isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
                   int64 start, int64 end) {
     // the number of indices over in the flattened tensor you need to skip in
@@ -397,10 +396,9 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 
 TF_CALL_int32(REGISTER_KERNEL);
 TF_CALL_int64(REGISTER_KERNEL);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
-TF_CALL_complex64(REGISTER_KERNEL);
-TF_CALL_complex128(REGISTER_KERNEL);
 TF_CALL_uint32(REGISTER_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+TF_CALL_COMPLEX_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

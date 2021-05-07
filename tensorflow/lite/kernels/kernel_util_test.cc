@@ -14,14 +14,40 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
 
-void ReportError(TfLiteContext* context, const char* format, ...) {}
+struct TestContext : public TfLiteContext {
+  string error;
+};
+
+void ReportError(TfLiteContext* context, const char* format, ...) {
+  TestContext* c = static_cast<TestContext*>(context);
+  const size_t kBufferSize = 1024;
+  char temp_buffer[kBufferSize];
+
+  va_list args;
+  va_start(args, format);
+  vsnprintf(temp_buffer, kBufferSize, format, args);
+  va_end(args);
+
+  c->error = temp_buffer;
+}
 
 class KernelUtilTest : public ::testing::Test {
  public:
@@ -63,7 +89,7 @@ class KernelUtilTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext context_;
+  TestContext context_;
   TfLiteTensor tensor1_;
   TfLiteTensor tensor2_;
   TfLiteTensor tensor3_;
@@ -98,6 +124,8 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDim) {
   EXPECT_NE(kTfLiteOk, CalculateShapeForBroadcast(&context_, &tensor1_,
                                                   &tensor2_, &output));
   EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(context_.error,
+            "Given shapes, [1, 2] and [1, 3], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnes) {
@@ -158,6 +186,8 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimOnThreeTensors) {
             CalculateShapeForBroadcast(&context_, &tensor1_, &tensor2_,
                                        &tensor3_, &output));
   EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(context_.error,
+            "Given shapes, [1, 2], [1, 3] and [1, 4], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnesOnThreeTensors) {
@@ -318,7 +348,6 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -330,7 +359,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data()));
   EXPECT_THAT(per_channel_multiplier,
@@ -421,7 +450,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -433,7 +461,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   // Since the filter scale has a size of one but the number of channels is
@@ -532,7 +560,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -544,7 +571,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -632,7 +659,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -644,7 +670,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -715,7 +741,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -727,7 +752,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, nullptr, &output, kTfLiteActRelu,
+          &context_, &input, &filter, nullptr, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -738,6 +763,56 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   TfLiteTensorFree(&input);
   TfLiteTensorFree(&filter);
   TfLiteTensorFree(&output);
+}
+
+TEST_F(KernelUtilTest, ActivationRangeQuantizedOverflow) {
+  // Create output.
+  TfLiteTensor output = {};
+  output.type = kTfLiteUInt8;
+  output.allocation_type = kTfLiteArenaRw;
+  output.dims = nullptr;
+  TfLiteQuantizationParams output_quant = {1e-10, -128};
+  output.params = output_quant;
+  output.quantization.type = kTfLiteAffineQuantization;
+  auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  output_params->scale = TfLiteFloatArrayCreate(1);
+  output_params->scale->data[0] = 1;
+  output_params->zero_point = TfLiteIntArrayCreate(1);
+  output_params->zero_point->data[0] = -128;
+  output.quantization.params = reinterpret_cast<void*>(output_params);
+
+  // For bounded activation, a too small scale value may cause overflow.
+  // Make sure overflow error is handled gracefully.
+  int32_t act_min, act_max;
+  ASSERT_EQ(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActRelu,
+                                              &output, &act_min, &act_max));
+  ASSERT_NE(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActRelu6,
+                                              &output, &act_min, &act_max));
+  EXPECT_TRUE(absl::StrContains(
+      context_.error, "no_integer_overflow_from_quantization was not true"));
+  ASSERT_NE(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActReluN1To1,
+                                              &output, &act_min, &act_max));
+  EXPECT_TRUE(absl::StrContains(
+      context_.error, "no_integer_overflow_from_quantization was not true"));
+
+  // Release.
+  TfLiteTensorFree(&output);
+}
+
+TEST_F(KernelUtilTest, IsMobilePlatform) {
+  // Note: This isn't meant to be exhaustive, as that would require replicating
+  // the method's implementation, but it is a basic smoke check.
+#if defined(__ANDROID__)
+  EXPECT_TRUE(IsMobilePlatform());
+#elif defined(__linux__)
+  EXPECT_FALSE(IsMobilePlatform());
+#elif defined(_WIN32)
+  EXPECT_FALSE(IsMobilePlatform());
+#endif
 }
 
 }  // namespace

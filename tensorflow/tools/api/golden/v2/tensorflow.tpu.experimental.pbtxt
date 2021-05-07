@@ -4,6 +4,18 @@ tf_module {
     name: "DeviceAssignment"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TPUSystemMetadata"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Topology"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "embedding"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "initialize_tpu_system"
     argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "

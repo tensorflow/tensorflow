@@ -36,11 +36,11 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 
 
+# TODO(mdan): Replace with naming.Namer.
 class DummyGensym(object):
   """A dumb gensym that suffixes a stem by sequential numbers from 1000."""
 
-  def __init__(self, ctx):
-    del ctx
+  def __init__(self):
     # A proper implementation needs to account for:
     #   * ctx.info.namespace
     #   * all the symbols defined in the AST
@@ -105,14 +105,12 @@ class AnfTransformer(transformer.Base):
   # processing the `body` and the `orelse` need to be kept together with them,
   # and not accidentally lifted out of the `if`.
 
-  def __init__(self, ctx, config, gensym_source=None):
+  def __init__(self, ctx, config):
     """Creates an ANF transformer.
 
     Args:
       ctx: transformer.Context
       config: Configuration
-      gensym_source: An optional object with the same interface as `DummyGensym`
-        for generating unique names
     """
     super(AnfTransformer, self).__init__(ctx)
     if config is None:
@@ -137,10 +135,7 @@ class AnfTransformer(transformer.Base):
           (ASTEdgePattern(ANY, ANY, gast.expr), REPLACE)]
     else:
       self._overrides = config
-    if gensym_source is None:
-      self._gensym = DummyGensym(ctx)
-    else:
-      self._gensym = gensym_source(ctx)
+    self._gensym = DummyGensym()
     self._pending_statements = []
 
   def _consume_pending_statements(self):
@@ -529,7 +524,7 @@ def _is_trivial(node):
   return False
 
 
-def transform(node, ctx, config=None, gensym_source=None):
+def transform(node, ctx, config=None):
   """Converts the given node to A-normal form (ANF).
 
   The general idea of A-normal form: https://en.wikipedia.org/wiki/A-normal_form
@@ -605,7 +600,5 @@ def transform(node, ctx, config=None, gensym_source=None):
       argument provide?
     config: Optional ANF configuration.  If omitted, ANF replaces all expression
       expect literal constants.
-    gensym_source: An optional object with the same interface as `DummyGensym`
-      for generating unique names.
   """
-  return AnfTransformer(ctx, config, gensym_source=gensym_source).visit(node)
+  return AnfTransformer(ctx, config).visit(node)

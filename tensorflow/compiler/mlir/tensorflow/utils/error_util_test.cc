@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #include "llvm/ADT/Twine.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,7 +30,7 @@ using testing::HasSubstr;
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   MLIRContext context;
   auto id = Identifier::get("test.cc", &context);
-  auto loc = FileLineColLoc::get(id, 0, 0, &context);
+  auto loc = FileLineColLoc::get(&context, id, 0, 0);
 
   // Test OK without diagnostic gets passed through.
   {

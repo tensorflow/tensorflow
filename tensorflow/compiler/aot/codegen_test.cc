@@ -154,7 +154,7 @@ static void CompareWithGoldenFile(
   // To update the golden file, flip update_golden to true and run the
   // following:
   // bazel test --test_strategy=local \
-  //   third_party/tensorflow/compiler/aot:codegen_test
+  //   "third_party/tensorflow/compiler/aot:codegen_test"
   const bool update_golden = false;
   string golden_file_name =
       GetDataDependencyFilepath(tensorflow_relative_golden_file_name);

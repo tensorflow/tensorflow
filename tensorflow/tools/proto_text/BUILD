@@ -18,18 +18,15 @@ load(
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-exports_files([
-    "LICENSE",
-    "placeholder.txt",
-])
+exports_files(["placeholder.txt"])
 
 cc_binary(
     name = "gen_proto_text_functions",
@@ -70,7 +67,7 @@ cc_library(
     ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "test_proto",
     srcs = ["test.proto"],
     cc_api_version = 2,

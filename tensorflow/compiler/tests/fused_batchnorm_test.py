@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.compiler.tests import test_utils
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.compat import compat
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -132,9 +131,6 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _testLearning(self, use_gradient_checker, data_format,
                     exponential_avg_factor):
-    if not compat.forward_compatible(2020, 3,
-                                     6) and exponential_avg_factor != 1.0:
-      self.skipTest("running average not available.")
     channel = 3
     x_shape = [2, 2, 6, channel]
     scale_shape = [channel]

@@ -63,7 +63,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   if (x.name != y.name) return true;
   if (x.label != y.label) return true;
   // The registrations refer to the same Op: ensures they are compatible and
-  // are restricted to different device whitelists.
+  // are restricted to different device allowlists.
   if (x.compilation_only != y.compilation_only) {
     LOG(WARNING) << "Registrations of " << x.name
                  << " have incompatible compilation_only settings.";
@@ -84,14 +84,14 @@ XlaOpRegistry::~XlaOpRegistry() = default;
                  << " have incompatible allow_string_type settings.";
     return false;
   }
-  if (!x.has_device_whitelist && !y.has_device_whitelist) {
+  if (!x.has_device_allowlist && !y.has_device_allowlist) {
     LOG(WARNING) << "Duplicate registrations of " << x.name
-                 << "with no device whitelists.";
+                 << "with no device allowlists.";
     return false;
   }
-  if (x.has_device_whitelist && y.has_device_whitelist) {
-    for (const auto& device : x.device_whitelist) {
-      if (y.device_whitelist.count(device) != 0) {
+  if (x.has_device_allowlist && y.has_device_allowlist) {
+    for (const auto& device : x.device_allowlist) {
+      if (y.device_allowlist.count(device) != 0) {
         LOG(WARNING) << "Multiple registrations of " << x.name << " on device "
                      << device;
         return false;
@@ -132,6 +132,13 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   result.first->second.supported_types.insert(supported_types.begin(),
                                               supported_types.end());
   result.first->second.op_filter = op_filter;
+}
+
+/* static */ bool XlaOpRegistry::IsCompilationDevice(
+    const string& device_name) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  return registry.backends_.find(device_name) != registry.backends_.end();
 }
 
 /* static */ bool XlaOpRegistry::GetCompilationDevice(
@@ -185,28 +192,28 @@ void XlaOpRegistry::RegisterCompilationKernels() {
   // The goal is to allow the co-existence of backend-specific kernels and
   // generic kernels. To achieve this, we enforce the following order of
   // registrations for one op:
-  // 1. Process op registration with device whitelists:
+  // 1. Process op registration with device allowlists:
   //      this pass registers backend-specific kernels for this op.
-  // 2. Process op registration without device whitelists:
+  // 2. Process op registration without device allowlists:
   //      this pass registers the kernels for all the other supported backends.
   for (auto& ops : registry.ops_) {
     const string& op_name = ops.first;
     std::vector<std::unique_ptr<OpRegistration>>& op_registrations = ops.second;
-    // Partition the op registration so that the ones with device whitelists
-    // precede the one without device whitelist.
+    // Partition the op registration so that the ones with device allowlists
+    // precede the one without device allowlist.
     std::partition(op_registrations.begin(), op_registrations.end(),
                    [](const std::unique_ptr<OpRegistration>& op_reg) {
-                     return op_reg->has_device_whitelist;
+                     return op_reg->has_device_allowlist;
                    });
 
-    // Collect a set of backend registered by ops with device whitelists.
-    // The op registration without whitelists will register a generic kernel
+    // Collect a set of backend registered by ops with device allowlists.
+    // The op registration without allowlists will register a generic kernel
     // for all other backends not in this set.
-    std::unordered_set<string> whitelisted_backend;
+    std::unordered_set<string> allowlisted_backend;
     for (auto& op_registration : op_registrations) {
-      if (op_registration->has_device_whitelist) {
-        whitelisted_backend.insert(op_registration->device_whitelist.begin(),
-                                   op_registration->device_whitelist.end());
+      if (op_registration->has_device_allowlist) {
+        allowlisted_backend.insert(op_registration->device_allowlist.begin(),
+                                   op_registration->device_allowlist.end());
       }
     }
 
@@ -238,19 +245,19 @@ void XlaOpRegistry::RegisterCompilationKernels() {
       }
 
       for (auto& backend : registry.backends_) {
-        // If the operator has a device whitelist, only register on whitelisted
+        // If the operator has a device allowlist, only register on allowlisted
         // devices.
-        if (op_registration->has_device_whitelist &&
-            op_registration->device_whitelist.find(backend.first) ==
-                op_registration->device_whitelist.end()) {
+        if (op_registration->has_device_allowlist &&
+            op_registration->device_allowlist.find(backend.first) ==
+                op_registration->device_allowlist.end()) {
           continue;
         }
 
-        // If the operator does NOT has a device whitelist, skip all devices
+        // If the operator does NOT has a device allowlist, skip all devices
         // that has already been registered.
-        if (!op_registration->has_device_whitelist &&
-            whitelisted_backend.find(backend.first) !=
-                whitelisted_backend.end()) {
+        if (!op_registration->has_device_allowlist &&
+            allowlisted_backend.find(backend.first) !=
+                allowlisted_backend.end()) {
           continue;
         }
 
@@ -365,6 +372,19 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return ops;
 }
 
+/*static*/ const std::unordered_set<std::string>*
+XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  auto it = registry.ops_.find(op);
+  static auto empty_set = new std::unordered_set<std::string>;
+  if (it == registry.ops_.end() || it->second.empty()) {
+    return empty_set;
+  } else {
+    return &it->second.front()->compile_time_constant_inputs;
+  }
+}
+
 /* static */ Status XlaOpRegistry::CompileTimeConstantInputs(
     const NodeDef& node_def, const OpKernel* op_kernel, const OpDef* op_def,
     std::vector<int>* result) {
@@ -377,31 +397,24 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
 
   const std::unordered_set<string>* compile_time_constant_inputs;
 
-  if (GetNodeAttr(node_def, kXlaCompileTimeConstantInputsAttr,
-                  &compile_time_constant_inputs_vect_from_attr)
-          .ok()) {
+  if (TryGetNodeAttr(node_def, kXlaCompileTimeConstantInputsAttr,
+                     &compile_time_constant_inputs_vect_from_attr)) {
     absl::c_copy(compile_time_constant_inputs_vect_from_attr,
                  std::inserter(compile_time_constant_inputs_from_attr,
                                compile_time_constant_inputs_from_attr.end()));
     compile_time_constant_inputs = &compile_time_constant_inputs_from_attr;
   } else {
-    const string& op = node_def.op();
-
-    XlaOpRegistry& registry = Instance();
-    mutex_lock lock(registry.mutex_);
-    auto it = registry.ops_.find(op);
-    if (it == registry.ops_.end() || it->second.empty()) {
+    compile_time_constant_inputs =
+        CompileTimeConstantInputArgNames(node_def.op());
+    if (compile_time_constant_inputs->empty()) {
       return Status::OK();
-    } else {
-      // The test in IsCompatible ensures that if there are multiple matching
-      // registrations for this op name, they all have the same value of
-      // compile_time_constant_inputs, so only the first match is returned.
-      //
-      // TODO(sanjoy): This can probably be a std::vector<string>.
-      compile_time_constant_inputs =
-          &it->second.front()->compile_time_constant_inputs;
     }
   }
+
+  VLOG(3) << "For operation "
+          << (op_def != nullptr ? op_def->name() : op_kernel->name())
+          << " required constants are: "
+          << absl::StrJoin(*compile_time_constant_inputs, ", ");
 
   for (const string& input : *compile_time_constant_inputs) {
     if (op_def) {
@@ -478,17 +491,17 @@ XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
     absl::Span<const absl::string_view> devices) {
-  registration_->has_device_whitelist = true;
+  registration_->has_device_allowlist = true;
   for (absl::string_view device : devices) {
-    registration_->device_whitelist.emplace(device);
+    registration_->device_allowlist.emplace(device);
   }
   return *this;
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
     absl::string_view device) {
-  registration_->has_device_whitelist = true;
-  registration_->device_whitelist.emplace(device);
+  registration_->has_device_allowlist = true;
+  registration_->device_allowlist.emplace(device);
   return *this;
 }
 

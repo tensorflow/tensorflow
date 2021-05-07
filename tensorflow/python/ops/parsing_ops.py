@@ -30,6 +30,7 @@ from tensorflow.python.ops import parsing_config
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -77,6 +78,7 @@ def _prepend_none_dimension(features):
 
 
 @tf_export("io.parse_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_example_v2(serialized, features, example_names=None, name=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -314,6 +316,7 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
 
 
 @tf_export(v1=["io.parse_example", "parse_example"])
+@dispatch.add_dispatch_support
 def parse_example(serialized, features, name=None, example_names=None):
   return parse_example_v2(serialized, features, example_names, name)
 
@@ -373,6 +376,7 @@ def _parse_example_raw(serialized, names, params, name):
 
 
 @tf_export(v1=["io.parse_single_example", "parse_single_example"])
+@dispatch.add_dispatch_support
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
@@ -407,6 +411,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
 
 
 @tf_export("io.parse_single_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_single_example_v2(
     serialized, features, example_names=None, name=None
     ):
@@ -448,6 +453,7 @@ def parse_single_example_v2(
 
 
 @tf_export("io.parse_sequence_example")
+@dispatch.add_dispatch_support
 def parse_sequence_example(serialized,
                            context_features=None,
                            sequence_features=None,
@@ -692,6 +698,7 @@ def _parse_sequence_example_raw(serialized,
 @tf_export("io.parse_single_sequence_example",
            v1=["io.parse_single_sequence_example",
                "parse_single_sequence_example"])
+@dispatch.add_dispatch_support
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -835,16 +842,109 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 @tf_export("io.decode_raw", v1=[])
+@dispatch.add_dispatch_support
 def decode_raw(input_bytes,
                out_type,
                little_endian=True,
                fixed_length=None,
                name=None):
-  """Convert raw byte strings into tensors.
+  r"""Convert raw bytes from input tensor into numeric tensors.
+
+  Every component of the input tensor is interpreted as a sequence of bytes.
+  These bytes are then decoded as numbers in the format specified by `out_type`.
+
+  >>> tf.io.decode_raw(tf.constant("1"), tf.uint8)
+  <tf.Tensor: shape=(1,), dtype=uint8, numpy=array([49], dtype=uint8)>
+  >>> tf.io.decode_raw(tf.constant("1,2"), tf.uint8)
+  <tf.Tensor: shape=(3,), dtype=uint8, numpy=array([49, 44, 50], dtype=uint8)>
+
+  Note that the rank of the output tensor is always one more than the input one:
+
+  >>> tf.io.decode_raw(tf.constant(["1","2"]), tf.uint8).shape
+  TensorShape([2, 1])
+  >>> tf.io.decode_raw(tf.constant([["1"],["2"]]), tf.uint8).shape
+  TensorShape([2, 1, 1])
+
+  This is because each byte in the input is converted to a new value on the
+  output (if output type is `uint8` or `int8`, otherwise chunks of inputs get
+  coverted to a new value):
+
+  >>> tf.io.decode_raw(tf.constant("123"), tf.uint8)
+  <tf.Tensor: shape=(3,), dtype=uint8, numpy=array([49, 50, 51], dtype=uint8)>
+  >>> tf.io.decode_raw(tf.constant("1234"), tf.uint8)
+  <tf.Tensor: shape=(4,), dtype=uint8, numpy=array([49, 50, 51, 52], ...
+  >>> # chuncked output
+  >>> tf.io.decode_raw(tf.constant("12"), tf.uint16)
+  <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([12849], dtype=uint16)>
+  >>> tf.io.decode_raw(tf.constant("1234"), tf.uint16)
+  <tf.Tensor: shape=(2,), dtype=uint16, numpy=array([12849, 13363], ...
+  >>> # int64 output
+  >>> tf.io.decode_raw(tf.constant("12345678"), tf.int64)
+  <tf.Tensor: ... numpy=array([4050765991979987505])>
+  >>> tf.io.decode_raw(tf.constant("1234567887654321"), tf.int64)
+  <tf.Tensor: ... numpy=array([4050765991979987505, 3544952156018063160])>
+
+  The operation allows specifying endianness via the `little_endian` parameter.
+
+  >>> tf.io.decode_raw(tf.constant("\x0a\x0b"), tf.int16)
+  <tf.Tensor: shape=(1,), dtype=int16, numpy=array([2826], dtype=int16)>
+  >>> hex(2826)
+  '0xb0a'
+  >>> tf.io.decode_raw(tf.constant("\x0a\x0b"), tf.int16, little_endian=False)
+  <tf.Tensor: shape=(1,), dtype=int16, numpy=array([2571], dtype=int16)>
+  >>> hex(2571)
+  '0xa0b'
+
+  If the elements of `input_bytes` are of different length, you must specify
+  `fixed_length`:
+
+  >>> tf.io.decode_raw(tf.constant([["1"],["23"]]), tf.uint8, fixed_length=4)
+  <tf.Tensor: shape=(2, 1, 4), dtype=uint8, numpy=
+  array([[[49,  0,  0,  0]],
+         [[50, 51,  0,  0]]], dtype=uint8)>
+
+  If the `fixed_length` value is larger that the length of the `out_type` dtype,
+  multiple values are generated:
+
+  >>> tf.io.decode_raw(tf.constant(["1212"]), tf.uint16, fixed_length=4)
+  <tf.Tensor: shape=(1, 2), dtype=uint16, numpy=array([[12849, 12849]], ...
+
+  If the input value is larger than `fixed_length`, it is truncated:
+
+  >>> x=''.join([chr(1), chr(2), chr(3), chr(4)])
+  >>> tf.io.decode_raw(x, tf.uint16, fixed_length=2)
+  <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([513], dtype=uint16)>
+  >>> hex(513)
+  '0x201'
+
+  If `little_endian` and `fixed_length` are specified, truncation to the fixed
+  length occurs before endianness conversion:
+
+  >>> x=''.join([chr(1), chr(2), chr(3), chr(4)])
+  >>> tf.io.decode_raw(x, tf.uint16, fixed_length=2, little_endian=False)
+  <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([258], dtype=uint16)>
+  >>> hex(258)
+  '0x102'
+
+  If input values all have the same length, then specifying `fixed_length`
+  equal to the size of the strings should not change output:
+
+  >>> x = ["12345678", "87654321"]
+  >>> tf.io.decode_raw(x, tf.int16)
+  <tf.Tensor: shape=(2, 4), dtype=int16, numpy=
+  array([[12849, 13363, 13877, 14391],
+         [14136, 13622, 13108, 12594]], dtype=int16)>
+  >>> tf.io.decode_raw(x, tf.int16, fixed_length=len(x[0]))
+  <tf.Tensor: shape=(2, 4), dtype=int16, numpy=
+  array([[12849, 13363, 13877, 14391],
+         [14136, 13622, 13108, 12594]], dtype=int16)>
 
   Args:
     input_bytes:
       Each element of the input Tensor is converted to an array of bytes.
+
+      Currently, this must be a tensor of strings (bytes), although semantically
+      the operation should support any input.
     out_type:
       `DType` of the output. Acceptable types are `half`, `float`, `double`,
       `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
@@ -856,13 +956,13 @@ def decode_raw(input_bytes,
       Data will be zero-padded or truncated to the specified length.
 
       `fixed_length` must be a multiple of the size of `out_type`.
+
       `fixed_length` must be specified if the elements of `input_bytes` are of
       variable length.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` object storing the decoded bytes.
-
   """
   if fixed_length is not None:
     return gen_parsing_ops.decode_padded_raw(
@@ -877,6 +977,7 @@ def decode_raw(input_bytes,
 
 
 @tf_export(v1=["decode_raw", "io.decode_raw"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "bytes is deprecated, use input_bytes instead",
                              "bytes")
@@ -921,6 +1022,7 @@ def decode_raw_v1(
 
 # Swap `name` and `na_value` for backward compatibility.
 @tf_export(v1=["io.decode_csv", "decode_csv"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,
@@ -970,6 +1072,7 @@ def decode_csv(records,
 
 
 @tf_export("io.decode_csv", v1=[])
+@dispatch.add_dispatch_support
 def decode_csv_v2(records,
                   record_defaults,
                   field_delim=",",
@@ -1045,3 +1148,88 @@ def _assert_scalar(value, name):
     return value
   else:
     raise ValueError("Input %s must be a scalar" % name)
+
+
+@tf_export("io.decode_json_example",
+           v1=["decode_json_example", "io.decode_json_example"])
+def decode_json_example(json_examples, name=None):
+  r"""Convert JSON-encoded Example records to binary protocol buffer strings.
+
+  Note: This is **not** a general purpose JSON parsing op.
+
+  This op converts JSON-serialized `tf.train.Example` (maybe created with
+  `json_format.MessageToJson`, following the
+  [standard JSON mapping](
+  https://developers.google.com/protocol-buffers/docs/proto3#json))
+  to a binary-serialized `tf.train.Example` (equivalent to
+  `Example.SerializeToString()`) suitable for conversion to tensors with
+  `tf.io.parse_example`.
+
+  Here is a `tf.train.Example` proto:
+
+  >>> example = tf.train.Example(
+  ...   features=tf.train.Features(
+  ...       feature={
+  ...           "a": tf.train.Feature(
+  ...               int64_list=tf.train.Int64List(
+  ...                   value=[1, 1, 3]))}))
+
+  Here it is converted to JSON:
+
+  >>> from google.protobuf import json_format
+  >>> example_json = json_format.MessageToJson(example)
+  >>> print(example_json)
+  {
+    "features": {
+      "feature": {
+        "a": {
+          "int64List": {
+            "value": [
+              "1",
+              "1",
+              "3"
+            ]
+          }
+        }
+      }
+    }
+  }
+
+  This op converts the above json string to a binary proto:
+
+  >>> example_binary = tf.io.decode_json_example(example_json)
+  >>> example_binary.numpy()
+  b'\n\x0f\n\r\n\x01a\x12\x08\x1a\x06\x08\x01\x08\x01\x08\x03'
+
+  The OP works on string tensors of andy shape:
+
+  >>> tf.io.decode_json_example([
+  ...     [example_json, example_json],
+  ...     [example_json, example_json]]).shape.as_list()
+  [2, 2]
+
+  This resulting binary-string is equivalent to `Example.SerializeToString()`,
+  and can be converted to Tensors using `tf.io.parse_example` and related
+  functions:
+
+  >>> tf.io.parse_example(
+  ...   serialized=[example_binary.numpy(),
+  ...              example.SerializeToString()],
+  ...   features = {'a': tf.io.FixedLenFeature(shape=[3], dtype=tf.int64)})
+  {'a': <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+   array([[1, 1, 3],
+          [1, 1, 3]])>}
+
+  Args:
+    json_examples: A string tensor containing json-serialized `tf.Example`
+      protos.
+    name: A name for the op.
+
+  Returns:
+    A string Tensor containing the binary-serialized `tf.Example` protos.
+
+  Raises:
+     `tf.errors.InvalidArgumentError`: If the JSON could not be converted to a
+     `tf.Example`
+  """
+  return gen_parsing_ops.decode_json_example(json_examples, name=name)

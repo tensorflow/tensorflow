@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -35,7 +35,7 @@ void Logger::log(Severity severity, const char* msg) {
       break;
     }
     case Severity::kWARNING: {
-      LOG(WARNING) << name_ << " " << msg;
+      LOG_WARNING_WITH_PREFIX << name_ << " " << msg;
       break;
     }
     case Severity::kERROR: {
@@ -67,5 +67,4 @@ REGISTER_TENSORRT_LOGGER("DefaultLogger", Logger::GetLogger());
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
-#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

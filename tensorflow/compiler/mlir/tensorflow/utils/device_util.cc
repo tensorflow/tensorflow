@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -153,6 +156,21 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
 
   return op->emitOpError(
       llvm::formatv("unsupported '{0}' attribute", kDevicesAttr));
+}
+
+mlir::LogicalResult GetDeviceOrdinalFromDeviceString(mlir::Location loc,
+                                                     llvm::StringRef device,
+                                                     int64_t* device_ordinal) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(
+          absl::string_view(device.data(), device.size()), &parsed_name))
+    return mlir::emitError(loc) << "invalid device '" << device << "'";
+
+  if (!parsed_name.has_id)
+    return mlir::emitError(loc) << "device '" << device << "' has no id";
+
+  *device_ordinal = parsed_name.id;
+  return mlir::success();
 }
 
 }  // namespace tensorflow

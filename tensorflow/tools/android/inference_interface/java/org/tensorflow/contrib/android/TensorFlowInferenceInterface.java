@@ -43,8 +43,8 @@ import org.tensorflow.types.UInt8;
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
  * for inference.
  *
- * <p>See tensorflow/examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java for an
- * example usage.
+ * <p>See tensorflow/tools/android/test/src/org/tensorflow/demo/TensorFlowImageClassifier.java for
+ * an example usage.
  */
 public class TensorFlowInferenceInterface {
   private static final String TAG = "TensorFlowInferenceInterface";
@@ -543,7 +543,8 @@ public class TensorFlowInferenceInterface {
       } catch (UnsatisfiedLinkError e2) {
         throw new RuntimeException(
             "Native TF methods not found; check that the correct native"
-                + " libraries are present in the APK.");
+                + " libraries are present in the APK: "
+                + e2);
       }
     }
   }

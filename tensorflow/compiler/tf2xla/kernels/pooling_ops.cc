@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/pooling_ops_common.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 

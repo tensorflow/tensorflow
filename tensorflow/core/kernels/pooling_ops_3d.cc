@@ -39,17 +39,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/kernels/pooling_ops_3d_sycl.h"
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                    const std::vector<int32>& ksize,
@@ -192,6 +186,7 @@ class Pooling3DOp : public UnaryOp<T> {
                                             {{out[2], out[1], out[0]}}, depth);
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) return;
     LaunchPoolingOp<Device, T, Type>::launch(context, tensor_in, window, stride,
                                              padding, data_format_, padding_,
                                              output);
@@ -388,6 +383,19 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
                      const std::array<int64, 3>& output_shape,
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
+    OP_REQUIRES(
+        context, tensor_in_shape.dim_size(0) == out_backprop.dim_size(0),
+        errors::InvalidArgument(
+            "Expected first dimension of tensor_in_shape and "
+            "out_backprop to match, got ",
+            tensor_in_shape.dim_size(0), " and ", out_backprop.dim_size(0)));
+    OP_REQUIRES(
+        context, tensor_in_shape.dim_size(4) == out_backprop.dim_size(4),
+        errors::InvalidArgument(
+            "Expected last dimension of tensor_in_shape and "
+            "out_backprop to match, got ",
+            tensor_in_shape.dim_size(4), " and ", out_backprop.dim_size(4)));
+
     output->flat<T>().setZero();
     std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(3),
                                         tensor_in_shape.dim_size(2),
@@ -698,10 +706,35 @@ class MaxPooling3dGradGradOp : public OpKernel {
 
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
+    if (!context->status().ok()) return;  // params is invalid
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {2}, 0, tensor_out.shape(), &output));
+
+    // Given access patterns in LaunchMaxPooling3dGradGradOp, these tensors must
+    // have elements.
+    OP_REQUIRES(context, tensor_in.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor tensor_in: ",
+                                        tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_out.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor tensor_out: ",
+                                        tensor_out.DebugString()));
+    OP_REQUIRES(
+        context, out_grad_backprop.NumElements() > 0,
+        errors::InvalidArgument("received empty tensor out_grad_backprop: ",
+                                out_grad_backprop.DebugString()));
+    OP_REQUIRES(context,
+                tensor_in.NumElements() == out_grad_backprop.NumElements(),
+                errors::InvalidArgument("tensor_in and out_grad_backprop must "
+                                        "have same number of elements, got <",
+                                        tensor_in.DebugString(), "> and <",
+                                        out_grad_backprop.DebugString(), ">"));
+    OP_REQUIRES(
+        context, tensor_out.NumElements() == output->NumElements(),
+        errors::InvalidArgument(
+            "tensor_out and output must have same number of elements, got <",
+            tensor_out.DebugString(), "> and <", output->DebugString(), ">"));
 
     LaunchMaxPooling3dGradGradOp<Device, T>::launch(
         context, params, tensor_in, tensor_out, out_grad_backprop, output);
@@ -829,11 +862,6 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
-    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_KERNELS
 

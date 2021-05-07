@@ -4,8 +4,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_gpu_library",
-    "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -19,7 +19,7 @@ package(
     default_visibility = ["//tensorflow:internal"],
 )
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 tf_gpu_library(
     name = "blas_gemm",
@@ -32,9 +32,9 @@ tf_gpu_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )

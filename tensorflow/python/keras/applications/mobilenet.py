@@ -56,27 +56,25 @@ the 100 % MobileNet on various input sizes:
 |  1.0 MobileNet-128  |    64.4 %    |        529        |     4.2     |
 ------------------------------------------------------------------------
 
-Reference paper:
-  - [MobileNets: Efficient Convolutional Neural Networks for
-     Mobile Vision Applications](https://arxiv.org/abs/1704.04861)
+Reference:
+  - [MobileNets: Efficient Convolutional Neural Networks
+     for Mobile Vision Applications](
+      https://arxiv.org/abs/1704.04861)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet/')
+layers = None
 
 
 @keras_export('keras.applications.mobilenet.MobileNet',
@@ -94,18 +92,28 @@ def MobileNet(input_shape=None,
               **kwargs):
   """Instantiates the MobileNet architecture.
 
-  Reference paper:
-  - [MobileNets: Efficient Convolutional Neural Networks for Mobile Vision
-    Applications](https://arxiv.org/abs/1704.04861)
+  Reference:
+  - [MobileNets: Efficient Convolutional Neural Networks
+     for Mobile Vision Applications](
+      https://arxiv.org/abs/1704.04861)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in the `tf.keras.backend.image_data_format()`.
+  This function returns a Keras image classification model,
+  optionally loaded with weights pre-trained on ImageNet.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet.preprocess_input` for an example.
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
 
-  Arguments:
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNet, call `tf.keras.applications.mobilenet.preprocess_input`
+  on your inputs before passing them to the model.
+  `mobilenet.preprocess_input` will scale input pixels between -1 and 1.
+
+  Args:
     input_shape: Optional shape tuple, only to be specified if `include_top`
       is False (otherwise the input shape has to be `(224, 224, 3)` (with
       `channels_last` data format) or (3, 224, 224) (with `channels_first`
@@ -145,22 +153,20 @@ def MobileNet(input_shape=None,
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
     **kwargs: For backwards compatibility only.
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -310,7 +316,7 @@ def MobileNet(input_shape=None,
 def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """Adds an initial convolution layer (with batch normalization and relu6).
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, 3)` (with `channels_last`
       data format) or (3, rows, cols) (with `channels_first` data format).
       It should have exactly 3 inputs channels, and width and height should
@@ -345,15 +351,13 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """
   channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
   filters = int(filters * alpha)
-  x = layers.ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv1_pad')(inputs)
   x = layers.Conv2D(
       filters,
       kernel,
-      padding='valid',
+      padding='same',
       use_bias=False,
       strides=strides,
-      name='conv1')(
-          x)
+      name='conv1')(inputs)
   x = layers.BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
   return layers.ReLU(6., name='conv1_relu')(x)
 
@@ -370,7 +374,7 @@ def _depthwise_conv_block(inputs,
   batch normalization, relu6, pointwise convolution,
   batch normalization and relu6 activation.
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, channels)` (with
       `channels_last` data format) or (channels, rows, cols) (with
       `channels_first` data format).
@@ -439,39 +443,16 @@ def _depthwise_conv_block(inputs,
 
 @keras_export('keras.applications.mobilenet.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-
-  Raises
-    ValueError: In case of unknown `data_format` argument.
-  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

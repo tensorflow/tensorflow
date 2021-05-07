@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -63,8 +64,10 @@ TensorProto GetRandomInt32TensorProtoWithRepeat(int dim, int repeat,
   return tensor_proto;
 }
 
-static void BM_Unique_INT32(int iters, int dim, int max_int) {
-  testing::StopTiming();
+void BM_Unique_INT32(::testing::benchmark::State& state) {
+  const int dim = state.range(0);
+  const int max_int = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_INT32, TensorShape({dim}));
@@ -75,15 +78,19 @@ static void BM_Unique_INT32(int iters, int dim, int max_int) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_INT32)
                   .Finalize(g, &node));
+  FixupSourceAndSinkEdges(g);
 
-  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(int32));
-  testing::UseRealTime();
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim *
+                          sizeof(int32));
 }
 
-static void BM_Unique_INT32_Repeat(int iters, int dim, int max_int) {
-  testing::StopTiming();
+void BM_Unique_INT32_Repeat(::testing::benchmark::State& state) {
+  const int dim = state.range(0);
+  const int max_int = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_INT32, TensorShape({dim * 200}));
@@ -95,12 +102,13 @@ static void BM_Unique_INT32_Repeat(int iters, int dim, int max_int) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_INT32)
                   .Finalize(g, &node));
+  FixupSourceAndSinkEdges(g);
 
-  testing::BytesProcessed(static_cast<int64>(iters) * dim * 200 *
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim * 200 *
                           sizeof(int32));
-  testing::UseRealTime();
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
 }
 
 TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
@@ -120,8 +128,9 @@ TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
   return tensor_proto;
 }
 
-static void BM_Unique_STRING(int iters, int dim) {
-  testing::StopTiming();
+void BM_Unique_STRING(::testing::benchmark::State& state) {
+  const int dim = state.range(0);
+
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_STRING, TensorShape({dim}));
@@ -132,14 +141,16 @@ static void BM_Unique_STRING(int iters, int dim) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_STRING)
                   .Finalize(g, &node));
-
-  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(tstring));
-  testing::UseRealTime();
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  FixupSourceAndSinkEdges(g);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim *
+                          sizeof(tstring));
 }
 
 BENCHMARK(BM_Unique_INT32)
+    ->UseRealTime()
     ->ArgPair(32, 1024 * 1024)
     ->ArgPair(256, 1024 * 1024)
     ->ArgPair(1024, 1024 * 1024)
@@ -158,6 +169,7 @@ BENCHMARK(BM_Unique_INT32)
     ->ArgPair(4 * 1024 * 1024, 64 * 1024 * 1024);
 
 BENCHMARK(BM_Unique_INT32_Repeat)
+    ->UseRealTime()
     ->ArgPair(32, 1024 * 1024)
     ->ArgPair(256, 1024 * 1024)
     ->ArgPair(1024, 1024 * 1024)
@@ -182,6 +194,7 @@ BENCHMARK(BM_Unique_INT32_Repeat)
     ->ArgPair(1024 * 1024, 64 * 1024 * 1024);
 
 BENCHMARK(BM_Unique_STRING)
+    ->UseRealTime()
     ->Arg(32)
     ->Arg(256)
     ->Arg(1024)

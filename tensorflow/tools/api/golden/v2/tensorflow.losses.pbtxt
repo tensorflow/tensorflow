@@ -117,11 +117,23 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "huber"
+    argspec: "args=[\'y_true\', \'y_pred\', \'delta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
+  }
+  member_method {
+    name: "kl_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "kld"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "kullback_leibler_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "log_cosh"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

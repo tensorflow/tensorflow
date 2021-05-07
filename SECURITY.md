@@ -44,7 +44,7 @@ Even if the untrusted party only supplies the serialized computation
 graph (in form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the
 set of computation primitives available to TensorFlow is powerful enough that
 you should assume that the TensorFlow process effectively executes arbitrary
-code. One common solution is to whitelist only a few safe Ops. While this is
+code. One common solution is to allow only a few safe Ops. While this is
 possible in theory, we still recommend you sandbox the execution.
 
 It depends on the computation graph whether a user provided checkpoint is safe.
@@ -64,7 +64,7 @@ your model, and we recommend you run the TensorFlow process in a sandbox.
 
 It is possible to write models that are secure in a sense that they can safely
 process untrusted inputs assuming there are no bugs. There are two main reasons
-to not rely on this: first, it is easy to write models which must not be exposed
+to not rely on this: First, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
 bugs either in TensorFlow or in dependent libraries.
@@ -149,7 +149,7 @@ attack (or worse). Because TensorFlow behaves correctly, this is not a
 vulnerability in TensorFlow (although it would be a vulnerability of this
 hypothetical system).
 
-As a general rule, it is incorrect behavior for Tensorflow to access memory it
+As a general rule, it is incorrect behavior for TensorFlow to access memory it
 does not own, or to terminate in an unclean way. Bugs in TensorFlow that lead to
 such behaviors constitute a vulnerability.
 

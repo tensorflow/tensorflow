@@ -22,6 +22,8 @@ namespace internal {
 void SegmentReductionValidationHelper(OpKernelContext* context,
                                       const Tensor& input,
                                       const Tensor& segment_ids) {
+  OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input.shape()),
+              errors::InvalidArgument("input must be at least rank 1"));
   OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
               errors::InvalidArgument("segment_ids should be a vector."));
   const int64 num_indices = segment_ids.NumElements();
@@ -62,6 +64,52 @@ bool UnsortedSegmentReductionDoValidation(OpKernel* op_kernel,
   UnsortedSegmentReductionValidation(op_kernel, context, data, segment_ids,
                                      num_segments);
   return context->status().ok();
+}
+
+void SparseSegmentReductionValidationHelper(OpKernelContext* context,
+                                            const Tensor& input,
+                                            const Tensor& indices,
+                                            const Tensor& segment_ids,
+                                            bool has_num_segments,
+                                            AsyncOpKernel::DoneCallback done) {
+  if (!done) {
+    done = [] {};
+  }
+  if (has_num_segments) {
+    const Tensor& num_segments_t = context->input(3);
+    OP_REQUIRES_ASYNC(
+        context, TensorShapeUtils::IsScalar(num_segments_t.shape()),
+        errors::InvalidArgument("num_segments should be a scalar, not shape ",
+                                num_segments_t.shape().DebugString()),
+        done);
+    int64 output_rows = internal::SubtleMustCopy(
+        num_segments_t.dtype() == DT_INT32 ? num_segments_t.scalar<int32>()()
+                                           : num_segments_t.scalar<int64>()());
+    OP_REQUIRES_ASYNC(context, output_rows >= 0,
+                      errors::InvalidArgument("segment ids must be >= 0"),
+                      done);
+  }
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(indices.shape()),
+                    errors::InvalidArgument("indices should be a vector."),
+                    done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(segment_ids.shape()),
+                    errors::InvalidArgument("segment_ids should be a vector."),
+                    done);
+  const int64 num_indices = indices.NumElements();
+  OP_REQUIRES_ASYNC(
+      context, num_indices == segment_ids.NumElements(),
+      errors::InvalidArgument("segment_ids and indices should have same size."),
+      done);
+}
+
+bool SparseSegmentReductionDoValidation(OpKernelContext* c, const Tensor& input,
+                                        const Tensor& indices,
+                                        const Tensor& segment_ids,
+                                        bool has_num_segments,
+                                        AsyncOpKernel::DoneCallback done) {
+  SparseSegmentReductionValidationHelper(c, input, indices, segment_ids,
+                                         has_num_segments, done);
+  return c->status().ok();
 }
 
 }  // namespace internal
@@ -111,17 +159,39 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #undef REGISTER_COMPLEX_CPU_KERNELS_ALL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define REGISTER_GPU_SORTED_KERNELS(type, index_type)                  \
-  REGISTER_KERNEL_BUILDER(Name("SegmentSum")                           \
-                              .Device(DEVICE_GPU)                      \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices"), \
-                          SegmentSumGPUOp<type, index_type>)
+#define REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                   \
+    name, type, index_type, initial_value_functor, reduction_kernel_functor, \
+    atomic_reduction_kernel_functor)                                         \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name(name)                                                             \
+          .Device(DEVICE_GPU)                                                \
+          .TypeConstraint<type>("T")                                         \
+          .TypeConstraint<index_type>("Tindices"),                           \
+      SegmentReductionGPUOp<                                                 \
+          type, index_type,                                                  \
+          functor::SegmentReductionFunctor<                                  \
+              type, index_type, initial_value_functor,                       \
+              reduction_kernel_functor, atomic_reduction_kernel_functor> >)
+
+#define REGISTER_GPU_SORTED_KERNELS(type, index_type)                     \
+  REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
+      "SegmentSum", type, index_type, functor::Zero<type>,                \
+      functor::NonAtomicSumOpGpu<type>, functor::AtomicSumOpGpu<type>);   \
+  REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
+      "SegmentProd", type, index_type, functor::One<type>,                \
+      functor::NonAtomicProdOpGpu<type>, functor::AtomicProdOpGpu<type>); \
+  REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
+      "SegmentMin", type, index_type, functor::Highest<type>,             \
+      functor::NonAtomicMinOpGpu<type>, functor::AtomicMinOpGpu<type>);   \
+  REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
+      "SegmentMax", type, index_type, functor::Lowest<type>,              \
+      functor::NonAtomicMaxOpGpu<type>, functor::AtomicMaxOpGpu<type>);
 
 #define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
   REGISTER_GPU_SORTED_KERNELS(type, int32)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
+#undef REGISTER_GPU_KERNEL_SORTEDSEGMENT
 #undef REGISTER_GPU_SORTED_KERNELS
 #undef REGISTER_GPU_SORTED_KERNELS_ALL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

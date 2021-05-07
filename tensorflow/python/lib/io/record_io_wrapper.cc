@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_reader.h"

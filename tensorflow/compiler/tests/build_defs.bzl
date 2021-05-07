@@ -1,7 +1,6 @@
 """Build rules for Tensorflow/XLA testing."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -9,12 +8,7 @@ load(
     "tf_exec_properties",
 )
 
-def all_backends():
-    b = ["cpu"] + plugins.keys()
-    if cuda_is_configured() or rocm_is_configured():
-        return b + ["gpu"]
-    else:
-        return b
+all_backends = ["cpu", "gpu"] + plugins.keys()
 
 def tf_xla_py_test(
         name,
@@ -26,11 +20,12 @@ def tf_xla_py_test(
         enabled_backends = None,
         disabled_backends = None,
         use_xla_device = True,
+        enable_mlir_bridge = False,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
     This rule generates py_test() targets named name_backend, for each backend
-    in all_backends(). The rule also generates a test suite with named `name` that
+    in all_backends. The rule also generates a test suite with named `name` that
     tests all backends for the test.
 
     For example, the following rule generates test cases foo_test_cpu,
@@ -55,10 +50,12 @@ def tf_xla_py_test(
       use_xla_device: If true then the --test_device argument is set to XLA_CPU
         and XLA_GPU for the CPU and GPU tests.  Otherwise it is set to CPU and
         GPU.
+      enable_mlir_bridge: If true, then runs the test with and without mlir
+        bridge enabled.
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
     if enabled_backends == None:
-        enabled_backends = all_backends()
+        enabled_backends = all_backends
     if disabled_backends == None:
         disabled_backends = []
     if type(disabled_backends) != "list":
@@ -104,24 +101,38 @@ def tf_xla_py_test(
             fail("Unknown backend {}".format(backend))
 
         test_tags = tags + backend_tags
-        native.py_test(
-            name = test_name,
-            srcs = srcs,
-            srcs_version = "PY2AND3",
-            args = backend_args,
-            main = "{}.py".format(name) if main == None else main,
-            data = data + backend_data,
-            deps = deps + backend_deps,
-            tags = test_tags,
-            exec_properties = tf_exec_properties({"tags": test_tags}),
-            **kwargs
-        )
-        test_names.append(test_name)
+
+        enable_mlir_bridge_options = [False]
+        if enable_mlir_bridge:
+            enable_mlir_bridge_options.append(True)
+
+        for mlir_option in enable_mlir_bridge_options:
+            extra_dep = []
+            updated_name = test_name
+            if mlir_option:
+                extra_dep = ["//tensorflow/python:is_mlir_bridge_test_true"]
+                if updated_name.endswith("_test"):
+                    updated_name = updated_name[:-5]
+                updated_name += "_mlir_bridge_test"
+
+            py_test(
+                name = updated_name,
+                srcs = srcs,
+                srcs_version = "PY3",
+                args = backend_args,
+                main = "{}.py".format(name) if main == None else main,
+                data = data + backend_data,
+                deps = deps + backend_deps + extra_dep,
+                tags = test_tags,
+                exec_properties = tf_exec_properties({"tags": test_tags}),
+                **kwargs
+            )
+            test_names.append(updated_name)
     native.test_suite(name = name, tests = test_names)
 
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""
     if not backends:
-        backends = all_backends()
+        backends = all_backends
     for backend in backends:
         native.test_suite(name = "%s_tests" % backend, tags = ["tf_xla_%s" % backend])

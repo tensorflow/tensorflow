@@ -46,11 +46,15 @@ EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   state_ = ExecutorState::kShutDown;
   nodes_pending_.notify_all();
+  for (const auto& cleanups_for_key : cleanups_) {
+    for (const std::function<void()>& cleanup : cleanups_for_key.second) {
+      cleanup();
+    }
+  }
 }
 
 Status EagerExecutor::ShutDown() {
   {
-    std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
     bool has_thread;
     Status status;
     {
@@ -71,9 +75,6 @@ Status EagerExecutor::ShutDown() {
       if (has_thread) {
         nodes_pending_.notify_all();
       }
-    }
-    for (auto& item : items_to_destroy) {
-      item->node->Abort(status);
     }
     if (!has_thread) {
       return status;
@@ -98,7 +99,7 @@ const char* EagerExecutor::StateStringLocked() {
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("Executor does not support sync execution");
+    return errors::Internal("Executor does not support async execution");
   }
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");
@@ -115,10 +116,6 @@ Status EagerExecutor::SyncExecute(EagerNode* node) {
   // Inline execution in sync mode.
   s = node->Run();
   tensorflow::mutex_lock l(node_queue_mutex_);
-  if (!s.ok()) {
-    status_ = s;
-    ok_ = false;
-  }
   NotifyWaiters(id);
   return s;
 }
@@ -299,6 +296,9 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
     } else {
       upperbound_id = next_node_id_ - 1;
     }
+    if (upperbound_id < id) {
+      return;
+    }
     DVLOG(3) << "Notify node done: [id " << id << " to " << upperbound_id
              << "] ";
     // Note that we notify all waiting threads in case an error has
@@ -416,5 +416,11 @@ Status EagerExecutor::MoveToUnfinished(core::RefCountPtr<NodeItem> item,
 
   return Status::OK();
 }
+
+void EagerExecutor::AddCleanup(intptr_t key, std::function<void()> callback) {
+  cleanups_[key].push_back(callback);
+}
+
+void EagerExecutor::RemoveCleanups(intptr_t key) { cleanups_.erase(key); }
 
 }  // namespace tensorflow

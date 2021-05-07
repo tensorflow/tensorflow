@@ -19,7 +19,9 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
@@ -333,10 +335,10 @@ TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
       ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
                                  ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, constant));
+      constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
 
@@ -596,7 +598,7 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
 TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
-  // copy correctly correctly points into the nested elements of the constant.
+  // copy correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
   Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                         LiteralUtil::CreateR1<float>({2.0, 42})};
@@ -640,6 +642,29 @@ TEST_F(TuplePointsToAnalysisTest, BufferAliases) {
   ExpectHasBufferAliases(inner_tuple, /*index=*/{},
                          {{inner_tuple, {}}, {tuple, {0}}});
   ExpectHasBufferAliases(tuple, /*index=*/{}, {{tuple, {}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, CustomCall) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  Shape data_shape = ShapeUtil::MakeShape(F32, {});
+  auto ccall = builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape({data_shape, data_shape}), {constant},
+      "TestOp"));
+  Cast<HloCustomCallInstruction>(ccall)->set_output_to_operand_aliasing(
+      {std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>{
+          ShapeIndex{1}, std::pair<int64, ShapeIndex>(0, {})}});
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, ccall, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, ccall, 1));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  ExpectHasBufferAliases(ccall, /*index=*/{0}, {{gte0, {}}, {ccall, {0}}});
+  ExpectHasBufferAliases(constant, /*index=*/{},
+                         {{constant, {}}, {gte1, {}}, {ccall, {1}}});
 }
 
 class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {

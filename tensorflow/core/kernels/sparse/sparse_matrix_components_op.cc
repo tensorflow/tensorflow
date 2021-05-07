@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/kernels/cuda_sparse.h"
+#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/cuda_sparse.h"
 #endif
 
 namespace tensorflow {
@@ -89,8 +89,9 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
       slice_int(d,
                 /*output*/ row_ptrs,
                 /*input*/ csr_sparse_matrix->row_pointers().vec<int32>(),
-                /*slice_indices*/ EVec{index * (rows + 1)},
-                /*slice_sizes*/ EVec{rows + 1});
+                /*slice_indices*/
+                EVec{static_cast<Eigen::DenseIndex>(index * (rows + 1))},
+                /*slice_sizes*/ EVec{static_cast<Eigen::DenseIndex>(rows + 1)});
       slice_int(d,
                 /*output*/ col_inds,
                 /*input*/ csr_sparse_matrix->col_indices().vec<int32>(),
@@ -120,10 +121,8 @@ REGISTER(CPU, complex128)
 
 REGISTER(GPU, float)
 REGISTER(GPU, double)
-#if GOOGLE_CUDA
 REGISTER(GPU, complex64)
 REGISTER(GPU, complex128)
-#endif
 
 #undef REGISTER
 
@@ -141,10 +140,8 @@ namespace functor {
 DECLARE_GPU_SPEC(int32);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if GOOGLE_CUDA
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
-#endif
 
 #undef DECLARE_GPU_SPEC
 }  // namespace functor

@@ -21,6 +21,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -61,6 +62,24 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(next_element)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testCopyToDeviceHostOptimizations(self):
+    host_dataset = dataset_ops.Dataset.range(10)
+    host_dataset = host_dataset.apply(testing.assert_next(["MapAndBatch"]))
+    host_dataset = host_dataset.map(lambda x: x*x).batch(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.copy_to_device("/cpu:1"))
+
+    with ops.device("/cpu:1"):
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
+      next_element = iterator.get_next()
+
+    worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
+    with self.test_session(config=worker_config):
+      self.assertAllEqual([x*x for x in range(10)], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
@@ -254,7 +273,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCopyToDeviceGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -264,18 +283,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = dataset_ops.make_initializable_iterator(device_dataset)
-      next_element = iterator.get_next()
+      self.assertDatasetProduces(device_dataset, list(range(10)))
 
-    with self.cached_session(
-        config=config_pb2.ConfigProto(allow_soft_placement=False)):
-      self.evaluate(iterator.initializer)
-      for i in range(10):
-        self.assertEqual(i, self.evaluate(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
-
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCopyToDeviceGpuWithPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -285,16 +295,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
         prefetching_ops.copy_to_device("/gpu:0")).prefetch(1)
 
     with ops.device("/gpu:0"):
-      iterator = dataset_ops.make_initializable_iterator(device_dataset)
-      next_element = iterator.get_next()
-
-    with self.cached_session(
-        config=config_pb2.ConfigProto(allow_soft_placement=False)):
-      self.evaluate(iterator.initializer)
-      for i in range(10):
-        self.assertEqual(i, self.evaluate(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+      self.assertDatasetProduces(device_dataset, list(range(10)))
 
   @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuWithMap(self):

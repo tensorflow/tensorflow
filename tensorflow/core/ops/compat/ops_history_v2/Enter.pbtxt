@@ -1,0 +1,33 @@
+op {
+  name: "Enter"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "frame_name"
+    type: "string"
+  }
+  attr {
+    name: "is_constant"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "parallel_iterations"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
+}

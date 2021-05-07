@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package tensorflow.serving;
+
+// Config for the batch op rewriter. This should be serialized
+// and set a param in RewriterConfig with key kBatchOpRewriteParamKey.
+message BatchOpRewriteConfig {
+  bool enable_adaptive_shared_batching_thread_pool = 4;
+}

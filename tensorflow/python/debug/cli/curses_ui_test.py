@@ -1532,8 +1532,8 @@ class CursesTest(test_util.TensorFlowTestCase):
 class ScrollBarTest(test_util.TensorFlowTestCase):
 
   def testConstructorRaisesExceptionForNotEnoughHeight(self):
-    with self.assertRaisesRegexp(
-        ValueError, r"Insufficient height for ScrollBar \(2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Insufficient height for ScrollBar \(2\)"):
       curses_ui.ScrollBar(0, 0, 1, 1, 0, 0)
 
   def testLayoutIsEmptyForZeroRow(self):

@@ -127,7 +127,7 @@ class RaggedOneHotTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                  ragged_rank=None):
     ragged_indices = ragged_factory_ops.constant(
         indices, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       array_ops.one_hot(
           ragged_indices,
           depth,

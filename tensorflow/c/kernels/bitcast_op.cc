@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -148,7 +148,7 @@ void RegisterBitcastOpKernel() {
         << "Error while registering bitcast kernel";
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   {
     auto* builder = TF_NewKernelBuilder("Bitcast", tensorflow::DEVICE_GPU,
                                         &BitcastOp_Create, &BitcastOp_Compute,

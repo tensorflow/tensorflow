@@ -22,8 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -126,6 +124,95 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
   xla::PrimitiveType convert_to;
   TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
   return xla::ConvertElementType(operand, convert_to);
+}
+
+XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
+  return [](const TensorShape& shape, DataType dtype,
+            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+    xla::Shape xla_shape;
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+    return xla_shape;
+  };
+}
+
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape) {
+  if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual()) {
+    // After sharding, per core shape might have different layout. For example,
+    // before sharding, a shape [128, 128] will be assigned default
+    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
+    // the sharded shapes will have minor-to-major {0, 1}.
+    //
+    // As a result, for sharded shapes, we set their layout to per core shape's
+    // layout.
+    //
+    // TODO(endlessroad): for variable input & update, we might have
+    // different layouts which will prevent input output aliasing and
+    // increase memory usage. Investigate such cases.
+    int64 device = *sharding->tile_assignment().begin();
+    std::vector<int64> offset =
+        sharding->TileOffsetForDevice(*xla_shape, device);
+    std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
+    std::vector<int64> dimensions(xla_shape->rank());
+    for (int64 i = 0; i < xla_shape->rank(); ++i) {
+      dimensions[i] = limit[i] - offset[i];
+    }
+    xla::Shape per_device_xla_shape =
+        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
+    TensorShape per_device_tensor_shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
+    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                            xla_shape->element_type()));
+    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
+                        shape_representation_fn(per_device_tensor_shape, dtype,
+                                                use_fast_memory));
+    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
+  }
+  return Status::OK();
+}
+
+// There is a shape_representation_fn or sharding for an output, this function
+// uses a reshape to fix the layout.
+xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
+  if (original_shape.IsTuple()) {
+    std::vector<xla::XlaOp> elements;
+    for (int64 i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+      auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
+      TF_ASSIGN_OR_RETURN(auto element,
+                          ReshapeWithCorrectRepresentationAndSharding(
+                              builder, xla::GetTupleElement(original, i),
+                              original_shape.tuple_shapes(i),
+                              shape_representation_fn, subsharding, fast_mem));
+      elements.push_back(element);
+    }
+    return xla::Tuple(builder, elements);
+  }
+  if (!original_shape.IsArray()) return original;
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
+  TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                          original_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(auto to_shape,
+                      shape_representation_fn(shape, dtype, fast_mem));
+  if (sharding) {
+    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+                        xla::HloSharding::FromProto(*sharding));
+    TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+        hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
+  }
+  if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
+    for (int64 i = 0; i < original_shape.rank(); ++i) {
+      to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
+    }
+  }
+  return xla::Reshape(to_shape, original);
 }
 
 }  // end namespace tensorflow

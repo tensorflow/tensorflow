@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -28,9 +29,15 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+
+
+def _normalise_fspath(path):
+  """Convert pathlib-like objects to str (__fspath__ compatibility, PEP 519)."""
+  return os.fspath(path) if isinstance(path, os.PathLike) else path
 
 
 def _create_or_validate_filenames_dataset(filenames):
@@ -53,6 +60,7 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
+    filenames = nest.map_structure(_normalise_fspath, filenames)
     filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
     if filenames.dtype != dtypes.string:
       raise TypeError(
@@ -133,14 +141,50 @@ class _TextLineDataset(dataset_ops.DatasetSource):
 
 @tf_export("data.TextLineDataset", v1=[])
 class TextLineDatasetV2(dataset_ops.DatasetSource):
-  """A `Dataset` comprising lines from one or more text files."""
+  r"""Creates a `Dataset` comprising lines from one or more text files.
+
+  The `tf.data.TextLineDataset` loads text from text files and creates a dataset
+  where each line of the files becomes an element of the dataset.
+
+  For example, suppose we have 2 files "text_lines0.txt" and "text_lines1.txt"
+  with the following lines:
+
+  >>> with open('/tmp/text_lines0.txt', 'w') as f:
+  ...   f.write('the cow\n')
+  ...   f.write('jumped over\n')
+  ...   f.write('the moon\n')
+  >>> with open('/tmp/text_lines1.txt', 'w') as f:
+  ...   f.write('jack and jill\n')
+  ...   f.write('went up\n')
+  ...   f.write('the hill\n')
+
+  We can construct a TextLineDataset from them as follows:
+
+  >>> dataset = tf.data.TextLineDataset(['/tmp/text_lines0.txt',
+  ...                                    '/tmp/text_lines1.txt'])
+
+  The elements of the dataset are expected to be:
+
+  >>> for element in dataset.as_numpy_iterator():
+  ...   print(element)
+  b'the cow'
+  b'jumped over'
+  b'the moon'
+  b'jack and jill'
+  b'went up'
+  b'the hill'
+  """
 
   def __init__(self,
                filenames,
                compression_type=None,
                buffer_size=None,
                num_parallel_reads=None):
-    """Creates a `TextLineDataset`.
+    r"""Creates a `TextLineDataset`.
+
+    The elements of the dataset will be the lines of the input files, using
+    the newline character '\n' to denote line splits. The newline characters
+    will be stripped off of each element.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
@@ -249,9 +293,6 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
-    if sloppy is not None:
-      self._sloppy = ops.convert_to_tensor(
-          sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
         "buffer_output_elements",
         buffer_output_elements,
@@ -260,34 +301,22 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    if sloppy is None or compat.forward_compatible(2020, 3, 6):
-      if sloppy is None:
-        self._deterministic = "default"
-      elif sloppy:
-        self._deterministic = "false"
-      else:
-        self._deterministic = "true"
-      variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          deterministic=self._deterministic,
-          **self._flat_structure)
+    if sloppy is None:
+      self._deterministic = "default"
+    elif sloppy:
+      self._deterministic = "false"
     else:
-      variant_tensor = ged_ops.parallel_interleave_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._sloppy,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          **self._flat_structure)
+      self._deterministic = "true"
+    variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        deterministic=self._deterministic,
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -304,7 +333,48 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
 
 @tf_export("data.TFRecordDataset", v1=[])
 class TFRecordDatasetV2(dataset_ops.DatasetV2):
-  """A `Dataset` comprising records from one or more TFRecord files."""
+  """A `Dataset` comprising records from one or more TFRecord files.
+
+  This dataset loads TFRecords from the files as bytes, exactly as they were
+  written.`TFRecordDataset` does not do any parsing or decoding on its own.
+  Parsing and decoding can be done by applying `Dataset.map` transformations
+  after the `TFRecordDataset`.
+
+  A minimal example is given below:
+
+  >>> import tempfile
+  >>> example_path = os.path.join(tempfile.gettempdir(), "example.tfrecords")
+  >>> np.random.seed(0)
+
+  >>> # Write the records to a file.
+  ... with tf.io.TFRecordWriter(example_path) as file_writer:
+  ...   for _ in range(4):
+  ...     x, y = np.random.random(), np.random.random()
+  ...
+  ...     record_bytes = tf.train.Example(features=tf.train.Features(feature={
+  ...         "x": tf.train.Feature(float_list=tf.train.FloatList(value=[x])),
+  ...         "y": tf.train.Feature(float_list=tf.train.FloatList(value=[y])),
+  ...     })).SerializeToString()
+  ...     file_writer.write(record_bytes)
+
+  >>> # Read the data back out.
+  >>> def decode_fn(record_bytes):
+  ...   return tf.io.parse_single_example(
+  ...       # Data
+  ...       record_bytes,
+  ...
+  ...       # Schema
+  ...       {"x": tf.io.FixedLenFeature([], dtype=tf.float32),
+  ...        "y": tf.io.FixedLenFeature([], dtype=tf.float32)}
+  ...   )
+
+  >>> for batch in tf.data.TFRecordDataset([example_path]).map(decode_fn):
+  ...   print("x = {x:.4f},  y = {y:.4f}".format(**batch))
+  x = 0.5488,  y = 0.7152
+  x = 0.6028,  y = 0.5449
+  x = 0.4237,  y = 0.6459
+  x = 0.4376,  y = 0.8918
+  """
 
   def __init__(self,
                filenames,
@@ -312,6 +382,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                buffer_size=None,
                num_parallel_reads=None):
     """Creates a `TFRecordDataset` to read one or more TFRecord files.
+
+    Each element of the dataset will contain a single TFRecord.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
@@ -453,7 +525,38 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
 
 @tf_export("data.FixedLengthRecordDataset", v1=[])
 class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
-  """A `Dataset` of fixed-length records from one or more binary files."""
+  """A `Dataset` of fixed-length records from one or more binary files.
+
+  The `tf.data.FixedLengthRecordDataset` reads fixed length records from binary
+  files and creates a dataset where each record becomes an element of the
+  dataset. The binary files can have a fixed length header and a fixed length
+  footer, which will both be skipped.
+
+  For example, suppose we have 2 files "fixed_length0.bin" and
+  "fixed_length1.bin" with the following content:
+
+  >>> with open('/tmp/fixed_length0.bin', 'wb') as f:
+  ...   f.write(b'HEADER012345FOOTER')
+  >>> with open('/tmp/fixed_length1.bin', 'wb') as f:
+  ...   f.write(b'HEADER6789abFOOTER')
+
+  We can construct a `FixedLengthRecordDataset` from them as follows:
+
+  >>> dataset1 = tf.data.FixedLengthRecordDataset(
+  ...     filenames=['/tmp/fixed_length0.bin', '/tmp/fixed_length1.bin'],
+  ...     record_bytes=2, header_bytes=6, footer_bytes=6)
+
+  The elements of the dataset are:
+
+  >>> for element in dataset1.as_numpy_iterator():
+  ...   print(element)
+  b'01'
+  b'23'
+  b'45'
+  b'67'
+  b'89'
+  b'ab'
+  """
 
   def __init__(self,
                filenames,

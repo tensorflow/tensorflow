@@ -15,37 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
 #define TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
 
-#include <type_traits>
+#include <memory>
 
 #include "tensorflow/lite/core/api/profiler.h"
 
 namespace tflite {
 namespace profiling {
 
-// Profiler reporting to ATrace.
-class ATraceProfiler : public tflite::Profiler {
- public:
-  ATraceProfiler();
-
-  ~ATraceProfiler() override;
-
-  uint32_t BeginEvent(const char* tag, EventType event_type,
-                      uint32_t event_metadata,
-                      uint32_t event_subgraph_index) override;
-
-  void EndEvent(uint32_t event_handle) override;
-
- private:
-  using FpIsEnabled = std::add_pointer<bool()>::type;
-  using FpBeginSection = std::add_pointer<void(const char*)>::type;
-  using FpEndSection = std::add_pointer<void()>::type;
-
-  // Handle to libandroid.so library. Null if not supported.
-  void* handle_;
-  FpIsEnabled atrace_is_enabled_;
-  FpBeginSection atrace_begin_section_;
-  FpEndSection atrace_end_section_;
-};
+// Creates a profiler which reports the traced events to the Android ATrace.
+// Nullptr will be returned if the Android system property 'debug.tflite.trace'
+// is not set or the property value is not 1.
+std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler();
 
 }  // namespace profiling
 }  // namespace tflite

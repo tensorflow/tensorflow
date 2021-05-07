@@ -13,27 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
+namespace mlir {
+namespace TFTPU {
+extern void AddGraphExportLoweringPasses(OpPassManager &pm);
+}  // namespace TFTPU
+}  // namespace mlir
+
 namespace {
 
-// Registers an existing pipeline builder function.
+// Registers a pipeline builder function for TF TPU bridge.
 mlir::PassPipelineRegistration<> tpu_pipeline(
     "tf-tpu-bridge",
     "Run all the passes involved in transforming the graph before execution so "
     "that it is suitable for targeting TPUs.",
     mlir::TFTPU::CreateTPUBridgePipeline);
 
-// Registers an existing pipeline builder function.
+// Registers a pipeline builder function for TF TPU V1 bridge.
 mlir::PassPipelineRegistration<> tpu_pipeline_v1(
     "tf-tpu-bridge-v1",
     "Run all the passes involved in transforming a TensorFlow V1 graph before "
     "execution so that it is suitable for targeting TPUs.",
     mlir::TFTPU::CreateTPUBridgePipelineV1);
+
+// Registers a pipeline builder function for TF Graph export.
+mlir::PassPipelineRegistration<> tpu_export(
+    "tf-graph-export",
+    "Run passes to prepare for exporting module back to TF Graph.",
+    mlir::TF::AddGraphExportLoweringPasses);
 
 }  // anonymous namespace

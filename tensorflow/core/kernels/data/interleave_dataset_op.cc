@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -85,6 +85,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -177,11 +182,54 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                 ctx, this, args_list_[cycle_index_], cycle_index_,
                 *instantiated_captured_func_, prefix(),
-                &current_elements_[cycle_index_]));
+                &current_elements_[cycle_index_], model_node()));
             ++num_open_;
           }
         } else {
           AdvanceToNextInCycle();
+        }
+      }
+
+      *end_of_sequence = true;
+      return Status::OK();
+    }
+
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence, int* num_skipped) override {
+      mutex_lock l(mu_);
+      *num_skipped = 0;
+      while (!end_of_input_ || num_open_ > 0) {
+        if (current_elements_[cycle_index_]) {
+          // We are currently processing a mapped element, so try to get the
+          // next subelement.
+          int element_num_to_skip = num_to_skip - *num_skipped;
+          if (element_num_to_skip > dataset()->block_length_ - block_index_) {
+            element_num_to_skip = dataset()->block_length_ - block_index_;
+          }
+          bool end_of_element = false;
+          int element_num_skipped = 0;
+          TF_RETURN_IF_ERROR(current_elements_[cycle_index_]->Skip(
+              ctx, element_num_to_skip, &end_of_element, &element_num_skipped));
+          *num_skipped += element_num_skipped;
+          if (end_of_element) {
+            // We have reached the end of the current element, so move
+            // on to the next element in the cycle.
+            current_elements_[cycle_index_].reset();
+            args_list_[cycle_index_].clear();
+            --num_open_;
+            AdvanceToNextInCycle();
+          } else {
+            block_index_ += element_num_skipped;
+            if (block_index_ == dataset()->block_length_) {
+              AdvanceToNextInCycle();
+            }
+          }
+          if (num_to_skip == *num_skipped) {
+            *end_of_sequence = false;
+            return Status::OK();
+          }
+        } else {
+          TF_RETURN_IF_ERROR(MoveToNextElement(ctx));
         }
       }
 
@@ -195,10 +243,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return model::MakeInterleaveManyNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCycleIndex), cycle_index_));
       TF_RETURN_IF_ERROR(
@@ -207,7 +257,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kEndOfInput), ""));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumOpen), num_open_));
-      TF_RETURN_IF_ERROR(SaveCurrentElements(writer));
+      TF_RETURN_IF_ERROR(SaveCurrentElements(ctx, writer));
       return Status::OK();
     }
 
@@ -234,11 +284,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status SaveCurrentElements(IteratorStateWriter* writer)
+    Status SaveCurrentElements(SerializationContext* ctx,
+                               IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx]) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_elements_[idx]));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
               args_list_[idx].size()));
@@ -268,13 +319,34 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                 full_name(strings::StrCat(kArgsList, "[", idx, "][", i, "]")),
                 &args_list_[idx][i]));
           }
+          // NOTE: We intentionally ignore resource modeling outside GetNext().
           TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
               ctx, this, args_list_[idx], idx, *instantiated_captured_func_,
-              prefix(), &current_elements_[idx]));
+              prefix(), &current_elements_[idx], /*node=*/nullptr));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_elements_[idx]));
         } else {
           current_elements_[idx].reset();
         }
+      }
+      return Status::OK();
+    }
+
+    Status MoveToNextElement(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!end_of_input_) {
+        // Get the next element from the input dataset, and create
+        // an iterator from it.
+        TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &args_list_[cycle_index_],
+                                                &end_of_input_));
+        if (!end_of_input_) {
+          TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
+              ctx, this, args_list_[cycle_index_], cycle_index_,
+              *instantiated_captured_func_, prefix(),
+              &current_elements_[cycle_index_], model_node()));
+          ++num_open_;
+        }
+      } else {
+        AdvanceToNextInCycle();
       }
       return Status::OK();
     }

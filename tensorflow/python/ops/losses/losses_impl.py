@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -136,6 +137,7 @@ def _num_elements(losses):
 
 
 @tf_export(v1=["losses.compute_weighted_loss"])
+@dispatch.add_dispatch_support
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -177,8 +179,7 @@ def compute_weighted_loss(
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    with ops.control_dependencies((
-        weights_broadcast_ops.assert_broadcastable(weights, losses),)):
+    def compute_loss(losses, weights, loss_collection, reduction):
       losses = ops.convert_to_tensor(losses)
       input_dtype = losses.dtype
       losses = math_ops.cast(losses, dtype=dtypes.float32)
@@ -202,8 +203,20 @@ def compute_weighted_loss(
       util.add_loss(loss, loss_collection)
       return loss
 
+    # Skip the assert_broadcastable in XLA context because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with XLA when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return compute_loss(losses, weights, loss_collection, reduction)
+    else:
+      with ops.control_dependencies(
+          (weights_broadcast_ops.assert_broadcastable(weights, losses),)):
+        return compute_loss(losses, weights, loss_collection, reduction)
+
 
 @tf_export(v1=["losses.absolute_difference"])
+@dispatch.add_dispatch_support
 def absolute_difference(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -257,6 +270,7 @@ def absolute_difference(
 
 
 @tf_export(v1=["losses.cosine_distance"])
+@dispatch.add_dispatch_support
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
     labels, predictions, axis=None, weights=1.0, scope=None,
@@ -313,6 +327,7 @@ def cosine_distance(
 
 
 @tf_export(v1=["losses.hinge_loss"])
+@dispatch.add_dispatch_support
 def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -363,6 +378,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 
 
 @tf_export(v1=["losses.huber_loss"])
+@dispatch.add_dispatch_support
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -439,6 +455,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
 
 @tf_export(v1=["losses.log_loss"])
+@dispatch.add_dispatch_support
 def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
              loss_collection=ops.GraphKeys.LOSSES,
              reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -496,6 +513,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
 # TODO(b/37208492): Add reduction arg.
 @tf_export(v1=["losses.mean_pairwise_squared_error"])
+@dispatch.add_dispatch_support
 def mean_pairwise_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES):
@@ -553,8 +571,8 @@ def mean_pairwise_squared_error(
                       (predictions, labels, weights)) as scope:
     weights = math_ops.cast(weights, dtype=dtypes.float32)
     labels = math_ops.cast(labels, dtype=dtypes.float32)
-    with ops.control_dependencies((
-        weights_broadcast_ops.assert_broadcastable(weights, labels),)):
+
+    def compute_loss(labels, predictions, weights, loss_collection):
       predictions = math_ops.cast(predictions, dtype=dtypes.float32)
       predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -590,8 +608,20 @@ def mean_pairwise_squared_error(
       util.add_loss(mean_loss, loss_collection)
       return mean_loss
 
+    # Skip the assert_broadcastable in XLA context because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with XLA when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return compute_loss(labels, predictions, weights, loss_collection)
+    else:
+      with ops.control_dependencies(
+          (weights_broadcast_ops.assert_broadcastable(weights, labels),)):
+        return compute_loss(labels, predictions, weights, loss_collection)
+
 
 @tf_export(v1=["losses.mean_squared_error"])
+@dispatch.add_dispatch_support
 def mean_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -645,6 +675,7 @@ def mean_squared_error(
 
 
 @tf_export(v1=["losses.sigmoid_cross_entropy"])
+@dispatch.add_dispatch_support
 def sigmoid_cross_entropy(
     multi_class_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -666,8 +697,9 @@ def sigmoid_cross_entropy(
       `{0, 1}`.
     logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+    `multi_class_labels`, and must be broadcastable to `multi_class_labels` 
+    (i.e., all dimensions must be either `1`, or the same as the 
+    corresponding `losses` dimension).
     label_smoothing: If greater than `0` then smooth the labels.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -709,6 +741,7 @@ def sigmoid_cross_entropy(
 
 
 @tf_export(v1=["losses.softmax_cross_entropy"])
+@dispatch.add_dispatch_support
 def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -831,6 +864,7 @@ def _remove_squeezable_dimensions(
 
 
 @tf_export(v1=["losses.sparse_softmax_cross_entropy"])
+@dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy(
     labels, logits, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,

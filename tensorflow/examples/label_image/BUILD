@@ -5,10 +5,8 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 exports_files(["data/grace_hopper.jpg"])
 
@@ -35,10 +33,10 @@ tf_cc_binary(
             # cc:cc_ops is used to include image ops (for label_image)
             # Jpg, gif, and png related code won't be included
             "//tensorflow/cc:cc_ops",
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
             # cc:android_tensorflow_image_op is for including jpeg/gif/png
             # decoder to enable real-image evaluation on Android
-            "//tensorflow/core/kernels:android_tensorflow_image_op",
+            "//tensorflow/core/kernels/image:android_tensorflow_image_op",
         ],
         "//conditions:default": [
             "//tensorflow/cc:cc_ops",
@@ -57,7 +55,7 @@ py_binary(
     srcs = ["label_image.py"],
     main = "label_image.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

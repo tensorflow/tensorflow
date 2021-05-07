@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -96,8 +97,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
@@ -117,8 +120,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   } else {
     // Requantize use case.
     if (input->type == kTfLiteInt16) {
-      TF_LITE_ENSURE(
-          context, output->type == kTfLiteInt8 || output->type == kTfLiteInt16);
+      TF_LITE_ENSURE(context, output->type == kTfLiteInt8 ||
+                                  output->type == kTfLiteInt16 ||
+                                  output->type == kTfLiteInt32);
     } else {
       TF_LITE_ENSURE(context,
                      input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
@@ -132,6 +136,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        &data->output_shift);
   }
 
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
 }
@@ -140,8 +149,10 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
   const RuntimeShape input_shape = GetTensorShape(input);
   const RuntimeShape output_shape = GetTensorShape(output);
@@ -192,6 +203,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   input->params.zero_point,
                                   output->params.zero_point,
                                   GetTensorData<int16_t>(output));
+          return kTfLiteOk;
+        case kTfLiteInt32:
+          // This case is not supported by the converter or other TFLite tools.
+          // The only use case is for applications that take quantized int32
+          // inference outputs.
+          Requantize<kernel_type>(GetTensorData<int16_t>(input),
+                                  MatchingFlatSize(input_shape, output_shape),
+                                  data->output_multiplier, data->output_shift,
+                                  input->params.zero_point,
+                                  output->params.zero_point,
+                                  GetTensorData<int32_t>(output));
           return kTfLiteOk;
         default:
           ReportError(context, input->type, output->type);

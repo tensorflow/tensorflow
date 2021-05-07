@@ -45,7 +45,7 @@ Dimensions ToDimensions(const BHWC& shape) {
   return Dimensions(shape.b, shape.h, shape.w, shape.c);
 }
 
-Status RunFromTensorTest(const BHWC& shape) {
+absl::Status RunFromTensorTest(const BHWC& shape) {
   // Create random input and calculate expected output for it.
   std::vector<float> input =
       GenerateFloats(0.01, GetElementsSizeForPHWC4(shape));
@@ -85,9 +85,9 @@ Status RunFromTensorTest(const BHWC& shape) {
   RETURN_IF_ERROR(output_buffer.Read(
       absl::MakeSpan(converted_output.data(), converted_output.size())));
   if (output != converted_output) {
-    return InternalError("Outputs don't match");
+    return absl::InternalError("Outputs don't match");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(FromTensor, Smoke) {
@@ -103,7 +103,7 @@ TEST(FromTensor, Smoke) {
   }
 }
 
-Status RunToTensorTest(const BHWC& shape) {
+absl::Status RunToTensorTest(const BHWC& shape) {
   // Create random input and calculate expected output for it.
   std::vector<float> input = GenerateFloats(0.01, shape.DimensionsProduct());
   std::vector<float> output(GetElementsSizeForPHWC4(shape), 0);
@@ -142,9 +142,9 @@ Status RunToTensorTest(const BHWC& shape) {
   RETURN_IF_ERROR(output_buffer.Read(
       absl::MakeSpan(converted_output.data(), converted_output.size())));
   if (output != converted_output) {
-    return InternalError("Outputs don't match");
+    return absl::InternalError("Outputs don't match");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(ToTensor, Smoke) {

@@ -113,7 +113,7 @@ TEST(EigenMkldnnTest, MkldnnGemm) {
   // Compute matmul with mkldnn gemm kernel.
   using OutputMapper = blas_data_mapper<Scalar, Index, ColMajor>;
   using MkldnnGemmKernel =
-      mkldnn_gemm_kernel<Scalar, Index, OutputMapper, ColMajor>;
+      dnnl_gemm_kernel<Scalar, Index, OutputMapper, ColMajor>;
 
   Tensor2d mkldnn_result(m, n);
   mkldnn_result.setRandom();

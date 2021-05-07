@@ -29,7 +29,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd ${ROOT_DIR}
+cd "${ROOT_DIR}"
 pwd
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
@@ -49,7 +49,7 @@ fi
 
 make -f tensorflow/lite/micro/tools/make/Makefile \
   TARGET=${TARGET} \
-  TAGS="portable_optimized disco_f746ng" \
+  TAGS="disco_f746ng" \
   ${PROJECTS}
 
 readable_run tensorflow/lite/micro/tools/ci_build/install_mbed_cli.sh

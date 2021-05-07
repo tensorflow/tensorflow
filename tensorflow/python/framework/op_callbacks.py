@@ -79,7 +79,7 @@ def add_op_callback(callback_fn):
         #            "MatMul_2".
         # graph: The graph that the op belongs to (if any).
         #        - In eager execution of an op or FuncGraph, this is `None`.
-        #        - In graph construction, this is the op's containing graph
+        #        - In graph construction, this is the op's enclosing graph
         #          as a `tf.Graph` object.
         #
         # Return values:
@@ -89,7 +89,7 @@ def add_op_callback(callback_fn):
         #   `outputs` argument.
         #   If the return value is `None`, downstream execution or graph
         #   construction will be unaffected.
-        #   Howevevr, if the return value is a `list` or `tuple` of `Tensor`s,
+        #   However, if the return value is a `list` or `tuple` of `Tensor`s,
         #   - In eager execution, these returned `Tensor`s should be
         #     `EagerTensor`s. Their values will replace the original values of
         #     `outputs` for downstream eager execution. (*Not implemented yet*).
@@ -170,7 +170,7 @@ def invoke_op_callbacks(op_type,
       eager execution and are non-eager `Tensor`s in the case of graph
       construction.
     op_name: Name of the op. Applicable if and only if this method is invoked
-      due to the graph construction of an op or the eager execution of of a
+      due to the graph construction of an op or the eager execution of a
       `FuncGraph`.
     graph: The graph involved (if any).
       - In the case if the eager execution of an op or FuncGraph, this is

@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
 
+#include <algorithm>
+#include <any>
+#include <functional>
+#include <iterator>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -44,10 +55,10 @@ class RemoveOperation : public SequenceTransformation {
     if (!remove_predicate_(graph, op_node)) {
       return {TransformStatus::SKIPPED, ""};
     }
-    Status status = RemoveFollowingNode(graph, op_node, prev_op_node);
+    absl::Status status = RemoveFollowingNode(graph, op_node, prev_op_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove a node: " + status.error_message()};
+              "Unable to remove a node: " + std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -75,11 +86,13 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         if (node->operation.type != type) {
           return false;
         }
-        auto& attr =
-            absl::any_cast<const AddAttributes&>(node->operation.attributes);
-        return absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param) ==
-                   nullptr &&
-               absl::get_if<float>(&attr.param) == nullptr;
+        auto& attr = absl::any_cast<const ElementwiseAttributes&>(
+            node->operation.attributes);
+        return !absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
+                   attr.param) &&
+               !absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+                   attr.param) &&
+               !absl::holds_alternative<float>(attr.param);
       });
 }
 
@@ -116,10 +129,10 @@ class RemoveIdentityReshape : public NodeTransformation {
       return {TransformStatus::SKIPPED,
               "Can not apply transformation when node output is graph output"};
     }
-    Status status = RemoveOneInputOneOutputNode(graph, node);
+    absl::Status status = RemoveSimpleNodeKeepInput(graph, node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove a node: " + status.error_message()};
+              "Unable to remove a node: " + std::string(status.message())};
     }
     return {TransformStatus::APPLIED,
             "Removed reshape with input_shape == output_shape."};

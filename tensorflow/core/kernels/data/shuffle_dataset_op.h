@@ -28,6 +28,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
   static constexpr const char* const kSeed2 = "seed2";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kReshuffleEachIteration =
+      "reshuffle_each_iteration";
 
   explicit ShuffleDatasetOpBase(OpKernelConstruction* ctx);
 
@@ -38,8 +40,6 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
 class ShuffleDatasetOp : public ShuffleDatasetOpBase {
  public:
   static constexpr const char* const kDatasetType = "Shuffle";
-  static constexpr const char* const kReshuffleEachIteration =
-      "reshuffle_each_iteration";
 
   explicit ShuffleDatasetOp(OpKernelConstruction* ctx);
 
@@ -48,11 +48,11 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                    DatasetBase** output) override;
 
  private:
-  class ReshufflingDataset;
-  class ReshufflingDatasetV2;
-  class FixedSeedDataset;
-  int op_version_;
-  bool reshuffle_each_iteration_;
+  class Dataset;
+  class DatasetV2;
+  class DatasetV3;
+  int op_version_ = 0;
+  bool reshuffle_each_iteration_ = true;
 };
 
 class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
@@ -68,6 +68,9 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
  private:
   class Dataset;
+  class DatasetV2;
+  int op_version_ = 0;
+  bool reshuffle_each_iteration_ = true;
 };
 
 }  // namespace data

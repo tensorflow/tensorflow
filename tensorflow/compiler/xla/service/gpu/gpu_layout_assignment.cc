@@ -68,7 +68,13 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       instr->GetModule()->config().debug_options();
 
   if (debug_options.xla_gpu_force_conv_nchw()) {
+    VLOG(2) << "Overriding layout to NCHW for " << instr->ToString();
     return kAllNCHW;
+  }
+
+  if (debug_options.xla_gpu_force_conv_nhwc()) {
+    VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
+    return kAllNHWC;
   }
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
@@ -293,6 +299,22 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kAllGather) {
+      // XLA:GPU can only support all-gathers where the gather dimension is the
+      // most major dimension in the layout.
+      auto ag = Cast<HloAllGatherInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
+          ag));
+    } else if (instruction->opcode() == HloOpcode::kAllToAll &&
+               instruction->shape().IsArray()) {
+      // XLA:GPU can only support all-to-all with split dimensions where the
+      // split dimension is the most major dimension in the layout.
+      auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(all_to_all->shape(),
+                                    *all_to_all->split_dimension()),
+          all_to_all));
     }
   }
   return Status::OK();

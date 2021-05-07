@@ -210,6 +210,57 @@ __global__ void ShuffleInTensor3Simple(int nthreads,
   }
 }
 
+static constexpr int kUnroll = 4;
+
+template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
+__global__ void ShuffleInTensor3SimpleVector(int nthreads,
+                                             const T* __restrict__ input,
+                                             Dimension<3> input_dims,
+                                             T* __restrict__ output) {
+  Dimension<3> output_dims;
+  output_dims[sp0] = input_dims[0];
+  output_dims[sp1] = input_dims[1];
+  output_dims[sp2] = input_dims[2];
+
+  const int stride = blockDim.x * gridDim.x * kUnroll;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  T buf[kUnroll];
+
+  int output_index;
+  for (output_index = tid * kUnroll; output_index + kUnroll - 1 < nthreads;
+       output_index += stride) {
+#pragma unroll
+    for (int i = 0; i < kUnroll; i++) {
+      int output_index_i = output_index + i;
+      Index<3> output_tensor_index =
+          FlatToTensorIndex(output_index_i, output_dims);
+      Index<3> input_tensor_index;
+      input_tensor_index[0] = output_tensor_index[sp0];
+      input_tensor_index[1] = output_tensor_index[sp1];
+      input_tensor_index[2] = output_tensor_index[sp2];
+
+      int input_index_i = TensorIndexToFlat(input_tensor_index, input_dims);
+      buf[i] = maybe_conj<T, conjugate>::run(ldg(input + input_index_i));
+    }
+    float2* out = reinterpret_cast<float2*>(output + output_index);
+    *out = *reinterpret_cast<float2*>(buf);
+  }
+
+  for (; output_index < nthreads; ++output_index) {
+    Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
+
+    Index<3> input_tensor_index;
+    input_tensor_index[0] = output_tensor_index[sp0];
+    input_tensor_index[1] = output_tensor_index[sp1];
+    input_tensor_index[2] = output_tensor_index[sp2];
+
+    int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
+
+    output[output_index] =
+        maybe_conj<T, conjugate>::run(ldg(input + input_index));
+  }
+}
+
 // Use shared memory tiles to swap dimension-1 and dimension-2 of a 3D tensor,
 // where dimensions are zero-based: output[i][j][k] = input[i][k][j].
 //
@@ -366,14 +417,12 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
 }
 
 // A Gpu custom kernel that convert input to output, given proper padding on
-// the left and the top. The padded value is zero.
+// the left and the top.
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNHWC(int nthreads,
-                                         const T* __restrict__ input,
-                                         Dimension<NDIMS> input_dims,
-                                         T* __restrict__ output,
-                                         Dimension<NDIMS> output_dims,
-                                         Dimension<NDIMS - 2> padding_left) {
+__global__ void PadInputCustomKernelNHWC(
+    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
+    T* __restrict__ output, Dimension<NDIMS> output_dims,
+    Dimension<NDIMS - 2> padding_left, T padding_value) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -393,18 +442,16 @@ __global__ void PadInputCustomKernelNHWC(int nthreads,
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = T(0);
+      output[output_index] = padding_value;
     }
   }
 }
 
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNCHW(int nthreads,
-                                         const T* __restrict__ input,
-                                         Dimension<NDIMS> input_dims,
-                                         T* __restrict__ output,
-                                         Dimension<NDIMS> output_dims,
-                                         Dimension<NDIMS - 2> padding_left) {
+__global__ void PadInputCustomKernelNCHW(
+    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
+    T* __restrict__ output, Dimension<NDIMS> output_dims,
+    Dimension<NDIMS - 2> padding_left, T padding_value) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -424,7 +471,7 @@ __global__ void PadInputCustomKernelNCHW(int nthreads,
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = T(0);
+      output[output_index] = padding_value;
     }
   }
 }
@@ -521,7 +568,7 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
                   const std::array<int, NDIMS - 2>& padding_left,
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, int>::Tensor out,
-                  TensorFormat format) {
+                  TensorFormat format, const T& padding_value) {
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
     Dimension<NDIMS> input_dims;
     for (int i = 0; i < NDIMS; ++i) {
@@ -538,12 +585,14 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
+          padding_value));
     } else if (format == FORMAT_NCHW) {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
+          padding_value));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }
@@ -646,7 +695,7 @@ constexpr bool TileSizeOnNonLongSideFrontier(int TileLongSide,
 }
 
 // Helper function to launch a batch narrow matirx transpose kernel.
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 void LaunchBatchNarrowMatrixTransposeKernel(
     const GPUDevice& d, int tile_size_i, int tile_size_j, int total_tiles_count,
     const T* input, const Dimension<3>& input_dims, T* output) {
@@ -654,13 +703,13 @@ void LaunchBatchNarrowMatrixTransposeKernel(
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
     TF_CHECK_OK(GpuLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
-                                              TileShortSide>,
+                                              TileShortSide, conjugate>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
         output));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
-                                              TileLongSide>,
+                                              TileLongSide, conjugate>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
         output));
   }
@@ -682,7 +731,7 @@ void LaunchBatchNarrowMatrixTransposeKernel(
 // can only increment the short side len.
 // - It lies on the long side frontier. We launch the kernel without checking if
 // the request is satisfied or not.
-template <typename T, int TileLongSide, int TileShortSide,
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate,
           typename dummy = void>
 struct BatchNarrowMatrixTransposeDispatcher {
   static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
@@ -696,7 +745,8 @@ struct BatchNarrowMatrixTransposeDispatcher {
         std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
-      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                             conjugate>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
       return;
@@ -709,22 +759,26 @@ struct BatchNarrowMatrixTransposeDispatcher {
         std::max(tile_size_i, tile_size_j) > TileLongSide;
 
     if (long_side_request_not_satisfied) {
-      BatchNarrowMatrixTransposeDispatcher<
-          T, TileLongSide * 2, TileShortSide>::DoIt(d, tile_size_i, tile_size_j,
-                                                    total_tiles_count, input,
-                                                    input_dims, output);
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide * 2, TileShortSide,
+                                           conjugate>::DoIt(d, tile_size_i,
+                                                            tile_size_j,
+                                                            total_tiles_count,
+                                                            input, input_dims,
+                                                            output);
     } else {
-      BatchNarrowMatrixTransposeDispatcher<
-          T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
-                                                    total_tiles_count, input,
-                                                    input_dims, output);
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide, TileShortSide + 1,
+                                           conjugate>::DoIt(d, tile_size_i,
+                                                            tile_size_j,
+                                                            total_tiles_count,
+                                                            input, input_dims,
+                                                            output);
     }
   }
 };
 
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
-    T, TileLongSide, TileShortSide,
+    T, TileLongSide, TileShortSide, conjugate,
     typename std::enable_if<TileSizeOnNonLongSideFrontier(
                                 TileLongSide, TileShortSide, sizeof(T)),
                             void>::type> {
@@ -739,7 +793,8 @@ struct BatchNarrowMatrixTransposeDispatcher<
         std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
-      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                             conjugate>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
       return;
@@ -748,16 +803,18 @@ struct BatchNarrowMatrixTransposeDispatcher<
     // If the execution reaches here, then the kernel was not launched; since
     // we are on the non long side frontier, we increment the short dimension
     // and try again.
-    BatchNarrowMatrixTransposeDispatcher<
-        T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
-                                                  total_tiles_count, input,
-                                                  input_dims, output);
+    BatchNarrowMatrixTransposeDispatcher<T, TileLongSide, TileShortSide + 1,
+                                         conjugate>::DoIt(d, tile_size_i,
+                                                          tile_size_j,
+                                                          total_tiles_count,
+                                                          input, input_dims,
+                                                          output);
   }
 };
 
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
-    T, TileLongSide, TileShortSide,
+    T, TileLongSide, TileShortSide, conjugate,
     typename std::enable_if<TileSizeOnLongSideFrontier(
                                 TileLongSide, TileShortSide, sizeof(T)),
                             void>::type> {
@@ -768,7 +825,8 @@ struct BatchNarrowMatrixTransposeDispatcher<
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
 
-    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                           conjugate>(
         d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
         output);
   }
@@ -841,11 +899,11 @@ struct TransposeElemType<4> {
 };
 template <>
 struct TransposeElemType<8> {
-  using type = uint64;
+  using type = float2;
 };
 template <>
 struct TransposeElemType<16> {
-  using type = float4;
+  using type = double2;
 };
 
 // A helper function to make RunSwapDimension1And2InTensor3 concise. This
@@ -926,7 +984,7 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
 
   using ElemType = typename TransposeElemType<sizeof(T)>::type;
   static_assert(alignof(T) >= alignof(ElemType), "Unexpected data alignment.");
-  BatchNarrowMatrixTransposeDispatcher<ElemType, 32, 2>::DoIt(
+  BatchNarrowMatrixTransposeDispatcher<ElemType, 32, 2, conjugate>::DoIt(
       d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
       reinterpret_cast<const ElemType*>(input), input_dims,
       reinterpret_cast<ElemType*>(output));
@@ -1008,10 +1066,40 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
-    TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), config.virtual_thread_count, in,
-                                input_dims, out));
+
+    auto out_ptr = reinterpret_cast<uintptr_t>(out);
+    bool aligned = out_ptr % 16 == 0;
+
+    bool use_vector = false;
+    bool use_custom_config = false;
+    if ((input_dims[0] <= 128 && input_dims[2] <= 128) ||
+        input_dims[0] * input_dims[1] <= 128 ||
+        input_dims[1] * input_dims[2] <= 8) {
+      use_vector = true;
+      use_custom_config = true;
+    } else if (input_dims[1] * input_dims[2] <= 16384) {
+      use_vector = true;
+    }
+
+    if (sizeof(T) == 2 && aligned && use_vector) {
+      int block_count;
+      if (use_custom_config) {
+        block_count = (total_size + config.thread_per_block - 1) /
+                      config.thread_per_block;
+      } else {
+        block_count = config.block_count;
+      }
+
+      TF_CHECK_OK(
+          GpuLaunchKernel(ShuffleInTensor3SimpleVector<T, 2, 1, 0, conjugate>,
+                          block_count, config.thread_per_block / kUnroll, 0,
+                          d.stream(), total_size, in, input_dims, out));
+    } else {
+      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), config.virtual_thread_count,
+                                  in, input_dims, out));
+    }
   }
 };
 

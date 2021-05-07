@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/cache.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/table.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
@@ -316,11 +317,7 @@ class BundleReader {
 // External synchronization must be used in the presence of concurrent callers.
 class FileOutputBuffer {
  public:
-  FileOutputBuffer(WritableFile* file, size_t buffer_size)
-      : file_(file), position_(0), buffer_size_(buffer_size) {
-    DCHECK_GT(buffer_size, 0);
-    buffer_.resize(buffer_size);
-  }
+  FileOutputBuffer(WritableFile* file, size_t buffer_size);
   ~FileOutputBuffer();
 
   // Buffered append.
@@ -336,15 +333,15 @@ class FileOutputBuffer {
 
  private:
   // Appends the buffered data to the underlying file. Does NOT flush the file.
-  Status FlushBuffer();
+  Status FlushBuffer(bool closing);
 
   WritableFile* file_;  // Owned.
 
-  // buffer_[0, position_) holds the buffered data not yet appended to the
+  // buffer_ptr_[0, position_) holds the buffered data not yet appended to the
   // underlying file.
   size_t position_;
   const size_t buffer_size_;
-  std::vector<char> buffer_;
+  char* buffer_ptr_;
 
   // Checksum of all appended bytes since construction or last clear_crc32c().
   uint32 crc32c_ = 0;

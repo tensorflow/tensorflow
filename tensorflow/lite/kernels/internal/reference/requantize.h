@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REQUANTIZE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REQUANTIZE_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -45,6 +45,7 @@ inline void Requantize(const input_type* input_data, int32_t size,
       for (int i = 0; i < size; ++i) {
         output_data[i] = input_data[i] ^ 0x80;
       }
+      return;
     }
   }
   static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();

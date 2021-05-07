@@ -24,11 +24,11 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import collections
 import os
 import re
 import sys
 
+from absl import app  # pylint: disable=unused-import
 import numpy as np
 import six
 
@@ -42,7 +42,6 @@ from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
@@ -50,6 +49,8 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.tools import saved_model_aot_compile
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.tpu import tpu
+from tensorflow.python.util.compat import collections_abc
 
 
 _XLA_DEBUG_OPTIONS_URL = (
@@ -57,8 +58,8 @@ _XLA_DEBUG_OPTIONS_URL = (
     'tensorflow/compiler/xla/debug_options_flags.cc')
 
 
-# Set of ops to blacklist.
-_OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
+# Set of ops to denylist.
+_OP_DENYLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -240,7 +241,7 @@ def _print_args(arguments, argument_type='Argument', indent=0):
       in_print('  %s' % element)
     elif isinstance(element, tensor_spec.TensorSpec):
       print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
-    elif (isinstance(element, collections.Iterable) and
+    elif (isinstance(element, collections_abc.Iterable) and
           not isinstance(element, dict)):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')
@@ -348,9 +349,9 @@ def get_signature_def_map(saved_model_dir, tag_set):
 
 
 def scan_meta_graph_def(meta_graph_def):
-  """Scans meta_graph_def and reports if there are ops on blacklist.
+  """Scans meta_graph_def and reports if there are ops on denylist.
 
-  Print ops if they are on black list, or print success if no blacklisted ops
+  Print ops if they are on black list, or print success if no denylisted ops
   found.
 
   Args:
@@ -358,13 +359,14 @@ def scan_meta_graph_def(meta_graph_def):
   """
   all_ops_set = set(
       meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
-  blacklisted_ops = _OP_BLACKLIST & all_ops_set
-  if blacklisted_ops:
+  denylisted_ops = _OP_DENYLIST & all_ops_set
+  if denylisted_ops:
     # TODO(yifeif): print more warnings
-    print('MetaGraph with tag set %s contains the following blacklisted ops:' %
-          meta_graph_def.meta_info_def.tags, blacklisted_ops)
+    print(
+        'MetaGraph with tag set %s contains the following denylisted ops:' %
+        meta_graph_def.meta_info_def.tags, denylisted_ops)
   else:
-    print('MetaGraph with tag set %s does not contain blacklisted ops.' %
+    print('MetaGraph with tag set %s does not contain denylisted ops.' %
           meta_graph_def.meta_info_def.tags)
 
 
@@ -438,7 +440,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
       print('Initializing TPU System ...')
       # This is needed for freshly started worker, or if the job
       # restarts after a preemption.
-      sess.run(tf.contrib.tpu.initialize_system())
+      sess.run(tpu.initialize_system())
 
     loader.load(sess, tag_set.split(','), saved_model_dir)
 
@@ -588,6 +590,9 @@ def _create_example_string(example_dict):
       example.features.feature[feature_name].float_list.value.extend(
           feature_list)
     elif isinstance(feature_list[0], str):
+      example.features.feature[feature_name].bytes_list.value.extend(
+          [f.encode('utf8') for f in feature_list])
+    elif isinstance(feature_list[0], bytes):
       example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
     elif isinstance(feature_list[0], six.integer_types):
@@ -772,16 +777,33 @@ def convert_with_tensorrt(args):
   # not installed
   from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
 
-  params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-      max_workspace_size_bytes=args.max_workspace_size_bytes,
-      precision_mode=args.precision_mode,
-      minimum_segment_size=args.minimum_segment_size)
-  converter = trt.TrtGraphConverterV2(
-      input_saved_model_dir=args.dir,
-      input_saved_model_tags=args.tag_set.split(','),
-      conversion_params=params)
-  converter.convert()
-  converter.save(output_saved_model_dir=args.output_dir)
+  if not args.convert_tf1_model:
+    params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
+        max_workspace_size_bytes=args.max_workspace_size_bytes,
+        precision_mode=args.precision_mode,
+        minimum_segment_size=args.minimum_segment_size)
+    converter = trt.TrtGraphConverterV2(
+        input_saved_model_dir=args.dir,
+        input_saved_model_tags=args.tag_set.split(','),
+        conversion_params=params)
+    try:
+      converter.convert()
+    except Exception as e:
+      raise RuntimeError(
+          '{}. Try passing "--convert_tf1_model=True".'.format(e))
+    converter.save(output_saved_model_dir=args.output_dir)
+  else:
+    trt.create_inference_graph(
+        None,
+        None,
+        max_batch_size=1,
+        max_workspace_size_bytes=args.max_workspace_size_bytes,
+        precision_mode=args.precision_mode,
+        minimum_segment_size=args.minimum_segment_size,
+        is_dynamic_op=True,
+        input_saved_model_dir=args.dir,
+        input_saved_model_tags=args.tag_set.split(','),
+        output_saved_model_dir=args.output_dir)
 
 
 def aot_compile_cpu(args):
@@ -799,6 +821,7 @@ def aot_compile_cpu(args):
     variables_to_feed = None  # We will identify them after.
   else:
     variables_to_feed = args.variables_to_feed.split(',')
+
   saved_model_aot_compile.aot_compile_cpu_meta_graph_def(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
@@ -807,8 +830,9 @@ def aot_compile_cpu(args):
       variables_to_feed=variables_to_feed,
       output_prefix=args.output_prefix,
       target_triple=args.target_triple,
+      target_cpu=args.target_cpu,
       cpp_class=args.cpp_class,
-      enable_multithreading=args.enable_multithreading)
+      multithreading=args.multithreading.lower() not in ('f', 'false', '0'))
 
 
 def add_show_subparser(subparsers):
@@ -938,7 +962,7 @@ def add_run_subparser(subparsers):
 def add_scan_subparser(subparsers):
   """Add parser for `scan`."""
   scan_msg = ('Usage example:\n'
-              'To scan for blacklisted ops in SavedModel:\n'
+              'To scan for denylisted ops in SavedModel:\n'
               '$saved_model_cli scan --dir /tmp/saved_model\n'
               'To scan a specific MetaGraph, pass in --tag_set\n')
   parser_scan = subparsers.add_parser(
@@ -1010,6 +1034,11 @@ def add_convert_subparser(subparsers):
       default=3,
       help=('the minimum number of nodes required for a subgraph to be replaced'
             'in a TensorRT node'))
+  parser_convert_with_tensorrt.add_argument(
+      '--convert_tf1_model',
+      type=bool,
+      default=False,
+      help='support TRT conversion for TF1 models')
   parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
 
@@ -1074,6 +1103,14 @@ def add_aot_compile_cpu_subparser(subparsers):
             'armv7-none-android.  More examples are available in tfcompile.bzl '
             'in the tensorflow codebase.'))
   parser_compile.add_argument(
+      '--target_cpu',
+      type=str,
+      default='',
+      help=('Target cpu name for LLVM during AOT compilation.  Examples: '
+            'x86_64, skylake, haswell, westmere, <empty> (unknown).  For '
+            'a complete list of options, run (for x86 targets): '
+            '`llc -march=x86 -mcpu=help`'))
+  parser_compile.add_argument(
       '--checkpoint_path',
       type=str,
       default=None,
@@ -1104,11 +1141,13 @@ def add_aot_compile_cpu_subparser(subparsers):
             '(this applies to all input arguments from the signature as '
             'well).'))
   parser_compile.add_argument(
-      '--enable_multithreading',
-      type=bool,
-      default='',
-      help=('*NOT CURRENTLY SUPPORTED*  '
-            'Enable multithreading in the compiled computation.'))
+      '--multithreading',
+      type=str,
+      default='False',
+      help=('Enable multithreading in the compiled computation.  '
+            'Note that if using this option, the resulting object files '
+            'may have external dependencies on multithreading libraries '
+            'like nsync.'))
 
   parser_compile.set_defaults(func=aot_compile_cpu)
 

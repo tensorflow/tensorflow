@@ -51,10 +51,11 @@ class CLContext {
   bool has_ownership_ = false;
 };
 
-Status CreateCLContext(const CLDevice& device, CLContext* result);
-Status CreateCLGLContext(const CLDevice& device,
-                         cl_context_properties egl_context,
-                         cl_context_properties egl_display, CLContext* result);
+absl::Status CreateCLContext(const CLDevice& device, CLContext* result);
+absl::Status CreateCLGLContext(const CLDevice& device,
+                               cl_context_properties egl_context,
+                               cl_context_properties egl_display,
+                               CLContext* result);
 
 }  // namespace cl
 }  // namespace gpu

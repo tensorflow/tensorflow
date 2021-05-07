@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -31,8 +32,12 @@ class TransformerTest(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None, source_file=None, future_features=(), namespace=None)
-    return transformer.Context(entity_info)
+        name='Test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
 
   def assertSameAnno(self, first, second, key):
     self.assertIs(anno.getanno(first, key), anno.getanno(second, key))
@@ -176,10 +181,10 @@ class TransformerTest(test.TestCase):
     node = tr.visit(node)
 
     self.assertEqual(len(node.body), 2)
-    self.assertTrue(isinstance(node.body[0], gast.Assign))
-    self.assertTrue(isinstance(node.body[1], gast.If))
-    self.assertTrue(isinstance(node.body[1].body[0], gast.Assign))
-    self.assertTrue(isinstance(node.body[1].body[1], gast.Return))
+    self.assertIsInstance(node.body[0], gast.Assign)
+    self.assertIsInstance(node.body[1], gast.If)
+    self.assertIsInstance(node.body[1].body[0], gast.Assign)
+    self.assertIsInstance(node.body[1].body[1], gast.Return)
 
   def test_robust_error_on_list_visit(self):
 
@@ -207,7 +212,7 @@ class TransformerTest(test.TestCase):
       node = tr.visit(node)
     obtained_message = str(cm.exception)
     expected_message = r'expected "ast.AST", got "\<(type|class) \'list\'\>"'
-    self.assertRegexpMatches(obtained_message, expected_message)
+    self.assertRegex(obtained_message, expected_message)
 
   def test_robust_error_on_ast_corruption(self):
     # A child class should not be able to be so broken that it causes the error
@@ -240,7 +245,7 @@ class TransformerTest(test.TestCase):
     # The message should reference the exception actually raised, not anything
     # from the exception handler.
     expected_substring = 'I blew up'
-    self.assertTrue(expected_substring in obtained_message, obtained_message)
+    self.assertIn(expected_substring, obtained_message)
 
   def test_origin_info_propagated_to_new_nodes(self):
 
@@ -293,6 +298,70 @@ class TransformerTest(test.TestCase):
         anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 103)
     self.assertEqual(
         anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 104)
+
+
+class CodeGeneratorTest(test.TestCase):
+
+  def _simple_context(self):
+    entity_info = transformer.EntityInfo(
+        name='test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
+
+  def test_basic_codegen(self):
+
+    class TestCodegen(transformer.CodeGenerator):
+
+      def visit_Assign(self, node):
+        self.emit(parser.unparse(node, include_encoding_marker=False))
+        self.emit('\n')
+
+      def visit_Return(self, node):
+        self.emit(parser.unparse(node, include_encoding_marker=False))
+        self.emit('\n')
+
+      def visit_If(self, node):
+        self.emit('if ')
+        # This is just for simplifity. A real generator will walk the tree and
+        # emit proper code.
+        self.emit(parser.unparse(node.test, include_encoding_marker=False))
+        self.emit(' {\n')
+        self.visit_block(node.body)
+        self.emit('} else {\n')
+        self.visit_block(node.orelse)
+        self.emit('}\n')
+
+    tg = TestCodegen(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 2
+        if x > 1:
+          x = 3
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    tg.visit(node)
+
+    r = re.compile('.*'.join([
+        r'x = 1',
+        r'if \(?x > 0\)? {',
+        r'x = 2',
+        r'if \(?x > 1\)? {',
+        r'x = 3',
+        r'} else {',
+        r'}',
+        r'} else {',
+        r'}',
+        r'return x']), re.DOTALL)
+
+    self.assertRegex(tg.code_buffer, r)
+    # TODO(mdan): Test the source map.
 
 
 if __name__ == '__main__':

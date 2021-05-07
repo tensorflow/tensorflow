@@ -27,7 +27,13 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_time.h"
 
+#if defined(TF_LITE_USE_CTIME)
+#include <ctime>
+#endif
+
 namespace tflite {
+
+#if !defined(TF_LITE_USE_CTIME)
 
 // Reference implementation of the ticks_per_second() function that's required
 // for a platform to support Tensorflow Lite for Microcontrollers profiling.
@@ -40,5 +46,14 @@ int32_t ticks_per_second() { return 0; }
 // profiling. This returns 0 by default because timing is an optional feature
 // that builds without errors on platforms that do not need it.
 int32_t GetCurrentTimeTicks() { return 0; }
+
+#else  // defined(TF_LITE_USE_CTIME)
+
+// For platforms that support ctime, we implment the micro_time interface in
+// this central location.
+int32_t ticks_per_second() { return CLOCKS_PER_SEC; }
+
+int32_t GetCurrentTimeTicks() { return clock(); }
+#endif
 
 }  // namespace tflite

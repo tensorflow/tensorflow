@@ -14,19 +14,15 @@
 # ==============================================================================
 """Tests for layer serialization utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.framework import test_util as tf_test_util
-from tensorflow.python.keras.layers import normalization as batchnorm_v1
-from tensorflow.python.keras.layers import normalization_v2 as batchnorm_v2
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.layers.normalization import batch_normalization as batchnorm_v2
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1 as batchnorm_v1
 from tensorflow.python.platform import test
 
 
@@ -43,7 +39,7 @@ class SerializableInt(int):
     return cls(**config)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LayerSerializationTest(parameterized.TestCase, test.TestCase):
 
   def test_serialize_deserialize(self):
@@ -53,7 +49,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     new_layer = keras.layers.deserialize(config)
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     if tf2.enabled():
       self.assertEqual(new_layer.kernel_initializer.__class__,
                        keras.initializers.OnesV2)
@@ -88,7 +84,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
         config, custom_objects={'SerializableInt': SerializableInt})
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     if tf2.enabled():
       self.assertEqual(new_layer.kernel_initializer.__class__,
                        keras.initializers.OnesV2)
@@ -116,7 +112,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
       self.assertEqual(new_layer.beta_initializer.__class__,
                        keras.initializers.Zeros)
     self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
 
   @parameterized.parameters(
       [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
@@ -124,12 +120,6 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     layer = batchnorm_layer(
         momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
     config = keras.layers.serialize(layer)
-    # To simulate if BatchNormalizationV1 or BatchNormalizationV2 appears in the
-    # saved model.
-    if batchnorm_layer is batchnorm_v1.BatchNormalization:
-      config['class_name'] = 'BatchNormalizationV1'
-    else:
-      config['class_name'] = 'BatchNormalizationV2'
     new_layer = keras.layers.deserialize(config)
     self.assertEqual(new_layer.momentum, 0.9)
     if tf2.enabled():
@@ -141,7 +131,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
       self.assertEqual(new_layer.beta_initializer.__class__,
                        keras.initializers.Zeros)
     self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
 
   @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
   def test_serialize_deserialize_lstm(self, layer):
@@ -170,6 +160,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     else:
       self.assertIsInstance(new_layer, rnn_v1.GRU)
       self.assertNotIsInstance(new_layer, rnn_v2.GRU)
+
 
 if __name__ == '__main__':
   test.main()

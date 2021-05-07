@@ -13,8 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "HM01B0_debug.h"
-#include "am_util.h" // NOLINT
+
+#include "am_util.h"  // NOLINT
 
 void hm01b0_framebuffer_dump(uint8_t* frame, uint32_t length) {
   am_util_stdio_printf("+++ frame +++");
@@ -33,3 +40,4 @@ void hm01b0_framebuffer_dump(uint8_t* frame, uint32_t length) {
   am_util_delay_ms(1);
 }
 
+#endif  // ARDUINO_EXCLUDE_CODE

@@ -241,16 +241,13 @@ TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -287,16 +284,13 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -378,11 +372,9 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -1068,6 +1060,118 @@ TEST_F(HloAliasAnalysisTest, MergeBuffersReverse) {
   analysis.MergeBuffers(analysis.buffers()[1], analysis.buffers()[0]);
   EXPECT_EQ(analysis.buffers().size(), 1);
   analysis.BufferLivesOut(analysis.buffers()[0]);
+}
+
+TEST_F(HloAliasAnalysisTest, DynamicUpdateSlice) {
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape index_shape = ShapeUtil::MakeShape(S32, {});
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, update_shape, "param1"));
+  auto param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, index_shape, "param2"));
+  auto copy0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, param0));
+  auto dynamic_update_slice = builder.AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(shape, copy0, param1, {param2}));
+
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  EXPECT_EQ(analysis.GetUniqueBufferAt(copy0),
+            analysis.GetUniqueBufferAt(dynamic_update_slice));
+}
+
+TEST_F(HloAliasAnalysisTest, DynamicUpdateSliceMultiOutputFusion) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+fused_computation {
+  param0 = f32[1280,1,128] parameter(0)
+  param1 = f32[1280,1,128] parameter(1)
+  param2 = f32[1280,1,128] parameter(2)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  add.1 = f32[1280,1,128] add(param0, param0)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param1, broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(param2, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple.1 = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add.1, dynamic-update-slice.5, dynamic-update-slice.6)
+}
+
+ENTRY main {
+  param = f32[1280,1,128] parameter(0)
+  negate0 = f32[1280,1,128] negate(param)
+  negate1 = f32[1280,1,128] negate(param)
+  negate2 = f32[1280,1,128] negate(param)
+  ROOT fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0, negate1, negate2), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+  LOG(INFO) << analysis.ToString();
+
+  // Expect negate1 and negate2 to alias with fusion{1} and fusion{2}
+  // respectively (due to DUS), but not negate0 and fusion{0}.
+  const HloInstruction* fusion =
+      module_->entry_computation()->GetInstructionWithName("fusion");
+  const HloInstruction* negate0 =
+      module_->entry_computation()->GetInstructionWithName("negate0");
+  const HloInstruction* negate1 =
+      module_->entry_computation()->GetInstructionWithName("negate1");
+  const HloInstruction* negate2 =
+      module_->entry_computation()->GetInstructionWithName("negate2");
+  EXPECT_EQ(analysis.GetUniqueBufferAt(negate1),
+            analysis.GetUniqueBufferAt(fusion, {1}));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(negate2),
+            analysis.GetUniqueBufferAt(fusion, {2}));
+  EXPECT_NE(analysis.GetUniqueBufferAt(negate0),
+            analysis.GetUniqueBufferAt(fusion, {0}));
+}
+
+TEST_F(HloAliasAnalysisTest, ChainedDynamicUpdateSliceFusion) {
+  // CPU and GPU backends may generate fusions with dynamic update slices
+  // feeding each other. They expect the fusion to not be in-place if that is
+  // the case.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+fused_computation {
+  param0 = f32[1280,1,128] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
+}
+
+ENTRY main {
+  param = f32[1280,1,128] parameter(0)
+  negate0 = f32[1280,1,128] negate(param)
+  ROOT fusion = f32[1280,1,128] fusion(negate0), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+  LOG(INFO) << analysis.ToString();
+
+  const HloInstruction* fusion =
+      module_->entry_computation()->GetInstructionWithName("fusion");
+  const HloInstruction* negate0 =
+      module_->entry_computation()->GetInstructionWithName("negate0");
+  EXPECT_NE(analysis.GetUniqueBufferAt(negate0),
+            analysis.GetUniqueBufferAt(fusion));
 }
 
 TEST_F(HloAliasAnalysisTest, BitcastInterference) {

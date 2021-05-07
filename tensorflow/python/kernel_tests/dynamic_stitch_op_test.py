@@ -62,6 +62,7 @@ class DynamicStitchTestBase(object):
         # length.
         self.assertEqual([None], stitched_t.get_shape().as_list())
 
+  @test_util.disable_tfrt("b/169901260")
   def testSimpleOneDimensional(self):
     # Test various datatypes in the simple case to ensure that the op was
     # registered under those types.

@@ -87,7 +87,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   *computation = std::move(*result.computation);
 
   int num_const_results = 0;
-  for (int i = 0; i < result.outputs.size(); ++i) {
+  for (int i = 0, end = result.outputs.size(); i < end; ++i) {
     // Ending up with const results (i.e. output args) is an error, since it
     // means that one or more fetches that the user specified will be dropped
     // from the generated function.  It's most likely a configuration error,
@@ -137,7 +137,6 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
       const auto& it = node.attr().find("allowed_devices");
       if (it != node.attr().end()) {
         if (!it->second.list().s().empty()) {
-          // TODO(b/149512838): Support non-empty allowed devices.
           return errors::InvalidArgument(
               "VarHandleOp with non-empty allowed devices is not supported.");
         }

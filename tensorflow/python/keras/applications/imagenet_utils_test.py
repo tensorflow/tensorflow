@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for imagenet_utils."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
@@ -29,6 +26,11 @@ from tensorflow.python.platform import test
 class TestImageNetUtils(keras_parameterized.TestCase):
 
   def test_preprocess_input(self):
+    # Test invalid mode check
+    x = np.random.uniform(0, 255, (10, 10, 3))
+    with self.assertRaises(ValueError):
+      utils.preprocess_input(x, mode='some_unknown_mode')
+
     # Test image batch with float and int image input
     x = np.random.uniform(0, 255, (2, 10, 10, 3))
     xint = x.astype('int32')
@@ -75,18 +77,33 @@ class TestImageNetUtils(keras_parameterized.TestCase):
     self.assertAllClose(x, x2[..., ::-1])
     self.assertNotEqual(xint.astype('float').max(), xint2.max())
 
-  def test_preprocess_input_symbolic(self):
+  @parameterized.named_parameters([
+      {
+          'testcase_name': 'mode_torch',
+          'mode': 'torch'
+      },
+      {
+          'testcase_name': 'mode_tf',
+          'mode': 'tf'
+      },
+      {
+          'testcase_name': 'mode_caffe',
+          'mode': 'caffe'
+      },
+  ])
+  def test_preprocess_input_symbolic(self, mode):
     # Test image batch
     x = np.random.uniform(0, 255, (2, 10, 10, 3))
     inputs = keras.layers.Input(shape=x.shape[1:])
     outputs = keras.layers.Lambda(
-        utils.preprocess_input, output_shape=x.shape[1:])(
+        lambda x: utils.preprocess_input(x, mode=mode),
+        output_shape=x.shape[1:])(
             inputs)
     model = keras.Model(inputs, outputs)
     self.assertEqual(model.predict(x).shape, x.shape)
 
     outputs1 = keras.layers.Lambda(
-        lambda x: utils.preprocess_input(x, 'channels_last'),
+        lambda x: utils.preprocess_input(x, 'channels_last', mode=mode),
         output_shape=x.shape[1:])(
             inputs)
     model1 = keras.Model(inputs, outputs1)
@@ -94,7 +111,7 @@ class TestImageNetUtils(keras_parameterized.TestCase):
     x2 = np.transpose(x, (0, 3, 1, 2))
     inputs2 = keras.layers.Input(shape=x2.shape[1:])
     outputs2 = keras.layers.Lambda(
-        lambda x: utils.preprocess_input(x, 'channels_first'),
+        lambda x: utils.preprocess_input(x, 'channels_first', mode=mode),
         output_shape=x2.shape[1:])(
             inputs2)
     model2 = keras.Model(inputs2, outputs2)
@@ -105,13 +122,13 @@ class TestImageNetUtils(keras_parameterized.TestCase):
     x = np.random.uniform(0, 255, (10, 10, 3))
     inputs = keras.layers.Input(shape=x.shape)
     outputs = keras.layers.Lambda(
-        utils.preprocess_input, output_shape=x.shape)(
+        lambda x: utils.preprocess_input(x, mode=mode), output_shape=x.shape)(
             inputs)
     model = keras.Model(inputs, outputs)
     self.assertEqual(model.predict(x[np.newaxis])[0].shape, x.shape)
 
     outputs1 = keras.layers.Lambda(
-        lambda x: utils.preprocess_input(x, 'channels_last'),
+        lambda x: utils.preprocess_input(x, 'channels_last', mode=mode),
         output_shape=x.shape)(
             inputs)
     model1 = keras.Model(inputs, outputs1)
@@ -119,7 +136,7 @@ class TestImageNetUtils(keras_parameterized.TestCase):
     x2 = np.transpose(x, (2, 0, 1))
     inputs2 = keras.layers.Input(shape=x2.shape)
     outputs2 = keras.layers.Lambda(
-        lambda x: utils.preprocess_input(x, 'channels_first'),
+        lambda x: utils.preprocess_input(x, 'channels_first', mode=mode),
         output_shape=x2.shape)(
             inputs2)
     model2 = keras.Model(inputs2, outputs2)

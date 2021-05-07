@@ -22,7 +22,7 @@ import platform
 import lit.llvm
 
 # Handle the test srcdir for platforms. On windows, things are weird with bazel.
-if platform.system == 'Windows':
+if platform.system() == 'Windows':
   srcdir = os.environ['TEST_SRCDIR']
   real_test_srcdir = srcdir[:srcdir.find('tensorflow/compiler/mlir')]
   external_srcdir = os.path.join(real_test_srcdir, 'external')
@@ -42,10 +42,15 @@ config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [
     'tensorflow/compiler/mlir',
+    'tensorflow/compiler/mlir/hlo',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/tensorflow',
+    'tensorflow/compiler/mlir/tfjs',
     'tensorflow/compiler/mlir/xla',
-    'tensorflow/compiler/aot'
+    'tensorflow/compiler/mlir/tools/kernel_gen',
+    'tensorflow/compiler/aot',
+    'tensorflow/compiler/xla/service/mlir_gpu',
+    'tensorflow/compiler/xla/service/gpu/tests',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], s)
@@ -56,7 +61,7 @@ test_dir = test_dir.strip('/').rsplit(':', 1)[0]
 config.mlir_test_dir = os.path.join(real_test_srcdir,
                                     os.environ['TEST_WORKSPACE'], test_dir)
 
-if platform.system == 'Windows':
+if platform.system() == 'Windows':
   # Configure this to work with msys2, TF's preferred windows bash.
   config.lit_tools_dir = '/usr/bin'
 

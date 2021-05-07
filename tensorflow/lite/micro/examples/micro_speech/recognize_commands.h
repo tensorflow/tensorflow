@@ -36,14 +36,14 @@ class PreviousResultsQueue {
   // Data structure that holds an inference result, and the time when it
   // was recorded.
   struct Result {
-    Result() : time_(0), scores_() {}
-    Result(int32_t time, uint8_t* scores) : time_(time) {
+    Result() : time_(0), scores() {}
+    Result(int32_t time, int8_t* input_scores) : time_(time) {
       for (int i = 0; i < kCategoryCount; ++i) {
-        scores_[i] = scores[i];
+        scores[i] = input_scores[i];
       }
     }
     int32_t time_;
-    uint8_t scores_[kCategoryCount];
+    int8_t scores[kCategoryCount];
   };
 
   int size() { return size_; }

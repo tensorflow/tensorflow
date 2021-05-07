@@ -36,7 +36,8 @@ class TensorResponse;
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
  public:
-  virtual void GetStatusAsync(const GetStatusRequest* request,
+  virtual void GetStatusAsync(CallOptions* opts,
+                              const GetStatusRequest* request,
                               GetStatusResponse* response, bool fail_fast,
                               StatusCallback done) = 0;
 
@@ -132,7 +133,7 @@ class WorkerInterface {
                    GetStatusResponse* response) {
     Status ret;
     Notification n;
-    GetStatusAsync(request, response, /*fail_fast=*/true,
+    GetStatusAsync(/*opts=*/nullptr, request, response, /*fail_fast=*/true,
                    [&ret, &n](const Status& s) {
                      ret = s;
                      n.Notify();

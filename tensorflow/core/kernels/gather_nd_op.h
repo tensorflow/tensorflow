@@ -161,7 +161,8 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
           "indices", SliceDebugString(shape, bad_i), " = [",
           str_util::Join(
               gtl::ArraySlice<Index>(&indices_mat(bad_i, 0), indices_nd), ", "),
-          "] does not index into param shape ", params.shape().DebugString());
+          "] does not index into param shape ", params.shape().DebugString(),
+          ", node name: ", c->op_kernel().name());
     }
   }
   return Status::OK();

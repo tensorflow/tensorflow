@@ -1,7 +1,6 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -10,19 +9,13 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "toco_conversion_log_proto",
     srcs = ["toco_conversion_log.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "toco_conversion_log_proto",
-    srcs = ["toco_conversion_log.proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -73,7 +66,7 @@ py_library(
     data = [
         "html_template",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -89,10 +82,19 @@ py_test(
         "//tensorflow/lite/toco/logging/testdata:toco_tflite_graph.dot",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":gen_html",
         ":toco_conversion_log_proto_py",
         "//tensorflow/python:client_testlib",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "toco_conversion_log_proto_py",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":toco_conversion_log_proto"],
+# )
+# copybara:uncomment_end

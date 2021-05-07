@@ -30,15 +30,14 @@ namespace eager {
 class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
-                          EagerClient* eager_client, bool ready)
+                          core::RefCountPtr<EagerClient> eager_client,
+                          bool ready)
       : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
-        eager_client_(eager_client),
-        ready_(ready) {
-    eager_client_->Ref();
-  }
+        eager_client_(std::move(eager_client)),
+        ready_(ready) {}
 
-  ~DestroyTensorHandleNode() override { eager_client_->Unref(); }
+  ~DestroyTensorHandleNode() override {}
 
   void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;
@@ -48,7 +47,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
     // well. We don't want this request poison following requests since it is
     // safe to ignore a failing destroy tensor handle request.
     eager_client_->EnqueueAsync(
-        request_.get(), response,
+        /*call_opts=*/nullptr, request_.get(), response,
         [response, ready, done](const tensorflow::Status& s) {
           // Omit the warning if:
           // 1. The remote tensor isn't ready.
@@ -78,7 +77,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
-  EagerClient* eager_client_;
+  core::RefCountPtr<EagerClient> eager_client_;
   const string remote_task_;
   bool ready_;
 };

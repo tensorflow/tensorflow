@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -89,6 +89,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -124,7 +129,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       return Status::OK();
     }
     Status RestoreInternal(IteratorContext* ctx,
@@ -157,6 +163,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
+        if (ctx->split_provider()) {
+          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       }
@@ -172,13 +181,14 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIteration), i_));
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
       return Status::OK();
     }
@@ -222,23 +232,26 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
               ctx, this, prefix(), &input_impl_));
         }
-        Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence) {
-          // If the first call to GetNext() fails because the end
-          // of sequence has been reached, we terminate the
-          // iteration immediately. (Otherwise, this iterator
-          // would loop infinitely and never produce a value.)
+        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
+          // If the first call to GetNext() fails because the end of sequence
+          // has been reached, we terminate the iteration immediately.
+          // Otherwise, this iterator would loop infinitely and never produce a
+          // value.
           input_impl_.reset();
           return Status::OK();
         }
         first_call_ = false;
         if (!*end_of_sequence) {
-          return s;
-        } else {
-          input_impl_.reset();
-          first_call_ = true;
+          return Status::OK();
         }
+        if (ctx->split_provider()) {
+          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        }
+        input_impl_.reset();
+        first_call_ = true;
       } while (true);
     }
 
@@ -249,10 +262,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!first_call_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kUninitialized), ""));
       return Status::OK();

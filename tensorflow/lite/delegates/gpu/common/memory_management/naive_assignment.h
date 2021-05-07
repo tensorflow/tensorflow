@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_NAIVE_ASSIGNMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_NAIVE_ASSIGNMENT_H_
 
+#include <stddef.h>
+
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/internal.h"
@@ -30,7 +32,7 @@ namespace gpu {
 // The problem of memory management is NP-complete. This implements a
 // naive algorithm that assigns each tensor to a separate object in memory.
 template <typename TensorSizeT>
-Status NaiveAssignment(
+absl::Status NaiveAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   assignment->object_sizes.resize(usage_records.size());
@@ -40,7 +42,7 @@ Status NaiveAssignment(
     assignment->object_ids[i] = i;
     assignment->object_sizes[i] = record.tensor_size;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

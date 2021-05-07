@@ -73,6 +73,21 @@ std::string GetVariableType(const Variable::ValueType& value) {
   return absl::visit(VariableTypeGetter(), value);
 }
 
+struct LengthGetter {
+  template <typename T>
+  int operator()(const T& param) const {
+    return 1;
+  }
+  template <typename T>
+  int operator()(const std::vector<T>& param) const {
+    return param.size();
+  }
+};
+
+int GetLength(const Variable::ValueType& value) {
+  return absl::visit(LengthGetter(), value);
+}
+
 template <typename T>
 void FormatValue(std::string* result, T t) {
   absl::StrAppend(result, t);
@@ -457,6 +472,11 @@ bool VariableAccessor::AddUniformParameter(Variable&& variable) {
   }
   uniform_parameters_.insert(name);
   return true;
+}
+
+bool VariableAccessor::IsEmptyVariableLength(const Variable& variable) const {
+  const auto& value = variable.value;
+  return IsVariableLength(value) && GetLength(value) == 0;
 }
 
 std::string VariableAccessor::GetConstDeclarations() const {

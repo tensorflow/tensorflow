@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -85,6 +85,13 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       }
     }
     return result;
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    for (const auto& input : inputs_) {
+      inputs->push_back(input);
+    }
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -174,14 +181,15 @@ class ZipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplsEmpty), ""));
       } else {
         for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
       return Status::OK();
     }

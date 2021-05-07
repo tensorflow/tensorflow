@@ -26,6 +26,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "tensorflow/lite/interpreter.h"
+
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 namespace ops {
@@ -35,7 +37,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 class PythonErrorReporter;
@@ -49,24 +50,36 @@ class CalibrationReader;
 
 namespace calibration_wrapper {
 
+PyObject* AddIntermediateTensors(PyObject* data);
+
 class CalibrationWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static CalibrationWrapper* CreateWrapperCPPFromBuffer(PyObject* data);
+  static CalibrationWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers_by_name,
+      const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+      std::string* error_msg);
   ~CalibrationWrapper();
 
   PyObject* Prepare();
+  PyObject* Prepare(PyObject* input_shapes);
 
   PyObject* FeedTensor(PyObject* input_value);
 
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
-                          bool allow_float, bool enable_mlir_quantizer = false);
+                          bool allow_float, int activations_py_type);
 
   // Allows quantizing only the operator that produces the tensor with name
   // operator_output_name. (This can be used to help debug.).
   // TODO(suharshs): Allow providing multiple names.
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
                           bool allow_float, const char* operator_output_name);
+
+  // Disables per-channel quantization, can be used to produce smaller
+  // models but may cause accuracy issues.
+  PyObject* QuantizeModel(int input_py_type, int output_py_type,
+                          bool allow_float, int activations_py_type,
+                          bool disable_per_channel);
 
   // Writes the in-memory calibration results to the model flatbuffer. The
   // produced model is as same as the original input model, but the min/max

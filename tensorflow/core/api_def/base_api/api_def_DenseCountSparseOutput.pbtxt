@@ -1,0 +1,69 @@
+op {
+  graph_op_name: "DenseCountSparseOutput"
+  visibility: HIDDEN
+  in_arg {
+    name: "values"
+    description: <<END
+Tensor containing data to count.
+END
+  }
+  in_arg {
+    name: "weights"
+    description: <<END
+A Tensor of the same shape as indices containing per-index weight values. May
+also be the empty tensor if no weights are used.
+END
+  }
+  out_arg {
+    name: "output_indices"
+    description: <<END
+Indices tensor for the resulting sparse tensor object.
+END
+  }
+  out_arg {
+    name: "output_values"
+    description: <<END
+Values tensor for the resulting sparse tensor object.
+END
+  }
+  out_arg {
+    name: "output_dense_shape"
+    description: <<END
+Shape tensor for the resulting sparse tensor object.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+Dtype of the input values tensor.
+END
+  }
+  attr {
+    name: "minlength"
+    description: <<END
+Minimum value to count. Can be set to -1 for no minimum.
+END
+  }
+  attr {
+    name: "maxlength"
+    description: <<END
+Maximum value to count. Can be set to -1 for no maximum.
+END
+  }
+  attr {
+    name: "binary_output"
+    description: <<END
+Whether to output the number of occurrences of each value or 1.
+END
+  }
+  attr {
+    name: "output_type"
+    description: <<END
+Dtype of the output values tensor.
+END
+  }
+  summary: "Performs sparse-output bin counting for a tf.tensor input."
+  description: <<END
+  Counts the number of times each value occurs in the input.
+END
+}

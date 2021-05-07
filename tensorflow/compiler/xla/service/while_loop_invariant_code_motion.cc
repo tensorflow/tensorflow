@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -300,12 +302,12 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 }
 
 StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
-  VLOG(2) << "HLO module before WhileLoopConstantSinking:";
+  VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->MakeComputationPostOrder()) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;
@@ -332,10 +334,19 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
   }
 
   if (changed) {
-    VLOG(2) << "HLO module after WhileLoopConstantSinking:";
+    // Run DCE if changed. This pass may create new while loops with new
+    // computations and if we don't delete the old ones, we can have spurious
+    // verification failures (e.g., the verifier may see multiple channel
+    // instructions that have the same channel ids).
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
+
+  if (changed) {
+    VLOG(2) << "HLO module after WhileLoopInvariantCodeMotion:";
     XLA_VLOG_LINES(2, module->ToString());
   } else {
-    VLOG(2) << "HLO module unchanged after WhileLoopConstantSinking";
+    VLOG(2) << "HLO module unchanged after WhileLoopInvariantCodeMotion";
   }
 
   return changed;

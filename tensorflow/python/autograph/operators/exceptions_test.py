@@ -40,8 +40,8 @@ class ExceptionsTest(test.TestCase):
           constant_op.constant(False),
           lambda: constant_op.constant('test message'))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   'test message'):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'test message'):
         self.evaluate(t)
 
   @test_util.run_deprecated_v1
@@ -54,8 +54,8 @@ class ExceptionsTest(test.TestCase):
       t = exceptions.assert_stmt(
           constant_op.constant(False), lambda: two_tensors)
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   'test message.*another message'):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'test message.*another message'):
         self.evaluate(t)
 
   def test_assert_python_untriggered(self):
@@ -81,7 +81,7 @@ class ExceptionsTest(test.TestCase):
       side_effect_trace.append(tracer)
       return 'test message'
 
-    with self.assertRaisesRegexp(AssertionError, 'test message'):
+    with self.assertRaisesRegex(AssertionError, 'test message'):
       exceptions.assert_stmt(False, expression_with_side_effects)
     self.assertListEqual(side_effect_trace, [tracer])
 

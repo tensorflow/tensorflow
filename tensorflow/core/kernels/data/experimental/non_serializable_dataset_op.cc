@@ -69,6 +69,12 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
       return "NonSerializableDatasetOp::Dataset";
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -106,8 +112,9 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 

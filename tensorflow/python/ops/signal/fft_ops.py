@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
@@ -26,6 +28,7 @@ from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -138,7 +141,7 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
-  _rfft.__doc__ = fft_fn.__doc__
+  _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
   return _rfft
 
 
@@ -168,7 +171,7 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
-  _irfft.__doc__ = ifft_fn.__doc__
+  _irfft.__doc__ = re.sub("    Treal.*?\n", "", ifft_fn.__doc__)
   return _irfft
 
 
@@ -181,17 +184,23 @@ ifft2d = gen_spectral_ops.ifft2d
 fft3d = gen_spectral_ops.fft3d
 ifft3d = gen_spectral_ops.ifft3d
 rfft = _rfft_wrapper(gen_spectral_ops.rfft, 1, "rfft")
-tf_export("signal.rfft", v1=["signal.rfft", "spectral.rfft"])(rfft)
+tf_export("signal.rfft", v1=["signal.rfft", "spectral.rfft"])(
+    dispatch.add_dispatch_support(rfft))
 irfft = _irfft_wrapper(gen_spectral_ops.irfft, 1, "irfft")
-tf_export("signal.irfft", v1=["signal.irfft", "spectral.irfft"])(irfft)
+tf_export("signal.irfft", v1=["signal.irfft", "spectral.irfft"])(
+    dispatch.add_dispatch_support(irfft))
 rfft2d = _rfft_wrapper(gen_spectral_ops.rfft2d, 2, "rfft2d")
-tf_export("signal.rfft2d", v1=["signal.rfft2d", "spectral.rfft2d"])(rfft2d)
+tf_export("signal.rfft2d", v1=["signal.rfft2d", "spectral.rfft2d"])(
+    dispatch.add_dispatch_support(rfft2d))
 irfft2d = _irfft_wrapper(gen_spectral_ops.irfft2d, 2, "irfft2d")
-tf_export("signal.irfft2d", v1=["signal.irfft2d", "spectral.irfft2d"])(irfft2d)
+tf_export("signal.irfft2d", v1=["signal.irfft2d", "spectral.irfft2d"])(
+    dispatch.add_dispatch_support(irfft2d))
 rfft3d = _rfft_wrapper(gen_spectral_ops.rfft3d, 3, "rfft3d")
-tf_export("signal.rfft3d", v1=["signal.rfft3d", "spectral.rfft3d"])(rfft3d)
+tf_export("signal.rfft3d", v1=["signal.rfft3d", "spectral.rfft3d"])(
+    dispatch.add_dispatch_support(rfft3d))
 irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
-tf_export("signal.irfft3d", v1=["signal.irfft3d", "spectral.irfft3d"])(irfft3d)
+tf_export("signal.irfft3d", v1=["signal.irfft3d", "spectral.irfft3d"])(
+    dispatch.add_dispatch_support(irfft3d))
 
 
 def _fft_size_for_grad(grad, rank):
@@ -363,6 +372,7 @@ def _irfft_grad_helper(rank, rfft_fn):
 
 
 @tf_export("signal.fftshift")
+@dispatch.add_dispatch_support
 def fftshift(x, axes=None, name=None):
   """Shift the zero-frequency component to the center of the spectrum.
 
@@ -398,12 +408,16 @@ def fftshift(x, axes=None, name=None):
     elif isinstance(axes, int):
       shift = _array_ops.shape(x)[axes] // 2
     else:
+      rank = _array_ops.rank(x)
+      # allows negative axis
+      axes = _array_ops.where(_math_ops.less(axes, 0), axes + rank, axes)
       shift = _array_ops.gather(_array_ops.shape(x), axes) // 2
 
     return manip_ops.roll(x, shift, axes, name)
 
 
 @tf_export("signal.ifftshift")
+@dispatch.add_dispatch_support
 def ifftshift(x, axes=None, name=None):
   """The inverse of fftshift.
 
@@ -439,6 +453,9 @@ def ifftshift(x, axes=None, name=None):
     elif isinstance(axes, int):
       shift = -(_array_ops.shape(x)[axes] // 2)
     else:
+      rank = _array_ops.rank(x)
+      # allows negative axis
+      axes = _array_ops.where(_math_ops.less(axes, 0), axes + rank, axes)
       shift = -(_array_ops.gather(_array_ops.shape(x), axes) // 2)
 
     return manip_ops.roll(x, shift, axes, name)

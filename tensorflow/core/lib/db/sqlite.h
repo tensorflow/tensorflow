@@ -172,8 +172,8 @@ class SqliteStatement {
   /// The OrDie version returns `!is_done` which, if true, indicates a
   /// row is available.
   ///
-  /// This statement should be Reset() or destructed when when finished
-  /// with the result.
+  /// This statement should be Reset() or destructed when finished with
+  /// the result.
   Status Step(bool* is_done);
   bool StepOrDie() TF_MUST_USE_RESULT;
 
@@ -182,8 +182,8 @@ class SqliteStatement {
   /// If a row isn't returned, an internal error Status is returned
   /// that won't be reflected in the connection error state.
   ///
-  /// This statement should be Reset() or destructed when when finished
-  /// with the result.
+  /// This statement should be Reset() or destructed when finished with
+  /// the result.
   Status StepOnce();
   const SqliteStatement& StepOnceOrDie();
 

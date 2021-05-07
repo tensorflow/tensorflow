@@ -13,21 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Utility functions shared between SavedModel saving/loading implementations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import itertools
+import threading
 import types
 
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 
 # pylint:disable=g-inconsistent-quotes
@@ -54,8 +52,8 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     call_fn are added to the layer losses.
   """
   expects_training_arg = layer_uses_training_bool(layer)
-  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
-    original_call = call_fn.original_call
+  if hasattr(call_fn, 'original_layer_call'):  # call_fn is a LayerCall object
+    original_call = call_fn.original_layer_call
     # In Python 3, callable objects are not compatible with inspect.getargspec
     call_fn = call_fn.__call__
   else:
@@ -64,12 +62,12 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
       original_call, call_fn, expects_training_arg, default_training_value)
 
   def return_outputs_and_add_losses(*args, **kwargs):
-    """Returns the outputs from the call_fn, and adds the losses."""
-    inputs_arg_index = 1 if return_method else 0
-    inputs = args[inputs_arg_index]
-    args = args[inputs_arg_index + 1:]
-    outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs)
+    """Returns the outputs from the layer call function, and adds the losses."""
+    if return_method:
+      args = args[1:]
+
+    outputs, losses = fn(*args, **kwargs)
+    layer.add_loss(losses, inputs=True)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This
@@ -79,7 +77,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     # child layers. This causes `.losses` to only return eager losses.
     # pylint: disable=protected-access
     if context.executing_eagerly():
-      for i in layer._gather_unique_layers():
+      for i in layer._flatten_layers():
         if i is not layer:
           i._eager_losses = [base_layer_utils.REVIVED_LOSS_PLACEHOLDER]
     # pylint: enable=protected-access
@@ -115,10 +113,11 @@ def layer_uses_training_bool(layer):
 
 def list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
+    # Handle special case of Sequential, which doesn't return
+    # the `Input` layer.
     return obj.layers
   else:
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+    return list(obj._flatten_layers(include_self=False, recursive=False))  # pylint: disable=protected-access
 
 
 def list_all_layers_and_sublayers(obj):
@@ -149,7 +148,6 @@ def maybe_add_training_arg(
   """
   if not expects_training_arg:
     return wrapped_call, None
-
   def wrap_with_training_arg(*args, **kwargs):
     """Wrap the `wrapped_call` function, and set training argument."""
     training_arg_index = get_training_arg_index(original_call)
@@ -164,9 +162,8 @@ def maybe_add_training_arg(
       set_training_arg(training, training_arg_index, args, kwargs)
       return wrapped_call(*args, **kwargs)
 
-    return tf_utils.smart_cond(
-        training,
-        lambda: replace_training_and_call(True),
+    return control_flow_util.smart_cond(
+        training, lambda: replace_training_and_call(True),
         lambda: replace_training_and_call(False))
 
   # Create arg spec for decorated function. If 'training' is not defined in the
@@ -211,38 +208,99 @@ def get_training_arg_index(call_fn):
           variable keyword arguments
     - None: if layer doesn't expect a training argument.
   """
-  arg_list = tf_inspect.getfullargspec(call_fn).args
-  if tf_inspect.ismethod(call_fn):
-    arg_list = arg_list[1:]
-  if 'training' in arg_list:
-    return arg_list.index('training')
+  argspec = tf_inspect.getfullargspec(call_fn)
+  if argspec.varargs:
+    # When there are variable args, training must be a keyword arg.
+    if 'training' in argspec.kwonlyargs or argspec.varkw:
+      return -1
+    return None
   else:
-    return -1
+    # Try to find 'training' in the list of args or kwargs.
+    arg_list = argspec.args
+    if tf_inspect.ismethod(call_fn):
+      arg_list = arg_list[1:]
+
+    if 'training' in arg_list:
+      return arg_list.index('training')
+    elif 'training' in argspec.kwonlyargs or argspec.varkw:
+      return -1
+    return None
 
 
 def set_training_arg(training, index, args, kwargs):
-  if index is None:
-    pass
-  elif index >= 0 and len(args) > index:
-    args[index] = training
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     kwargs['training'] = training
+  else:
+    args[index] = training
   return args, kwargs
 
 
 def get_training_arg(index, args, kwargs):
-  if index is None:
-    return None
-  elif index >= 0 and len(args) > index:
-    return args[index]
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     return kwargs.get('training', None)
+  else:
+    return args[index]
 
 
 def remove_training_arg(index, args, kwargs):
-  if index is None:
-    pass
-  elif index >= 0 and len(args) > index:
-    args.pop(index)
-  else:
+  if index is None or index < 0 or len(args) <= index:  # index is invalid
     kwargs.pop('training', None)
+  else:
+    args.pop(index)
+
+
+class SaveOptionsContext(threading.local):
+
+  def __init__(self):
+    super(SaveOptionsContext, self).__init__()
+    self.save_traces = True
+
+
+_save_options_context = SaveOptionsContext()
+
+
+@tf_contextlib.contextmanager
+def keras_option_scope(save_traces):
+  previous_value = _save_options_context.save_traces
+  try:
+    _save_options_context.save_traces = save_traces
+    yield
+  finally:
+    _save_options_context.save_traces = previous_value
+
+
+def should_save_traces():
+  """Whether to trace layer functions-can be disabled in the save_traces arg."""
+  return _save_options_context.save_traces
+
+
+@tf_contextlib.contextmanager
+def no_automatic_dependency_tracking_scope(obj):
+  """A context that disables automatic dependency tracking when assigning attrs.
+
+  Objects that inherit from Autotrackable automatically creates dependencies
+  to trackable objects through attribute assignments, and wraps data structures
+  (lists or dicts) with trackable classes. This scope may be used to temporarily
+  disable this behavior. This works similar to the decorator
+  `no_automatic_dependency_tracking`.
+
+  Example usage:
+  ```
+  model = tf.keras.Model()
+  model.arr1 = []  # Creates a ListWrapper object
+  with no_automatic_dependency_tracking_scope(model):
+    model.arr2 = []  # Creates a regular, untracked python list
+  ```
+
+  Args:
+    obj: A trackable object.
+
+  Yields:
+    a scope in which the object doesn't track dependencies.
+  """
+  previous_value = getattr(obj, '_setattr_tracking', True)
+  obj._setattr_tracking = False  # pylint: disable=protected-access
+  try:
+    yield
+  finally:
+    obj._setattr_tracking = previous_value  # pylint: disable=protected-access

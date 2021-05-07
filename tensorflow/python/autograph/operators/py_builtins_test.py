@@ -27,22 +27,24 @@ from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
 class TestBase(object):
 
-  def plus_twenty(self, x):
+  def overridden_method(self, x):
     return x + 20
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class PyBuiltinsTest(test.TestCase):
 
   def test_abs(self):
@@ -121,6 +123,46 @@ class PyBuiltinsTest(test.TestCase):
       self.assertEqual(self.evaluate(ta), 5)
       tl = py_builtins.len_(data_structures.tf_tensor_list_new([3, 4, 5]))
       self.assertEqual(self.evaluate(tl), 3)
+
+  def test_len_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+    self.assertEqual(self.evaluate(py_builtins.len_(dataset)), 3)
+
+    # graph mode
+    @def_function.function(autograph=False)
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+      return py_builtins.len_(dataset)
+
+    self.assertEqual(self.evaluate(test_fn()), 3)
+
+  def test_len_dataset_infinite(self):
+    dataset = dataset_ops.DatasetV2.range(5).repeat().batch(2)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      _ = self.evaluate(py_builtins.len_(dataset))
+
+    # graph mode
+    @def_function.function
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.range(5).repeat().batch(2)
+      return py_builtins.len_(dataset)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(test_fn())
+
+  def test_len_dataset_unknown(self):
+    dataset = dataset_ops.DatasetV2.range(5).filter(lambda _: True).batch(2)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      _ = self.evaluate(py_builtins.len_(dataset))
+
+    # graph mode
+    @def_function.function(autograph=False)
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.range(5).filter(lambda _: True).batch(2)
+      return py_builtins.len_(dataset)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(test_fn())
 
   def test_len_scalar(self):
     with self.assertRaises(ValueError):
@@ -248,6 +290,86 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(iterator.get_next()), -34)
       self.assertAllEqual(self.evaluate(iterator.get_next()), 9)
 
+  def test_next_normal(self):
+    iterator = iter([1, 2, 3])
+    self.assertEqual(py_builtins.next_(iterator), 1)
+    self.assertEqual(py_builtins.next_(iterator), 2)
+    self.assertEqual(py_builtins.next_(iterator), 3)
+    with self.assertRaises(StopIteration):
+      py_builtins.next_(iterator)
+    self.assertEqual(py_builtins.next_(iterator, 4), 4)
+
+  def test_next_tf_iterator(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn(go_out_of_range, with_default):
+      iterator = iter(dataset_ops.Dataset.range(3))
+      retval = (
+          py_builtins.next_(iterator),
+          py_builtins.next_(iterator),
+          py_builtins.next_(iterator),
+      )
+      if go_out_of_range:
+        if with_default:
+          retval += (
+              py_builtins.next_(iterator,
+                                constant_op.constant(-3, dtype=dtypes.int64)),
+              py_builtins.next_(iterator,
+                                constant_op.constant(-4, dtype=dtypes.int64)),
+          )
+        else:
+          py_builtins.next_(iterator)
+      return retval
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(go_out_of_range=False, with_default=None)),
+        (0, 1, 2))
+    self.assertAllEqual(
+        self.evaluate(test_fn(go_out_of_range=True, with_default=True)),
+        (0, 1, 2, -3, -4))
+    with self.assertRaises(errors_impl.OutOfRangeError):
+      self.evaluate(test_fn(go_out_of_range=True, with_default=False))
+
+  def test_next_tf_iterator_error_checking(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      iterator = iter(dataset_ops.Dataset.range(1))
+      py_builtins.next_(iterator)
+      py_builtins.next_(iterator, constant_op.constant(-3))
+
+    # Dataset.range defaults to int64,
+    with self.assertRaisesRegex(TypeError, 'default.*int64'):
+      self.evaluate(test_fn())
+
+  def test_next_tf_iterator_error_checking_structures(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn(default_val):
+      ds = dataset_ops.Dataset.range(1)
+      ds = ds.map(lambda i: {'a': i + 1, 'b': i + 10})
+      iterator = iter(ds)
+      py_builtins.next_(iterator)
+      py_builtins.next_(iterator, default_val)
+
+    default = {
+        'a': constant_op.constant(3, dtype=dtypes.int64),
+    }
+    with self.assertRaisesRegex(TypeError, 'same element structure'):
+      test_fn(default)
+    default = {
+        'a': constant_op.constant(3.0),
+        'b': [constant_op.constant(30), constant_op.constant(300)]
+    }
+    with self.assertRaisesRegex(TypeError, 'same element structure'):
+      test_fn(default)
+    default = {
+        'a': constant_op.constant(3.0),
+        'b': constant_op.constant(30, dtype=dtypes.int64),
+    }
+    with self.assertRaisesRegex(TypeError, 'float32'):
+      test_fn(default)
+
   def _basic_function_scope(self):
     return function_wrappers.FunctionScope(
         'test_function_name',
@@ -279,12 +401,67 @@ class PyBuiltinsTest(test.TestCase):
 
     self.assertEqual(test_fn(), 2)
 
+  def test_locals_in_original_context(self):
+
+    def test_fn():
+      l = 1  # pylint:disable=unused-variable
+      with self._basic_function_scope() as test_scope:
+        return py_builtins.locals_in_original_context(test_scope)
+
+    locs = test_fn()
+
+    self.assertEqual(locs['l'], 1)
+
+  def test_locals_in_original_context_inner_function(self):
+
+    def test_fn():
+      l = 1  # pylint:disable=unused-variable
+      with self._basic_function_scope() as test_scope:
+
+        def inner_fn():
+          # Note: a user function without a top-level function scope should
+          # never be found in user code; it's only possible in generated code.
+          l = 2  # pylint:disable=unused-variable
+          return py_builtins.locals_in_original_context(test_scope)
+
+        return inner_fn()
+
+    locs = test_fn()
+
+    self.assertEqual(locs['l'], 2)
+
+  def test_globals_in_original_context(self):
+
+    def test_fn():
+      with self._basic_function_scope() as test_scope:
+        return py_builtins.globals_in_original_context(test_scope)
+
+    globs = test_fn()
+
+    self.assertIs(globs['TestBase'], TestBase)
+
+  def test_globals_in_original_context_inner_function(self):
+
+    def test_fn():
+      with self._basic_function_scope() as test_scope:
+
+        def inner_fn():
+          # Note: a user function without a top-level function scope should
+          # never be found in user code; it's only possible in generated code.
+          return py_builtins.globals_in_original_context(test_scope)
+
+        return inner_fn()
+
+    globs = test_fn()
+
+    self.assertIs(globs['TestBase'], TestBase)
+
   def test_super_in_original_context_unary_call(self):
     test_case_self = self
 
     class TestSubclass(TestBase):
 
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
       def test_method(self):
@@ -292,7 +469,7 @@ class PyBuiltinsTest(test.TestCase):
           test_base_unbound = py_builtins.super_in_original_context(
               super, (TestSubclass,), test_scope)
           test_base = test_base_unbound.__get__(self, TestSubclass)
-          return test_base.plus_twenty(1)
+          return test_base.overridden_method(1)
 
     tc = TestSubclass()
     self.assertEqual(tc.test_method(), 21)
@@ -302,17 +479,97 @@ class PyBuiltinsTest(test.TestCase):
 
     class TestSubclass(TestBase):
 
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
       def test_method(self):
         with test_case_self._basic_function_scope() as test_scope:
           test_base = py_builtins.super_in_original_context(
               super, (TestSubclass, self), test_scope)
-          return test_base.plus_twenty(1)
+          return test_base.overridden_method(1)
 
     tc = TestSubclass()
     self.assertEqual(tc.test_method(), 21)
+
+  def test_super_in_original_context_niladic_call(self):
+    test_case_self = self
+
+    class TestSubclass(TestBase):
+
+      def overridden_method(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def test_method(self):
+        with test_case_self._basic_function_scope() as test_scope:
+          b = py_builtins.super_in_original_context(super, (), test_scope)
+          return b.overridden_method(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.test_method(), 21)
+
+  def test_super_in_original_context_caller_with_locals(self):
+    test_case_self = self
+
+    class TestSubclass(TestBase):
+
+      def overridden_method(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def test_method(self, x):
+        y = 7
+        with test_case_self._basic_function_scope() as test_scope:
+          z = 7
+          return py_builtins.super_in_original_context(
+              super, (), test_scope).overridden_method(x + y - z)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.test_method(1), 21)
+
+  def test_super_in_original_context_inner_function(self):
+    test_case_self = self
+
+    class TestSubclass(TestBase):
+
+      def overridden_method(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def test_method(self, x):
+        with test_case_self._basic_function_scope() as test_scope:
+          # Oddly, it's sufficient to use `self` in an inner function
+          # to gain access to __class__ in this scope.
+          # TODO(mdan): Is this true across implementations?
+          # Note: normally, it's illegal to use super() in inner functions (it
+          # throws an error), but the generated code may create them.
+          def inner_fn():
+            return py_builtins.super_in_original_context(
+                super, (), test_scope).overridden_method(x)
+
+          return inner_fn()
+
+    tc = TestSubclass()
+    self.assertEqual(tc.test_method(1), 21)
+
+  def test_super_in_original_context_inner_lambda(self):
+    test_case_self = self
+
+    class TestSubclass(TestBase):
+
+      def overridden_method(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def test_method(self, x):
+        with test_case_self._basic_function_scope() as test_scope:
+          # Oddly, it's sufficient to use `self` in an inner function
+          # to gain access to __class__ in this scope.
+          # TODO(mdan): Is this true across implementations?
+          # Note: normally, it's illegal to use super() in inner functions (it
+          # throws an error), but the generated code may create them.
+          l = lambda: py_builtins.super_in_original_context(  # pylint:disable=g-long-lambda
+              super, (), test_scope).overridden_method(x)
+          return l()
+
+    tc = TestSubclass()
+    self.assertEqual(tc.test_method(1), 21)
 
   def test_filter(self):
     self.assertListEqual(

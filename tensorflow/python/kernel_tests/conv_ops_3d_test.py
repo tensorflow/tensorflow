@@ -48,6 +48,10 @@ def GetTestConfigs():
   return test_configs
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests Conv3d, which in some cases is implemented with a matmul. With "
+    "TensorFloat-32, tests fail in some of those cases (and as of August 13 "
+    "2020, only those cases)")
 class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
@@ -66,12 +70,8 @@ class Conv3DTest(test.TestCase):
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
-    total_size_tensor = 1
-    total_size_filter = 1
-    for s in tensor_in_sizes:
-      total_size_tensor *= s
-    for s in filter_in_sizes:
-      total_size_filter *= s
+    total_size_tensor = np.prod(tensor_in_sizes)
+    total_size_filter = np.prod(filter_in_sizes)
 
     # Initializes the input tensor with array containing numbers from 0 to 1.
     # We keep the input tensor values fairly small to avoid overflowing float16
@@ -126,12 +126,8 @@ class Conv3DTest(test.TestCase):
   def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
                                    stride, dilation, padding, data_format,
                                    use_gpu):
-    total_size_tensor = 1
-    total_size_filter = 1
-    for s in tensor_in_sizes:
-      total_size_tensor *= s
-    for s in filter_in_sizes:
-      total_size_filter *= s
+    total_size_tensor = np.prod(tensor_in_sizes)
+    total_size_filter = np.prod(filter_in_sizes)
 
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
@@ -195,6 +191,69 @@ class Conv3DTest(test.TestCase):
             print("actual = ", c_value)
             self.assertAllClose(
                 e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-6)
+
+  def _CreateNumpyTensor(self, sizes):
+    return np.asarray([f * 1.0 for f in range(1,
+                                              np.prod(sizes) + 1)],
+                      dtype=np.float32).reshape(sizes)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv3DExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 1, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 1, 3]
+    filter_in_sizes = [1, 1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = nn_ops.conv3d_v2(
+        x1, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
+    conv2 = nn_ops.conv3d_v2(
+        x2, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvolutionClass3DExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 1, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 1, 3]
+    filter_in_sizes = [1, 1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    convolver1 = nn_ops.Convolution(
+        input_shape=x1.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1, 1],
+        padding="VALID")
+    self.assertEqual(convolver1.num_batch_dims, 1)
+    convolver2 = nn_ops.Convolution(
+        input_shape=x2.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1, 1],
+        padding="VALID")
+    self.assertEqual(convolver2.num_batch_dims, 2)
+    conv1 = convolver1(x1, filter_in)
+    conv2 = convolver2(x2, filter_in)
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 1, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 1, 3]
+    filter_in_sizes = [1, 1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = nn_ops.convolution(
+        x1, filter_in, strides=[1, 1, 1], padding="VALID")
+    conv2 = nn_ops.convolution(
+        x2, filter_in, strides=[1, 1, 1], padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   def testConv3D1x1x1Filter(self):
     expected_output = [

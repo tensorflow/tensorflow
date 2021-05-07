@@ -1,0 +1,23 @@
+op {
+  name: "BoostedTreesBucketize"
+  input_arg {
+    name: "float_values"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "buckets"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+}

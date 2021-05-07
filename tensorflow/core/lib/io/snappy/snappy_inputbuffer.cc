@@ -134,7 +134,7 @@ Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
     }
     size_t readable = std::min(bytes_to_read, avail_in_);
 
-    for (int i = 0; i < readable; i++) {
+    for (size_t i = 0; i < readable; i++) {
       // The "unsigned char" type cast is intentional to avoid implicit type
       // casting of the signed char to unsigned int during bitwise OR which
       // causes weird overflow errors.

@@ -602,17 +602,19 @@ static Graph* FusedBatchNormEx(int n, int h, int w, int c,
   BM_CONCAT(BM_FusedBatchNorm##_##DEVICE##_##T##_##N##_##H##_##W##_##C, \
             FORMAT##_##IS_TRAINING##_##A)
 
-#define BM_FusedBatchNorm(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,     \
-                          DEVICE)                                             \
-  static void BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,         \
-                      DEVICE)(int iters) {                                    \
-    testing::UseRealTime();                                                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * N * H * W * C);       \
-    test::Benchmark(#DEVICE, FusedBatchNormEx<T>(N, H, W, C, FORMAT_##FORMAT, \
-                                                 IS_TRAINING, {ACTIVATION}))  \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION, DEVICE));
+#define BM_FusedBatchNorm(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,    \
+                          DEVICE)                                            \
+  static void BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,        \
+                      DEVICE)(::testing::benchmark::State & state) {         \
+    test::Benchmark(#DEVICE,                                                 \
+                    FusedBatchNormEx<T>(N, H, W, C, FORMAT_##FORMAT,         \
+                                        IS_TRAINING, {ACTIVATION}),          \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(state.iterations() * N * H * W * C);             \
+  }                                                                          \
+  BENCHMARK(BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION, DEVICE)) \
+      ->UseRealTime();
 
 #if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
 BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, true, Identity, gpu);

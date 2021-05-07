@@ -1,0 +1,303 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule TestModule
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [64 x float]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [64 x float]*
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_7:.*]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_6]] to [64 x float]*
+// CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_10:.*]], i64 0
+// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_9]] to [64 x float]*
+// CHECK:         %[[VAL_12:.*]] = getelementptr inbounds i8, i8* %[[VAL_13:.*]], i64 0
+// CHECK:         %[[VAL_14:.*]] = bitcast i8* %[[VAL_12]] to [64 x float]*
+// CHECK:         %[[VAL_15:.*]] = getelementptr inbounds i8, i8* %[[VAL_16:.*]], i64 0
+// CHECK:         %[[VAL_17:.*]] = bitcast i8* %[[VAL_15]] to [64 x float]*
+// CHECK:         %[[VAL_18:.*]] = getelementptr inbounds i8, i8* %[[VAL_19:.*]], i64 0
+// CHECK:         %[[VAL_20:.*]] = bitcast i8* %[[VAL_18]] to [128 x [112 x [112 x [64 x half]]]]*
+// CHECK:         %[[VAL_21:.*]] = getelementptr inbounds i8, i8* %[[VAL_22:.*]], i64 0
+// CHECK:         %[[VAL_23:.*]] = bitcast i8* %[[VAL_21]] to [128 x [112 x [112 x [64 x half]]]]*
+// CHECK:         %[[VAL_24:.*]] = getelementptr inbounds i8, i8* %[[VAL_25:.*]], i64 0
+// CHECK:         %[[VAL_26:.*]] = bitcast i8* %[[VAL_24]] to [128 x [112 x [112 x [64 x half]]]]*
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds i8, i8* %[[VAL_28:.*]], i64 0
+// CHECK:         %[[VAL_29:.*]] = bitcast i8* %[[VAL_27]] to [128 x [112 x [112 x [64 x half]]]]*
+// CHECK:         %[[VAL_30:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_31:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_32:.*]] = mul nuw nsw i32 %[[VAL_30]], 256
+// CHECK:         %[[VAL_33:.*]] = add nuw nsw i32 %[[VAL_32]], %[[VAL_31]]
+// CHECK:         %[[VAL_34:.*]] = icmp ult i32 %[[VAL_33]], 25690112
+// CHECK:         call void @llvm.assume(i1 %[[VAL_34]])
+// CHECK:         %[[VAL_35:.*]] = mul nuw nsw i32 %[[VAL_33]], 4
+// CHECK:         %[[VAL_36:.*]] = udiv i32 %[[VAL_35]], 1
+// CHECK:         %[[VAL_37:.*]] = urem i32 %[[VAL_36]], 64
+// CHECK:         %[[VAL_38:.*]] = udiv i32 %[[VAL_35]], 64
+// CHECK:         %[[VAL_39:.*]] = urem i32 %[[VAL_38]], 112
+// CHECK:         %[[VAL_40:.*]] = udiv i32 %[[VAL_35]], 7168
+// CHECK:         %[[VAL_41:.*]] = urem i32 %[[VAL_40]], 112
+// CHECK:         %[[VAL_42:.*]] = udiv i32 %[[VAL_35]], 802816
+// CHECK:         %[[VAL_43:.*]] = add nuw nsw i32 %[[VAL_35]], 1
+// CHECK:         %[[VAL_44:.*]] = udiv i32 %[[VAL_43]], 1
+// CHECK:         %[[VAL_45:.*]] = urem i32 %[[VAL_44]], 64
+// CHECK:         %[[VAL_46:.*]] = udiv i32 %[[VAL_43]], 64
+// CHECK:         %[[VAL_47:.*]] = urem i32 %[[VAL_46]], 112
+// CHECK:         %[[VAL_48:.*]] = udiv i32 %[[VAL_43]], 7168
+// CHECK:         %[[VAL_49:.*]] = urem i32 %[[VAL_48]], 112
+// CHECK:         %[[VAL_50:.*]] = udiv i32 %[[VAL_43]], 802816
+// CHECK:         %[[VAL_51:.*]] = add nuw nsw i32 %[[VAL_35]], 2
+// CHECK:         %[[VAL_52:.*]] = udiv i32 %[[VAL_51]], 1
+// CHECK:         %[[VAL_53:.*]] = urem i32 %[[VAL_52]], 64
+// CHECK:         %[[VAL_54:.*]] = udiv i32 %[[VAL_51]], 64
+// CHECK:         %[[VAL_55:.*]] = urem i32 %[[VAL_54]], 112
+// CHECK:         %[[VAL_56:.*]] = udiv i32 %[[VAL_51]], 7168
+// CHECK:         %[[VAL_57:.*]] = urem i32 %[[VAL_56]], 112
+// CHECK:         %[[VAL_58:.*]] = udiv i32 %[[VAL_51]], 802816
+// CHECK:         %[[VAL_59:.*]] = add nuw nsw i32 %[[VAL_35]], 3
+// CHECK:         %[[VAL_60:.*]] = udiv i32 %[[VAL_59]], 1
+// CHECK:         %[[VAL_61:.*]] = urem i32 %[[VAL_60]], 64
+// CHECK:         %[[VAL_62:.*]] = udiv i32 %[[VAL_59]], 64
+// CHECK:         %[[VAL_63:.*]] = urem i32 %[[VAL_62]], 112
+// CHECK:         %[[VAL_64:.*]] = udiv i32 %[[VAL_59]], 7168
+// CHECK:         %[[VAL_65:.*]] = urem i32 %[[VAL_64]], 112
+// CHECK:         %[[VAL_66:.*]] = udiv i32 %[[VAL_59]], 802816
+// CHECK:         %[[VAL_67:.*]] = icmp ult i32 %[[VAL_35]], 102760448
+// CHECK:         br i1 %[[VAL_67]], label %[[VAL_68:.*]], label %[[VAL_69:.*]]
+// CHECK:       fusion.1.in_bounds-after:                         ; preds = %[[VAL_68]], %[[VAL_70:.*]]
+// CHECK:         ret void
+// CHECK:       fusion.1.in_bounds-true:                          ; preds = %[[VAL_70]]
+// CHECK:         %[[VAL_71:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_72:.*]] = load float, float* %[[VAL_71]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_73:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_74:.*]] = load float, float* %[[VAL_73]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_75:.*]] = fmul float %[[VAL_72]], %[[VAL_74]]
+// CHECK:         %[[VAL_76:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
+// CHECK:         %[[VAL_77:.*]] = fmul float %[[VAL_75]], %[[VAL_76]]
+// CHECK:         %[[VAL_78:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
+// CHECK:         %[[VAL_79:.*]] = getelementptr inbounds half, half* %[[VAL_78]], i32 %[[VAL_35]]
+// CHECK:         %[[VAL_80:.*]] = load half, half* %[[VAL_79]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_81:.*]] = load half, half* bitcast ([2 x i8]* @1 to half*), align 2
+// CHECK:         %[[VAL_82:.*]] = fcmp ogt half %[[VAL_80]], %[[VAL_81]]
+// CHECK:         %[[VAL_83:.*]] = zext i1 %[[VAL_82]] to i8
+// CHECK:         %[[VAL_84:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
+// CHECK:         %[[VAL_85:.*]] = getelementptr inbounds half, half* %[[VAL_84]], i32 %[[VAL_35]]
+// CHECK:         %[[VAL_86:.*]] = load half, half* %[[VAL_85]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_87:.*]] = trunc i8 %[[VAL_83]] to i1
+// CHECK:         %[[VAL_88:.*]] = select i1 %[[VAL_87]], half %[[VAL_86]], half %[[VAL_81]]
+// CHECK:         %[[VAL_89:.*]] = fpext half %[[VAL_88]] to float
+// CHECK:         %[[VAL_90:.*]] = load float, float* bitcast ([4 x i8]* @2 to float*), align 4
+// CHECK:         %[[VAL_91:.*]] = fmul float %[[VAL_89]], %[[VAL_90]]
+// CHECK:         %[[VAL_92:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_93:.*]] = load float, float* %[[VAL_92]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_94:.*]] = fsub float %[[VAL_91]], %[[VAL_93]]
+// CHECK:         %[[VAL_95:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_5]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_96:.*]] = load float, float* %[[VAL_95]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_97:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_20]] to half*
+// CHECK:         %[[VAL_98:.*]] = getelementptr inbounds half, half* %[[VAL_97]], i32 %[[VAL_35]]
+// CHECK:         %[[VAL_99:.*]] = load half, half* %[[VAL_98]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_100:.*]] = fpext half %[[VAL_99]] to float
+// CHECK:         %[[VAL_101:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_102:.*]] = load float, float* %[[VAL_101]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_103:.*]] = load float, float* bitcast ([4 x i8]* @3 to float*), align 4
+// CHECK:         %[[VAL_104:.*]] = fmul float %[[VAL_102]], %[[VAL_103]]
+// CHECK:         %[[VAL_105:.*]] = fsub float %[[VAL_100]], %[[VAL_104]]
+// CHECK:         %[[VAL_106:.*]] = fmul float %[[VAL_96]], %[[VAL_105]]
+// CHECK:         %[[VAL_107:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_2]], i32 0, i32 %[[VAL_37]]
+// CHECK:         %[[VAL_108:.*]] = load float, float* %[[VAL_107]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_109:.*]] = fdiv float %[[VAL_106]], %[[VAL_108]]
+// CHECK:         %[[VAL_110:.*]] = fsub float %[[VAL_94]], %[[VAL_109]]
+// CHECK:         %[[VAL_111:.*]] = fmul float %[[VAL_77]], %[[VAL_110]]
+// CHECK:         %[[VAL_112:.*]] = fptrunc float %[[VAL_111]] to half
+// CHECK:         %[[VAL_113:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_29]] to half*
+// CHECK:         %[[VAL_114:.*]] = getelementptr inbounds half, half* %[[VAL_113]], i32 %[[VAL_35]]
+// CHECK:         store half %[[VAL_112]], half* %[[VAL_114]], align 2
+// CHECK:         %[[VAL_115:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_116:.*]] = load float, float* %[[VAL_115]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_117:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_118:.*]] = load float, float* %[[VAL_117]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_119:.*]] = fmul float %[[VAL_116]], %[[VAL_118]]
+// CHECK:         %[[VAL_120:.*]] = load float, float* bitcast ([4 x i8]* @4 to float*), align 4
+// CHECK:         %[[VAL_121:.*]] = fmul float %[[VAL_119]], %[[VAL_120]]
+// CHECK:         %[[VAL_122:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
+// CHECK:         %[[VAL_123:.*]] = getelementptr inbounds half, half* %[[VAL_122]], i32 %[[VAL_43]]
+// CHECK:         %[[VAL_124:.*]] = load half, half* %[[VAL_123]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_125:.*]] = load half, half* bitcast ([2 x i8]* @5 to half*), align 2
+// CHECK:         %[[VAL_126:.*]] = fcmp ogt half %[[VAL_124]], %[[VAL_125]]
+// CHECK:         %[[VAL_127:.*]] = zext i1 %[[VAL_126]] to i8
+// CHECK:         %[[VAL_128:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
+// CHECK:         %[[VAL_129:.*]] = getelementptr inbounds half, half* %[[VAL_128]], i32 %[[VAL_43]]
+// CHECK:         %[[VAL_130:.*]] = load half, half* %[[VAL_129]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_131:.*]] = trunc i8 %[[VAL_127]] to i1
+// CHECK:         %[[VAL_132:.*]] = select i1 %[[VAL_131]], half %[[VAL_130]], half %[[VAL_125]]
+// CHECK:         %[[VAL_133:.*]] = fpext half %[[VAL_132]] to float
+// CHECK:         %[[VAL_134:.*]] = load float, float* bitcast ([4 x i8]* @6 to float*), align 4
+// CHECK:         %[[VAL_135:.*]] = fmul float %[[VAL_133]], %[[VAL_134]]
+// CHECK:         %[[VAL_136:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_137:.*]] = load float, float* %[[VAL_136]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_138:.*]] = fsub float %[[VAL_135]], %[[VAL_137]]
+// CHECK:         %[[VAL_139:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_5]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_140:.*]] = load float, float* %[[VAL_139]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_141:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_20]] to half*
+// CHECK:         %[[VAL_142:.*]] = getelementptr inbounds half, half* %[[VAL_141]], i32 %[[VAL_43]]
+// CHECK:         %[[VAL_143:.*]] = load half, half* %[[VAL_142]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_144:.*]] = fpext half %[[VAL_143]] to float
+// CHECK:         %[[VAL_145:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_146:.*]] = load float, float* %[[VAL_145]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_147:.*]] = load float, float* bitcast ([4 x i8]* @7 to float*), align 4
+// CHECK:         %[[VAL_148:.*]] = fmul float %[[VAL_146]], %[[VAL_147]]
+// CHECK:         %[[VAL_149:.*]] = fsub float %[[VAL_144]], %[[VAL_148]]
+// CHECK:         %[[VAL_150:.*]] = fmul float %[[VAL_140]], %[[VAL_149]]
+// CHECK:         %[[VAL_151:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_2]], i32 0, i32 %[[VAL_45]]
+// CHECK:         %[[VAL_152:.*]] = load float, float* %[[VAL_151]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_153:.*]] = fdiv float %[[VAL_150]], %[[VAL_152]]
+// CHECK:         %[[VAL_154:.*]] = fsub float %[[VAL_138]], %[[VAL_153]]
+// CHECK:         %[[VAL_155:.*]] = fmul float %[[VAL_121]], %[[VAL_154]]
+// CHECK:         %[[VAL_156:.*]] = fptrunc float %[[VAL_155]] to half
+// CHECK:         %[[VAL_157:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_29]] to half*
+// CHECK:         %[[VAL_158:.*]] = getelementptr inbounds half, half* %[[VAL_157]], i32 %[[VAL_43]]
+// CHECK:         store half %[[VAL_156]], half* %[[VAL_158]], align 2
+// CHECK:         %[[VAL_159:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_160:.*]] = load float, float* %[[VAL_159]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_161:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_162:.*]] = load float, float* %[[VAL_161]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_163:.*]] = fmul float %[[VAL_160]], %[[VAL_162]]
+// CHECK:         %[[VAL_164:.*]] = load float, float* bitcast ([4 x i8]* @8 to float*), align 4
+// CHECK:         %[[VAL_165:.*]] = fmul float %[[VAL_163]], %[[VAL_164]]
+// CHECK:         %[[VAL_166:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
+// CHECK:         %[[VAL_167:.*]] = getelementptr inbounds half, half* %[[VAL_166]], i32 %[[VAL_51]]
+// CHECK:         %[[VAL_168:.*]] = load half, half* %[[VAL_167]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_169:.*]] = load half, half* bitcast ([2 x i8]* @9 to half*), align 2
+// CHECK:         %[[VAL_170:.*]] = fcmp ogt half %[[VAL_168]], %[[VAL_169]]
+// CHECK:         %[[VAL_171:.*]] = zext i1 %[[VAL_170]] to i8
+// CHECK:         %[[VAL_172:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
+// CHECK:         %[[VAL_173:.*]] = getelementptr inbounds half, half* %[[VAL_172]], i32 %[[VAL_51]]
+// CHECK:         %[[VAL_174:.*]] = load half, half* %[[VAL_173]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_175:.*]] = trunc i8 %[[VAL_171]] to i1
+// CHECK:         %[[VAL_176:.*]] = select i1 %[[VAL_175]], half %[[VAL_174]], half %[[VAL_169]]
+// CHECK:         %[[VAL_177:.*]] = fpext half %[[VAL_176]] to float
+// CHECK:         %[[VAL_178:.*]] = load float, float* bitcast ([4 x i8]* @10 to float*), align 4
+// CHECK:         %[[VAL_179:.*]] = fmul float %[[VAL_177]], %[[VAL_178]]
+// CHECK:         %[[VAL_180:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_181:.*]] = load float, float* %[[VAL_180]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_182:.*]] = fsub float %[[VAL_179]], %[[VAL_181]]
+// CHECK:         %[[VAL_183:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_5]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_184:.*]] = load float, float* %[[VAL_183]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_185:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_20]] to half*
+// CHECK:         %[[VAL_186:.*]] = getelementptr inbounds half, half* %[[VAL_185]], i32 %[[VAL_51]]
+// CHECK:         %[[VAL_187:.*]] = load half, half* %[[VAL_186]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_188:.*]] = fpext half %[[VAL_187]] to float
+// CHECK:         %[[VAL_189:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_190:.*]] = load float, float* %[[VAL_189]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_191:.*]] = load float, float* bitcast ([4 x i8]* @11 to float*), align 4
+// CHECK:         %[[VAL_192:.*]] = fmul float %[[VAL_190]], %[[VAL_191]]
+// CHECK:         %[[VAL_193:.*]] = fsub float %[[VAL_188]], %[[VAL_192]]
+// CHECK:         %[[VAL_194:.*]] = fmul float %[[VAL_184]], %[[VAL_193]]
+// CHECK:         %[[VAL_195:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_2]], i32 0, i32 %[[VAL_53]]
+// CHECK:         %[[VAL_196:.*]] = load float, float* %[[VAL_195]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_197:.*]] = fdiv float %[[VAL_194]], %[[VAL_196]]
+// CHECK:         %[[VAL_198:.*]] = fsub float %[[VAL_182]], %[[VAL_197]]
+// CHECK:         %[[VAL_199:.*]] = fmul float %[[VAL_165]], %[[VAL_198]]
+// CHECK:         %[[VAL_200:.*]] = fptrunc float %[[VAL_199]] to half
+// CHECK:         %[[VAL_201:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_29]] to half*
+// CHECK:         %[[VAL_202:.*]] = getelementptr inbounds half, half* %[[VAL_201]], i32 %[[VAL_51]]
+// CHECK:         store half %[[VAL_200]], half* %[[VAL_202]], align 2
+// CHECK:         %[[VAL_203:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_204:.*]] = load float, float* %[[VAL_203]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_205:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_206:.*]] = load float, float* %[[VAL_205]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_207:.*]] = fmul float %[[VAL_204]], %[[VAL_206]]
+// CHECK:         %[[VAL_208:.*]] = load float, float* bitcast ([4 x i8]* @12 to float*), align 4
+// CHECK:         %[[VAL_209:.*]] = fmul float %[[VAL_207]], %[[VAL_208]]
+// CHECK:         %[[VAL_210:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
+// CHECK:         %[[VAL_211:.*]] = getelementptr inbounds half, half* %[[VAL_210]], i32 %[[VAL_59]]
+// CHECK:         %[[VAL_212:.*]] = load half, half* %[[VAL_211]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_213:.*]] = load half, half* bitcast ([2 x i8]* @13 to half*), align 2
+// CHECK:         %[[VAL_214:.*]] = fcmp ogt half %[[VAL_212]], %[[VAL_213]]
+// CHECK:         %[[VAL_215:.*]] = zext i1 %[[VAL_214]] to i8
+// CHECK:         %[[VAL_216:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
+// CHECK:         %[[VAL_217:.*]] = getelementptr inbounds half, half* %[[VAL_216]], i32 %[[VAL_59]]
+// CHECK:         %[[VAL_218:.*]] = load half, half* %[[VAL_217]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_219:.*]] = trunc i8 %[[VAL_215]] to i1
+// CHECK:         %[[VAL_220:.*]] = select i1 %[[VAL_219]], half %[[VAL_218]], half %[[VAL_213]]
+// CHECK:         %[[VAL_221:.*]] = fpext half %[[VAL_220]] to float
+// CHECK:         %[[VAL_222:.*]] = load float, float* bitcast ([4 x i8]* @14 to float*), align 4
+// CHECK:         %[[VAL_223:.*]] = fmul float %[[VAL_221]], %[[VAL_222]]
+// CHECK:         %[[VAL_224:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_225:.*]] = load float, float* %[[VAL_224]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_226:.*]] = fsub float %[[VAL_223]], %[[VAL_225]]
+// CHECK:         %[[VAL_227:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_5]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_228:.*]] = load float, float* %[[VAL_227]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_229:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_20]] to half*
+// CHECK:         %[[VAL_230:.*]] = getelementptr inbounds half, half* %[[VAL_229]], i32 %[[VAL_59]]
+// CHECK:         %[[VAL_231:.*]] = load half, half* %[[VAL_230]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_232:.*]] = fpext half %[[VAL_231]] to float
+// CHECK:         %[[VAL_233:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_234:.*]] = load float, float* %[[VAL_233]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_235:.*]] = load float, float* bitcast ([4 x i8]* @15 to float*), align 4
+// CHECK:         %[[VAL_236:.*]] = fmul float %[[VAL_234]], %[[VAL_235]]
+// CHECK:         %[[VAL_237:.*]] = fsub float %[[VAL_232]], %[[VAL_236]]
+// CHECK:         %[[VAL_238:.*]] = fmul float %[[VAL_228]], %[[VAL_237]]
+// CHECK:         %[[VAL_239:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_2]], i32 0, i32 %[[VAL_61]]
+// CHECK:         %[[VAL_240:.*]] = load float, float* %[[VAL_239]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_241:.*]] = fdiv float %[[VAL_238]], %[[VAL_240]]
+// CHECK:         %[[VAL_242:.*]] = fsub float %[[VAL_226]], %[[VAL_241]]
+// CHECK:         %[[VAL_243:.*]] = fmul float %[[VAL_209]], %[[VAL_242]]
+// CHECK:         %[[VAL_244:.*]] = fptrunc float %[[VAL_243]] to half
+// CHECK:         %[[VAL_245:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_29]] to half*
+// CHECK:         %[[VAL_246:.*]] = getelementptr inbounds half, half* %[[VAL_245]], i32 %[[VAL_59]]
+// CHECK:         store half %[[VAL_244]], half* %[[VAL_246]], align 2
+// CHECK:         br label %[[VAL_69]]
+
+%fused_computation.1 (param_0.5: f32[64], param_1.3088: f32[64], param_2.2116: f32[64], param_3.974: f32[64], param_4.1162: f32[64], param_5.893: f32[64], param_6.809: f16[128,64,112,112], param_7.770: f16[128,64,112,112], param_8.637: f16[128,64,112,112]) -> f16[128,64,112,112] {
+  %param_4.1162 = f32[64]{0} parameter(4)
+  %broadcast.2313 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %param_4.1162), dimensions={1}
+  %param_3.974 = f32[64]{0} parameter(3)
+  %broadcast.1844 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %param_3.974), dimensions={1}
+  %multiply.1049 = f32[128,64,112,112]{1,3,2,0} multiply(f32[128,64,112,112]{1,3,2,0} %broadcast.2313, f32[128,64,112,112]{1,3,2,0} %broadcast.1844)
+  %constant_1404 = f32[] constant(6.22807704e-07)
+  %broadcast.1843 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[] %constant_1404), dimensions={}
+  %multiply.1048 = f32[128,64,112,112]{1,3,2,0} multiply(f32[128,64,112,112]{1,3,2,0} %multiply.1049, f32[128,64,112,112]{1,3,2,0} %broadcast.1843)
+  %param_8.637 = f16[128,64,112,112]{1,3,2,0} parameter(8)
+  %constant_3626 = f16[] constant(0)
+  %broadcast.4770 = f16[128,64,112,112]{1,3,2,0} broadcast(f16[] %constant_3626), dimensions={}
+  %compare.259 = pred[128,64,112,112]{1,3,2,0} compare(f16[128,64,112,112]{1,3,2,0} %param_8.637, f16[128,64,112,112]{1,3,2,0} %broadcast.4770), direction=GT
+  %param_7.770 = f16[128,64,112,112]{1,3,2,0} parameter(7)
+  %select.254 = f16[128,64,112,112]{1,3,2,0} select(pred[128,64,112,112]{1,3,2,0} %compare.259, f16[128,64,112,112]{1,3,2,0} %param_7.770, f16[128,64,112,112]{1,3,2,0} %broadcast.4770)
+  %convert.108 = f32[128,64,112,112]{1,3,2,0} convert(f16[128,64,112,112]{1,3,2,0} %select.254)
+  %constant_1390 = f32[] constant(1605632)
+  %broadcast.1841 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[] %constant_1390), dimensions={}
+  %multiply.1046 = f32[128,64,112,112]{1,3,2,0} multiply(f32[128,64,112,112]{1,3,2,0} %convert.108, f32[128,64,112,112]{1,3,2,0} %broadcast.1841)
+  %param_2.2116 = f32[64]{0} parameter(2)
+  %broadcast.1840 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %param_2.2116), dimensions={1}
+  %subtract.266 = f32[128,64,112,112]{1,3,2,0} subtract(f32[128,64,112,112]{1,3,2,0} %multiply.1046, f32[128,64,112,112]{1,3,2,0} %broadcast.1840)
+  %param_1.3088 = f32[64]{0} parameter(1)
+  %broadcast.1839 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %param_1.3088), dimensions={1}
+  %param_6.809 = f16[128,64,112,112]{1,3,2,0} parameter(6)
+  %convert.644 = f32[128,64,112,112]{1,3,2,0} convert(f16[128,64,112,112]{1,3,2,0} %param_6.809)
+  %param_5.893 = f32[64]{0} parameter(5)
+  %broadcast.3388 = f32[64]{0} broadcast(f32[] %constant_1404), dimensions={}
+  %multiply.2336 = f32[64]{0} multiply(f32[64]{0} %param_5.893, f32[64]{0} %broadcast.3388)
+  %broadcast.3387 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %multiply.2336), dimensions={1}
+  %subtract.591 = f32[128,64,112,112]{1,3,2,0} subtract(f32[128,64,112,112]{1,3,2,0} %convert.644, f32[128,64,112,112]{1,3,2,0} %broadcast.3387)
+  %multiply.1045 = f32[128,64,112,112]{1,3,2,0} multiply(f32[128,64,112,112]{1,3,2,0} %broadcast.1839, f32[128,64,112,112]{1,3,2,0} %subtract.591)
+  %param_0.5 = f32[64]{0} parameter(0)
+  %broadcast.1838 = f32[128,64,112,112]{1,3,2,0} broadcast(f32[64]{0} %param_0.5), dimensions={1}
+  %divide.212 = f32[128,64,112,112]{1,3,2,0} divide(f32[128,64,112,112]{1,3,2,0} %multiply.1045, f32[128,64,112,112]{1,3,2,0} %broadcast.1838)
+  %subtract.265 = f32[128,64,112,112]{1,3,2,0} subtract(f32[128,64,112,112]{1,3,2,0} %subtract.266, f32[128,64,112,112]{1,3,2,0} %divide.212)
+  %multiply.1044 = f32[128,64,112,112]{1,3,2,0} multiply(f32[128,64,112,112]{1,3,2,0} %multiply.1048, f32[128,64,112,112]{1,3,2,0} %subtract.265)
+  ROOT %convert.107 = f16[128,64,112,112]{1,3,2,0} convert(f32[128,64,112,112]{1,3,2,0} %multiply.1044)
+}
+
+ENTRY main {
+  %get-tuple-element.1532 = f32[64]{0} parameter(0)
+  %get-tuple-element.876 = f32[64]{0} parameter(1)
+  %get-tuple-element.877 = f32[64]{0} parameter(2)
+  %get-tuple-element.1530 = f32[64]{0} parameter(3)
+  %arg112.113 = f32[64]{0} parameter(4)
+  %get-tuple-element.881 = f32[64]{0} parameter(5)
+  %get-tuple-element.872 = f16[128,64,112,112]{1,3,2,0} parameter(6)
+  %select-and-scatter.3626 = f16[128,64,112,112]{1,3,2,0} parameter(7)
+  %fusion.845 = f16[128,64,112,112]{1,3,2,0} parameter(8)
+
+  ROOT %fusion.1 = f16[128,64,112,112]{1,3,2,0} fusion(f32[64]{0} %get-tuple-element.1532, f32[64]{0} %get-tuple-element.876, f32[64]{0} %get-tuple-element.877, f32[64]{0} %get-tuple-element.1530, f32[64]{0} %arg112.113, f32[64]{0} %get-tuple-element.881, f16[128,64,112,112]{1,3,2,0} %get-tuple-element.872, f16[128,64,112,112]{1,3,2,0} %select-and-scatter.3626, f16[128,64,112,112]{1,3,2,0} %fusion.845), kind=kLoop, calls=%fused_computation.1
+}

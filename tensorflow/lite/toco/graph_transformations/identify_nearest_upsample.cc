@@ -199,7 +199,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   shape_array.data_type = ArrayDataType::kInt32;
   auto& shape_buffer = shape_array.GetMutableBuffer<ArrayDataType::kInt32>();
   // This is what imagined as the original shape.
-  for (int i = 0; i < imagined_original_shape.size(); ++i) {
+  for (size_t i = 0; i < imagined_original_shape.size(); ++i) {
     shape_buffer.data.push_back(imagined_original_shape.at(i));
   }
 

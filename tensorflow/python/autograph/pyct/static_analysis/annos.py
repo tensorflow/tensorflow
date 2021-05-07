@@ -48,6 +48,9 @@ class NodeAnno(NoValue):
   ARGS_SCOPE = 'The scope for the argument list of a function call.'
   COND_SCOPE = 'The scope for the test node of a conditional statement.'
   ITERATE_SCOPE = 'The scope for the iterate assignment of a for loop.'
+  ARGS_AND_BODY_SCOPE = (
+      'The scope for the main body of a function or lambda, including its'
+      ' arguments.')
   BODY_SCOPE = (
       'The scope for the main body of a statement (True branch for if '
       'statements, main body for loops).')

@@ -30,6 +30,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -326,17 +327,42 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testArgsToMatchingEagerDefault(self):
     # Uses default
     ctx = context.context()
-    t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int32)
+    allowed_dtypes = [dtypes.int32, dtypes.int64]
+
+    # Follows standard int conversion rules
+    t, r = execute.args_to_matching_eager([[3, 4]], ctx, allowed_dtypes,
+                                          dtypes.int32)
     self.assertEqual(t, dtypes.int32)
     self.assertEqual(r[0].dtype, dtypes.int32)
-    t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int64)
+    t, r = execute.args_to_matching_eager([[3, 4]], ctx, allowed_dtypes,
+                                          dtypes.int64)
+    self.assertEqual(t, dtypes.int32)
+    self.assertEqual(r[0].dtype, dtypes.int32)
+    # Use int64 since it is a better fit
+    t, r = execute.args_to_matching_eager([[2**48]], ctx, allowed_dtypes,
+                                          dtypes.int32)
     self.assertEqual(t, dtypes.int64)
     self.assertEqual(r[0].dtype, dtypes.int64)
-    t, r = execute.args_to_matching_eager([], ctx, dtypes.int64)
+
+    # When the regular tensor conversion fails, then use the default type as a
+    # hint.
+    allowed_dtypes = [dtypes.uint32, dtypes.uint32]
+    t, r = execute.args_to_matching_eager([[3, 4]], ctx, allowed_dtypes,
+                                          dtypes.uint32)
+    self.assertEqual(t, dtypes.uint32)
+    self.assertEqual(r[0].dtype, dtypes.uint32)
+    t, r = execute.args_to_matching_eager([[3, 4]], ctx, allowed_dtypes,
+                                          dtypes.uint64)
+    self.assertEqual(t, dtypes.uint64)
+    self.assertEqual(r[0].dtype, dtypes.uint64)
+
+    t, r = execute.args_to_matching_eager([], ctx, allowed_dtypes, dtypes.int64)
     self.assertEqual(t, dtypes.int64)
+
     # Doesn't use default
-    t, r = execute.args_to_matching_eager(
-        [['string', 'arg']], ctx, dtypes.int32)
+    allowed_dtypes = [dtypes.int32, dtypes.string]
+    t, r = execute.args_to_matching_eager([['string', 'arg']], ctx,
+                                          allowed_dtypes, dtypes.int32)
     self.assertEqual(t, dtypes.string)
     self.assertEqual(r[0].dtype, dtypes.string)
 
@@ -455,6 +481,38 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)
 
+  @test_util.disable_tfrt(
+      'b/153697193: tfrt cannot decode python stacktrace yet')
+  def testAsyncExceptionStackTrace(self):
+    config.set_synchronous_execution(False)
+
+    def exception_originated_from_here():
+      # Invalid shapes for matmul.
+      return math_ops.matmul([[1]], [[2], [3]])
+
+    # In sync mode, an exception would have been raised here but since this is
+    # in async, the exception will be raised next.
+    x = exception_originated_from_here()
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                'in exception_originated_from_here'):
+      x.numpy()
+
+    context.async_clear_error()
+    config.set_synchronous_execution(True)
+
+  def testCrossContextTensorCache(self):
+    old_context = context.context()
+    old_x = constant_op.constant(9.5)
+    context._set_context(context.Context())
+
+    try:
+      new_x = constant_op.constant(9.5)
+      self.assertEqual(new_x.numpy(), 9.5)
+    finally:
+      context._set_context(old_context)
+
+    self.assertEqual(old_x.numpy(), 9.5)
 
 if __name__ == '__main__':
   test.main()

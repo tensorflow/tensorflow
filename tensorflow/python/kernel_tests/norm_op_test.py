@@ -40,18 +40,18 @@ class NormOpTest(test_lib.TestCase):
   def testBadOrder(self):
     matrix = [[0., 1.], [2., 3.]]
     for ord_ in "fro", -7, -1.1, 0:
-      with self.assertRaisesRegexp(ValueError,
-                                   "'ord' must be a supported vector norm"):
+      with self.assertRaisesRegex(ValueError,
+                                  "'ord' must be a supported vector norm"):
         linalg_ops.norm(matrix, ord=ord_)
 
     for ord_ in "fro", -7, -1.1, 0:
-      with self.assertRaisesRegexp(ValueError,
-                                   "'ord' must be a supported vector norm"):
+      with self.assertRaisesRegex(ValueError,
+                                  "'ord' must be a supported vector norm"):
         linalg_ops.norm(matrix, ord=ord_, axis=-1)
 
     for ord_ in "foo", -7, -1.1, 1.1:
-      with self.assertRaisesRegexp(ValueError,
-                                   "'ord' must be a supported matrix norm"):
+      with self.assertRaisesRegex(ValueError,
+                                  "'ord' must be a supported matrix norm"):
         linalg_ops.norm(matrix, ord=ord_, axis=[-2, -1])
 
   @test_util.run_v1_only("b/120545219")
@@ -60,7 +60,7 @@ class NormOpTest(test_lib.TestCase):
     for axis_ in [], [1, 2, 3], [[1]], [[1], [2]], [3.1415], [1, 1]:
       error_prefix = ("'axis' must be None, an integer, or a tuple of 2 unique "
                       "integers")
-      with self.assertRaisesRegexp(ValueError, error_prefix):
+      with self.assertRaisesRegex(ValueError, error_prefix):
         linalg_ops.norm(matrix, axis=axis_)
 
 
@@ -68,7 +68,7 @@ def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
 
   def _CompareNorm(self, matrix):
     np_norm = np.linalg.norm(matrix, ord=ord_, axis=axis_, keepdims=keep_dims_)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       if use_static_shape_:
         tf_matrix = constant_op.constant(matrix)
         tf_norm = linalg_ops.norm(

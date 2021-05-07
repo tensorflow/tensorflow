@@ -38,7 +38,7 @@ from __future__ import print_function
 import argparse
 import sys
 
-from tensorflow.python.platform import app
+from absl import app
 from tensorflow.python.tools import selective_registration_header_lib
 
 FLAGS = None
@@ -46,8 +46,10 @@ FLAGS = None
 
 def main(unused_argv):
   graphs = FLAGS.graphs.split(',')
-  print(selective_registration_header_lib.get_header(
-      graphs, FLAGS.proto_fileformat, FLAGS.default_ops))
+  print(
+      selective_registration_header_lib.get_header(graphs,
+                                                   FLAGS.proto_fileformat,
+                                                   FLAGS.default_ops))
 
 
 if __name__ == '__main__':
@@ -63,7 +65,9 @@ if __name__ == '__main__':
       '--proto_fileformat',
       type=str,
       default='rawproto',
-      help='Format of proto file, either textproto or rawproto.')
+      help='Format of proto file, either textproto, rawproto or ops_list. The '
+      'ops_list is the file contains the list of ops in JSON format. Ex: '
+      '"[["Add", "BinaryOp<CPUDevice, functor::add<float>>"]]".')
   parser.add_argument(
       '--default_ops',
       type=str,

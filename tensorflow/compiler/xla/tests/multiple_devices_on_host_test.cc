@@ -45,7 +45,8 @@ void CompileAndExecute(
       xla::ClientLibrary::GetXlaService(client->platform())
           ->backend()
           .memory_allocator());
-  StatusOr<ScopedShapedBuffer> result = executable->Run({}, execute_options);
+  StatusOr<ScopedShapedBuffer> result =
+      executable->Run(absl::Span<const ShapedBuffer* const>(), execute_options);
   {
     absl::MutexLock lock(results_mutex);
     results->emplace_back(device_ordinal, std::move(result));
@@ -91,9 +92,8 @@ void TestWithDeviceCount(const int device_count) {
 
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
-    TF_ASSERT_OK_AND_ASSIGN(Literal outfeed,
-                            client->TransferFromOutfeedLocal(
-                                ShapeUtil::MakeShape(S32, {}), device_ordinal));
+    Literal outfeed(ShapeUtil::MakeShape(S32, {}));
+    TF_ASSERT_OK(client->TransferFromOutfeedLocal(device_ordinal, &outfeed));
     EXPECT_EQ(outfeed, LiteralUtil::CreateR0<int32>(device_ordinal * 100 + 1));
   }
 

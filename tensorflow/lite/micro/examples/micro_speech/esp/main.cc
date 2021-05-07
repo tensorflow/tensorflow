@@ -23,7 +23,7 @@ limitations under the License.
 #include "freertos/task.h"
 #include "tensorflow/lite/micro/examples/micro_speech/main_functions.h"
 
-int tf_main(int argc, char* argv[]) {
+void tf_main(void) {
   setup();
   while (true) {
     loop();

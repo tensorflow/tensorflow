@@ -115,7 +115,7 @@ class ThroughputBenchmark {
   ThroughputBenchmark& operator=(const ThroughputBenchmark&) = delete;
 
   // Perform the benchmark run, based on the parameters supplied to the ctor.
-  void RunBenchmark(int iters);
+  void RunBenchmark(::testing::benchmark::State& state);
 
  private:
   // Resets all mutable state, including the scheduler.
@@ -136,22 +136,18 @@ ThroughputBenchmark::ThroughputBenchmark(
     const BasicBatchScheduler<BenchmarkBatchTask>::Options& scheduler_options)
     : scheduler_options_(scheduler_options) {}
 
-void ThroughputBenchmark::RunBenchmark(int iters) {
-  CHECK_GE(iters, 1);
+void ThroughputBenchmark::RunBenchmark(::testing::benchmark::State& state) {
+  CHECK_GE(state.max_iterations, 1);
 
-  testing::StopTiming();
   ResetState();
 
   // Have each iteration issue a reasonably large number of tasks, to ensure our
   // measurements reflect steady-state behavior.
   const int kNumTasksPerIteration = 100 * 1000;
-
-  testing::ItemsProcessed(iters * kNumTasksPerIteration);
   testing::UseRealTime();
-  testing::StartTiming();
 
   // Schedule 'num_iterations_*kNumTasksPerIteration' tasks.
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     for (int j = 0; j < kNumTasksPerIteration; ++j) {
       auto task = std::unique_ptr<BenchmarkBatchTask>(new BenchmarkBatchTask);
       TF_CHECK_OK(scheduler_->Schedule(&task));
@@ -160,7 +156,7 @@ void ThroughputBenchmark::RunBenchmark(int iters) {
 
   // Wait for the scheduler to process all tasks.
   scheduler_.reset();
-  testing::StopTiming();
+  state.SetItemsProcessed(state.iterations() * kNumTasksPerIteration);
 }
 
 void ThroughputBenchmark::ResetState() {
@@ -338,7 +334,8 @@ void LatencyBenchmark::PerformBatchCpuWork() const {
   CHECK_NE(dummy, 0);
 }
 
-static void RunThroughputBenchmark(int iters, int64 batch_timeout_micros,
+static void RunThroughputBenchmark(::testing::benchmark::State& state,
+                                   int64 batch_timeout_micros,
                                    int num_batch_threads) {
   BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
   const int kMaxBatchSize = 100;
@@ -347,13 +344,14 @@ static void RunThroughputBenchmark(int iters, int64 batch_timeout_micros,
   scheduler_options.num_batch_threads = num_batch_threads;
   scheduler_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
   ThroughputBenchmark benchmark(scheduler_options);
-  benchmark.RunBenchmark(iters);
+  benchmark.RunBenchmark(state);
 }
 
-static void ThroughputBM_ZeroTimeout(int iters, int num_batch_threads) {
-  RunThroughputBenchmark(iters, 0 /* 0 ms timeout */, num_batch_threads);
+static void ThroughputBM_ZeroTimeout(::testing::benchmark::State& state) {
+  RunThroughputBenchmark(state, 0 /* 0 ms timeout */, state.range(0));
 }
 BENCHMARK(ThroughputBM_ZeroTimeout)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(2)
     ->Arg(4)
@@ -362,10 +360,11 @@ BENCHMARK(ThroughputBM_ZeroTimeout)
     ->Arg(32)
     ->Arg(64);
 
-static void ThroughputBM_SmallTimeout(int iters, int num_batch_threads) {
-  RunThroughputBenchmark(iters, 1 * 1000 /* 1 ms timeout */, num_batch_threads);
+static void ThroughputBM_SmallTimeout(::testing::benchmark::State& state) {
+  RunThroughputBenchmark(state, 1 * 1000 /* 1 ms timeout */, state.range(0));
 }
 BENCHMARK(ThroughputBM_SmallTimeout)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(2)
     ->Arg(4)
@@ -374,11 +373,11 @@ BENCHMARK(ThroughputBM_SmallTimeout)
     ->Arg(32)
     ->Arg(64);
 
-static void ThroughputBM_LargeTimeout(int iters, int num_batch_threads) {
-  RunThroughputBenchmark(iters, 50 * 1000 /* 50 ms timeout */,
-                         num_batch_threads);
+static void ThroughputBM_LargeTimeout(::testing::benchmark::State& state) {
+  RunThroughputBenchmark(state, 50 * 1000 /* 50 ms timeout */, state.range(0));
 }
 BENCHMARK(ThroughputBM_LargeTimeout)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(2)
     ->Arg(4)

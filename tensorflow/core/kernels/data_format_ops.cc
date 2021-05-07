@@ -18,15 +18,51 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/data_format_ops.h"
+
+#include <map>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+// Ensure that `src` and `dst` define a valid permutation.
+// Ops defined in this file assume that user specifies a permutation via two
+// string attributes. This check validates that these attributes properly define
+// it to prevent security vulnerabilities.
+static bool IsValidPermutation(const std::string& src, const std::string& dst) {
+  if (src.size() != dst.size()) {
+    return false;
+  }
+
+  std::map<char, bool> characters;
+
+  // Every character in `src` must be present only once
+  for (const auto c : src) {
+    if (characters[c]) {
+      return false;
+    }
+    characters[c] = true;
+  }
+
+  // Every character in `dst` must show up in `src` exactly once
+  for (const auto c : dst) {
+    if (!characters[c]) {
+      return false;
+    }
+    characters[c] = false;
+  }
+
+  // At this point, characters[] has been switched to true and false exactly
+  // once for all character in `src` (and `dst`) so we have a valid permutation
+  return true;
+}
 
 template <typename Device, typename T>
 class DataFormatDimMapOp : public OpKernel {
@@ -37,15 +73,20 @@ class DataFormatDimMapOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4,
-                errors::InvalidArgument(strings::StrCat(
-                    "Source format must of length 4, received src_format = ",
-                    src_format)));
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
+                errors::InvalidArgument(
+                    "Source format must be of length 4 or 5, received "
+                    "src_format = ",
+                    src_format));
+    OP_REQUIRES(context, dst_format.size() == 4 || dst_format.size() == 5,
+                errors::InvalidArgument("Destination format must be of length "
+                                        "4 or 5, received dst_format = ",
+                                        dst_format));
     OP_REQUIRES(
-        context, dst_format.size() == 4,
-        errors::InvalidArgument(strings::StrCat(
-            "Destination format must of length 4, received dst_format = ",
-            dst_format)));
+        context, IsValidPermutation(src_format, dst_format),
+        errors::InvalidArgument(
+            "Destination and source format must determine a permutation, got ",
+            src_format, " and ", dst_format));
     dst_idx_ = Tensor(DT_INT32, {static_cast<int64>(src_format.size())});
     for (int i = 0; i < src_format.size(); ++i) {
       for (int j = 0; j < dst_format.size(); ++j) {
@@ -77,8 +118,22 @@ class DataFormatVecPermuteOp : public OpKernel {
       : OpKernel(context) {
     string src_format;
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
+                errors::InvalidArgument(
+                    "Source format must be of length 4 or 5, received "
+                    "src_format = ",
+                    src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
+    OP_REQUIRES(context, dst_format.size() == 4 || dst_format.size() == 5,
+                errors::InvalidArgument("Destination format must be of length "
+                                        "4 or 5, received dst_format = ",
+                                        dst_format));
+    OP_REQUIRES(
+        context, IsValidPermutation(src_format, dst_format),
+        errors::InvalidArgument(
+            "Destination and source format must determine a permutation, got ",
+            src_format, " and ", dst_format));
     src_format_ = src_format;
     dst_format_ = dst_format;
   }
@@ -90,16 +145,17 @@ class DataFormatVecPermuteOp : public OpKernel {
                     "input must be a vector or 2D tensor, but got shape ",
                     input.shape().DebugString()));
     if (input.dims() == 1) {
-      OP_REQUIRES(
-          context, input.NumElements() == 4,
-          errors::InvalidArgument("1D input must be of size 4, but got shape ",
-                                  input.shape().DebugString()));
+      OP_REQUIRES(context,
+                  input.NumElements() == 2 || input.NumElements() == 4 ||
+                      input.NumElements() == 5,
+                  errors::InvalidArgument(
+                      "1D input must be of size 2, 4 or 5, but got shape ",
+                      input.shape().DebugString()));
     } else if (input.dims() == 2) {
-      OP_REQUIRES(
-          context, input.dim_size(0) == 4,
-          errors::InvalidArgument(
-              "First dimension of 2D input must be of size 4, but got shape ",
-              input.shape().DebugString()));
+      OP_REQUIRES(context, input.dim_size(0) == 2 || input.dim_size(0) == 4,
+                  errors::InvalidArgument("First dimension of 2D input must be "
+                                          "of size 2 or 4, but got shape ",
+                                          input.shape().DebugString()));
       OP_REQUIRES(
           context, input.dim_size(1) == 2,
           errors::InvalidArgument(
@@ -112,7 +168,25 @@ class DataFormatVecPermuteOp : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
     // Support 1D and 2D cases.
     Eigen::DSizes<Eigen::DenseIndex, 8> dst_idx;
-    ComputeDstIndex(input.dims(), &dst_idx);
+    string src_format_str = src_format_;
+    string dst_format_str = dst_format_;
+    if (input.dim_size(0) == 2) {
+      // If the input is a vector of size 2, treat the two elements as spatial
+      // dimensions.
+      auto keep_only_spatial_dimensions = [](string* format_str) -> void {
+        auto new_end = std::remove_if(
+            format_str->begin(), format_str->end(),
+            [](const char dim) { return dim != 'H' && dim != 'W'; });
+        format_str->erase(new_end, format_str->end());
+      };
+      keep_only_spatial_dimensions(&src_format_str);
+      keep_only_spatial_dimensions(&dst_format_str);
+      OP_REQUIRES(context,
+                  src_format_str.size() == 2 && dst_format_str.size() == 2,
+                  errors::InvalidArgument(
+                      "Format specifier must contain H and W for 2D case"));
+    }
+    ComputeDstIndex(src_format_str, dst_format_str, input.dims(), &dst_idx);
 
     functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
                                                input.flat<T>(),
@@ -124,10 +198,12 @@ class DataFormatVecPermuteOp : public OpKernel {
   // Example: HWNC --> NHWC
   // 1D: dst = [1, 2, 0, 3],
   // 2D: dst = [2, 3, 4, 5, 0, 1, 6, 7]
-  void ComputeDstIndex(int num_dim, Eigen::DSizes<Eigen::DenseIndex, 8>* dst) {
-    for (int i = 0; i < src_format_.size(); ++i) {
-      for (int j = 0; j < dst_format_.size(); ++j) {
-        if (dst_format_[j] != src_format_[i]) continue;
+  static void ComputeDstIndex(const string& src_format_str,
+                              const string& dst_format_str, int num_dim,
+                              Eigen::DSizes<Eigen::DenseIndex, 8>* dst) {
+    for (int i = 0; i < src_format_str.size(); ++i) {
+      for (int j = 0; j < dst_format_str.size(); ++j) {
+        if (dst_format_str[j] != src_format_str[i]) continue;
         // Found the dst index. Set output based on the number of dims.
         for (int k = 0; k < num_dim; ++k) {
           (*dst)[i * num_dim + k] = j * num_dim + k;

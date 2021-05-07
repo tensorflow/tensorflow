@@ -55,6 +55,11 @@ class CumulativeLogsumexpTest(test.TestCase):
               reverse=reverse, exclusive=exclusive,
               axis=axis)
 
+  def testMinusInfinity(self):
+    x = np.log([0., 0., 1., 1., 1., 1., 0., 0.])
+    self._testLogSumExpAllArgs(x, use_gpu=False)
+    self._testLogSumExpAllArgs(x, use_gpu=True)
+
   def test1D(self):
     x = np.arange(10) / 10.0 - 0.5
     self._testLogSumExpAllArgs(x, use_gpu=False)

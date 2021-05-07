@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.unique()`."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import unique
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -60,6 +62,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
           ([], []),
           ([1], [1]),
           ([1, 1, 1, 1, 1, 1, 1], [1]),
+          ([1, 1, 1, 1, 0], [1, 0]),
           ([1, 2, 3, 4], [1, 2, 3, 4]),
           ([1, 2, 4, 3, 2, 1, 2, 3, 4], [1, 2, 4, 3]),
           ([[1], [1, 1], [1, 1, 1]], [[1], [1, 1], [1, 1, 1]]),
@@ -75,6 +78,34 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
         (["hello", "world"], ["hello", "world"]),
         (["foo", "bar", "baz", "baz", "bar", "foo"], ["foo", "bar", "baz"]),
     ])
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testUnsupportedTypes(self):
+    """Should raise TypeError when element type doesn't match with the
+
+    dtypes.int64, dtypes.int32 or dtypes.string (supported types).
+    """
+
+    for dtype in [
+        dtypes.bool, dtypes.double, dtypes.complex64, dtypes.float32,
+        dtypes.float64, dtypes.qint16, dtypes.qint32
+    ]:
+      with self.assertRaises(TypeError):
+        _ = dataset_ops.Dataset.from_generator(lambda: [],
+                                               dtype).apply(unique.unique())
+
+
+class UniqueCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnique(self):
+
+    def build_dataset(num_elements, unique_elem_range):
+      return dataset_ops.Dataset.range(num_elements).map(
+          lambda x: x % unique_elem_range).apply(unique.unique())
+
+    self.run_core_tests(lambda: build_dataset(200, 100), 100)
 
 
 if __name__ == "__main__":

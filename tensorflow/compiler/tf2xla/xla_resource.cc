@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
@@ -117,10 +116,12 @@ Status XlaResource::SetValue(const xla::XlaOp& value) {
         "' must be initialized with a valid type before use.");
   }
   value_ = value;
+  is_overwritten_ = true;
   return Status::OK();
 }
 
 Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
+  is_overwritten_ = true;
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,

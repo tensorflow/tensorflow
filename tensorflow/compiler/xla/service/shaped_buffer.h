@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -42,8 +43,10 @@ class ShapedBuffer {
   // both the on-host and on-device shape are required. The on-device shape
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
-  ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
-               const se::Platform* platform, int device_ordinal);
+  ShapedBuffer(Shape on_device_shape, int device_ordinal);
+
+  // TODO(b/170310047): remove this overload.
+  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal);
 
   // Movable, but not copyable.
   ShapedBuffer(ShapedBuffer&& s);
@@ -65,7 +68,6 @@ class ShapedBuffer {
   // ShapedBuffer.
   const Shape& on_device_shape() const { return on_device_shape_; }
 
-  const se::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
@@ -93,6 +95,22 @@ class ShapedBuffer {
     buffers_.replace_shape_ptr(&on_device_shape_);
   }
 
+  // Reset the shape of this shaped buffer and underlying buffer structure.
+  //
+  // Precondition: EqualStructure(this->on_device_shape_, on_device_shape).
+  void set_shapes(const Shape& on_device_shape) {
+    CHECK(ShapeUtil::EqualStructure(on_device_shape, on_device_shape_))
+        << "Structures are not the same. new: " << on_device_shape
+        << ", old: " << on_device_shape_;
+    on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape);
+    on_device_shape_ = on_device_shape;
+    buffers_.replace_shape_ptr(&on_device_shape_);
+  }
+  // TODO(b/170310047): remove this overload.
+  void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {
+    set_shapes(on_device_shape);
+  }
+
   // Returns the underlying ShapeTree containing all the device addresses in the
   // ShapedBuffer.
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
@@ -106,14 +124,10 @@ class ShapedBuffer {
   string ToString() const;
 
  protected:
-  // The shape of the data when represented on the host.
   Shape on_host_shape_;
 
   // The shape of the data on the device.
   Shape on_device_shape_;
-
-  // The platform the memory is allocated on.
-  const se::Platform* platform_;
 
   // The device the memory is allocated on.
   int device_ordinal_;
@@ -124,9 +138,8 @@ class ShapedBuffer {
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 
-// ShapedBuffer derived class which allocates all internal buffers on
-// construction and deallocates the memory when the object is
-// destructed.
+// ScopedShapedBuffer takes allocated buffers as inputs, and deallocates on
+// destruction. This class represents an owning wrapper around `ShapedBuffer`.
 //
 // TODO(timshen): Remove inheritance between ScopedShapedBuffer and
 // ShapedBuffer.  There should never be a need to consider a ScopedShapedBuffer
@@ -136,6 +149,10 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
   // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
+  explicit ScopedShapedBuffer(Shape on_device_shape,
+                              se::DeviceMemoryAllocator* allocator,
+                              int device_ordinal);
+  // TODO(b/170310047): remove this overload.
   explicit ScopedShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                               se::DeviceMemoryAllocator* allocator,
                               int device_ordinal);

@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -34,9 +33,12 @@ struct RunHloModuleOptions {
       : platform(""),
         reference_platform("default"),
         print_literals(false),
+        flatten_control_flow(false),
         run_test_hlo_passes(true),
         run_reference_hlo_passes(true),
-        use_large_float_range(true),
+        // Using small float range by default, as otherwise all reductions
+        // miscompare vs. the interpreter with inf/nan.
+        use_large_float_range(false),
         // TODO(b/68721786): These tolerances are set to match the values in the
         // isolation test. The goal is to lower these to 0.001.
         abs_error_bound(0.1),
@@ -47,6 +49,7 @@ struct RunHloModuleOptions {
   std::string platform;
   std::string reference_platform;
   bool print_literals;
+  bool flatten_control_flow;
   bool run_test_hlo_passes;
   bool run_reference_hlo_passes;
   bool use_large_float_range;
@@ -63,13 +66,14 @@ struct RunHloModuleOptions {
 // the results. 'reference_module_modifier_hook' can be used to transform the
 // HloModule before it is run on the reference platform. This may be necessary
 // to match the numerics of the test platform.
-::testing::AssertionResult RunAndCompare(
+Status RunAndCompare(
     const std::string& hlo_filename, const std::string& test_platform_name,
     const std::string& reference_platform_name, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
-        reference_module_modifier_hook = {});
+        reference_module_modifier_hook = {},
+    std::function<void(HloModuleConfig*)> config_modifier_hook = {});
 
 }  // namespace xla
 

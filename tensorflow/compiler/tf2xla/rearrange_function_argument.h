@@ -29,10 +29,13 @@ namespace tensorflow {
 //    arguments and return values.
 // `get_function_body_fn` is used to instantiate FunctionDef.
 // `fld` is used to store rewritten functions.
+// `global_fld` is used to potentially supply stack traces for functions when
+// they are not found in `fld`.
 Status RearrangeFunctionArguments(
     std::function<Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
-    Graph* g, FunctionLibraryDefinition* fld);
+    Graph* g, FunctionLibraryDefinition* fld,
+    const FunctionLibraryDefinition* global_fld = nullptr);
 
 }  // namespace tensorflow
 

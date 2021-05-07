@@ -28,9 +28,55 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
+
+ExecutionInput::~ExecutionInput() {
+  for (auto& index : unowned_indices_) {
+    auto buffer = buffers_.mutable_element(index)->Release();
+    if (buffer) {
+      buffer->Release();
+    }
+  }
+}
+
+Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
+  const Shape& input_shape = shape();
+  if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
+    return tensorflow::errors::InvalidArgument(
+        "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
+        dynamic_shape.DebugString());
+  }
+  dynamic_shape_ = absl::make_unique<Shape>(std::move(dynamic_shape));
+  return Status::OK();
+}
+
+void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
+                                      MaybeOwningDeviceMemory buffer) {
+  *buffers_.mutable_element(index) = std::move(buffer);
+  unowned_indices_.insert(index);
+}
+
+StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
+    se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
+  const Shape& input_shape = shape();
+  ShapedBuffer shaped_buffer(input_shape, device_ordinal);
+  for (const auto& index_buffer : Buffers()) {
+    const tensorflow::se::OwningDeviceMemory* mem =
+        index_buffer.second.AsOwningDeviceMemory();
+    if (mem != nullptr && (mem->allocator() != allocator ||
+                           mem->device_ordinal() != device_ordinal)) {
+      return tensorflow::errors::InvalidArgument(
+          "Device buffer at index ", index_buffer.first.ToString(),
+          " has mismatching allocator/device");
+    }
+    shaped_buffer.set_buffer(index_buffer.second.AsDeviceMemoryBase(),
+                             index_buffer.first);
+  }
+  return std::move(shaped_buffer);
+}
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
@@ -58,10 +104,10 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  std::vector<ExecutionInput> args(arguments.size());
-  auto out_it = args.begin();
+  std::vector<ExecutionInput> args;
+  args.reserve(arguments.size());
   for (const ShapedBuffer* arg : arguments) {
-    *out_it++ = MakeMaybeOwningDeviceMemoryTree(*arg);
+    args.emplace_back(MakeMaybeOwningDeviceMemoryTree(*arg));
   }
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStream(run_options, std::move(args),
@@ -118,6 +164,17 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     absl::Span<const ShapedBuffer* const> arguments) {
   StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStreamWrapper(run_options, arguments);
+  Status block_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ExecutionInput> arguments) {
+  StatusOr<ExecutionOutput> result =
+      ExecuteAsyncOnStreamWrapper(run_options, std::move(arguments));
   Status block_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(block_status);
@@ -199,16 +256,11 @@ Status ExecuteWrapperAfterExecution(
     }
   }
 
-  const auto& dump_path =
-      executable->module_config().debug_options().xla_dump_to();
   if (executable->module_config().debug_options().xla_hlo_profile() &&
-      state.profile_ptr != nullptr && !dump_path.empty()) {
-    const std::string full_path =
-        tensorflow::io::JoinPath(dump_path, "hlo_execution_profile_data");
-    TF_CHECK_OK(tensorflow::WriteStringToFile(
-        tensorflow::Env::Default(), full_path,
-        state.profile_ptr->ToProto().SerializeAsString()))
-        << "Error saving HloExecutionProfileData to " << full_path;
+      state.profile_ptr != nullptr) {
+    DumpToFileInDir(executable->module(), /*file_prefix=*/"",
+                    /*file_suffix=*/"hlo_execution_profile_data",
+                    state.profile_ptr->ToProto().SerializeAsString());
   }
 
   if (state.profile_ptr != nullptr) {
@@ -216,7 +268,8 @@ Status ExecuteWrapperAfterExecution(
         &stream->parent()->GetDeviceDescription();
     std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
     stream->ThenDoHostCallback([profile, device_description]() {
-      XLA_LOG_LINES(tensorflow::INFO, profile->ToString(*device_description));
+      XLA_LOG_LINES(tensorflow::INFO,
+                    profile->ToString(device_description->clock_rate_ghz()));
     });
   }
 
@@ -245,6 +298,18 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeOfGeneratedCodeInBytes() { return -1; }
+int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
+
+void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                           ExecutionOutput& result) {
+  for (ExecutionInput& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      if (absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+              index_buffer.second.Release()) {
+        result.AddToBeReleased(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+}
 
 }  // namespace xla

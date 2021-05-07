@@ -14,51 +14,52 @@
 # ==============================================================================
 """Keras timeseries dataset utilities."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
-def timeseries_dataset(
+@keras_export('keras.preprocessing.timeseries_dataset_from_array', v1=[])
+def timeseries_dataset_from_array(
     data,
     targets,
     sequence_length,
-    sampling_rate=1,
     sequence_stride=1,
+    sampling_rate=1,
     batch_size=128,
     shuffle=False,
     seed=None,
     start_index=None,
     end_index=None):
-  """Utility function for generating batches of temporal data.
+  """Creates a dataset of sliding windows over a timeseries provided as array.
 
   This function takes in a sequence of data-points gathered at
   equal intervals, along with time series parameters such as
-  spacing between two sequence, length of history, etc., to produce batches for
-  training/validation.
+  length of the sequences/windows, spacing between two sequence/windows, etc.,
+  to produce batches of timeseries inputs and targets.
 
-  Arguments:
-    data: Indexable generator (such as a list or a Numpy array)
+  Args:
+    data: Numpy array or eager tensor
       containing consecutive data points (timesteps).
       Axis 0 is expected to be the time dimension.
     targets: Targets corresponding to timesteps in `data`.
-      It should have same length as `data`.
+      `targets[i]` should be the target
+      corresponding to the window that starts at index `i`
+      (see example 2 below).
       Pass None if you don't have target data (in this case the dataset will
       only yield the input data).
     sequence_length: Length of the output sequences (in number of timesteps).
+    sequence_stride: Period between successive output sequences.
+      For stride `s`, output samples would
+      start at index `data[i]`, `data[i + s]`, `data[i + 2 * s]`, etc.
     sampling_rate: Period between successive individual timesteps
       within sequences. For rate `r`, timesteps
       `data[i], data[i + r], ... data[i + sequence_length]`
       are used for create a sample sequence.
-    sequence_stride: Period between successive output sequences.
-      For stride `s`, output samples would
-      start at index `data[i]`, `data[i + s]`, `data[i + 2 * s]`, etc.
     batch_size: Number of timeseries samples in each batch
       (except maybe the last one).
     shuffle: Whether to shuffle output samples,
@@ -73,34 +74,71 @@ def timeseries_dataset(
       This is useful to reserve part of the data for test or validation.
 
   Returns:
-    A tf.data.Dataset instance. If `targets` was pass, the dataset yields
+    A tf.data.Dataset instance. If `targets` was passed, the dataset yields
     tuple `(batch_of_sequences, batch_of_targets)`. If not, the dataset yields
     only `batch_of_sequences`.
 
-  Example:
+  Example 1:
     Consider indices `[0, 1, ... 99]`.
     With `sequence_length=10,  sampling_rate=2, sequence_stride=3`,
     `shuffle=False`, the dataset will yield batches of sequences
     composed of the following indices:
 
-  ```
-  First sequence:  [0  2  4  6  8 10 12 14 16 18]
-  Second sequence: [3  5  7  9 11 13 15 17 19 21]
-  Third sequence:  [6  8 10 12 14 16 18 20 22 24]
-  ...
-  Last sequence:   [78 80 82 84 86 88 90 92 94 96]
-  ```
+    ```
+    First sequence:  [0  2  4  6  8 10 12 14 16 18]
+    Second sequence: [3  5  7  9 11 13 15 17 19 21]
+    Third sequence:  [6  8 10 12 14 16 18 20 22 24]
+    ...
+    Last sequence:   [78 80 82 84 86 88 90 92 94 96]
+    ```
 
-  In this case the last 3 data points are discarded since no full sequence
-  can be generated to include them (the next sequence would have started
-  at index 81, and thus its last step would have gone over 99).
+    In this case the last 3 data points are discarded since no full sequence
+    can be generated to include them (the next sequence would have started
+    at index 81, and thus its last step would have gone over 99).
+
+  Example 2: temporal regression. 
+    Consider an array `data` of scalar values, of shape `(steps,)`. 
+    To generate a dataset that uses the past 10
+    timesteps to predict the next timestep, you would use:
+
+    ```python
+    input_data = data[:-10]
+    targets = data[10:]
+    dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+        input_data, targets, sequence_length=10)
+    for batch in dataset:
+      inputs, targets = batch
+      assert np.array_equal(inputs[0], data[:10])  # First sequence: steps [0-9]
+      assert np.array_equal(targets[0], data[10])  # Corresponding target: step 10
+      break
+    ```
+
+  Example 3: temporal regression for many-to-many architectures.
+    Consider two arrays of scalar values `X` and `Y`,
+    both of shape `(100,)`. The resulting dataset should consist samples with 
+    20 timestamps each. The samples should not overlap.
+    To generate a dataset that uses the current timestamp 
+    to predict the corresponding target timestep, you would use:
+
+    ```python
+    X = np.arange(100)
+    Y = X*2
+
+    sample_length = 20
+    input_dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+      X, None, sequence_length=sample_length, sequence_stride=sample_length)
+    target_dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+      Y, None, sequence_length=sample_length, sequence_stride=sample_length)
+
+    for batch in zip(input_dataset, target_dataset):
+      inputs, targets = batch
+      assert np.array_equal(inputs[0], X[:sample_length])
+
+      # second sample equals output timestamps 20-40
+      assert np.array_equal(targets[1], Y[sample_length:2*sample_length])
+      break
+    ```
   """
-  # Validate the shape of data and targets
-  if targets is not None and len(targets) != len(data):
-    raise ValueError('Expected data and targets to have the same number of '
-                     'time steps (axis 0) but got '
-                     'shape(data) = %s; shape(targets) = %s.' %
-                     (data.shape, targets.shape))
   if start_index and (start_index < 0 or start_index >= len(data)):
     raise ValueError('start_index must be higher than 0 and lower than the '
                      'length of the data. Got: start_index=%s '
@@ -136,6 +174,8 @@ def timeseries_dataset(
 
   # Determine the lowest dtype to store start positions (to lower memory usage).
   num_seqs = end_index - start_index - (sequence_length * sampling_rate) + 1
+  if targets is not None:
+    num_seqs = min(num_seqs, len(targets))
   if num_seqs < 2147483647:
     index_dtype = 'int32'
   else:
@@ -152,19 +192,25 @@ def timeseries_dataset(
   sequence_length = math_ops.cast(sequence_length, dtype=index_dtype)
   sampling_rate = math_ops.cast(sampling_rate, dtype=index_dtype)
 
+  positions_ds = dataset_ops.Dataset.from_tensors(start_positions).repeat()
+
   # For each initial window position, generates indices of the window elements
   indices = dataset_ops.Dataset.zip(
-      (dataset_ops.Dataset.range(len(start_positions)),
-       dataset_ops.Dataset.from_tensors(start_positions).repeat())).map(
-           lambda i, positions: math_ops.range(  # pylint: disable=g-long-lambda
-               positions[i],
-               positions[i] + sequence_length * sampling_rate,
-               sampling_rate),
-           num_parallel_calls=dataset_ops.AUTOTUNE)
+      (dataset_ops.Dataset.range(len(start_positions)), positions_ds)).map(
+          lambda i, positions: math_ops.range(  # pylint: disable=g-long-lambda
+              positions[i],
+              positions[i] + sequence_length * sampling_rate,
+              sampling_rate),
+          num_parallel_calls=dataset_ops.AUTOTUNE)
 
   dataset = sequences_from_indices(data, indices, start_index, end_index)
   if targets is not None:
-    target_ds = sequences_from_indices(targets, indices, start_index, end_index)
+    indices = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(len(start_positions)), positions_ds)).map(
+            lambda i, positions: positions[i],
+            num_parallel_calls=dataset_ops.AUTOTUNE)
+    target_ds = sequences_from_indices(
+        targets, indices, start_index, end_index)
     dataset = dataset_ops.Dataset.zip((dataset, target_ds))
   if shuffle:
     # Shuffle locally at each iteration

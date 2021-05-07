@@ -23,13 +23,11 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -82,32 +80,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
   def testIsIndexedSlices(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(t))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_List(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices([t0, t1]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_Tuple(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices((t0, t1)))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerReplica(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica((t0, t1))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(per_replica))
+    self.assertTrue(cross_device_utils.is_indexed_slices(t))
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
@@ -140,11 +113,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         device_util.resolve(destination), device_util.resolve(result.device))
 
 
-class PackBySizeTest(test.TestCase):
-
-  def assertShape(self, per_replica, shape):
-    for v in per_replica._values:  # pylint: disable=protected-access
-      self.assertEqual(v.shape, shape)
+class GroupBySizeTest(test.TestCase):
 
   def testPreferLargerPack(self):
     # Each packs except the last one should be equal or larger than
@@ -159,63 +128,38 @@ class PackBySizeTest(test.TestCase):
         # size = 1 * 4 = 4
         array_ops.ones([1], dtype=dtypes.int32),
     ]
-    per_replica_values = [value_lib.PerReplica([v, v]) for v in values]
-    packs = cross_device_utils.pack_by_size(
-        per_replica_values, bytes_per_pack=200)
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=200)
     self.assertLen(packs, 2)
     self.assertLen(packs[0], 3)
-    self.assertShape(packs[0][0], [2, 4, 4])
-    self.assertShape(packs[0][1], [8])
-    self.assertShape(packs[0][2], [10, 10])
+    self.assertEqual(packs[0][0].shape, [2, 4, 4])
+    self.assertEqual(packs[0][1].shape, [8])
+    self.assertEqual(packs[0][2].shape, [10, 10])
     self.assertLen(packs[1], 1)
-    self.assertShape(packs[1][0], [1])
+    self.assertEqual(packs[1][0].shape, [1])
 
   def testZeroBytesPerPack(self):
     values = [
         array_ops.ones([1], dtype=dtypes.float32),
         array_ops.ones([2], dtype=dtypes.float32),
     ]
-    per_replica_values = [value_lib.PerReplica([v, v]) for v in values]
-    packs = cross_device_utils.pack_by_size(
-        per_replica_values, bytes_per_pack=0)
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=0)
     self.assertLen(packs, 1)
     self.assertLen(packs[0], 2)
-    self.assertShape(packs[0][0], [1])
-    self.assertShape(packs[0][1], [2])
+    self.assertEqual(packs[0][0].shape, [1])
+    self.assertEqual(packs[0][1].shape, [2])
 
   def testUnknownShape(self):
-    per_replica_values = [
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-        ]),
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            input_layer.Input(
-                shape=(10), batch_size=None, dtype=dtypes.float32),
-        ]),
-    ]
-    packs = cross_device_utils.pack_by_size(
-        per_replica_values, bytes_per_pack=1)
-    self.assertLen(packs, 1)
-    self.assertEqual(packs[0], per_replica_values)
+    def create_placeholder(shape, dtype):
+      with ops.Graph().as_default():
+        return array_ops.placeholder(dtype=dtype, shape=shape)
 
-  def testInconsistentShape(self):
-    per_replica_values = [
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-        ]),
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            input_layer.Input(
-                shape=(10), batch_size=None, dtype=dtypes.float32),
-        ]),
+    values = [
+        array_ops.ones([10, 10], dtype=dtypes.float32),
+        create_placeholder([None, 10], dtype=dtypes.float32),
     ]
-    packs = cross_device_utils.pack_by_size(
-        per_replica_values, bytes_per_pack=1)
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=1)
     self.assertLen(packs, 1)
-    self.assertEqual(packs[0], per_replica_values)
+    self.assertEqual(packs[0], values)
 
 
 if __name__ == "__main__":

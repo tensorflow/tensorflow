@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
@@ -480,28 +481,28 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           meta_graph.collection_def().at("saved_model_assets");
       const auto& any_assets = collection.any_list().value();
       if (!any_assets.empty()) {
-#ifndef TENSORFLOW_LITE_PROTOS
-        for (const auto& any_asset : any_assets) {
-          AssetFileDef asset_file_def;
-          if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
-                   .ok()) {
-            LOG(ERROR) << "Failed to parse AssetFile.";
-            continue;
+        if (std::is_base_of<protobuf::Message, AssetFileDef>()) {
+          for (const auto& any_asset : any_assets) {
+            AssetFileDef asset_file_def;
+            if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                     .ok()) {
+              LOG(ERROR) << "Failed to parse AssetFile.";
+              continue;
+            }
+            string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                                 asset_file_def.filename());
+            if (!FilesExist({asset_filepath}, nullptr)) {
+              LOG(ERROR) << "Can't access one or more of the asset files "
+                         << asset_filepath << ", skipping this input";
+              return nullptr;
+            }
+            asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+                asset_filepath;
           }
-          string asset_filepath = io::JoinPath(cfg.assets_directory_override,
-                                               asset_file_def.filename());
-          if (!FilesExist({asset_filepath}, nullptr)) {
-            LOG(ERROR) << "Can't access one or more of the asset files "
-                       << asset_filepath << ", skipping this input";
-            return nullptr;
-          }
-          asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
-              asset_filepath;
+        } else {
+          LOG(ERROR) << "Can't parse AssetFileDef when using lite protos.";
+          return nullptr;
         }
-#else
-        LOG(ERROR) << "Can't parse AssetFileDef on mobile.";
-        return nullptr;
-#endif  // TENSORFLOW_LITE_PROTOS
       }
     }
   } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {

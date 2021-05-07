@@ -40,18 +40,17 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   // A NestedComputer computes an element of the output of the given computation
   // given a Span of its input elements.
-  using NestedComputer = std::function<StatusOr<llvm::Value*>(
+  using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
-
  protected:
+  llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
+      const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) override;
+
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;
@@ -68,8 +67,8 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
-  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                 llvm::Value* value) override;
+  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type, llvm::Value* value,
+                                 absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                    llvm::Value* value) override;
@@ -81,10 +80,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                    llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
-                                 llvm::Value* rhs) override;
+                                 llvm::Value* rhs,
+                                 absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs) override;
+                                   llvm::Value* rhs,
+                                   absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
@@ -92,7 +93,17 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                         llvm::Value* value) override;
 
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view) override {
+    return compute_nested_(callee, parameters);
+  }
+
   llvm::Value* EmitThreadId() override;
+
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
+  }
 
  private:
   // Emits IR for op, which must have opcode kPower.
@@ -112,13 +123,17 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // return value of the function.
   StatusOr<llvm::Value*> EmitDeviceMathCall(
       TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+      absl::string_view name = "");
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
       const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+      absl::string_view name = "");
+
+  const HloModuleConfig& hlo_module_config_;
 
   NestedComputer compute_nested_;
 };

@@ -87,16 +87,15 @@ class SparseSliceOpTest(test.TestCase):
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [2, 6])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [2, 0], [3, 7])
       self.assertAllEqual(
-          sp_tensor0.indices.eval(),
+          sp_tensor0.indices,
           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3], [1, 4]])
-      self.assertAllEqual(sp_tensor0.values.eval(), [0, 2, 4, 5, 11, 13, 14])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [2, 6])
+      self.assertAllEqual(sp_tensor0.values, [0, 2, 4, 5, 11, 13, 14])
+      self.assertAllEqual(sp_tensor0.dense_shape, [2, 6])
       self.assertAllEqual(
-          sp_tensor1.indices.eval(),
+          sp_tensor1.indices,
           [[0, 0], [0, 3], [0, 5], [1, 0], [1, 2], [1, 3], [1, 5]])
-      self.assertAllEqual(sp_tensor1.values.eval(),
-                          [20, 23, 25, 30, 32, 33, 35])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [2, 6])
+      self.assertAllEqual(sp_tensor1.values, [20, 23, 25, 30, 32, 33, 35])
+      self.assertAllEqual(sp_tensor1.dense_shape, [2, 6])
 
   @test_util.run_deprecated_v1
   def testSliceMatrixUnevenCols(self):
@@ -107,38 +106,38 @@ class SparseSliceOpTest(test.TestCase):
       sp_tensor2 = sparse_ops.sparse_slice(sp_input, [0, 5], [5, 2])
 
       self.assertAllEqual(
-          sp_tensor0.indices.eval(),
+          sp_tensor0.indices,
           [[0, 0], [0, 2], [1, 1], [2, 0], [3, 0], [3, 2], [4, 1]])
-      self.assertAllEqual(sp_tensor0.values.eval(), [0, 2, 11, 20, 30, 32, 41])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [5, 3])
-      self.assertAllEqual(sp_tensor1.indices.eval(),
+      self.assertAllEqual(sp_tensor0.values, [0, 2, 11, 20, 30, 32, 41])
+      self.assertAllEqual(sp_tensor0.dense_shape, [5, 3])
+      self.assertAllEqual(sp_tensor1.indices,
                           [[0, 1], [1, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensor1.values.eval(), [4, 13, 14, 23, 33, 44])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensor2.indices.eval(),
+      self.assertAllEqual(sp_tensor1.values, [4, 13, 14, 23, 33, 44])
+      self.assertAllEqual(sp_tensor1.dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensor2.indices,
                           [[0, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensor2.values.eval(), [5, 16, 25, 35, 46])
-      self.assertAllEqual(sp_tensor2.dense_shape.eval(), [5, 2])
+      self.assertAllEqual(sp_tensor2.values, [5, 16, 25, 35, 46])
+      self.assertAllEqual(sp_tensor2.dense_shape, [5, 2])
 
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [5, 2])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 2], [5, 2])
       sp_tensor2 = sparse_ops.sparse_slice(sp_input, [0, 4], [5, 2])
       sp_tensor3 = sparse_ops.sparse_slice(sp_input, [0, 6], [5, 2])
-      self.assertAllEqual(sp_tensor0.indices.eval(),
+      self.assertAllEqual(sp_tensor0.indices,
                           [[0, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensor0.values.eval(), [0, 11, 20, 30, 41])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensor1.indices.eval(),
+      self.assertAllEqual(sp_tensor0.values, [0, 11, 20, 30, 41])
+      self.assertAllEqual(sp_tensor0.dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensor1.indices,
                           [[0, 0], [1, 1], [2, 1], [3, 0], [3, 1]])
-      self.assertAllEqual(sp_tensor1.values.eval(), [2, 13, 23, 32, 33])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensor2.indices.eval(),
+      self.assertAllEqual(sp_tensor1.values, [2, 13, 23, 32, 33])
+      self.assertAllEqual(sp_tensor1.dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensor2.indices,
                           [[0, 0], [0, 1], [1, 0], [2, 1], [3, 1], [4, 0]])
-      self.assertAllEqual(sp_tensor2.values.eval(), [4, 5, 14, 25, 35, 44])
-      self.assertAllEqual(sp_tensor2.dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensor3.indices.eval(), [[1, 0], [4, 0]])
-      self.assertAllEqual(sp_tensor3.values.eval(), [16, 46])
-      self.assertAllEqual(sp_tensor3.dense_shape.eval(), [5, 1])
+      self.assertAllEqual(sp_tensor2.values, [4, 5, 14, 25, 35, 44])
+      self.assertAllEqual(sp_tensor2.dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensor3.indices, [[1, 0], [4, 0]])
+      self.assertAllEqual(sp_tensor3.values, [16, 46])
+      self.assertAllEqual(sp_tensor3.dense_shape, [5, 1])
 
   @test_util.run_deprecated_v1
   def testSliceMatrixUnevenRows(self):
@@ -146,35 +145,32 @@ class SparseSliceOpTest(test.TestCase):
       sp_input = self._SparseTensor_5x7()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [3, 7])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [3, 0], [3, 7])
-      self.assertAllEqual(sp_tensor0.indices.eval(),
+      self.assertAllEqual(sp_tensor0.indices,
                           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3],
                            [1, 4], [1, 6], [2, 0], [2, 3], [2, 5]])
-      self.assertAllEqual(sp_tensor0.values.eval(),
+      self.assertAllEqual(sp_tensor0.values,
                           [0, 2, 4, 5, 11, 13, 14, 16, 20, 23, 25])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [3, 7])
+      self.assertAllEqual(sp_tensor0.dense_shape, [3, 7])
       self.assertAllEqual(
-          sp_tensor1.indices.eval(),
+          sp_tensor1.indices,
           [[0, 0], [0, 2], [0, 3], [0, 5], [1, 1], [1, 4], [1, 6]])
-      self.assertAllEqual(sp_tensor1.values.eval(),
-                          [30, 32, 33, 35, 41, 44, 46])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [2, 7])
+      self.assertAllEqual(sp_tensor1.values, [30, 32, 33, 35, 41, 44, 46])
+      self.assertAllEqual(sp_tensor1.dense_shape, [2, 7])
 
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [2, 7])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [2, 0], [2, 7])
       sp_tensor2 = sparse_ops.sparse_slice(sp_input, [4, 0], [2, 7])
       self.assertAllEqual(
-          sp_tensor0.indices.eval(),
+          sp_tensor0.indices,
           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3], [1, 4], [1, 6]])
-      self.assertAllEqual(sp_tensor0.values.eval(),
-                          [0, 2, 4, 5, 11, 13, 14, 16])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [2, 7])
+      self.assertAllEqual(sp_tensor0.values, [0, 2, 4, 5, 11, 13, 14, 16])
+      self.assertAllEqual(sp_tensor0.dense_shape, [2, 7])
 
-      self.assertAllEqual(sp_tensor1.values.eval(),
-                          [20, 23, 25, 30, 32, 33, 35])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [2, 7])
-      self.assertAllEqual(sp_tensor2.indices.eval(), [[0, 1], [0, 4], [0, 6]])
-      self.assertAllEqual(sp_tensor2.values.eval(), [41, 44, 46])
-      self.assertAllEqual(sp_tensor2.dense_shape.eval(), [1, 7])
+      self.assertAllEqual(sp_tensor1.values, [20, 23, 25, 30, 32, 33, 35])
+      self.assertAllEqual(sp_tensor1.dense_shape, [2, 7])
+      self.assertAllEqual(sp_tensor2.indices, [[0, 1], [0, 4], [0, 6]])
+      self.assertAllEqual(sp_tensor2.values, [41, 44, 46])
+      self.assertAllEqual(sp_tensor2.dense_shape, [1, 7])
     return
 
   @test_util.run_deprecated_v1
@@ -185,20 +181,18 @@ class SparseSliceOpTest(test.TestCase):
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [1, 0], [1, 6])
       sp_tensor2 = sparse_ops.sparse_slice(sp_input, [2, 0], [1, 7])
       sp_tensor3 = sparse_ops.sparse_slice(sp_input, [3, 0], [2, 7])
-      self.assertAllEqual(sp_tensor0.indices.eval(),
-                          [[0, 0], [0, 2], [0, 4], [0, 5]])
-      self.assertAllEqual(sp_tensor0.values.eval(), [0, 2, 4, 5])
-      self.assertAllEqual(sp_tensor0.dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensor1.indices.eval(), [[0, 1], [0, 3], [0, 4]])
-      self.assertAllEqual(sp_tensor1.values.eval(), [11, 13, 14])
-      self.assertAllEqual(sp_tensor1.dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensor2.indices.eval(), [[0, 0], [0, 3], [0, 5]])
-      self.assertAllEqual(sp_tensor2.values.eval(), [20, 23, 25])
-      self.assertAllEqual(sp_tensor2.dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensor3.indices.eval(),
-                          [[0, 0], [0, 2], [0, 3], [0, 5]])
-      self.assertAllEqual(sp_tensor3.values.eval(), [30, 32, 33, 35])
-      self.assertAllEqual(sp_tensor3.dense_shape.eval(), [1, 6])
+      self.assertAllEqual(sp_tensor0.indices, [[0, 0], [0, 2], [0, 4], [0, 5]])
+      self.assertAllEqual(sp_tensor0.values, [0, 2, 4, 5])
+      self.assertAllEqual(sp_tensor0.dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensor1.indices, [[0, 1], [0, 3], [0, 4]])
+      self.assertAllEqual(sp_tensor1.values, [11, 13, 14])
+      self.assertAllEqual(sp_tensor1.dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensor2.indices, [[0, 0], [0, 3], [0, 5]])
+      self.assertAllEqual(sp_tensor2.values, [20, 23, 25])
+      self.assertAllEqual(sp_tensor2.dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensor3.indices, [[0, 0], [0, 2], [0, 3], [0, 5]])
+      self.assertAllEqual(sp_tensor3.values, [30, 32, 33, 35])
+      self.assertAllEqual(sp_tensor3.dense_shape, [1, 6])
 
   @test_util.run_deprecated_v1
   def testSliceColumns(self):
@@ -208,18 +202,18 @@ class SparseSliceOpTest(test.TestCase):
       sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 2], [5, 2])
       sparse_tensor2 = sparse_ops.sparse_slice(sp_input, [0, 4], [5, 3])
 
-      self.assertAllEqual(sparse_tensor0.indices.eval(),
+      self.assertAllEqual(sparse_tensor0.indices,
                           [[0, 0], [1, 1], [2, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensor0.values.eval(), [0, 11, 20, 30])
-      self.assertAllEqual(sparse_tensor0.dense_shape.eval(), [4, 2])
-      self.assertAllEqual(sparse_tensor1.indices.eval(),
+      self.assertAllEqual(sparse_tensor0.values, [0, 11, 20, 30])
+      self.assertAllEqual(sparse_tensor0.dense_shape, [4, 2])
+      self.assertAllEqual(sparse_tensor1.indices,
                           [[0, 0], [1, 1], [2, 1], [3, 0], [3, 1]])
-      self.assertAllEqual(sparse_tensor1.values.eval(), [2, 13, 23, 32, 33])
-      self.assertAllEqual(sparse_tensor1.dense_shape.eval(), [4, 2])
-      self.assertAllEqual(sparse_tensor2.indices.eval(),
+      self.assertAllEqual(sparse_tensor1.values, [2, 13, 23, 32, 33])
+      self.assertAllEqual(sparse_tensor1.dense_shape, [4, 2])
+      self.assertAllEqual(sparse_tensor2.indices,
                           [[0, 0], [0, 1], [1, 0], [2, 1], [3, 1]])
-      self.assertAllEqual(sparse_tensor2.values.eval(), [4, 5, 14, 25, 35])
-      self.assertAllEqual(sparse_tensor2.dense_shape.eval(), [4, 2])
+      self.assertAllEqual(sparse_tensor2.values, [4, 5, 14, 25, 35])
+      self.assertAllEqual(sparse_tensor2.dense_shape, [4, 2])
 
   @test_util.run_deprecated_v1
   def testSliceAllColumns(self):
@@ -231,27 +225,24 @@ class SparseSliceOpTest(test.TestCase):
       sparse_tensor3 = sparse_ops.sparse_slice(sp_input, [0, 3], [4, 1])
       sparse_tensor4 = sparse_ops.sparse_slice(sp_input, [0, 4], [5, 1])
       sparse_tensor5 = sparse_ops.sparse_slice(sp_input, [0, 5], [6, 3])
-      self.assertAllEqual(sparse_tensor0.indices.eval(),
-                          [[0, 0], [2, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensor0.values.eval(), [0, 20, 30])
-      self.assertAllEqual(sparse_tensor0.dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensor1.indices.eval(), [[1, 0]])
-      self.assertAllEqual(sparse_tensor1.values.eval(), [11])
-      self.assertAllEqual(sparse_tensor1.dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensor2.indices.eval(), [[0, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensor2.values.eval(), [2, 32])
-      self.assertAllEqual(sparse_tensor2.dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensor3.indices.eval(),
-                          [[1, 0], [2, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensor3.dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensor3.values.eval(), [13, 23, 33])
-      self.assertAllEqual(sparse_tensor4.indices.eval(), [[0, 0], [1, 0]])
-      self.assertAllEqual(sparse_tensor4.values.eval(), [4, 14])
-      self.assertAllEqual(sparse_tensor4.dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensor5.indices.eval(),
-                          [[0, 0], [2, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensor5.values.eval(), [5, 25, 35])
-      self.assertAllEqual(sparse_tensor5.dense_shape.eval(), [4, 1])
+      self.assertAllEqual(sparse_tensor0.indices, [[0, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensor0.values, [0, 20, 30])
+      self.assertAllEqual(sparse_tensor0.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor1.indices, [[1, 0]])
+      self.assertAllEqual(sparse_tensor1.values, [11])
+      self.assertAllEqual(sparse_tensor1.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor2.indices, [[0, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensor2.values, [2, 32])
+      self.assertAllEqual(sparse_tensor2.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor3.indices, [[1, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensor3.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor3.values, [13, 23, 33])
+      self.assertAllEqual(sparse_tensor4.indices, [[0, 0], [1, 0]])
+      self.assertAllEqual(sparse_tensor4.values, [4, 14])
+      self.assertAllEqual(sparse_tensor4.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor5.indices, [[0, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensor5.values, [5, 25, 35])
+      self.assertAllEqual(sparse_tensor5.dense_shape, [4, 1])
 
   @test_util.run_deprecated_v1
   def testGradients(self):
@@ -263,8 +254,8 @@ class SparseSliceOpTest(test.TestCase):
     with self.session(use_gpu=False):
       for start, size in start_and_size:
         sp_output = sparse_ops.sparse_slice(sp_input, start, size)
-        nnz_in = len(sp_input.values.eval())
-        nnz_out = len(sp_output.values.eval())
+        nnz_in = len(self.evaluate(sp_input.values))
+        nnz_out = len(self.evaluate(sp_output.values))
 
         err = gradient_checker.compute_gradient_error(
             [sp_input.values], [(nnz_in,)], sp_output.values, (nnz_out,))

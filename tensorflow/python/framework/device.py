@@ -112,6 +112,8 @@ class MergeDevice(object):
   performance of device placement.
   """
 
+  __slots__ = ["_spec"]
+
   def __init__(self, spec):
     if isinstance(spec, device_spec.DeviceSpecV2):
       self._spec = spec

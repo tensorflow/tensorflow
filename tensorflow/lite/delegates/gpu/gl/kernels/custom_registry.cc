@@ -17,15 +17,16 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
+
+#include "absl/container/flat_hash_map.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
 
 void RegisterCustomOps(
-    std::unordered_map<std::string, std::vector<std::unique_ptr<NodeShader>>>*
+    absl::flat_hash_map<std::string, std::vector<std::unique_ptr<NodeShader>>>*
         shaders) {}
 
 }  // namespace gl

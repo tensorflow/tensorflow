@@ -38,7 +38,7 @@ from tensorflow.python.platform import test
 class WhereOpTest(test.TestCase):
 
   def _testWhere(self, x, truth, expected_err_re=None, fn=array_ops.where):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       ans = fn(x)
       self.assertTrue(ans.get_shape().is_compatible_with([None, x.ndim]))
       if expected_err_re is None:
@@ -49,7 +49,7 @@ class WhereOpTest(test.TestCase):
           self.evaluate(ans)
 
   def _testWrongNumbers(self, fn=array_ops.where):
-    with self.session(use_gpu=True):
+    with self.session():
       with self.assertRaises(ValueError):
         fn([False, True], [1, 2], None)
       with self.assertRaises(ValueError):
@@ -103,7 +103,7 @@ class WhereOpTest(test.TestCase):
   def _testThreeArgument(self, fn=array_ops.where):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
     np_val = np.where(x > 0, x * x, -x)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       tf_val = self.evaluate(fn(constant_op.constant(x) > 0, x * x, -x))
     self.assertAllEqual(tf_val, np_val)
 
@@ -223,7 +223,7 @@ class WhereOpTest(test.TestCase):
     x = np.zeros((7, 11))
     y = np.ones((7, 11))
     np_val = np.where(f < 0, x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       tf_val = self.evaluate(
           array_ops.where_v2(constant_op.constant(f) < 0, x, y))
     self.assertAllEqual(tf_val, np_val)
@@ -232,7 +232,7 @@ class WhereOpTest(test.TestCase):
     x = np.zeros((7, 11))
     y = np.ones((7, 11))
     np_val = np.where(True, x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       tf_val = self.evaluate(
           array_ops.where_v2(
               constant_op.constant(True, dtype=dtypes.bool), x, y))
@@ -242,7 +242,7 @@ class WhereOpTest(test.TestCase):
     x = np.zeros(7)
     y = np.ones(7)
     np_val = np.where([True], x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       tf_val = self.evaluate(
           array_ops.where_v2(
               constant_op.constant([True], dtype=dtypes.bool), x, y))
@@ -253,7 +253,7 @@ class WhereOpTest(test.TestCase):
     x = np.random.randn(3, 4)
     y = np.random.randn(3, 4)
     np_val = np.where(pred, x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       tf_val = self.evaluate(array_ops.where_v2(pred, x, y))
     self.assertAllClose(tf_val, np_val)
 
@@ -263,7 +263,7 @@ class WhereOpTest(test.TestCase):
     c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]
     c_vec = np.array([False, True] * 8192)  # [16384]
     np_val = np.where(c_mat, x * x, -x)
-    with self.session(use_gpu=True):
+    with self.session():
       tf_val = array_ops.where(c_vec, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
@@ -284,7 +284,7 @@ class WhereBenchmark(test.Benchmark):
           v = resource_variable_ops.ResourceVariable(x)
           op = array_ops.where(v)
         with session.Session(config=benchmark.benchmark_config()) as sess:
-          v.initializer.run()
+          self.evaluate(v.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
           # approximate size of output: m*n*p int64s for each axis.
@@ -310,9 +310,9 @@ class WhereBenchmark(test.Benchmark):
           c = resource_variable_ops.ResourceVariable(c_gen)
           op = array_ops.where(c, x, y)
         with session.Session(config=benchmark.benchmark_config()) as sess:
-          x.initializer.run()
-          y.initializer.run()
-          c.initializer.run()
+          self.evaluate(x.initializer)
+          self.evaluate(y.initializer)
+          self.evaluate(c.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           # approximate size of output: m*n*2 floats for each axis.
           gb_processed = m * n * 8 / 1.0e9

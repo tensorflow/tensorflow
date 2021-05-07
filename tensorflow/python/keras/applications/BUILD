@@ -4,11 +4,18 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        # Remove this deps to integration test.
+        "//tensorflow/python/keras:__subpackages__",
+    ],
+    licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "applications",
@@ -21,6 +28,7 @@ py_library(
         "inception_v3.py",
         "mobilenet.py",
         "mobilenet_v2.py",
+        "mobilenet_v3.py",
         "nasnet.py",
         "resnet.py",
         "resnet_v2.py",
@@ -28,13 +36,20 @@ py_library(
         "vgg19.py",
         "xception.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:models",
+        "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/utils:data_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -43,6 +58,10 @@ tf_py_test(
     size = "medium",
     srcs = ["applications_test.py"],
     shard_count = 36,
+    tags = [
+        "no_rocm",
+        "notsan",  # b/168814536
+    ],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -62,10 +81,12 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # b/168814536
     ],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -78,10 +99,12 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # TODO(b/170901700)
     ],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -98,6 +121,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -114,6 +138,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -130,6 +155,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -146,6 +172,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -162,6 +189,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -178,6 +206,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -194,6 +223,41 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "applications_load_weight_test_mobilenet_v3_small",
+    srcs = ["applications_load_weight_test.py"],
+    args = ["--module=mobilenet_v3_small"],
+    main = "applications_load_weight_test.py",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "applications_load_weight_test_mobilenet_v3_large",
+    srcs = ["applications_load_weight_test.py"],
+    args = ["--module=mobilenet_v3_large"],
+    main = "applications_load_weight_test.py",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -212,6 +276,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -230,6 +295,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -246,6 +312,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -262,6 +329,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -274,6 +342,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -36,10 +36,7 @@ class VariableOp : public OpKernel {
  private:
   DataType dtype_;
   TensorShape shape_;
-
-  mutex init_mu_;
-  ContainerInfo cinfo_ TF_GUARDED_BY(init_mu_);
-  bool initialized_ TF_GUARDED_BY(init_mu_){false};
+  ContainerInfo cinfo_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(VariableOp);
 };

@@ -51,14 +51,15 @@ function build_libtensorflow_tarball() {
   rm -rf ${DIR}
 
   TARBALL_SUFFIX="${1}"
-  BAZEL_OPTS="--config=opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
-  export CC_OPT_FLAGS="-mavx -msse4.2"
-  if [ "${TF_NEED_CUDA}" == "1" ]; then
-    BAZEL_OPTS="${BAZEL_OPTS} --config=cuda"
-    export TF_NEED_ROCM=0
+  if [ "$(uname)" == "Darwin" ]; then
+    BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_macos"
+  elif [ "${TF_NEED_CUDA}" == "1" ]; then
+    BAZEL_OPTS="${BAZEL_OPTS} --config=release_gpu_linux"
+  else
+    BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_linux"
   fi
-  bazel clean --expunge
-  yes "" | ./configure
+  export PYTHON_BIN_PATH="$(which python3.8)"
+  BAZEL_OPTS="${BAZEL_OPTS} --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH}"
 
   # Remove this test call when
   # https://github.com/bazelbuild/bazel/issues/2352

@@ -5,7 +5,7 @@ package(default_visibility = ["//visibility:public"])
 py_library(
     name = "numpy",
     srcs = ["tf_numpy_dummy.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 alias(

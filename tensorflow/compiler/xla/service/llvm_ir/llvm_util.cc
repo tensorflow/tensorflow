@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -81,36 +83,39 @@ string DumpModuleToString(const llvm::Module& module) {
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands));
+  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
@@ -167,7 +172,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F64:
       return llvm::Type::getDoubleTy(module->getContext());
     case C64: {
-      auto cplx_t = module->getTypeByName("complex64");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -184,7 +190,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return cplx_t;
     }
     case C128: {
-      auto cplx_t = module->getTypeByName("complex128");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex128");
       if (cplx_t == nullptr) {
         return llvm::StructType::create(
             {llvm::Type::getDoubleTy(module->getContext()),
@@ -287,7 +294,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(llvm::MaybeAlign(alignment));
+    alloca->setAlignment(llvm::Align(alignment));
   }
   return alloca;
 }
@@ -347,12 +354,14 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* b) {
+                            llvm::IRBuilder<>* b, absl::string_view name) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value);
+    comparison_result =
+        b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
   } else {
-    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value);
+    comparison_result =
+        b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
@@ -413,9 +422,10 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string IrName(string a) {
-  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
-  return a;
+string IrName(absl::string_view a) {
+  std::string s(a);
+  s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
+  return s;
 }
 
 string IrName(absl::string_view a, absl::string_view b) {
@@ -571,7 +581,8 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,
-                     const llvm::Module& llvm_module, bool optimized) {
+                     const llvm::Module& llvm_module, bool optimized,
+                     absl::string_view filename_suffix) {
   const auto& debug_opts = hlo_module.config().debug_options();
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
@@ -579,7 +590,9 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  string suffix =
+      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
+                   filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpModuleToString(llvm_module));
 
@@ -591,6 +604,21 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
     DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
+}
+
+void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
+                     const DebugOptions& debug_options) {
+  absl::string_view module_name = "<unnamed>";
+  if (llvm::Optional<llvm::StringRef> mlir_module_name =
+          mlir_module.getName()) {
+    module_name = AsStringView(*mlir_module_name);
+  }
+  if (!DumpingEnabledForHloModule(module_name, debug_options)) {
+    return;
+  }
+
+  DumpToFileInDirOrStdout(debug_options, unique_id, /*file_prefix=*/"",
+                          /*file_suffix=*/"lmhlo", DumpToString(mlir_module));
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
@@ -669,15 +697,7 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
-unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
-  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
-  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    // AMDGPU uses 1 for global memory address space.
-    return kAMDGPUGlobalMemoryAddrSpace;
-  }
-  return 0;
-}
+unsigned GetGlobalMemoryAddressSpace() { return 1; }
 
 llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
                                                      llvm::IRBuilder<>* b) {
@@ -685,7 +705,6 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
-    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
     llvm::Type* state_type = b->getInt128Ty();
     // Use a non-zero initial value as zero state can cause the result of the
     // first random number generation not passing the chi-square test. The
@@ -700,7 +719,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
         /*Name=*/kRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
+        /*AddressSpace=*/GetGlobalMemoryAddressSpace(),
         /*isExternallyInitialized=*/false);
   }
   return state_ptr;

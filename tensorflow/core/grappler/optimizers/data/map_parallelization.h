@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_PARALLELIZATION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_PARALLELIZATION_H_
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
+
+constexpr char kAutotune[] = "autotune";
 
 // This optimization parallelizes MapDataset when function is stateless.
 class MapParallelization : public TFDataOptimizerBase {
@@ -33,6 +36,17 @@ class MapParallelization : public TFDataOptimizerBase {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    if (!config) return Status::OK();
+
+    const string& autotune = config->parameter_map().at(kAutotune).s();
+    if (autotune == "true") {
+      autotune_ = true;
+    } else if (autotune == "false") {
+      autotune_ = false;
+    } else {
+      return errors::InvalidArgument("Received an invalid value for parameter ",
+                                     kAutotune, ": ", autotune);
+    }
     return Status::OK();
   }
 
@@ -42,6 +56,9 @@ class MapParallelization : public TFDataOptimizerBase {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
+
+ private:
+  bool autotune_ = true;
 };
 
 }  // namespace grappler

@@ -20,110 +20,76 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace {
 
-struct RaggedTensor {
-  Tensor values;
-  std::vector<Tensor> nested_splits;
-};
-
-Status RaggedComponentsFromVariant(const Tensor& encoded_variant,
-                                   int ragged_rank, DataType value_dtype,
-                                   DataType split_dtype,
-                                   std::vector<RaggedTensor>* decoded_ragged) {
+Status RaggedComponentsFromVariant(
+    const Tensor& encoded_variant, int ragged_rank, DataType value_dtype,
+    DataType split_dtype, std::vector<RaggedTensorVariant>* decoded_ragged) {
   const auto& flat_variants = encoded_variant.flat<Variant>();
-  decoded_ragged->resize(flat_variants.size());
-  // Step 1: Extract the 1-D DT_VARIANT Tensor from each Variant element in the
-  // input.
+  decoded_ragged->reserve(flat_variants.size());
+
   for (int i = 0; i < flat_variants.size(); i++) {
     const auto& flat_variant = flat_variants(i);
-    const Tensor* encoded_list = flat_variant.get<Tensor>();
-    if (encoded_list == nullptr) {
+    const RaggedTensorVariant* decoded =
+        flat_variant.get<RaggedTensorVariant>();
+    if (decoded == nullptr) {
       return errors::InvalidArgument(
           "Input Variant element at index ", i,
-          " doesn't hold a Tensor: ", flat_variant.DebugString());
+          " doesn't hold a RaggedTensorVariant: ", flat_variant.DebugString());
     }
-    if (encoded_list->dims() != 1) {
+    decoded_ragged->push_back(*decoded);
+    decoded = &decoded_ragged->back();
+    // Check ragged rank & types
+    if (decoded->ragged_rank() != ragged_rank) {
       return errors::InvalidArgument(
-          "Encoded input Variant must have rank 1, but found rank: ",
-          encoded_list->dims(),
-          ". encoded input Variant: ", encoded_list->DebugString());
+          "Encoded input RaggedTensorVariant has ragged_rank=",
+          decoded->ragged_rank(), ".  Expected ragged_rank=", ragged_rank, ".");
     }
-    if (encoded_list->NumElements() != (ragged_rank + 1) &&
-        encoded_list->NumElements() != 1) {
-      return errors::InvalidArgument(
-          "Encoded input Variant must hold either input_ragged_rank + 1 "
-          "Tensors or an empty Tensor (zero splits Tensors, 1 values Tensor), "
-          "input_ragged_rank: ",
-          ragged_rank,
-          ", encoded input Variant: ", encoded_list->DebugString());
-    }
-    const auto& input_vec = encoded_list->vec<Variant>();
-
-    // Step 2: Get the splits and value Tensors from the 1-D DT_VARIANT Tensor
-    // to create the component RaggedTensors.
-    (*decoded_ragged)[i].nested_splits.reserve(ragged_rank);
-    for (int j = 0; j < ragged_rank; j++) {
-      const Tensor* split_tensor = input_vec(j).get<Tensor>();
-      if (split_tensor == nullptr) {
-        return errors::InvalidArgument(
-            "Encoded scalar element at index ", i,
-            " doesn't have a splits Tensor at split_index ", j, ": ",
-            input_vec(j).DebugString());
-      }
-      Tensor splits_tensor = *split_tensor;
-      if (splits_tensor.dtype() != split_dtype) {
-        return errors::InvalidArgument(
-            "Expected splits Tensor dtype: ", split_dtype,
-            ", found: ", splits_tensor.dtype());
-      }
-      if (splits_tensor.dims() != 1) {
-        return errors::InvalidArgument(
-            "Ragged splits must have rank 1; encoded scalar element at index ",
-            i, " has splits Tensor at split_index ", j, ": ",
-            splits_tensor.DebugString());
-      }
-      (*decoded_ragged)[i].nested_splits.push_back(splits_tensor);
-    }
-    const Tensor* values_tensor = input_vec(ragged_rank).get<Tensor>();
-    if (values_tensor == nullptr) {
-      return errors::InvalidArgument("Encoded scalar element at index ", i,
-                                     " doesn't have a values Tensor: ",
-                                     input_vec(ragged_rank).DebugString());
-    }
-    if (values_tensor->dtype() != value_dtype) {
+    if (decoded->values().dtype() != value_dtype) {
       return errors::InvalidArgument(
           "Expected values Tensor dtype: ", DataTypeString(value_dtype),
-          ", found: ", DataTypeString(values_tensor->dtype()));
+          ", found: ", DataTypeString(decoded->values().dtype()));
     }
-    if (values_tensor->dims() < 1) {
+    if (decoded->values().dims() < 1) {
       return errors::InvalidArgument(
           "Ragged values must have rank >= 1; encoded scalar element at index ",
-          i, " has values Tensor: ", values_tensor->DebugString());
+          i, " has values Tensor: ", decoded->values().DebugString());
     }
-    (*decoded_ragged)[i].values = *values_tensor;
+    for (const auto& splits : decoded->nested_splits()) {
+      if (splits.dtype() != split_dtype) {
+        return errors::InvalidArgument(
+            "Expected row_splits Tensor dtype: ", DataTypeString(split_dtype),
+            ", found: ", DataTypeString(splits.dtype()));
+      }
+      if (splits.dims() != 1) {
+        return errors::InvalidArgument(
+            "Ragged splits must have rank 1; encoded scalar element at index ",
+            i, " has splits Tensor ", splits.DebugString());
+      }
+    }
   }
   return Status::OK();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
 Status NestedStackRaggedTensors(
-    const std::vector<RaggedTensor>& ragged_components,
+    const std::vector<RaggedTensorVariant>& ragged_components,
     const std::vector<int>& nested_dim_sizes, const int input_ragged_rank,
-    const int output_ragged_rank, RaggedTensor* output_ragged) {
-  output_ragged->nested_splits.reserve(output_ragged_rank);
+    const int output_ragged_rank, RaggedTensorVariant* output_ragged) {
+  output_ragged->mutable_nested_splits()->reserve(output_ragged_rank);
   const int dims = nested_dim_sizes.size();
 
   // Populate first `dims - 1` splits.
   for (int i = 0; i < dims - 1; i++) {
     int dims_splits_size = nested_dim_sizes[i] + 1;
-    output_ragged->nested_splits.push_back(Tensor(
-        DataTypeToEnum<SPLIT_TYPE>::value, TensorShape({dims_splits_size})));
-    auto splits_vec = output_ragged->nested_splits[i].vec<SPLIT_TYPE>();
+    output_ragged->append_splits(Tensor(DataTypeToEnum<SPLIT_TYPE>::value,
+                                        TensorShape({dims_splits_size})));
+    auto splits_vec = output_ragged->mutable_splits(i)->vec<SPLIT_TYPE>();
     int split_diff = nested_dim_sizes[i + 1];
     for (int j = 0; j < dims_splits_size; j++) {
       splits_vec(j) = j * split_diff;
@@ -132,15 +98,15 @@ Status NestedStackRaggedTensors(
 
   // Populate `dims`-th split.
   int splits_size = ragged_components.size() + 1;
-  output_ragged->nested_splits.push_back(
+  output_ragged->append_splits(
       Tensor(DataTypeToEnum<SPLIT_TYPE>::value, TensorShape({splits_size})));
   auto dims_splits_vec =
-      output_ragged->nested_splits[dims - 1].vec<SPLIT_TYPE>();
+      output_ragged->mutable_splits(dims - 1)->vec<SPLIT_TYPE>();
   dims_splits_vec(0) = 0;
   for (int i = 0; i < ragged_components.size(); i++) {
-    int split_val = ragged_components[i].values.shape().dim_size(0);
-    if (input_ragged_rank != 0 && !ragged_components[i].nested_splits.empty()) {
-      split_val = ragged_components[i].nested_splits[0].NumElements() - 1;
+    int split_val = ragged_components[i].values().shape().dim_size(0);
+    if (input_ragged_rank != 0 && ragged_components[i].ragged_rank() > 0) {
+      split_val = ragged_components[i].splits(0).NumElements() - 1;
     }
     dims_splits_vec(i + 1) = dims_splits_vec(i) + split_val;
   }
@@ -150,24 +116,24 @@ Status NestedStackRaggedTensors(
     int split_index = dims + i;
     int split_size = 1;
     for (int j = 0; j < ragged_components.size(); j++) {
-      if (!ragged_components[j].nested_splits.empty()) {
-        split_size += ragged_components[j].nested_splits[i].NumElements() - 1;
+      if (!ragged_components[j].nested_splits().empty()) {
+        split_size += ragged_components[j].splits(i).NumElements() - 1;
       }
     }
-    output_ragged->nested_splits.push_back(
+    output_ragged->append_splits(
         Tensor(DataTypeToEnum<SPLIT_TYPE>::value, TensorShape({split_size})));
     auto splits_vec =
-        output_ragged->nested_splits[split_index].vec<SPLIT_TYPE>();
+        output_ragged->mutable_splits(split_index)->vec<SPLIT_TYPE>();
     splits_vec(0) = 0;
     SPLIT_TYPE last_split_value = 0;
     int index = 1;
     for (int j = 0; j < ragged_components.size(); j++) {
-      if (ragged_components[j].nested_splits.empty()) {
+      if (ragged_components[j].nested_splits().empty()) {
         // Corner case: empty row. e.g [ [[x], [x]], [] ]
         continue;
       }
       auto component_splits_vec =
-          ragged_components[j].nested_splits[i].vec<SPLIT_TYPE>();
+          ragged_components[j].splits(i).vec<SPLIT_TYPE>();
       for (int k = 1; k < component_splits_vec.size(); k++, index++) {
         splits_vec(index) = component_splits_vec(k) + last_split_value;
       }
@@ -175,33 +141,47 @@ Status NestedStackRaggedTensors(
     }
   }
 
+  // If the variant tensor input is empty, then we have no way to determine
+  // the correct shape for the dense_values.  (It must have rank>=1, and its
+  // outer dimension must be 0, but we don't know its shape beyond that.)
+  // For now, we just use a shape of `[0]` in this case.
+  // TODO(edloper): Update this op with an attribute containing information
+  // about dense_values shape.  If it's `None`, then we'll probably still have
+  // to use shape=[0] here, but if we have more info, then we can use it.
+  // E.g., in map_fn, we may have shape info from the RaggedTensorSpec.
+  TensorShape component_values_shape;
+  if (ragged_components.empty()) {
+    component_values_shape = TensorShape({0});
+  } else {
+    component_values_shape = ragged_components[0].values().shape();
+  }
+
   // Populate values.
-  TensorShape component_values_shape = ragged_components[0].values.shape();
   int values_size = component_values_shape.dim_size(0);
   for (int i = 1; i < ragged_components.size(); i++) {
-    if (ragged_components[i].values.dims() != component_values_shape.dims()) {
+    if (ragged_components[i].values().dims() != component_values_shape.dims()) {
       return errors::InvalidArgument(
           "Rank of values must match for all "
           "components; values shape at index 0: ",
           component_values_shape.DebugString(), ", values shape at index ", i,
-          ": ", ragged_components[i].values.shape().DebugString());
+          ": ", ragged_components[i].values().shape().DebugString());
     }
-    values_size += ragged_components[i].values.shape().dim_size(0);
+    values_size += ragged_components[i].values().shape().dim_size(0);
   }
   component_values_shape.set_dim(0, values_size);
-  output_ragged->values =
-      Tensor(DataTypeToEnum<VALUE_TYPE>::value, component_values_shape);
+  output_ragged->set_values(
+      Tensor(DataTypeToEnum<VALUE_TYPE>::value, component_values_shape));
   auto output_values_flat =
-      output_ragged->values.flat_outer_dims<VALUE_TYPE, 2>();
+      output_ragged->mutable_values()->flat_outer_dims<VALUE_TYPE, 2>();
   int values_index = 0;
   for (int i = 0; i < ragged_components.size(); i++) {
     auto component_values_flat =
-        ragged_components[i].values.flat_outer_dims<VALUE_TYPE, 2>();
-    int num_inner_elements = ragged_components[i].values.NumElements();
-    if (ragged_components[i].values.dim_size(0) > 0) {
-      num_inner_elements /= ragged_components[i].values.dim_size(0);
+        ragged_components[i].values().flat_outer_dims<VALUE_TYPE, 2>();
+    int num_inner_elements = ragged_components[i].values().NumElements();
+    if (ragged_components[i].values().dim_size(0) > 0) {
+      num_inner_elements /= ragged_components[i].values().dim_size(0);
     }
-    for (int j = 0; j < ragged_components[i].values.dim_size(0);
+    for (int j = 0; j < ragged_components[i].values().dim_size(0);
          j++, values_index++) {
       for (int k = 0; k < num_inner_elements; k++) {
         output_values_flat(values_index, k) = component_values_flat(j, k);
@@ -251,7 +231,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
     // Decode all variants.
     const auto value_dtype = DataTypeToEnum<VALUE_TYPE>::v();
     const auto split_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
-    std::vector<RaggedTensor> decoded_components;
+    std::vector<RaggedTensorVariant> decoded_components;
     OP_REQUIRES_OK(context, RaggedComponentsFromVariant(
                                 encoded_variant, input_ragged_rank_,
                                 value_dtype, split_dtype, &decoded_components));
@@ -267,7 +247,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
     for (int i = 0; i < encoded_variant.dims(); i++) {
       encoded_dim_sizes[i] = encoded_variant.dim_size(i);
     }
-    RaggedTensor output_ragged;
+    RaggedTensorVariant output_ragged;
     OP_REQUIRES_OK(
         context, NestedStackRaggedTensors<VALUE_TYPE, SPLIT_TYPE>(
                      decoded_components, encoded_dim_sizes, input_ragged_rank_,
@@ -282,15 +262,15 @@ class RaggedTensorFromVariantOp : public OpKernel {
   int output_ragged_rank_;
 
   void ReturnRaggedTensor(OpKernelContext* context,
-                          RaggedTensor ragged_tensor) {
-    int ragged_rank = ragged_tensor.nested_splits.size();
+                          const RaggedTensorVariant& ragged_tensor) {
+    int ragged_rank = ragged_tensor.ragged_rank();
     OpOutputList splits_out;
     OP_REQUIRES_OK(context,
                    context->output_list("output_nested_splits", &splits_out));
     for (int i = 0; i < ragged_rank; i++) {
-      splits_out.set(i, ragged_tensor.nested_splits[i]);
+      splits_out.set(i, ragged_tensor.splits(i));
     }
-    context->set_output(ragged_rank, ragged_tensor.values);
+    context->set_output(ragged_rank, ragged_tensor.values());
   }
 };
 
@@ -308,8 +288,6 @@ TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_qint16(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS);
-TF_CALL_uint64(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 #undef REGISTER_KERNELS_WITH_SPLIT_TYPE
 }  // namespace tensorflow

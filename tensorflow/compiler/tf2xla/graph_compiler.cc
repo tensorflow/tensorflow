@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <numeric>
 #include <vector>
+
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -64,7 +65,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       /*compile_time_const_nodes=*/nullptr, ctx->function_library()));
 
   args->resize(expressions.size());
-  for (int i = 0; i < args->size(); ++i) {
+  for (int i = 0, end = args->size(); i < end; ++i) {
     XlaCompiler::Argument& arg = (*args)[i];
     arg.type = ctx->input_type(i);
     arg.shape = ctx->InputShape(i);
@@ -72,20 +73,19 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
     switch (expressions[i]->kind()) {
       case XlaExpression::Kind::kConstant:
         arg.kind = XlaCompiler::Argument::kConstant;
-        arg.constant_value = expressions[i]->constant_value();
+        arg.constant_value = *expressions[i]->constant_value();
         break;
       case XlaExpression::Kind::kXlaOp:
         if (arg_must_be_compile_time_constant[i]) {
           TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
-          if (!value.has_value()) {
-            return errors::InvalidArgument(absl::StrCat(
-                "Argument ", i, " to function '", func.name(),
-                "' must be a compile-time constant, but ",
-                "unable to resolve argument value to a constant."));
+          if (value.has_value()) {
+            arg.kind = XlaCompiler::Argument::kConstant;
+            arg.constant_value = *value;
+          } else {
+            arg.kind = XlaCompiler::Argument::kParameter;
           }
-          arg.kind = XlaCompiler::Argument::kConstant;
-          arg.constant_value = *value;
+
         } else {
           arg.kind = XlaCompiler::Argument::kParameter;
         }
@@ -160,7 +160,8 @@ Status GraphCompiler::Compile() {
     for (auto* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
       const Node* src = e->src();
-      TF_RET_CHECK(src->id() < output_registry.size());
+      const int output_registry_size = output_registry.size();
+      TF_RET_CHECK(src->id() < output_registry_size);
       const NodeOutputs& src_outputs = output_registry[src->id()];
 
       tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
@@ -267,7 +268,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RET_CHECK(arguments.size() == expressions.size());
 
   std::vector<xla::XlaOp> handles;
-  for (int64 i = 0; i < expressions.size(); ++i) {
+  for (int64 i = 0, end = expressions.size(); i < end; ++i) {
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;
     }
@@ -311,7 +312,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
 
-  for (int64 i = 0; i < result.resource_updates.size(); i++) {
+  for (int64 i = 0, end = result.resource_updates.size(); i < end; i++) {
     if (result.resource_updates[i].modified) {
       XlaResource* resource =
           expressions[result.resource_updates[i].input_index]->resource();
@@ -322,8 +323,13 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   }
 
   if (add_token_input_output) {
+    std::string node_name;
+    if (!GetNodeAttr(n->attrs(), kXlaOriginalOutsideCompilationNodeName,
+                     &node_name)
+             .ok())
+      node_name = n->name();
     TF_RETURN_IF_ERROR(compiler->SetNodeToken(
-        n->name(), xla::GetTupleElement(output_handle, computation_output)));
+        node_name, xla::GetTupleElement(output_handle, computation_output)));
   }
   return b->first_error();
 }

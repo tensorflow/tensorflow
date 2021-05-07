@@ -15,21 +15,28 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+
 namespace tflite {
 
 namespace reference_ops {
+
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
                          const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
+                         SequentialTensorWriter<T>* writer) {
   using strided_slice::LoopCondition;
   using strided_slice::StartForAxis;
   using strided_slice::StopForAxis;
+
+  ruy::profiler::ScopeLabel label("StridedSlice");
+
   // Note that the output_shape is not used herein.
   tflite::StridedSliceParams params_copy = op_params;
 
@@ -55,7 +62,6 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   const int start_4 = StartForAxis(params_copy, input_shape, 4);
   const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
 
-  T* out_ptr = output_data;
   for (int offset_0 = start_0 * input_shape.Dims(1),
            end_0 = stop_0 * input_shape.Dims(1),
            step_0 = params_copy.strides[0] * input_shape.Dims(1);
@@ -79,13 +85,36 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
           for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
                !LoopCondition(offset_4, end_4, params_copy.strides[4]);
                offset_4 += params_copy.strides[4]) {
-            *out_ptr++ = input_data[offset_4];
+            writer->Write(offset_4);
           }
         }
       }
     }
   }
 }
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const TfLiteTensor* input,
+                         const RuntimeShape& unextended_output_shape,
+                         TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

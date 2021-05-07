@@ -1,16 +1,19 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s --dump-input-on-failure
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: WHILE,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 119,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: WHILE
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: GREATER,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 61,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: GREATER
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: SUB,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 41,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: SUB
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
@@ -190,12 +193,13 @@
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     data: [ 49, 46, 49, 52, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:     data: [ 49, 46, 49, 53, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:  metadata: [ {
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 14
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT: }
 
 func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {

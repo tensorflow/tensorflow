@@ -32,9 +32,9 @@ limitations under the License.
 
 #define RB_TAG "RINGBUF"
 
-ringbuf_t *rb_init(const char *name, uint32_t size) {
-  ringbuf_t *r;
-  unsigned char *buf;
+ringbuf_t* rb_init(const char* name, uint32_t size) {
+  ringbuf_t* r;
+  unsigned char* buf;
 
   if (size < 2 || !name) {
     return NULL;
@@ -50,7 +50,7 @@ ringbuf_t *rb_init(const char *name, uint32_t size) {
 #endif
   assert(buf);
 
-  r->name = (char *)name;
+  r->name = (char*)name;
   r->base = r->readptr = r->writeptr = buf;
   r->fill_cnt = 0;
   r->size = size;
@@ -70,7 +70,7 @@ ringbuf_t *rb_init(const char *name, uint32_t size) {
   return r;
 }
 
-void rb_cleanup(ringbuf_t *rb) {
+void rb_cleanup(ringbuf_t* rb) {
   free(rb->base);
   rb->base = NULL;
   vSemaphoreDelete(rb->can_read);
@@ -85,17 +85,17 @@ void rb_cleanup(ringbuf_t *rb) {
 /*
  * @brief: get the number of filled bytes in the buffer
  */
-ssize_t rb_filled(ringbuf_t *rb) { return rb->fill_cnt; }
+ssize_t rb_filled(ringbuf_t* rb) { return rb->fill_cnt; }
 
 /*
  * @brief: get the number of empty bytes available in the buffer
  */
-ssize_t rb_available(ringbuf_t *rb) {
+ssize_t rb_available(ringbuf_t* rb) {
   ESP_LOGD(RB_TAG, "rb leftover %d bytes", rb->size - rb->fill_cnt);
   return (rb->size - rb->fill_cnt);
 }
 
-int rb_read(ringbuf_t *rb, uint8_t *buf, int buf_len, uint32_t ticks_to_wait) {
+int rb_read(ringbuf_t* rb, uint8_t* buf, int buf_len, uint32_t ticks_to_wait) {
   int read_size;
   int total_read_size = 0;
 
@@ -178,7 +178,7 @@ out:
   return total_read_size;
 }
 
-int rb_write(ringbuf_t *rb, const uint8_t *buf, int buf_len,
+int rb_write(ringbuf_t* rb, const uint8_t* buf, int buf_len,
              uint32_t ticks_to_wait) {
   int write_size;
   int total_write_size = 0;
@@ -245,7 +245,7 @@ out:
 /**
  * abort and set abort_read and abort_write to asked values.
  */
-static void _rb_reset(ringbuf_t *rb, int abort_read, int abort_write) {
+static void _rb_reset(ringbuf_t* rb, int abort_read, int abort_write) {
   if (rb == NULL) {
     return;
   }
@@ -259,9 +259,9 @@ static void _rb_reset(ringbuf_t *rb, int abort_read, int abort_write) {
   xSemaphoreGive(rb->lock);
 }
 
-void rb_reset(ringbuf_t *rb) { _rb_reset(rb, 0, 0); }
+void rb_reset(ringbuf_t* rb) { _rb_reset(rb, 0, 0); }
 
-void rb_abort_read(ringbuf_t *rb) {
+void rb_abort_read(ringbuf_t* rb) {
   if (rb == NULL) {
     return;
   }
@@ -270,7 +270,7 @@ void rb_abort_read(ringbuf_t *rb) {
   xSemaphoreGive(rb->lock);
 }
 
-void rb_abort_write(ringbuf_t *rb) {
+void rb_abort_write(ringbuf_t* rb) {
   if (rb == NULL) {
     return;
   }
@@ -279,7 +279,7 @@ void rb_abort_write(ringbuf_t *rb) {
   xSemaphoreGive(rb->lock);
 }
 
-void rb_abort(ringbuf_t *rb) {
+void rb_abort(ringbuf_t* rb) {
   if (rb == NULL) {
     return;
   }
@@ -291,17 +291,17 @@ void rb_abort(ringbuf_t *rb) {
 }
 
 /**
- * Reset the ringbuffer and keep keep rb_write aborted.
+ * Reset the ringbuffer and keep rb_write aborted.
  * Note that we are taking lock before even toggling `abort_write` variable.
  * This serves a special purpose to not allow this abort to be mixed with
  * rb_write.
  */
-void rb_reset_and_abort_write(ringbuf_t *rb) {
+void rb_reset_and_abort_write(ringbuf_t* rb) {
   _rb_reset(rb, 0, 1);
   xSemaphoreGive(rb->can_write);
 }
 
-void rb_signal_writer_finished(ringbuf_t *rb) {
+void rb_signal_writer_finished(ringbuf_t* rb) {
   if (rb == NULL) {
     return;
   }
@@ -309,14 +309,14 @@ void rb_signal_writer_finished(ringbuf_t *rb) {
   xSemaphoreGive(rb->can_read);
 }
 
-int rb_is_writer_finished(ringbuf_t *rb) {
+int rb_is_writer_finished(ringbuf_t* rb) {
   if (rb == NULL) {
     return RB_FAIL;
   }
   return (rb->writer_finished);
 }
 
-void rb_wakeup_reader(ringbuf_t *rb) {
+void rb_wakeup_reader(ringbuf_t* rb) {
   if (rb == NULL) {
     return;
   }
@@ -324,7 +324,7 @@ void rb_wakeup_reader(ringbuf_t *rb) {
   xSemaphoreGive(rb->can_read);
 }
 
-void rb_stat(ringbuf_t *rb) {
+void rb_stat(ringbuf_t* rb) {
   xSemaphoreTake(rb->lock, portMAX_DELAY);
   ESP_LOGI(RB_TAG,
            "filled: %d, base: %p, read_ptr: %p, write_ptr: %p, size: %d\n",

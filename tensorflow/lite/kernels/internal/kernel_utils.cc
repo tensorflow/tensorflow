@@ -123,7 +123,9 @@ void RnnBatchStep(
     int num_units, int batch_size, int output_batch_leading_dim,
     TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
-    float* hidden_state_ptr_batch, float* output_ptr_batch) {
+    float* hidden_state_ptr_batch, float* output_ptr_batch,
+    bool asymmetric_quantize_inputs, int32_t* zero_points,
+    int32_t* accum_scratch, int32_t* row_sums, bool* compute_row_sums) {
   RnnBatchStep(input_ptr_batch, input_weights_ptr, input_weights_scale,
                /*aux_input_ptr_batch=*/nullptr,
                /*aux_input_weights_ptr=*/nullptr,
@@ -133,7 +135,9 @@ void RnnBatchStep(
                output_batch_leading_dim, activation, quantized_input_ptr_batch,
                /*aux_quantized_input_ptr_batch=*/nullptr,
                quantized_hidden_state_ptr_batch, scaling_factors,
-               hidden_state_ptr_batch, output_ptr_batch);
+               hidden_state_ptr_batch, output_ptr_batch,
+               asymmetric_quantize_inputs, zero_points, accum_scratch, row_sums,
+               compute_row_sums);
 }
 
 void RnnBatchStep(
@@ -146,9 +150,36 @@ void RnnBatchStep(
     TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* aux_quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
-    float* hidden_state_ptr_batch, float* output_ptr_batch) {
+    float* hidden_state_ptr_batch, float* output_ptr_batch,
+    bool asymmetric_quantize_inputs, int32_t* zero_points,
+    int32_t* accum_scratch, int32_t* row_sums, bool* compute_row_sums) {
   // Since the output batch rows may not be contiguous (output_batch_leading_dim
   // != n_output), we unroll the batched operations where this is the case.
+
+  int32_t* input_row_sums = nullptr;
+  int32_t* aux_input_row_sums = nullptr;
+  int32_t* recurrent_row_sums = nullptr;
+  if (asymmetric_quantize_inputs) {
+    input_row_sums = row_sums;
+    aux_input_row_sums = row_sums;
+    if (aux_input_ptr_batch) {
+      aux_input_row_sums += num_units;
+    }
+    recurrent_row_sums = aux_input_row_sums + num_units;
+    if (*compute_row_sums) {
+      tensor_utils::ReductionSumVector(input_weights_ptr, input_row_sums,
+                                       num_units, input_size);
+      if (aux_input_ptr_batch) {
+        tensor_utils::ReductionSumVector(aux_input_weights_ptr,
+                                         aux_input_row_sums, num_units,
+                                         aux_input_size);
+      }
+      tensor_utils::ReductionSumVector(
+          recurrent_weights_ptr, recurrent_row_sums, num_units, num_units);
+      *compute_row_sums = false;
+    }
+  }
+
   if (output_batch_leading_dim == num_units) {
     // Output = bias
     tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
@@ -158,34 +189,28 @@ void RnnBatchStep(
     if (!tensor_utils::IsZeroVector(input_ptr_batch, batch_size * input_size)) {
       // Quantize input from float to uint8 + quantization params (scaling
       // factor).
-      float unused_min, unused_max;
-      // TODO(mirkov,raziel): replace this for-loop with a MACRO (or function)
-      // whichever is faster.
+      tensor_utils::BatchQuantizeFloats(
+          input_ptr_batch, batch_size, input_size, quantized_input_ptr_batch,
+          scaling_factors, zero_points, asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr_batch + offset, input_size,
-            quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= input_weights_scale;
       }
-
       // Output += input * input_weights
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           input_weights_ptr, num_units, input_size, quantized_input_ptr_batch,
-          scaling_factors, batch_size, output_ptr_batch);
+          scaling_factors, batch_size, output_ptr_batch,
+          /*per_channel_scale=*/nullptr, zero_points, accum_scratch,
+          input_row_sums, compute_row_sums, /*context=*/nullptr);
     }
 
     if (aux_input_ptr_batch &&
         !tensor_utils::IsZeroVector(aux_input_ptr_batch,
                                     batch_size * aux_input_size)) {
-      float unused_min, unused_max;
+      tensor_utils::BatchQuantizeFloats(
+          aux_input_ptr_batch, batch_size, aux_input_size,
+          aux_quantized_input_ptr_batch, scaling_factors, zero_points,
+          asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * aux_input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr_batch + offset, aux_input_size,
-            aux_quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= aux_input_weights_scale;
       }
 
@@ -193,20 +218,20 @@ void RnnBatchStep(
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_weights_ptr, num_units, aux_input_size,
           aux_quantized_input_ptr_batch, scaling_factors, batch_size,
-          output_ptr_batch);
+          output_ptr_batch, /*per_channel_scale=*/nullptr, zero_points,
+          accum_scratch, aux_input_row_sums, compute_row_sums,
+          /*context=*/nullptr);
     }
 
     // Save quantization and matmul computation for all zero input.
     if (!tensor_utils::IsZeroVector(hidden_state_ptr_batch,
                                     batch_size * num_units)) {
       // Quantize hidden_state
-      float unused_min, unused_max;
+      tensor_utils::BatchQuantizeFloats(
+          hidden_state_ptr_batch, batch_size, num_units,
+          quantized_hidden_state_ptr_batch, scaling_factors, zero_points,
+          asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * num_units;
-        tensor_utils::SymmetricQuantizeFloats(
-            hidden_state_ptr_batch + offset, num_units,
-            quantized_hidden_state_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= recurrent_weights_scale;
       }
 
@@ -214,7 +239,9 @@ void RnnBatchStep(
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           recurrent_weights_ptr, num_units, num_units,
           quantized_hidden_state_ptr_batch, scaling_factors, batch_size,
-          output_ptr_batch);
+          output_ptr_batch, /*per_channel_scale=*/nullptr, zero_points,
+          accum_scratch, recurrent_row_sums, compute_row_sums,
+          /*context=*/nullptr);
     }
 
     // Output = activation(Output) and update hidden_state
@@ -233,15 +260,10 @@ void RnnBatchStep(
     if (!tensor_utils::IsZeroVector(input_ptr_batch, batch_size * input_size)) {
       // Quantize input from float to uint8 + quantization params (scaling
       // factor).
-      float unused_min, unused_max;
-      // TODO(mirkov,raziel): replace this for-loop with a MACRO (or function)
-      // whichever is faster.
+      tensor_utils::BatchQuantizeFloats(
+          input_ptr_batch, batch_size, input_size, quantized_input_ptr_batch,
+          scaling_factors, zero_points, asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr_batch + offset, input_size,
-            quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= input_weights_scale;
       }
 
@@ -250,20 +272,20 @@ void RnnBatchStep(
         tensor_utils::MatrixBatchVectorMultiplyAccumulate(
             input_weights_ptr, num_units, input_size,
             quantized_input_ptr_batch + k * input_size, &scaling_factors[k],
-            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim);
+            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim,
+            /*per_channel_scale=*/nullptr, zero_points + k, accum_scratch,
+            input_row_sums, compute_row_sums, /*context=*/nullptr);
       }
     }
 
     if (aux_input_ptr_batch &&
         !tensor_utils::IsZeroVector(aux_input_ptr_batch,
                                     batch_size * aux_input_size)) {
-      float unused_min, unused_max;
+      tensor_utils::BatchQuantizeFloats(
+          aux_input_ptr_batch, batch_size, aux_input_size,
+          aux_quantized_input_ptr_batch, scaling_factors, zero_points,
+          asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * aux_input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr_batch + offset, aux_input_size,
-            aux_quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= aux_input_weights_scale;
       }
 
@@ -273,7 +295,9 @@ void RnnBatchStep(
             aux_input_weights_ptr, num_units, aux_input_size,
             aux_quantized_input_ptr_batch + k * aux_input_size,
             &scaling_factors[k],
-            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim);
+            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim,
+            /*per_channel_scale=*/nullptr, zero_points + k, accum_scratch,
+            aux_input_row_sums, compute_row_sums, /*context=*/nullptr);
       }
     }
 
@@ -281,13 +305,11 @@ void RnnBatchStep(
     if (!tensor_utils::IsZeroVector(hidden_state_ptr_batch,
                                     batch_size * num_units)) {
       // Quantize hidden_state
-      float unused_min, unused_max;
+      tensor_utils::BatchQuantizeFloats(
+          hidden_state_ptr_batch, batch_size, num_units,
+          quantized_hidden_state_ptr_batch, scaling_factors, zero_points,
+          asymmetric_quantize_inputs);
       for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * num_units;
-        tensor_utils::SymmetricQuantizeFloats(
-            hidden_state_ptr_batch + offset, num_units,
-            quantized_hidden_state_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
         scaling_factors[b] *= recurrent_weights_scale;
       }
 
@@ -296,8 +318,10 @@ void RnnBatchStep(
         tensor_utils::MatrixBatchVectorMultiplyAccumulate(
             recurrent_weights_ptr, num_units, num_units,
             quantized_hidden_state_ptr_batch + k * num_units,
-            &scaling_factors[k],
-            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim);
+            &scaling_factors[k], /*n_batch=*/1,
+            output_ptr_batch + k * output_batch_leading_dim,
+            /*per_channel_scale=*/nullptr, zero_points + k, accum_scratch,
+            recurrent_row_sums, compute_row_sums, /*context=*/nullptr);
       }
     }
 

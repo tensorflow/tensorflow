@@ -69,18 +69,18 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
       # Jump to that directory until this test is done.
       with self.tempWorkingDir(tempdir):
         # Save training snapshots to a relative path.
-        traindir = "train/"
+        traindir = "train"
         os.mkdir(traindir)
         # Collides with the default name of the checkpoint state file.
         filepath = os.path.join(traindir, "checkpoint")
 
         with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Should fail.
           saver = saver_module.Saver(sharded=False)
-          with self.assertRaisesRegexp(ValueError, "collides with"):
+          with self.assertRaisesRegex(ValueError, "collides with"):
             saver.save(sess, filepath)
 
           # Succeeds: the file will be named "checkpoint-<step>".
@@ -109,7 +109,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
       with self.tempWorkingDir(tempdir):
 
         # Save training snapshots to a relative path.
-        traindir = "train/"
+        traindir = "train"
         os.mkdir(traindir)
 
         filename = "snapshot"
@@ -123,7 +123,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           save = saver_module.Saver({"v0": v0})
 
           # Record a short training history.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           save.save(sess, filepath, global_step=0)
           self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
@@ -136,7 +136,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
           # Create a new saver.
           save = saver_module.Saver({"v0": v0})
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Get the most recent checkpoint name from the training history file.
           name = checkpoint_management.latest_checkpoint(traindir)
@@ -278,7 +278,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
@@ -297,7 +297,7 @@ class SaverUtilsTest(test.TestCase):
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
       with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         saver = saver_module.Saver(write_version=version)
         prefixes.append(
             saver.save(sess, os.path.join(self._base_dir, str(version))))
@@ -312,7 +312,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
@@ -507,7 +507,7 @@ class CheckpointManagerTest(test.TestCase):
     with test.mock.patch.object(logging, "warning") as mock_log:
       second_manager = checkpoint_management.CheckpointManager(
           checkpoint, directory, max_to_keep=1)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args),
           "behind the last preserved checkpoint timestamp")
     # We should err on the side of keeping checkpoints around when we're not

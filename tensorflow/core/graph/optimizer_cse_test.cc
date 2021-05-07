@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <utility>
 #include <vector>
+
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -346,8 +347,8 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
   EXPECT_EQ(node_set.count("n/_3(Const)") + node_set.count("n/_4(Const)"), 1);
 }
 
-static void BM_CSE(int iters, int op_nodes) {
-  testing::StopTiming();
+void BM_CSE(::testing::benchmark::State& state) {
+  const int op_nodes = state.range(0);
   string s;
   for (int in = 0; in < 10; in++) {
     s += strings::Printf("node { name: 'in%04d' op: 'Input'}", in);
@@ -362,7 +363,8 @@ static void BM_CSE(int iters, int op_nodes) {
   }
 
   bool first = true;
-  while (iters > 0) {
+  for (auto i : state) {
+    state.PauseTiming();
     Graph* graph = new Graph(OpRegistry::Global());
     InitGraph(s, graph);
     int N = graph->num_node_ids();
@@ -371,13 +373,12 @@ static void BM_CSE(int iters, int op_nodes) {
       first = false;
     }
     {
-      testing::StartTiming();
+      state.ResumeTiming();
       OptimizeCSE(graph, nullptr);
-      testing::StopTiming();
+      state.PauseTiming();
     }
-    iters -= N;  // Our benchmark units are individual graph nodes,
-                 // not whole graphs
     delete graph;
+    state.ResumeTiming();
   }
 }
 BENCHMARK(BM_CSE)->Arg(1000)->Arg(10000);

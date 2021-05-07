@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -51,7 +56,14 @@ class SqueezeOpModel : public BaseSqueezeOpModel {
 
   void SetInput(std::initializer_list<T> data) { PopulateTensor(input_, data); }
 
+  void SetStringInput(std::initializer_list<string> data) {
+    PopulateStringTensor(input_, data);
+  }
+
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<string> GetStringOutput() {
+    return ExtractVector<string>(output_);
+  }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 };
 
@@ -115,6 +127,37 @@ TYPED_TEST(SqueezeOpTest, SqueezeAllDims) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+}
+
+TEST(SqueezeOpTest, SqueezeAllString) {
+  std::initializer_list<std::string> data = {"a", "b"};
+  SqueezeOpModel<std::string> m({GetTensorType<std::string>(), {1, 2, 1}},
+                                {GetTensorType<std::string>(), {2}}, {});
+  m.SetStringInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a", "b"}));
+}
+
+TEST(SqueezeOpTest, SqueezeNegativeAxisString) {
+  std::initializer_list<std::string> data = {"a", "b"};
+  SqueezeOpModel<std::string> m({GetTensorType<std::string>(), {1, 2, 1}},
+                                {GetTensorType<std::string>(), {24}}, {-1});
+  m.SetStringInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a", "b"}));
+}
+
+TEST(SqueezeOpTest, SqueezeAllDimsString) {
+  std::initializer_list<std::string> data = {"a"};
+  SqueezeOpModel<std::string> m(
+      {GetTensorType<std::string>(), {1, 1, 1, 1, 1, 1, 1}},
+      {GetTensorType<std::string>(), {1}}, {});
+  m.SetStringInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a"}));
 }
 
 }  // namespace

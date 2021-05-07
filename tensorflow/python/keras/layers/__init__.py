@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras layers API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import tf2
 
 # Generic layers.
@@ -43,20 +39,14 @@ from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Res
 from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
 
 # Preprocessing layers.
-if tf2.enabled():
-  from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
-  from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
-  NormalizationV2 = Normalization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
-  TextVectorizationV2 = TextVectorization
-else:
-  from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
-  from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
-  NormalizationV1 = Normalization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
-  TextVectorizationV1 = TextVectorization
+from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
+from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
+from tensorflow.python.keras.layers.preprocessing.discretization import Discretization
+from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
+from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
+from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
+from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup
+from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
@@ -70,6 +60,7 @@ from tensorflow.python.keras.layers.advanced_activations import Softmax
 from tensorflow.python.keras.layers.convolutional import Conv1D
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.keras.layers.convolutional import Conv3D
+from tensorflow.python.keras.layers.convolutional import Conv1DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv2DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv3DTranspose
 from tensorflow.python.keras.layers.convolutional import SeparableConv1D
@@ -118,6 +109,12 @@ from tensorflow.python.keras.layers.dense_attention import Attention
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
+# Einsum-based dense layer/
+from tensorflow.python.keras.layers.einsum_dense import EinsumDense
+
+# Multi-head Attention layer.
+from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention
+
 # Locally-connected layers.
 from tensorflow.python.keras.layers.local import LocallyConnected1D
 from tensorflow.python.keras.layers.local import LocallyConnected2D
@@ -146,16 +143,16 @@ from tensorflow.python.keras.layers.noise import GaussianNoise
 from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
-from tensorflow.python.keras.layers.normalization import LayerNormalization
-from tensorflow.python.keras.layers.normalization_v2 import SyncBatchNormalization
+from tensorflow.python.keras.layers.normalization.layer_normalization import LayerNormalization
+from tensorflow.python.keras.layers.normalization.batch_normalization import SyncBatchNormalization
 
 if tf2.enabled():
-  from tensorflow.python.keras.layers.normalization_v2 import BatchNormalization
-  from tensorflow.python.keras.layers.normalization import BatchNormalization as BatchNormalizationV1
+  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization
+  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization as BatchNormalizationV1
   BatchNormalizationV2 = BatchNormalization
 else:
-  from tensorflow.python.keras.layers.normalization import BatchNormalization
-  from tensorflow.python.keras.layers.normalization_v2 import BatchNormalization as BatchNormalizationV2
+  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization
+  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization as BatchNormalizationV2
   BatchNormalizationV1 = BatchNormalization
 
 # Kernelized layers.
@@ -242,9 +239,24 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 
 # Serialization functions
+from tensorflow.python.keras.layers import serialization
 from tensorflow.python.keras.layers.serialization import deserialize
 from tensorflow.python.keras.layers.serialization import serialize
 
-del absolute_import
-del division
-del print_function
+
+class VersionAwareLayers(object):
+  """Utility to be used internally to access layers in a V1/V2-aware fashion.
+
+  When using layers within the Keras codebase, under the constraint that
+  e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
+  corresponding to the current runtime (TF1 or TF2), do not simply access
+  `layers.BatchNormalization` since it would ignore e.g. an early
+  `compat.v2.disable_v2_behavior()` call. Instead, use an instance
+  of `VersionAwareLayers` (which you can use just like the `layers` module).
+  """
+
+  def __getattr__(self, name):
+    serialization.populate_deserializable_objects()
+    if name in serialization.LOCAL.ALL_OBJECTS:
+      return serialization.LOCAL.ALL_OBJECTS[name]
+    return super(VersionAwareLayers, self).__getattr__(name)

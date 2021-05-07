@@ -22,16 +22,20 @@ def _arm_compiler_configure_impl(repository_ctx):
         python_include_path = "/usr/include/python2.7"
     _tpl(repository_ctx, "cc_config.bzl", {
         "%{ARM_COMPILER_PATH}%": str(repository_ctx.path(
-            repository_ctx.attr.remote_config_repo,
+            repository_ctx.attr.remote_config_repo_arm,
+        )),
+        "%{AARCH64_COMPILER_PATH}%": str(repository_ctx.path(
+            repository_ctx.attr.remote_config_repo_aarch64,
         )),
         "%{PYTHON_INCLUDE_PATH}%": python_include_path,
     })
-    repository_ctx.symlink(repository_ctx.attr.build_file, "BUILD")
+    repository_ctx.symlink(Label(repository_ctx.attr.build_file), "BUILD")
 
 arm_compiler_configure = repository_rule(
     implementation = _arm_compiler_configure_impl,
     attrs = {
-        "remote_config_repo": attr.string(mandatory = False, default = ""),
-        "build_file": attr.label(),
+        "remote_config_repo_arm": attr.string(mandatory = False, default = ""),
+        "remote_config_repo_aarch64": attr.string(mandatory = False, default = ""),
+        "build_file": attr.string(),
     },
 )

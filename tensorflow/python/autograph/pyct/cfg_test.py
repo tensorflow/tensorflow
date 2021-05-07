@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
@@ -1030,16 +1032,117 @@ class AstToCfgTest(test.TestCase):
       a = lambda b: a + b
       return a
 
-    graph, = self._build_cfg(test_fn).values()
+    graphs = self._build_cfg(test_fn)
+    for k, v in graphs.items():
+      if isinstance(k, gast.Lambda):
+        lam_graph = v
+      else:
+        fn_graph = v
 
     self.assertGraphMatches(
-        graph,
+        fn_graph,
         (
-            ('a', 'a = (lambda b: (a + b))', 'return a'),
+            ('a', '(lambda b: (a + b))', 'a = (lambda b: (a + b))'),
+            ('(lambda b: (a + b))', 'a = (lambda b: (a + b))', 'return a'),
             ('a = (lambda b: (a + b))', 'return a', None),
         ),
     )
-    self.assertGraphEnds(graph, 'a', ('return a',))
+    self.assertGraphEnds(fn_graph, 'a', ('return a',))
+    self.assertGraphMatches(
+        lam_graph,
+        (
+            ('b', '(a + b)', None),
+        ),
+    )
+    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+
+  def test_lambda_in_return(self):
+
+    def test_fn(a):
+      return lambda b: a + b
+
+    graphs = self._build_cfg(test_fn)
+    for k, v in graphs.items():
+      if isinstance(k, gast.Lambda):
+        lam_graph = v
+      else:
+        fn_graph = v
+
+    self.assertGraphMatches(
+        fn_graph,
+        (
+            ('a', '(lambda b: (a + b))', 'return (lambda b: (a + b))'),
+            ('(lambda b: (a + b))', 'return (lambda b: (a + b))', None),
+        ),
+    )
+    self.assertGraphEnds(fn_graph, 'a', ('return (lambda b: (a + b))',))
+    self.assertGraphMatches(
+        lam_graph,
+        (
+            ('b', '(a + b)', None),
+        ),
+    )
+    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+
+  def test_lambda_in_while_loop_test(self):
+
+    def test_fn(a):
+      while (lambda b: a + b)(a):
+        pass
+
+    graphs = self._build_cfg(test_fn)
+    for k, v in graphs.items():
+      if isinstance(k, gast.Lambda):
+        lam_graph = v
+      else:
+        fn_graph = v
+
+    self.assertGraphMatches(
+        fn_graph,
+        (
+            ('a', '(lambda b: (a + b))', '(lambda b: (a + b))(a)'),
+            (('(lambda b: (a + b))', 'pass'), '(lambda b: (a + b))(a)', 'pass'),
+            ('(lambda b: (a + b))(a)', 'pass', '(lambda b: (a + b))(a)'),
+        ),
+    )
+    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: (a + b))(a)',))
+    self.assertGraphMatches(
+        lam_graph,
+        (
+            ('b', '(a + b)', None),
+        ),
+    )
+    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+
+  def test_lambda_in_for_loop_test(self):
+
+    def test_fn(a):
+      for _ in (lambda b: a + b)(a):
+        pass
+
+    graphs = self._build_cfg(test_fn)
+    for k, v in graphs.items():
+      if isinstance(k, gast.Lambda):
+        lam_graph = v
+      else:
+        fn_graph = v
+
+    self.assertGraphMatches(
+        fn_graph,
+        (
+            ('a', '(lambda b: (a + b))', '(lambda b: (a + b))(a)'),
+            (('(lambda b: (a + b))', 'pass'), '(lambda b: (a + b))(a)', 'pass'),
+            ('(lambda b: (a + b))(a)', 'pass', '(lambda b: (a + b))(a)'),
+        ),
+    )
+    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: (a + b))(a)',))
+    self.assertGraphMatches(
+        lam_graph,
+        (
+            ('b', '(a + b)', None),
+        ),
+    )
+    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
 
   def test_pass(self):
 

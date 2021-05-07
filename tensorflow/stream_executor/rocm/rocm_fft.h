@@ -20,11 +20,23 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
+#if TENSORFLOW_USE_ROCM
+
+#include "rocm/rocm_config.h"
+
+#if TF_ROCM_VERSION < 40100
 #include "rocm/include/rocfft/hipfft.h"
+#else
+#include "rocm/include/hipfft/hipfft.h"
+#endif
+
+#endif
+
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace stream_executor {
 
@@ -49,6 +61,7 @@ class ROCMFftPlan : public fft::Plan {
         plan_(),
         fft_type_(fft::Type::kInvalid),
         scratch_(nullptr),
+        scratch_size_bytes_(0),
         is_initialized_(false) {}
   ~ROCMFftPlan() override;
 
@@ -75,14 +88,21 @@ class ROCMFftPlan : public fft::Plan {
                           uint64 *elem_count, fft::Type type,
                           ScratchAllocator *scratch_allocator);
 
+  port::Status UpdateScratchAllocator(Stream *stream,
+                                      ScratchAllocator *scratch_allocator);
+
+  ScratchAllocator *GetScratchAllocator() const { return scratch_allocator_; }
+
  protected:
   bool IsInitialized() const { return is_initialized_; }
+  ScratchAllocator *scratch_allocator_;
 
  private:
   GpuExecutor *parent_;
   hipfftHandle plan_;
   fft::Type fft_type_;
   DeviceMemory<uint8> scratch_;
+  size_t scratch_size_bytes_;
   bool is_initialized_;
 };
 

@@ -28,7 +28,7 @@ END
   summary: "Computes the mean along sparse segments of a tensor."
   description: <<END
 Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
-misisng, the `output` tensor at that position will be zeroed.
+missing, the `output` tensor at that position will be zeroed.
 
 Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)

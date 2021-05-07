@@ -29,7 +29,7 @@ def make_range_tests(options):
 
   test_parameters = [{
       "dtype": [tf.int32, tf.float32],
-      "offset": [10, 100, 1000],
+      "offset": [10, 100, 1000, 0],
       "delta": [1, 2, 3, 4, -1, -2, -3, -4],
   }]
 

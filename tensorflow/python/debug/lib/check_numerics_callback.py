@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,7 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Many ops have benign NaN outputs, and running them with check_numerics
 # on will create unwanted errors
-# TODO(b/142497024): Replace this whitelist with function decorators in the ops
+# TODO(b/142497024): Replace this allowlist with function decorators in the ops
 IGNORE_OP_OUTPUTS = (
     # For FusedBatchNorm, if the input tensor is empty then batch_mean and
     # batch_variance will be NaN. reserve_space holds intermediate values
@@ -88,6 +89,10 @@ SAFE_OPS = (
 )
 
 _state = threading.local()
+
+_check_numerics_callback_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/debugging/check_numerics_callback_create_counter",
+    "Counter for number of times the check_numerics op callback is created.")
 
 
 def limit_string_length(string, max_len=50):
@@ -270,7 +275,9 @@ class CheckNumericsCallback(object):
                   output,
                   inputs,
                   graph=graph,
-                  traceback=output.op.traceback))
+                  traceback=output.op.traceback,
+                  stack_height_limit=self._stack_height_limit,
+                  path_length_limit=self._path_length_limit))
           _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
           instrumented_outputs.append(self._get_output_tensor(
               op_type_bytes, output, checked_output, is_v1_graph_mode))
@@ -377,13 +384,13 @@ def enable_check_numerics(stack_height_limit=30,
      x = -1.0
 
      # When the following line runs, a function graph will be compiled
-     # from the Python function `log_x_plus_1()`. Due to the
+     # from the Python function `square_log_x_plus_1()`. Due to the
      # `enable_check_numerics()` call above, the graph will contain
      # numerics checking ops that will run during the function graph's
      # execution. The function call generates an -infinity when the Log
      # (logarithm) op operates on the output tensor of the Add op.
      # The program errors out at this line, printing an error message.
-     y = log_x_plus_1(x)
+     y = square_log_x_plus_1(x)
      z = -y
     ```
 
@@ -405,6 +412,21 @@ def enable_check_numerics(stack_height_limit=30,
      z = tf.matmul(y, y)
      ```
 
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.enable_check_numerics()` as this API uses automatic outside
+  compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.enable_check_numerics()
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
+
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.
       Applicable only to ops in `tf.function`s (graphs).
@@ -419,6 +441,7 @@ def enable_check_numerics(stack_height_limit=30,
   logging.info(
       "Enabled check-numerics callback in thread %s",
       threading.current_thread().name)
+  _check_numerics_callback_create_counter.get_cell().increase_by(1)
 
 
 @tf_export("debugging.disable_check_numerics")
