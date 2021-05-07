@@ -32,9 +32,10 @@ namespace mlir {
 namespace tosa {
 
 // Lowers the Unpack operator to TOSA.
-llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
-                                           Operation* op, Value input_value,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
+                                                   Operation* op,
+                                                   Value input_value,
+                                                   int32_t axis);
 
 // Lowers the Select operator to TOSA.
 llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
@@ -115,17 +116,14 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
                                             StringAttr data_format);
 
 // Lowers Split to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value input_value, int32_t num_split,
-                                          int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, int32_t num_split, int32_t axis);
 
 // Lowers SplitV to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
-                                           Operation* op, Value result_value,
-                                           Value input_value,
-                                           SmallVector<int32_t, 4>& size_split,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitVOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, SmallVector<int32_t, 4>& size_split, int32_t axis);
 
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(

@@ -1990,7 +1990,7 @@ LogicalResult ConvertTFLUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertUnpackOp(rewriter, op, tfl_unpack_op.input(), axis_i32);
 
   if (!results) return failure();
@@ -2024,7 +2024,7 @@ LogicalResult ConvertTFLSplitOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tfl_split_op.getResult(0),
                      tfl_split_op.value(), num_split, axis);
 
@@ -2062,7 +2062,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tfl_splitv_op.getResult(0),
                       tfl_splitv_op.value(), size_split, axis);
 

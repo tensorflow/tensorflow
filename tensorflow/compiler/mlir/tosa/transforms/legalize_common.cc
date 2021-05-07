@@ -66,9 +66,10 @@ void tensorflow_nudge(const float min, const float max, const int quant_min,
 }
 
 // Lowers the Unpack operator to TOSA
-llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
-                                           Operation* op, Value input_value,
-                                           int32_t axis) {
+llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
+                                                   Operation* op,
+                                                   Value input_value,
+                                                   int32_t axis) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -76,15 +77,12 @@ llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
   auto input_shape = input_type.getShape();
   int64_t input_rank = input_shape.size();
 
-  SmallVector<Value, 4> results_vec;
+  SmallVector<Value> results_vec;
 
   // Negative axis allowed as long as it's within [-input_rank, input_rank).
   if (axis < 0) axis += input_rank;
 
   assert(axis >= 0 && axis < input_shape.size());
-
-  // A list of the output types for each slice op
-  SmallVector<Type, 4> outs_type_vec;
 
   // Step 1: transpose 'axis' to leftmost dimension.
   Value transposed_input_value;
@@ -154,18 +152,10 @@ llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
                               transposed_input_type.getElementType()),
         a2_slice_op.getResult(), rewriter.getI64ArrayAttr(shape_vals));
 
-    outs_type_vec.push_back(RankedTensorType::get(
-        ArrayRef<int64_t>(shape_vals), transposed_input_type.getElementType()));
-
     results_vec.push_back(a3_reshape_op.getResult());
   }
 
-  // Combine the sequence of tosa.slice() ops into a list
-  // using the IdentityN operator.
-  return rewriter
-      .create<tosa::IdentityNOp>(op->getLoc(), ArrayRef<Type>(outs_type_vec),
-                                 results_vec)
-      .getResults();
+  return results_vec;
 }
 
 // Lowers the Select operator to TOSA.
@@ -1469,10 +1459,9 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 }
 
 // Lowers Split to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value input_value, int32_t num_split,
-                                          int32_t axis) {
+llvm::Optional<SmallVector<Value>> convertSplitOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, int32_t num_split, int32_t axis) {
   // This lowering creates num_split slice ops and ties them together
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
@@ -1493,16 +1482,13 @@ llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
 
   auto input_shape = input_type.getShape();
 
-  SmallVector<Value, 4> results_vec;
+  SmallVector<Value> results_vec;
 
   assert(axis > 0 && axis < input_shape.size());
   assert((input_shape[axis] % num_split) == 0);
   assert(num_split > 0);
 
   int64_t slice_size = input_shape[axis] / num_split;
-
-  SmallVector<Type, 4>
-      outs_type_vec;  // A list of the output types for each slice op
 
   for (int i = 0; i < num_split; i++) {
     // Each slice has a different begining point.
@@ -1522,9 +1508,6 @@ llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    outs_type_vec.push_back(RankedTensorType::get(
-        ArrayRef<int64_t>(size_vals), result_type.getElementType()));
-
     auto slice_op = rewriter.create<tosa::SliceOp>(
         op->getLoc(),
         RankedTensorType::get(ArrayRef<int64_t>(size_vals),
@@ -1534,20 +1517,13 @@ llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
     results_vec.push_back(slice_op.getResult());
   }
 
-  // Combine the sequence of tosa.slice() ops into a list
-  // using the IdentityN operator
-  return rewriter
-      .create<tosa::IdentityNOp>(op->getLoc(), ArrayRef<Type>(outs_type_vec),
-                                 results_vec)
-      .getResults();
+  return results_vec;
 }
 
 // Lowers SplitV to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
-                                           Operation* op, Value result_value,
-                                           Value input_value,
-                                           SmallVector<int32_t, 4>& size_split,
-                                           int32_t axis) {
+llvm::Optional<SmallVector<Value>> convertSplitVOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, SmallVector<int32_t, 4>& size_split, int32_t axis) {
   // This lowering creates num_split slice ops and ties them together
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
@@ -1568,7 +1544,7 @@ llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
 
   auto input_shape = input_type.getShape();
 
-  SmallVector<Value, 4> results_vec;
+  SmallVector<Value> results_vec;
 
   assert(axis > 0 && axis < input_shape.size());
   int32_t size_split_sum = 0;
@@ -1578,10 +1554,6 @@ llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
 
   // The split sizes must sum up to the size of the axis being split
   assert(size_split_sum == input_shape[axis]);
-
-  // Create num_split slice ops:
-  SmallVector<Type, 4>
-      outs_type_vec;  // A list of the output types for each slice op
 
   int32_t curr_split_start = 0;
   for (int i = 0; i < size_split.size(); i++) {
@@ -1602,9 +1574,6 @@ llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    outs_type_vec.push_back(RankedTensorType::get(
-        ArrayRef<int64_t>(size_vals), result_type.getElementType()));
-
     auto slice_op = rewriter.create<tosa::SliceOp>(
         op->getLoc(),
         RankedTensorType::get(ArrayRef<int64_t>(size_vals),
@@ -1617,12 +1586,7 @@ llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
     curr_split_start += size_split[i];
   }
 
-  // Combine the sequence of tosa.slice() ops into a list
-  // using the IdentityN operator
-  return rewriter
-      .create<tosa::IdentityNOp>(op->getLoc(), ArrayRef<Type>(outs_type_vec),
-                                 results_vec)
-      .getResults();
+  return results_vec;
 }
 
 // Lowers StridedSlice to a sequence of TOSA ops.
