@@ -69,6 +69,11 @@ endif
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
 
+ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "visionp6_ao"))
+  LDFLAGS += -mlsp=sim-stacklocal -lidma-xtos
+  CCFLAGS += -O3
+endif
+
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_binary.sh
 
 # TODO(b/158651472): Fix the memory_arena_threshold_test
@@ -86,4 +91,9 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/network_tester/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+
+ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "visionp6_ao"))
+  CXXFLAGS:=$(filter-out -Wshadow, $(CXXFLAGS))
+  CCFLAGS:=$(filter-out -Wshadow, $(CCFLAGS))
+endif
 
