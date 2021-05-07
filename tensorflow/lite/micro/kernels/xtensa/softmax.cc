@@ -258,35 +258,44 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+  SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
   TFLITE_DCHECK(node->user_data != nullptr);
 
-  if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
+  if (input->type == kTfLiteInt8) {
+    if (output->type == kTfLiteInt16) {
 #if defined(HIFIMINI)
-    return SoftmaxHifimini(*static_cast<OpData*>(node->user_data),
+      return SoftmaxHifimini(*static_cast<OpData*>(node->user_data),
                            tflite::micro::GetTensorShape(input),
                            tflite::micro::GetTensorData<int8_t>(input),
                            tflite::micro::GetTensorShape(output),
                            tflite::micro::GetTensorData<int16_t>(output));
 #elif defined(FUSION_F1) || defined(HIFI5)
-    return EvalHifi(static_cast<OpData*>(node->user_data), input, output,
+      return EvalHifi(static_cast<OpData*>(node->user_data), input, output,
                     context);
 #else
-    SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
-    tflite::reference_ops::Softmax(
+      tflite::reference_ops::Softmax(
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int16_t>(output));
+#endif
+    } else {
+      tflite::reference_ops::Softmax(
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
+    }
+  } else {
+    tflite::reference_ops::SoftmaxInt16(
         op_data, tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
+        tflite::micro::GetTensorData<int16_t>(input),
         tflite::micro::GetTensorShape(output),
         tflite::micro::GetTensorData<int16_t>(output));
-    return kTfLiteOk;
-#endif
-  } else {
-    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                       TfLiteTypeGetName(input->type), input->type);
-    return kTfLiteError;
   }
+  return kTfLiteOk;
 }
-
-}  // namespace
+}
 
 TfLiteRegistration Register_SOFTMAX() {
   return {/*init=*/Init,

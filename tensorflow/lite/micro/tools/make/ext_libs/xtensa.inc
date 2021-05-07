@@ -86,3 +86,31 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "fusion_f1 hifi4"))
     -I$(NNLIB_PATH)/algo/ndsp/hifi4/include/
 
 endif
+
+ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "visionp6_ao"))
+
+    DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/xtensa_download.sh ${MAKEFILE_DIR}/downloads visionp6_ao)
+    ifneq ($(DOWNLOAD_RESULT), SUCCESS)       $(error Something went wrong with the xtensa download: $(DOWNLOAD_RESULT))
+    endif
+
+    XTENSA_PATH = $(MAKEFILE_DIR)/downloads
+    NNLIB = xi_annlib_vision_p6
+    MICROLITE_CC_SRCS += \
+                         $(XTENSA_PATH)/$(NNLIB)/utils.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/pool.cc  \
+                         $(XTENSA_PATH)/$(NNLIB)/pool_opt.cc  \
+                         $(XTENSA_PATH)/$(NNLIB)/pool_ref.cc  \
+                         $(XTENSA_PATH)/$(NNLIB)/pool_xi.cc   \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnarena.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnncmp.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnndebug.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnlsp.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnperf.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnrt.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnrtcompression.cc \
+                         $(XTENSA_PATH)/$(NNLIB)/lib_common/cnnrtxmp.cc
+
+    INCLUDES += -I$(XTENSA_PATH)/$(NNLIB)/include/ \
+                -I$(XTENSA_PATH)/$(NNLIB)/
+
+endif
