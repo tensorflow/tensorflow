@@ -37,19 +37,17 @@ namespace tensorflow {
   }
 
 bool CudnnUseFrontend() {
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
   static bool result = [] {
     bool value = false;
+#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
     Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
+#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
     return value;
   }();
   return result;
-#else
-  return false;
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
 }
 
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
