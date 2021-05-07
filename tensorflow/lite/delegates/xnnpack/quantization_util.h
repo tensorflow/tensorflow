@@ -24,10 +24,18 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+// Dequantizes INT8 value using given zero point and scale.
+// packed_s8_data should contain raw tensor data corresponding to
+// a given tensor_shape. unpacked_fp32_data should be preallocated
+// to have the same size.
 void DequantizeInt8(const int8_t* packed_s8_data, float* unpacked_fp32_data,
                     const RuntimeShape& tensor_shape,
                     int32_t zero_point, double scale);
 
+// Dequantizes INT8 value using given zero point and scale.
+// packed_fp16_data should have tensor_elements size and contain raw
+// FP16 tensor data. unpacked_fp32_data should be preallocated to
+// have the same size.
 void DequantizeFloat16(const uint16_t* packed_fp16_data, float* unpacked_fp32_data,
                        size_t tensor_elements);
 

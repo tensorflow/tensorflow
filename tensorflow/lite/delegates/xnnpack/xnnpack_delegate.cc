@@ -3283,6 +3283,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                                  "unsupported per channel dequantization for INT8 "
                                  "tensor %d in XNNPACK delegate",
                                  t);
+              TfLiteIntArrayFree(nodes_to_delegate);
               return nullptr;  // Hard error.
             }
 
