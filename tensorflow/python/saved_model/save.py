@@ -1219,7 +1219,7 @@ def _build_meta_graph_impl(obj,
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
 
   if saved_object_metadata and raise_metadata_warning:
-    tf_logging.warn(
+    tf_logging.warning(
         'FOR KERAS USERS: The object that you are saving contains one or more '
         'Keras models or layers. If you are loading the SavedModel with '
         '`tf.keras.models.load_model`, continue reading (otherwise, you may '
@@ -1231,8 +1231,8 @@ def _build_meta_graph_impl(obj,
         'that can be recovered as Keras models (this will apply in TF 2.5).'
         '\n\nFOR DEVS: If you are overwriting _tracking_metadata in your class,'
         ' this property has been used to save metadata in the SavedModel. The '
-        'metadta field will be deprecated soon, so please move the metadata to '
-        'a different file.')
+        'metadata field will be deprecated soon, so please move the metadata to'
+        ' a different file.')
 
   return (meta_graph_def, exported_graph, object_saver, asset_info,
           saveable_view.nodes, saveable_view.node_paths)

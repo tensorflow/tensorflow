@@ -1203,6 +1203,20 @@ gentbl(
     deps = [":SparseTensorTdFiles"],
 )
 
+gentbl(
+    name = "SparseTensorPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name SparseTensor",
+            "include/mlir/Dialect/SparseTensor/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SparseTensor/Transforms/Passes.td",
+    deps = [":PassBaseTdFiles"],
+)
+
 cc_library(
     name = "SparseTensor",
     srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
@@ -1220,15 +1234,23 @@ cc_library(
 cc_library(
     name = "SparseTensorTransforms",
     srcs = glob(["lib/Dialect/SparseTensor/Transforms/*.cpp"]),
-    hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Transforms.h"],
+    hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Passes.h"],
     includes = ["include"],
     deps = [
         ":IR",
         ":LLVMDialect",
+        ":LinalgOps",
+        ":LinalgTransforms",
         ":MemRefDialect",
+        ":Pass",
+        ":SCFDialect",
         ":SparseTensor",
+        ":SparseTensorPassIncGen",
         ":StandardOps",
+        ":StandardOpsTransforms",
         ":Transforms",
+        ":VectorOps",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -4361,6 +4383,7 @@ cc_library(
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
         ":SparseTensor",
+        ":SparseTensorTransforms",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",

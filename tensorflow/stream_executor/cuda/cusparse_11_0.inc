@@ -6969,7 +6969,7 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
                   bufferSize);
 }
 
-#if CUDA_VERSION >= 11020
+#if CUSPARSE_VERSION >= 11400
 
 cusparseStatus_t CUSPARSEAPI cusparseSDDMM_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
@@ -7016,6 +7016,6 @@ cusparseStatus_t CUSPARSEAPI cusparseSDDMM(
                   alg, externalBuffer);
 }
 
-#endif  // CUDA_VERSION >= 11020
+#endif  // CUSPARSE_VERSION >= 11400
 
 }  // extern "C"

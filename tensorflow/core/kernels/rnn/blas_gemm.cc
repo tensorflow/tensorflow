@@ -52,8 +52,9 @@ void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
   bool blas_launch_status =
       ctx->op_device_context()
           ->stream()
-          ->ThenBlasGemm(trans[transa], trans[transb], m, n, k, alpha, a_ptr,
-                         lda, b_ptr, ldb, beta, &c_ptr, ldc)
+          ->ThenBlasGemm(trans[transa], trans[transb], m, n, k,
+                         static_cast<T>(alpha), a_ptr, lda, b_ptr, ldb,
+                         static_cast<T>(beta), &c_ptr, ldc)
           .ok();
   OP_REQUIRES(ctx, blas_launch_status, errors::Aborted("CuBlasGemm failed!"));
 #else

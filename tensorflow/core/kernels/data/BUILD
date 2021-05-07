@@ -29,6 +29,8 @@ exports_files([
     "optimize_dataset_op.h",
     "optional_ops.cc",
     "optional_ops.h",
+    "reduce_dataset_op.h",
+    "reduce_dataset_op.cc",
     "repeat_dataset_op.h",
     "repeat_dataset_op.cc",
     "tensor_slice_dataset_op.cc",
@@ -919,13 +921,29 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "reduce_dataset_op",
+    srcs = ["reduce_dataset_op.cc"],
+    hdrs = ["reduce_dataset_op.h"],
+    deps = [
+        ":iterator_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
 tf_cc_test(
     name = "reduce_dataset_op_test",
     size = "small",
     srcs = ["reduce_dataset_op_test.cc"],
     deps = [
-        ":iterator_ops",
         ":range_dataset_op",
+        ":reduce_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1427,6 +1445,7 @@ tf_kernel_library(
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
         ":range_dataset_op",
+        ":reduce_dataset_op",
         ":repeat_dataset_op",
         ":shard_dataset_op",
         ":shuffle_dataset_op",

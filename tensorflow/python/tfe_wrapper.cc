@@ -413,26 +413,26 @@ class EagerContextThreadLocalDataWrapper {
     GetData()->invoking_op_callbacks = v;
   }
 
-  py::handle get_device_name() const {
+  py::object get_device_name() const {
     return GetPyObject(&GetData()->device_name);
   }
   void set_device_name(py::handle v) {
     SetPyObject(v, &GetData()->device_name);
   }
 
-  py::handle get_scope_name() const {
+  py::object get_scope_name() const {
     return GetPyObject(&GetData()->scope_name);
   }
   void set_scope_name(py::handle v) { SetPyObject(v, &GetData()->scope_name); }
 
-  py::handle get_device_spec() const {
+  py::object get_device_spec() const {
     return GetPyObject(&GetData()->device_spec);
   }
   void set_device_spec(py::handle v) {
     SetPyObject(v, &GetData()->device_spec);
   }
 
-  py::handle get_function_call_options() const {
+  py::object get_function_call_options() const {
     return GetPyObject(&GetData()->function_call_options);
   }
   void set_function_call_options(py::handle v) {
@@ -442,7 +442,7 @@ class EagerContextThreadLocalDataWrapper {
   py::handle get_executor() const { return GetPyObject(&GetData()->executor); }
   void set_executor(py::handle v) { SetPyObject(v, &GetData()->executor); }
 
-  py::handle get_op_callbacks() const {
+  py::object get_op_callbacks() const {
     return GetPyObject(&GetData()->op_callbacks);
   }
   void set_op_callbacks(py::handle v) {
@@ -459,9 +459,8 @@ class EagerContextThreadLocalDataWrapper {
     return result;
   }
 
-  py::handle GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
-    Py_INCREF(obj->get());
-    return obj->get();
+  py::object GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
+    return pybind11::reinterpret_borrow<py::object>(obj->get());
   }
 
   void SetPyObject(py::handle value, tensorflow::Safe_PyObjectPtr* ptr) {

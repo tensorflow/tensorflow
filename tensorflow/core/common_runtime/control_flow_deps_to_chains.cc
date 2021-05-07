@@ -163,7 +163,7 @@ Status ControlFlowDepsToChainsPass::Run(
     for (int i = 0; i < num_new_chains; i++) {
       // Input loop vars.
       // TODO(mdan): Double check that this doesn't clash with names in body.
-      string c_name = g->NewName("acd__chain");
+      string c_name = g->NewName("acd__chainv");
       std::replace(c_name.begin(), c_name.end(), '/', '_');
       auto* new_arg = modified_body.mutable_signature()->add_input_arg();
       new_arg->set_name(c_name);

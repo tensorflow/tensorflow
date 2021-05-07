@@ -188,8 +188,8 @@ void BuildOpsSubmodule(py::module* m) {
         auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
         return std::make_pair(eigh.v, eigh.w);
       },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
+      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 15,
+      py::arg("epsilon") = 1e-5);
   ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
           py::arg("fft_length"));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),

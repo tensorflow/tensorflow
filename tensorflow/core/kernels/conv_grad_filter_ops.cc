@@ -756,8 +756,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                           a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+                           se::blas::Transpose::kTranspose, n, m, k, a_ptr, n,
+                           b_ptr, m, &c_ptr, n)
             .ok();
     if (!blas_launch_status) {
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -787,8 +787,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                           b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+                           se::blas::Transpose::kTranspose, n, m, k, b_ptr, n,
+                           a_ptr, m, &c_ptr, n)
             .ok();
     if (!blas_launch_status) {
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,

@@ -16002,29 +16002,6 @@ func TensorListFromTensor(scope *Scope, tensor tf.Output, element_shape tf.Outpu
 	return op.Output(0)
 }
 
-// Splits a tensor into a list.
-//
-// list[i] corresponds to lengths[i] tensors from the input tensor.
-// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
-//
-// tensor: The input tensor.
-// element_shape: A shape compatible with that of elements in the tensor.
-// lengths: Vector of sizes of the 0th dimension of tensors in the list.
-// output_handle: The list.
-func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSplit",
-		Input: []tf.Input{
-			tensor, element_shape, lengths,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17204,6 +17181,29 @@ func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Splits a tensor into a list.
+//
+// list[i] corresponds to lengths[i] tensors from the input tensor.
+// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
+//
+// tensor: The input tensor.
+// element_shape: A shape compatible with that of elements in the tensor.
+// lengths: Vector of sizes of the 0th dimension of tensors in the list.
+// output_handle: The list.
+func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSplit",
+		Input: []tf.Input{
+			tensor, element_shape, lengths,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ParseSingleSequenceExampleAttr is an optional argument to ParseSingleSequenceExample.
@@ -26427,38 +26427,6 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	return op.Output(0)
 }
 
-// Assigns sparse updates to the variable referenced by `resource`.
-//
-// This operation computes
-//
-//     # Scalar indices
-//     ref[indices, ...] = updates[...]
-//
-//     # Vector indices (for each i)
-//     ref[indices[i], ...] = updates[i, ...]
-//
-//     # High rank indices (for each i, ..., j)
-//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
-//
-// Arguments:
-//	resource: Should be from a `Variable` node.
-//	indices: A tensor of indices into the first dimension of `ref`.
-//	updates: A tensor of updated values to add to `ref`.
-//
-// Returns the created operation.
-func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterUpdate",
-		Input: []tf.Input{
-			resource, indices, updates,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Creates a Dataset that returns pseudorandom numbers.
 //
 // Creates a Dataset that returns a stream of uniformly distributed
@@ -32439,6 +32407,38 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output, optional ..
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Assigns sparse updates to the variable referenced by `resource`.
+//
+// This operation computes
+//
+//     # Scalar indices
+//     ref[indices, ...] = updates[...]
+//
+//     # Vector indices (for each i)
+//     ref[indices[i], ...] = updates[i, ...]
+//
+//     # High rank indices (for each i, ..., j)
+//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+//
+// Arguments:
+//	resource: Should be from a `Variable` node.
+//	indices: A tensor of indices into the first dimension of `ref`.
+//	updates: A tensor of updated values to add to `ref`.
+//
+// Returns the created operation.
+func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterUpdate",
+		Input: []tf.Input{
+			resource, indices, updates,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Creates ngrams from ragged string data.

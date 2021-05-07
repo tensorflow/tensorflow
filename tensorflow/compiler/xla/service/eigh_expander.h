@@ -34,6 +34,8 @@ class EighExpander : public OpExpanderPass {
 
   virtual XlaOp BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol);
 
+  Status SortByEigenvalues(XlaOp& v, XlaOp& w);
+
  private:
   // Mapping from op signatures to existing computations.
   absl::flat_hash_map<string, HloComputation*> computation_cache_;
