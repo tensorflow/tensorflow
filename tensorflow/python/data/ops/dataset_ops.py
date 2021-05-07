@@ -67,6 +67,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -98,9 +99,6 @@ interleave_ops = lazy_loader.LazyLoader(
 scan_ops = lazy_loader.LazyLoader(
     "scan_ops", globals(),
     "tensorflow.python.data.experimental.ops.scan_ops")
-random_ops = lazy_loader.LazyLoader(
-    "random_ops", globals(),
-    "tensorflow.python.ops.random_ops")
 
 ops.NotDifferentiable("ReduceDataset")
 
