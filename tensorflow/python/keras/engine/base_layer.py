@@ -488,7 +488,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       inputs: Input tensor, or dict/list/tuple of input tensors.
         The first positional `inputs` argument is subject to special rules:
         - `inputs` must be explicitly passed. A layer cannot have zero
-          arguments, and inputs cannot have been provided via the default value
+          arguments, and `inputs` cannot be provided via the default value
           of a keyword argument.
         - NumPy array or Python scalar values in `inputs` get cast as tensors.
         - Keras mask metadata is only collected from `inputs`.
