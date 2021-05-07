@@ -1922,16 +1922,16 @@ def poisson(y_true, y_pred):
     ])
 @dispatch.add_dispatch_support
 def cosine_similarity(y_true, y_pred, axis=-1):
-  """Computes the negative cosine similarity between labels and predictions.
+  """Computes the cosine similarity between labels and predictions.
 
-  Note that it is a number between -1 and 1. As -1 is multiplied,
-  values closer to -1 indicate greater similarity and 0 indicates
-  orthogonality, when it is a negative number between -1 and 0.
-  The values closer to 1 indicate greater dissimilarity. This makes
-  it usable as a loss function in a setting where you try to maximize
-  the proximity between predictions and targets. If either `y_true`
-  or `y_pred` is a zero vector, cosine similarity will be 0 regardless
-  of the proximity between predictions and targets.
+  Note that it is a number between -1 and 1. When it is a negative number
+  between -1 and 0, 0 indicates orthogonality and values closer to -1
+  indicate greater similarity. The values closer to 1 indicate greater
+  dissimilarity. This makes it usable as a loss function in a setting
+  where you try to maximize the proximity between predictions and
+  targets. If either `y_true` or `y_pred` is a zero vector, cosine
+  similarity will be 0 regardless of the proximity between predictions
+  and targets.
 
   `loss = -sum(l2_norm(y_true) * l2_norm(y_pred))`
 
@@ -1949,7 +1949,7 @@ def cosine_similarity(y_true, y_pred, axis=-1):
     axis: Axis along which to determine similarity.
 
   Returns:
-    Negative Cosine similarity tensor.
+    Cosine similarity tensor.
   """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
@@ -1958,16 +1958,15 @@ def cosine_similarity(y_true, y_pred, axis=-1):
 
 @keras_export('keras.losses.CosineSimilarity')
 class CosineSimilarity(LossFunctionWrapper):
-  """Computes the negative cosine similarity between labels and predictions.
+  """Computes the cosine similarity between labels and predictions.
 
-  Note that it is a number between -1 and 1. As -1 is multiplied,
-  values closer to -1 indicate greater similarity and 0 indicates
-  orthogonality, when it is a negative number between -1 and 0.
-  The values closer to 1 indicate greater dissimilarity. This makes
-  it usable as a loss function in a setting where you try to maximize
-  the proximity between predictions and targets. If either `y_true`
-  or `y_pred` is a zero vector, cosine similarity will be 0 regardless
-  of the proximity between predictions and targets.
+  Note that it is a number between -1 and 1. When it is a negative number
+  between -1 and 0, 0 indicates orthogonality and values closer to -1
+  indicate greater similarity. The values closer to 1 indicate greater
+  dissimilarity. This makes it usable as a loss function in a setting
+  where you try to maximize the proximity between predictions and targets.
+  If either `y_true` or `y_pred` is a zero vector, cosine similarity will be 0
+  regardless of the proximity between predictions and targets.
 
   `loss = -sum(l2_norm(y_true) * l2_norm(y_pred))`
 
