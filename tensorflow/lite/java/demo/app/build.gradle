@@ -39,7 +39,8 @@ allprojects {
     repositories {
         // Uncomment if you want to use a local repo.
         // mavenLocal()
-        jcenter()
+        mavenCentral()
+        maven { url  "https://google.bintray.com/tensorflow" }
     }
 }
 
