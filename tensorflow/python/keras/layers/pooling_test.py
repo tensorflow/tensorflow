@@ -22,6 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
