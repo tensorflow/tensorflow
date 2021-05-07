@@ -843,6 +843,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
