@@ -29,7 +29,7 @@ add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cpp
   DEPENDS
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
-        MLIRBufferTransformsPassIncGen
+        LMHLOTransformsPassIncGen
 )
 llvm_update_compile_flags(mlir-hlo-opt)
 target_link_libraries(mlir-hlo-opt PRIVATE ${LIBS})

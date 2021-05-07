@@ -31,10 +31,10 @@ struct TestUserangePass : public PassWrapper<TestUserangePass, FunctionPass> {
   }
 
   void runOnFunction() override {
-    llvm::errs() << "Testing : " << getFunction().getName() << "\n";
+    llvm::outs() << "Testing : " << getFunction().getName() << "\n";
     UserangeAnalysis(getFunction(), BufferPlacementAllocs(getFunction()),
                      BufferAliasAnalysis(getFunction()))
-        .print(llvm::errs());
+        .dump(llvm::outs());
   }
 };
 

@@ -15,5 +15,5 @@
 #
 
 set(LLVM_TARGET_DEFINITIONS passes.td)
-mlir_tablegen(passes.h.inc -gen-pass-decls -name BufferTransforms)
-add_public_tablegen_target(MLIRBufferTransformsPassIncGen)
+mlir_tablegen(passes.h.inc -gen-pass-decls -name LMHLOTransforms)
+add_public_tablegen_target(LMHLOTransformsPassIncGen)

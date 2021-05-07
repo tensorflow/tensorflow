@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_ANALYSIS_USERANGE_H
-#define MLIR_ANALYSIS_USERANGE_H
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
 
 #include <vector>
 
@@ -30,7 +30,9 @@ namespace mlir {
 /// compute intervals starting at the first and ending with the last use of
 /// every alloc value.
 class UserangeAnalysis {
-public:
+ public:
+  /// A typedef declaration of an UseInterval, which represents an interval as a
+  /// pair of begin to end.
   using UseInterval = std::pair<size_t, size_t>;
   using IntervalVector = SmallVector<UseInterval, 8>;
 
@@ -39,8 +41,8 @@ public:
 
   /// Returns the index of the first operation that uses the given value.
   /// Returns an empty Optional if the value has no uses.
-  llvm::Optional<size_t> getFirstUseIndex(Value value) {
-    auto intervals = useIntervalMap[value];
+  llvm::Optional<size_t> getFirstUseIndex(Value value) const {
+    auto& intervals = useIntervalMap.find(value)->second;
     return intervals.empty() ? llvm::None
                              : llvm::Optional<size_t>(intervals.begin()->first);
   }
@@ -54,54 +56,54 @@ public:
   void unionRanges(Value itemA, Value itemB);
 
   /// Dumps the liveness information to the given stream.
-  void print(raw_ostream &os);
+  void dump(raw_ostream &os);
 
-private:
+ private:
   using ValueSetT = BufferAliasAnalysis::ValueSetT;
   using OperationListT = Liveness::OperationListT;
 
   /// Builds an IntervalVector corresponding to the given OperationList.
   IntervalVector
-  computeInterval(Value value, const Liveness::OperationListT &operationList,
-                  DenseMap<Operation *, SmallPtrSet<Value, 2>> &opToReadMap);
+  computeInterval(Value value, const Liveness::OperationListT &operationList);
 
-  /// Checks each operand inside the operation for its memory effects and
-  /// separates them into read and write. Operands with read effects are added
-  /// to the opToReadMap
-  void
-  getMemoryEffects(Operation *op,
-                   DenseMap<Operation *, SmallPtrSet<Value, 2>> &opToReadMap);
+  /// Checks each operand of the operation for its memory effects and separates
+  /// them into read and write. Operands with read or write effects are added
+  /// to the opReadWriteMap.
+  void gatherMemoryEffects(Operation *op);
 
   /// Computes the ID for the operation. If the operation contains operands
   /// which have read effects, the returning ID will be odd.
-  size_t computeID(Value v, Operation *op,
-                   DenseMap<Operation *, SmallPtrSet<Value, 2>> &opToReadMap);
+  size_t computeID(Value v, Operation *op) const;
 
-  /// Merge two sorted (by operationID) OperationLists and ignore double
-  /// entries. Return the new computed OperationList.
-  Liveness::OperationListT
-  mergeUseranges(const Liveness::OperationListT &first,
-                 const Liveness::OperationListT &second) const;
+  /// Merge two IntervalVectors into a new IntervalVector. Return a pair with
+  /// the resulting IntervalVector and a boolean if there were interferences
+  /// during merging.
+  std::pair<IntervalVector, bool> intervalMerge(
+      const IntervalVector &intervalA, const IntervalVector &intervalB) const;
 
   /// Performs an interval union of the interval vectors from the given values.
   /// Returns an empty Optional if there is an interval interference.
-  llvm::Optional<IntervalVector> intervalUnion(Value itemA, Value itemB) const;
+  bool intervalUnion(Value itemA, Value itemB) const;
 
   /// Performs an interval subtraction => A = A - B.
   /// Note: This assumes that all intervals of b are included in some interval
   ///       of a.
   void intervalSubtract(IntervalVector &a, const IntervalVector &b) const;
 
-  /// Maps each Operation to a unique ID according to the program squence.
+  /// Maps each Operation to a unique ID according to the program sequence.
   DenseMap<Operation *, size_t> operationIds;
 
   /// Maps a value to its use range interval.
   DenseMap<Value, IntervalVector> useIntervalMap;
 
-  /// Maps a value to its uses
+  /// Maps an Operation to a pair of read and write Operands.
+  DenseMap<Operation *, std::pair<SmallPtrSet<Value, 2>, SmallPtrSet<Value, 2>>>
+      opReadWriteMap;
+
+  /// Maps a value to its uses.
   DenseMap<Value, OperationListT> useMap;
 
-  /// Maps which values are replaced by value
+  /// Maps which values are replaced by value.
   DenseMap<Value, ValueSetT> replaceMap;
 
   /// Maps aliasValues to their use ranges. This is necessary to prevent
@@ -117,4 +119,4 @@ private:
 
 } // namespace mlir
 
-#endif // MLIR_ANALYSIS_USERANGE_H
+#endif // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_

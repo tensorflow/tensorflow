@@ -13,7 +13,7 @@ add_mlir_library(MLIRHLOTestAnalysis
   test_userange_analysis.cc
 
   DEPENDS
-  MLIRBufferTransformsPassIncGen
+  LMHLOTransformsPassIncGen
 
   LINK_COMPONENTS
   Core

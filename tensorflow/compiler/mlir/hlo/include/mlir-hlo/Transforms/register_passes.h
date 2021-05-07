@@ -24,7 +24,7 @@ namespace mlir {
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Transforms/passes.h.inc"
 
-inline void registerAllTransformPasses() { registerBufferTransformsPasses(); }
+inline void registerAllTransformPasses() { registerLMHLOTransformsPasses(); }
 
 } // end namespace mlir
 

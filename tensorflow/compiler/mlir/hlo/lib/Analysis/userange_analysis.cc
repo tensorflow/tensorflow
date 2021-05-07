@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Analysis/userange_analysis.h"
 #include "llvm/ADT/SetOperations.h"
+#include "mlir-hlo/Analysis/userange_analysis.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Region.h"
-#include "mlir/Interfaces/LoopLikeInterface.h"
 
 using namespace mlir;
 
@@ -30,19 +30,24 @@ struct UserangeInfoBuilder {
 
  public:
   /// Constructs an Userange builder.
-  UserangeInfoBuilder(Liveness liveness, ValueSetT values,
-                      OperationListT opList)
-      : values(values), opList(opList), liveness(liveness) {}
+  UserangeInfoBuilder(Liveness pLiveness, ValueSetT pValues,
+                      OperationListT pOpList)
+      : values(std::move(pValues)),
+        opList(std::move(pOpList)),
+        liveness(std::move(pLiveness)) {}
 
   /// Computes the userange of the current value by iterating over all of its
   /// uses.
   Liveness::OperationListT computeUserange() {
+    Region* topRegion = findTopRegion();
     // Iterate over all associated uses.
     for (Operation* use : opList) {
-      // If one the parents implements a LoopLikeOpInterface we need to add all
-      // operations inside of its regions to the userange.
-      if (Operation* loopParent = use->getParentOfType<LoopLikeOpInterface>())
+      // If one of the parents implements a LoopLikeOpInterface we need to add
+      // all operations inside of its regions to the userange.
+      Operation* loopParent = use->getParentOfType<LoopLikeOpInterface>();
+      if (loopParent && topRegion->isProperAncestor(use->getParentRegion())) {
         addAllOperationsInRegion(loopParent);
+      }
 
       // Check if the parent block has already been processed.
       Block* useBlock = findTopLiveBlock(use);
@@ -56,6 +61,17 @@ struct UserangeInfoBuilder {
   }
 
  private:
+  /// Find the top most Region of all values stored in the values set.
+  Region* findTopRegion() const {
+    Region* topRegion = nullptr;
+    llvm::for_each(values, [&](Value v) {
+      Region* other = v.getParentRegion();
+      if (!topRegion || topRegion->isAncestor(other))
+        topRegion = other;
+    });
+    return topRegion;
+  }
+
   /// Finds the highest level block that has the current value in its liveOut
   /// set.
   Block* findTopLiveBlock(Operation* op) const {
@@ -74,24 +90,20 @@ struct UserangeInfoBuilder {
   /// value. If an operation implements a nested region all operations inside of
   /// it are included as well. If includeEnd is false the end operation is not
   /// added.
-  template <bool includeEnd = true>
   void addAllOperationsBetween(Operation* start, Operation* end) {
-    if (includeEnd) {
-      currentUserange.push_back(start);
-      addAllOperationsInRegion(start);
-    }
+    currentUserange.push_back(start);
+    addAllOperationsInRegion(start);
 
     while (start != end) {
-      if (includeEnd) start = start->getNextNode();
+      start = start->getNextNode();
       addAllOperationsInRegion(start);
       currentUserange.push_back(start);
-      if (!includeEnd) start = start->getNextNode();
     }
   }
 
-  /// Adds all operations that are in use in the given block to the userange of
-  /// the current value. Additionally iterate over all successors where the
-  /// value is live.
+  /// Adds all operations that are uses of the value in the given block to the
+  /// userange of the current value. Additionally iterate over all successors
+  /// where the value is live.
   void findOperationsInUse(Block* block) {
     SmallVector<Block*, 8> blocksToProcess;
     addOperationsInBlockAndFindSuccessors(
@@ -128,7 +140,8 @@ struct UserangeInfoBuilder {
       if (successor == startBlock) {
         start = &successor->front();
         end = getStartOperation(successor);
-        addAllOperationsBetween<false>(start, end);
+        if (start != end)
+          addAllOperationsBetween(start, end->getPrevNode());
         // Else we need to check if the value is live in and the successor
         // has not been visited before. If so we also need to process it.
       } else if (llvm::any_of(
@@ -153,7 +166,9 @@ struct UserangeInfoBuilder {
         if (startBlocks.contains(&block)) {
           Operation* start = &block.front();
           Operation* end = getStartOperation(&block);
-          addAllOperationsBetween<false>(start, end);
+          if (start != end) {
+            addAllOperationsBetween(start, end->getPrevNode());
+          }
           // If the block has never been seen before, we need to add all
           // operations inside.
         } else if (visited.insert(&block).second) {
@@ -167,7 +182,8 @@ struct UserangeInfoBuilder {
         // startBlock, we need to add all operations between the endOp of the
         // value and the end of the block.
         Operation* end = getEndOperation(&block);
-        if (end == &block.back()) continue;
+        if (end == &block.back())
+          continue;
         addAllOperationsBetween(end->getNextNode(), &block.back());
       }
     }
@@ -199,7 +215,8 @@ struct UserangeInfoBuilder {
       useOp = block->findAncestorOpInBlock(*useOp);
       // Check whether the use is in our block and after the current end
       // operation.
-      if (useOp && endOperation->isBeforeInBlock(useOp)) endOperation = useOp;
+      if (useOp && endOperation->isBeforeInBlock(useOp))
+        endOperation = useOp;
     }
     return endOperation;
   }
@@ -229,9 +246,8 @@ UserangeAnalysis::UserangeAnalysis(Operation* op,
                                    const BufferAliasAnalysis& aliases)
     : liveness(op) {
   // Walk over all operations and map them to an ID.
-  DenseMap<Operation*, SmallPtrSet<Value, 2>> opToReadMap;
   op->walk([&](Operation* operation) {
-    getMemoryEffects(operation, opToReadMap);
+    gatherMemoryEffects(operation);
     operationIds.insert({operation, operationIds.size()});
   });
 
@@ -240,7 +256,8 @@ UserangeAnalysis::UserangeAnalysis(Operation* op,
   for (const BufferPlacementAllocs::AllocEntry& entry : allocs) {
     Value allocValue = std::get<0>(entry);
     OperationListT useList;
-    for (auto& use : allocValue.getUses()) useList.emplace_back(use.getOwner());
+    for (auto& use : allocValue.getUses())
+      useList.emplace_back(use.getOwner());
     useMap.insert(std::make_pair(allocValue, useList));
     UserangeInfoBuilder builder(liveness, {allocValue}, useList);
     OperationListT liveOperations = builder.computeUserange();
@@ -251,12 +268,14 @@ UserangeAnalysis::UserangeAnalysis(Operation* op,
                 return operationIds[left] < operationIds[right];
               });
 
+    IntervalVector allocInterval = computeInterval(allocValue, liveOperations);
     // Iterate over all aliases and add their useranges to the userange of the
     // current value. Also add the useInterval of each alias to the
     // useIntervalMap.
     ValueSetT aliasSet = aliases.resolve(allocValue);
     for (Value alias : aliasSet) {
-      if (alias == allocValue) continue;
+      if (alias == allocValue)
+        continue;
       if (!aliasUseranges.count(alias)) {
         OperationListT aliasOperations;
         // If the alias is a BlockArgument then the value is live with the first
@@ -276,24 +295,24 @@ UserangeAnalysis::UserangeAnalysis(Operation* op,
                     });
         } else
           aliasOperations = liveness.resolveLiveness(alias);
+
         aliasUseranges.insert({alias, aliasOperations});
         useIntervalMap.insert(
-            {alias,
-             computeInterval(alias, aliasUseranges[alias], opToReadMap)});
+            {alias, computeInterval(alias, aliasUseranges[alias])});
       }
-      liveOperations = mergeUseranges(liveOperations, aliasUseranges[alias]);
+      allocInterval =
+          std::get<0>(intervalMerge(allocInterval, useIntervalMap[alias]));
     }
     aliasCache.insert(std::make_pair(allocValue, aliasSet));
 
     // Map the current allocValue to the computed useInterval.
-    useIntervalMap.insert(std::make_pair(
-        allocValue, computeInterval(allocValue, liveOperations, opToReadMap)));
+    useIntervalMap.insert(std::make_pair(allocValue, allocInterval));
   }
 }
 
 /// Checks if the use intervals of the given values interfere.
 bool UserangeAnalysis::rangesInterfere(Value itemA, Value itemB) const {
-  return intervalUnion(itemA, itemB).hasValue();
+  return intervalUnion(itemA, itemB);
 }
 
 /// Merges the userange of itemB into the userange of itemA.
@@ -301,19 +320,13 @@ bool UserangeAnalysis::rangesInterfere(Value itemA, Value itemB) const {
 /// ranges.
 void UserangeAnalysis::unionRanges(Value itemA, Value itemB) {
   OperationListT unionList = useMap[itemA];
-  for (Operation *op : useMap[itemB]) unionList.emplace_back(op);
+  for (Operation* op : useMap[itemB])
+    unionList.emplace_back(op);
   useMap[itemA] = unionList;
 
   replaceMap[itemA].insert(itemB);
   UserangeInfoBuilder builder(liveness, replaceMap[itemA], useMap[itemA]);
   OperationListT liveOperations = builder.computeUserange();
-
-  llvm::set_union(aliasCache[itemA], aliasCache[itemB]);
-  for (Value alias : aliasCache[itemA])
-    liveOperations = mergeUseranges(liveOperations, aliasUseranges[alias]);
-
-  DenseMap<Operation*, SmallPtrSet<Value, 2>> opToReadMap;
-  for (Operation *op : liveOperations) getMemoryEffects(op, opToReadMap);
 
   // Sort the operation list by ids.
   std::sort(liveOperations.begin(), liveOperations.end(),
@@ -321,23 +334,33 @@ void UserangeAnalysis::unionRanges(Value itemA, Value itemB) {
               return operationIds[left] < operationIds[right];
             });
 
+  for (Operation* op : liveOperations) {
+    if (opReadWriteMap.find(op) == opReadWriteMap.end())
+      gatherMemoryEffects(op);
+  }
+  IntervalVector unionInterval = computeInterval(itemA, liveOperations);
+
+  llvm::set_union(aliasCache[itemA], aliasCache[itemB]);
+  for (Value alias : aliasCache[itemA])
+    unionInterval =
+        std::get<0>(intervalMerge(unionInterval, useIntervalMap[alias]));
+
   // Compute new interval.
-  useIntervalMap[itemA] = computeInterval(itemA, liveOperations, opToReadMap);
+  useIntervalMap[itemA] = unionInterval;
 }
 
 /// Builds an IntervalVector corresponding to the given OperationList.
 UserangeAnalysis::IntervalVector UserangeAnalysis::computeInterval(
-    Value value, const Liveness::OperationListT& operationList,
-    DenseMap<Operation*, SmallPtrSet<Value, 2>>& opToReadMap) {
+    Value value, const Liveness::OperationListT& operationList) {
   assert(!operationList.empty() && "Operation list must not be empty");
-  size_t start = computeID(value, *operationList.begin(), opToReadMap);
+  size_t start = computeID(value, *operationList.begin());
   size_t last = start;
   UserangeAnalysis::IntervalVector intervals;
   // Iterate over all operations in the operationList. If the gap between the
   // respective operationIds is greater 1 create a new interval.
   for (auto opIter = ++operationList.begin(), e = operationList.end();
        opIter != e; ++opIter) {
-    size_t current = computeID(value, *opIter, opToReadMap);
+    size_t current = computeID(value, *opIter);
     if (current - last > 2) {
       intervals.emplace_back(UserangeAnalysis::UseInterval(start, last));
       start = current;
@@ -351,26 +374,23 @@ UserangeAnalysis::IntervalVector UserangeAnalysis::computeInterval(
 /// Checks each operand inside the operation for its memory effects and
 /// separates them into read and write. Operands with read effects are added to
 /// the opToReadMap.
-void UserangeAnalysis::getMemoryEffects(
-    Operation* op, DenseMap<Operation*, SmallPtrSet<Value, 2>>& opToReadMap) {
+void UserangeAnalysis::gatherMemoryEffects(Operation* op) {
   if (OpTrait::hasElementwiseMappableTraits(op)) {
     if (auto effectInterface = dyn_cast<MemoryEffectOpInterface>(op)) {
-      SmallPtrSet<Value, 2> readSet;
-      SmallPtrSet<Value, 2> writeSet;
+      SmallPtrSet<Value, 2> readEffectSet;
+      SmallPtrSet<Value, 2> writeEffectSet;
       for (auto operand : op->getOperands()) {
         SmallVector<MemoryEffects::EffectInstance, 2> effects;
         effectInterface.getEffectsOnValue(operand, effects);
         for (auto effect : effects) {
           if (isa<MemoryEffects::Write>(effect.getEffect())) {
-            writeSet.insert(operand);
-            readSet.erase(operand);
-          } else if (isa<MemoryEffects::Read>(effect.getEffect()) &&
-                     !writeSet.contains(operand))
-            readSet.insert(operand);
+            writeEffectSet.insert(operand);
+          } else if (isa<MemoryEffects::Read>(effect.getEffect()))
+            readEffectSet.insert(operand);
         }
       }
-      if (!readSet.empty() && !writeSet.empty())
-        opToReadMap.insert({op, readSet});
+      opReadWriteMap.insert(
+          {op, std::make_pair(readEffectSet, writeEffectSet)});
     }
   }
 }
@@ -378,36 +398,54 @@ void UserangeAnalysis::getMemoryEffects(
 /// Computes the ID for the operation. If the operation contains operands which
 /// have read effects, the returning ID will be odd. This allows us to
 /// perform a replace in place.
-size_t UserangeAnalysis::computeID(
-    Value v, Operation* op,
-    DenseMap<Operation*, SmallPtrSet<Value, 2>>& opToReadMap) {
-  size_t current = operationIds[op] * 2;
-  auto mapIter = opToReadMap.find(op);
-  if (mapIter != opToReadMap.end() && mapIter->second.contains(v)) current--;
-  return current;
+size_t UserangeAnalysis::computeID(Value v, Operation* op) const {
+  size_t doubledID = operationIds.find(op)->second * 2;
+  auto mapIter = opReadWriteMap.find(op);
+  if (mapIter == opReadWriteMap.end())
+    return doubledID;
+  auto reads = mapIter->second.first;
+  auto writes = mapIter->second.second;
+  if (reads.contains(v) && !writes.contains(v))
+    return doubledID - 1;
+  return doubledID;
 }
 
-/// Merge two sorted (by operationID) OperationLists and ignore double
-/// entries. Return the new computed OperationList.
-Liveness::OperationListT UserangeAnalysis::mergeUseranges(
-    const Liveness::OperationListT& first,
-    const Liveness::OperationListT& second) const {
-  Liveness::OperationListT mergeResult;
-  // Union the two OperationLists.
-  std::set_union(first.begin(), first.end(), second.begin(), second.end(),
-                 std::back_inserter(mergeResult),
-                 [&](Operation* left, Operation* right) {
-                   return operationIds.find(left)->second <
-                          operationIds.find(right)->second;
+/// Merge two IntervalVectors into a new IntervalVector. Return a pair with the
+/// resulting IntervalVector and a boolean if there were interferences during
+/// merging.
+std::pair<UserangeAnalysis::IntervalVector, bool>
+UserangeAnalysis::intervalMerge(const IntervalVector& intervalA,
+                                const IntervalVector& intervalB) const {
+  IntervalVector mergeResult;
+  std::set_union(intervalA.begin(), intervalA.end(), intervalB.begin(),
+                 intervalB.end(), std::back_inserter(mergeResult),
+                 [&](UseInterval left, UseInterval right) {
+                   if (left.first == right.first)
+                     return left.second < right.second;
+                   return left.first < right.first;
                  });
 
-  return mergeResult;
+  bool interference = false;
+  // Merge consecutive intervals that have no gap between each other.
+  for (auto it = mergeResult.begin(); it != mergeResult.end() - 1;) {
+    int diff = ((it + 1)->first) - (it->second);
+    if (diff <= 2) {
+      if (diff <= 0)
+        interference = true;
+      if ((it + 1)->second < it->second)
+        (it + 1)->second = it->second;
+      (it + 1)->first = it->first;
+      it = mergeResult.erase(it);
+    } else
+      ++it;
+  }
+
+  return std::make_pair(mergeResult, interference);
 }
 
 /// Performs an interval union of the interval vectors from the given values.
 /// Returns an empty Optional if there is an interval interference.
-llvm::Optional<UserangeAnalysis::IntervalVector>
-UserangeAnalysis::intervalUnion(Value itemA, Value itemB) const {
+bool UserangeAnalysis::intervalUnion(Value itemA, Value itemB) const {
   ValueSetT intersect = aliasCache.find(itemA)->second;
   llvm::set_intersect(intersect, aliasCache.find(itemB)->second);
   IntervalVector tmpIntervalA = useIntervalMap.find(itemA)->second;
@@ -421,39 +459,8 @@ UserangeAnalysis::intervalUnion(Value itemA, Value itemB) const {
     }
   }
 
-  IntervalVector intervalUnion;
-  IntervalVector currentInterval = useIntervalMap.find(itemB)->second;
-
-  auto iterA = tmpIntervalA.begin();
-  auto iterB = currentInterval.begin();
-  auto endA = tmpIntervalA.end();
-  auto endB = currentInterval.end();
-  // Iterate over both interval vectors simultaneously.
-  while (iterA != endA && iterB != endB) {
-    // iterA comes before iterB.
-    if (iterA->first < iterB->first && iterA->second < iterB->first)
-      intervalUnion.emplace_back(*iterA++);
-    // iterB comes before iterA.
-    else if (iterB->first < iterA->first && iterB->second < iterA->first)
-      intervalUnion.emplace_back(*iterB++);
-    // There is an interval interference. We thus have to return an empty
-    // Optional.
-    else
-      return llvm::None;
-  }
-  // Push the remaining intervals.
-  for (; iterA != endA; ++iterA) intervalUnion.emplace_back(*iterA);
-  for (; iterB != endB; ++iterB) intervalUnion.emplace_back(*iterB);
-
-  // Merge consecutive intervals that have no gap between each other.
-  for (auto it = intervalUnion.begin(); it != intervalUnion.end() - 1;) {
-    if (it->second >= (it + 1)->first - 2) {
-      (it + 1)->first = it->first;
-      it = intervalUnion.erase(it);
-    } else
-      ++it;
-  }
-  return llvm::Optional<UserangeAnalysis::IntervalVector>(intervalUnion);
+  return std::get<1>(
+      intervalMerge(tmpIntervalA, useIntervalMap.find(itemB)->second));
 }
 
 /// Performs an interval subtraction => A = A - B.
@@ -466,41 +473,40 @@ void UserangeAnalysis::intervalSubtract(IntervalVector& a,
   for (auto iterA = a.begin(), endA = a.end();
        iterA != endA && iterB != endB;) {
     // iterA is strictly before iterB => increment iterA.
-    if (iterA->second < iterB->first) ++iterA;
+    if (iterA->second < iterB->first)
+      ++iterA;
     // Usually, we would expect the case of iterB beeing strictly before iterA.
     // However, due to the initial assumption that all intervals of b are
     // included in some interval of a, we do not need to check if iterB is
-    // striclty before iterA.
+    // strictly before iterA.
     // iterB is at the start of iterA, but iterA has some values that go
     // beyond those of iterB. We have to set the lower bound of iterA to the
     // upper bound of iterB + 1 and increment iterB.
     // A(3, 100) - B(3, 5) => A(6,100)
-    else if (iterA->first == iterB->first && iterA->first <= iterB->second &&
-             iterA->second > iterB->second) {
+    else if (iterA->first == iterB->first && iterA->second > iterB->second) {
       iterA->first = iterB->second + 1;
       ++iterB;
     }
     // iterB is at the end of iterA, but iterA has some values that come
-    // before iterB. We have to set the upper bound of iterA to the lower
-    // bound of iterB - 1 and increment both iterators.
+    // before iterB. We have to set the end of iterA to the start of iterB - 1
+    // and increment both iterators.
     // A(4, 50) - B(40, 50) => A(4, 39)
-    else if (iterA->second >= iterB->first && iterA->second == iterB->second &&
-             iterA->first < iterB->first) {
+    else if (iterA->second == iterB->second && iterA->first < iterB->first) {
       iterA->second = iterB->first - 1;
       ++iterA;
       ++iterB;
     }
     // iterB is in the middle of iterA. We have to split iterA and increment
     // iterB.
-    // A(2, 10) B(5, 7) => (2, 4), (8, 10)
+    // A(2, 10) - B(5, 7) => (2, 4), (8, 10)
     else if (iterA->first < iterB->first && iterA->second > iterB->second) {
-      iterA->first = iterB->second + 1;
-      iterA = a.insert(iterA, UseInterval(iterA->first, iterB->first - 1));
-      ++iterA;
+      size_t endA = iterA->second;
+      iterA->second = iterB->first - 1;
+      iterA = a.insert(iterA, UseInterval(iterB->second + 1, endA));
       ++iterB;
     }
     // Both intervals are equal. We have to erase the whole interval.
-    // A(5, 5) B(5, 5) => {}
+    // A(5, 5) - B(5, 5) => {}
     else {
       iterA = a.erase(iterA);
       ++iterB;
@@ -508,7 +514,7 @@ void UserangeAnalysis::intervalSubtract(IntervalVector& a,
   }
 }
 
-void UserangeAnalysis::print(raw_ostream& os) {
+void UserangeAnalysis::dump(raw_ostream& os) {
   os << "// ---- UserangeAnalysis -----\n";
   std::vector<Value> values;
   for (auto const& item : useIntervalMap) {

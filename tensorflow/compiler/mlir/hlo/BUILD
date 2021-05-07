@@ -1351,7 +1351,7 @@ cc_library(
         ":lhlo",
         ":materialize_broadcasts",  # build-cleaner: keep
         ":pass_details",
-        ":buffer_transforms_pass_details",
+        ":transforms",
         ":unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -1383,6 +1383,7 @@ cc_library(
         ":MhloPassIncGen",
         ":broadcast_propagation",
         ":mlir_buffer_transforms_pass_inc_gen",
+        ":transforms_pass_inc_gen",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1413,12 +1414,12 @@ cc_library(
 )
 
 gentbl(
-    name = "mlir_buffer_transforms_pass_inc_gen",
+    name = "transforms_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls -name BufferTransforms",
+            "-gen-pass-decls -name LMHLOTransforms",
             "include/mlir-hlo/Transforms/passes.h.inc",
         ),
     ],
@@ -1430,7 +1431,7 @@ gentbl(
 )
 
 cc_library(
-    name = "buffer_transforms_pass_details",
+    name = "transforms",
     hdrs = [
         "include/mlir-hlo/Transforms/PassDetail.h",
     ],
@@ -1438,7 +1439,7 @@ cc_library(
         "//visibility:private",  # This target is a private detail of pass implementations
     ],
     deps = [
-        ":mlir_buffer_transforms_pass_inc_gen",
+        ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1451,7 +1452,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":mlir_buffer_transforms_pass_inc_gen",
+        ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Transforms",
@@ -1468,7 +1469,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":mlir_buffer_transforms_pass_inc_gen",
+        ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
