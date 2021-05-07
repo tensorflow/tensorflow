@@ -38,12 +38,15 @@ namespace tensorflow {
 
 bool CudnnUseFrontend() {
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  bool value = false;
-  Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-  return value;
+  static bool result = [] {
+    bool value = false;
+    Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return value;
+  }();
+  return result;
 #else
   return false;
 #endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
