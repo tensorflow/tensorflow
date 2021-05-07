@@ -1742,13 +1742,15 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                                   int lda, const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
                                   int ldc) {
+  cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
+
 #if CUDA_VERSION < 11000
-  cublasMath_t math_type = CUBLAS_TENSOR_OP_MATH;
+  if (dtype == blas::DataType::kHalf) {
+    math_type = CUBLAS_TENSOR_OP_MATH;
+  }
 #else
-  cublasMath_t math_type = (dtype == blas::DataType::kFloat)
-                               ? CUBLAS_TF32_TENSOR_OP_MATH
-                               : CUBLAS_DEFAULT_MATH;
   if (dtype == blas::DataType::kFloat) {
+    math_type = CUBLAS_TF32_TENSOR_OP_MATH;
     int cc_major, cc_minor;
     if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
             &cc_major, &cc_minor) &&
@@ -1838,11 +1840,10 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       return DoBlasInternalImplStatus(
           cublasCgemm, stream, true /* = pointer_mode_host */,
           true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, GpuComplex(&cb_alpha),
+          CUDABlasTranspose(transb), m, n, k, &cb_alpha,
           static_cast<const GpuComplexType *>(a.opaque()), lda,
-          static_cast<const GpuComplexType *>(b.opaque()), ldb,
-          GpuComplex(&cb_beta), static_cast<GpuComplexType *>(c->opaque()),
-          ldc);
+          static_cast<const GpuComplexType *>(b.opaque()), ldb, &cb_beta,
+          static_cast<GpuComplexType *>(c->opaque()), ldc);
     }
     case dnn::kComplexDouble: {
       GpuDoubleComplexType cb_alpha =
@@ -1852,10 +1853,9 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       return DoBlasInternalImplStatus(
           cublasZgemm, stream, true /* = pointer_mode_host */,
           true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, GpuComplex(&cb_alpha),
+          CUDABlasTranspose(transb), m, n, k, &cb_alpha,
           static_cast<const GpuDoubleComplexType *>(a.opaque()), lda,
-          static_cast<const GpuDoubleComplexType *>(b.opaque()), ldb,
-          GpuComplex(&cb_beta),
+          static_cast<const GpuDoubleComplexType *>(b.opaque()), ldb, &cb_beta,
           static_cast<GpuDoubleComplexType *>(c->opaque()), ldc);
     }
     default:
