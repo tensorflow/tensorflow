@@ -92,11 +92,11 @@ ResizeConvolutionDims ComputeResizeConvolutionParameters(
     absl::Span<const int64_t> in_size, absl::Span<const int64_t> out_size,
     bool align_corners) {
   CHECK_EQ(in_size.size(), out_size.size());
-  int num_spatial_dims = in_size.size();
+  int64 num_spatial_dims = in_size.size();
   ResizeConvolutionDims dims;
   dims.kernel_size.resize(num_spatial_dims);
   dims.stride.resize(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     if (in_size[i] == 1) {
       // We must handle input size 1 specially because XLA convolution does
       // not allow stride 0.
@@ -137,15 +137,15 @@ int64_t CalculateUpperPadding(int64_t in_size, int64_t out_size,
 
 std::vector<float> Convolve(std::vector<float> input,
                             std::vector<float> filter) {
-  int ilen = input.size();
-  int flen = filter.size();
-  int olen = ilen + flen - 1;
+  int64 ilen = input.size();
+  int64 flen = filter.size();
+  int64 olen = ilen + flen - 1;
   std::vector<float> output;
 
-  for (int o = 0; o < olen; o++) {
-    int i = o - (flen - 1);
+  for (int64 o = 0; o < olen; o++) {
+    int64 i = o - (flen - 1);
     float s = 0;
-    for (int f = 0; f < flen; f++, i++) {
+    for (int64 f = 0; f < flen; f++, i++) {
       if (i >= 0 && i < ilen) {
         s += input[i] * filter[f];
       }
@@ -275,13 +275,6 @@ xla::XlaOp MakeGeneralResizeKernelInDim(
       /*broadcast_dimensions=*/{dim});
 }
 
-int64 Div2Floor(int64 x) {
-  if (x >= 0)
-    return x / 2;
-  else
-    return -(-(x - 1) / 2);
-}
-
 int64 ComputeHalfPixelOffset(int64 input_size, int64 output_size, int64 stride,
                              int64 kernel_size, bool is_kernel_bilinear) {
   // Computes the shift required towards the right for the the dilated
@@ -290,7 +283,7 @@ int64 ComputeHalfPixelOffset(int64 input_size, int64 output_size, int64 stride,
   int64 offset;
 
   if (is_kernel_bilinear) {
-    offset = Div2Floor(kernel_size - stride + 1);
+    offset = MathUtil::FloorOfRatio<int64>(kernel_size - stride + 1, 2);
   } else {
     if ((output_size > input_size && stride != 1) ||
         (output_size < input_size && kernel_size != 1)) {
@@ -338,14 +331,14 @@ xla::StatusOr<xla::XlaOp> AdjustPadding(
     const bool is_kernel_bilinear, std::vector<bool>& run_half_pixel_filter,
     const int64 num_spatial_dims, std::vector<int64>& lower_padding,
     std::vector<int64>& upper_padding) {
-  for (int i = 0; i < num_spatial_dims; ++i) {
-    int d = i + 1;
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
+    int64 d = i + 1;
     xla::Shape input_shape;
     TF_ASSIGN_OR_RETURN(input_shape, builder->GetShape(input));
 
-    auto in_dims = input_shape.dimensions();
+    const auto& in_dims = input_shape.dimensions();
 
-    auto hpc_offset = ComputeHalfPixelOffset(
+    int64 hpc_offset = ComputeHalfPixelOffset(
         in_size[i], out_size[i], stride[i], kernel_size[i], is_kernel_bilinear);
     lower_padding[i] += hpc_offset;
     upper_padding[i] -= hpc_offset;
@@ -385,7 +378,7 @@ xla::StatusOr<xla::XlaOp> AdjustPadding(
 
 xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
     xla::XlaBuilder* builder, const xla::XlaOp& input, xla::PrimitiveType type,
-    const int num_spatial_dims, absl::Span<const int64> in_size,
+    const int64 num_spatial_dims, absl::Span<const int64> in_size,
     absl::Span<const int64> out_size, const int64 batches, const int64 channels,
     const bool align_corners, bool is_kernel_bilinear,
     bool half_pixel_centers) {
@@ -404,7 +397,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
   dimension_numbers.set_output_batch_dimension(0);
   dimension_numbers.set_input_feature_dimension(num_spatial_dims + 1);
   dimension_numbers.set_output_feature_dimension(num_spatial_dims + 1);
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     dimension_numbers.add_input_spatial_dimensions(1 + i);
     dimension_numbers.add_output_spatial_dimensions(1 + i);
     dimension_numbers.add_kernel_spatial_dimensions(i);
@@ -416,7 +409,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
       ComputeResizeConvolutionParameters(in_size, out_size, align_corners);
 
   std::vector<bool> run_half_pixel_filter(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; i++) {
+  for (int64 i = 0; i < num_spatial_dims; i++) {
     run_half_pixel_filter[i] =
         half_pixel_centers
             ? ((dims.stride[i] % 2 == 0) || (dims.kernel_size[i] % 2 == 0))
@@ -441,7 +434,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
       << "ResizeUsingDilationAndConvolution pads only 2 dimensions currently.";
   std::vector<int64> lower_padding(num_spatial_dims);
   std::vector<int64> upper_padding(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     lower_padding[i] = dims.kernel_size[i] - 1;
     upper_padding[i] = dims.kernel_size[i] - 1;
   }
@@ -477,7 +470,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
           {batches, in_size[0] + num_extended[0], in_size[1], channels},
           {1, 1, 1, 1});
 
-      for (int i = 0; i < num_extended[1]; i++) {
+      for (int64 i = 0; i < num_extended[1]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 2);
       }
     }
@@ -501,7 +494,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
         run_half_pixel_filter, num_spatial_dims, lower_padding, upper_padding));
 
     if (is_kernel_bilinear) {
-      for (int i = 0; i < num_spatial_dims; ++i) {
+      for (int64 i = 0; i < num_spatial_dims; ++i) {
         upper_padding[i] += dims.kernel_size[i] - 1;
       }
     }
@@ -581,7 +574,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolution(
 
 xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
     xla::XlaBuilder* builder, const xla::XlaOp& grad, xla::PrimitiveType type,
-    const int num_spatial_dims, absl::Span<const int64> in_size,
+    const int64 num_spatial_dims, absl::Span<const int64> in_size,
     absl::Span<const int64> grad_size, const int64 batches,
     const int64 channels, const bool align_corners, bool is_kernel_bilinear,
     bool half_pixel_centers) {
@@ -591,7 +584,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
       ComputeResizeConvolutionParameters(in_size, grad_size, align_corners);
 
   std::vector<bool> run_half_pixel_filter(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; i++) {
+  for (int64 i = 0; i < num_spatial_dims; i++) {
     run_half_pixel_filter[i] =
         half_pixel_centers
             ? ((dims.stride[i] % 2 == 0) || (dims.kernel_size[i] % 2 == 0))
@@ -605,7 +598,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
   dimension_numbers.set_output_batch_dimension(0);
   dimension_numbers.set_input_feature_dimension(num_spatial_dims + 1);
   dimension_numbers.set_output_feature_dimension(num_spatial_dims + 1);
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     dimension_numbers.add_input_spatial_dimensions(i + 1);
     dimension_numbers.add_output_spatial_dimensions(i + 1);
     dimension_numbers.add_kernel_spatial_dimensions(i);
@@ -619,7 +612,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
       << "ResizeUsingDilationAndConvolution pads only 2 dimensions currently.";
   std::vector<int64> lower_padding(num_spatial_dims);
   std::vector<int64> upper_padding(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     lower_padding[i] = dims.kernel_size[i] - 1;
     upper_padding[i] = dims.kernel_size[i] - 1;
   }
@@ -647,7 +640,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
                               {batches, grad_size[0], grad_size[1], channels},
                               {1, 1, 1, 1});
 
-      for (int i = 0; i < num_extended[0]; i++) {
+      for (int64 i = 0; i < num_extended[0]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 1);
       }
     }
@@ -658,7 +651,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
           {batches, grad_size[0] + num_extended[0], grad_size[1], channels},
           {1, 1, 1, 1});
 
-      for (int i = 0; i < num_extended[1]; i++) {
+      for (int64 i = 0; i < num_extended[1]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 2);
       }
     }
@@ -754,7 +747,7 @@ xla::StatusOr<xla::XlaOp> ResizeUsingDilationAndConvolutionGradOp(
   // Opposite of the slice performed by the forward op.
   xla::PaddingConfig padding = xla::MakeNoPaddingConfig(4);
   bool pad_output = false;
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     if (in_size[i] > 1 && grad_size[i] == 1) {
       pad_output = true;
       padding.mutable_dimensions(1 + i)->set_edge_padding_high(in_size[i] - 1);
@@ -811,7 +804,7 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
               errors::InvalidArgument("output size must be positive, got [",
                                       out_size[0], ",", out_size[1], "]"));
 
-  const int num_spatial_dims = 2;
+  const int64 num_spatial_dims = 2;
 
   xla::XlaOp input = ctx->Input(0);
   xla::PrimitiveType input_type = ctx->input_xla_type(0);
@@ -819,7 +812,7 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
   // If in_size[i] > 1 and out_size[i] == 1, slice out the first input in
   // dimension i.
   bool slice_input = false;
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
     if (in_size[i] > 1 && out_size[i] == 1) {
       // If in_size[i] > 1 but out_size[i] == 1, then we slice out the first
       // entry before resizing.
@@ -842,7 +835,7 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
     input_type = xla::F32;
   }
 
-  for (int dim = 0; dim < in_size.size(); ++dim) {
+  for (int64 dim = 0; dim < in_size.size(); ++dim) {
     // If the pairwise_distance function more accurately estimated performance,
     // this threshold could be reduced.
     constexpr int64_t kSmallDimThreshold = 1 << 10;
@@ -866,10 +859,10 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
     return params.stride[0];
   };
 
-  for (int dim = 0; dim < in_size.size(); ++dim) {
-    std::vector<int64_t> distances(out_size[dim] + 1);
-    std::vector<int64_t> next_step(out_size[dim] + 1);
-    for (int64_t i = distances.size() - 2; i >= in_size[dim]; --i) {
+  for (int64 dim = 0; dim < in_size.size(); ++dim) {
+    std::vector<int64> distances(out_size[dim] + 1);
+    std::vector<int64> next_step(out_size[dim] + 1);
+    for (int64 i = distances.size() - 2; i >= in_size[dim]; --i) {
       distances[i] = INT64_MAX;
       for (int64_t j = i + 1; j < distances.size(); ++j) {
         int64_t distance = pairwise_distance(i, j) + distances[j];
@@ -915,12 +908,12 @@ void GeneralGradCompile(XlaOpKernelContext* ctx, std::vector<int64> in_size,
               errors::InvalidArgument("gradient size must be positive, got [",
                                       grad_size[0], ",", grad_size[1], "]"));
 
-  const int num_spatial_dims = 2;
+  const int64 num_spatial_dims = 2;
 
   xla::XlaOp grad = ctx->Input(0);
   xla::PrimitiveType input_type = ctx->input_xla_type(0);
 
-  for (int dim = 0; dim < in_size.size(); ++dim) {
+  for (int64 dim = 0; dim < in_size.size(); ++dim) {
     // If the pairwise_distance function more accurately estimated performance,
     // this threshold could be reduced.
     constexpr int64 kSmallDimThreshold = 1 << 10;

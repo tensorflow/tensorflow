@@ -653,27 +653,18 @@ class ResizeHalfPixelCenterTest(parameterized.TestCase,
                                        run_grad=run_grad,
                                        interpolation=interpolation)
 
-    try:
-      output_xla = self.__run(input_data, output_shape,
-                              half_pixel_centers=half_pixel_centers,
-                              align_corners=align_corners,
-                              run_grad=run_grad,
-                              interpolation=interpolation)
+    output_xla = self.__run(input_data, output_shape,
+                            half_pixel_centers=half_pixel_centers,
+                            align_corners=align_corners,
+                            run_grad=run_grad,
+                            interpolation=interpolation)
 
-      output_non_xla = output_non_xla.reshape(output_shape)
-      output_xla = output_xla.reshape(output_shape)
+    output_non_xla = output_non_xla.reshape(output_shape)
+    output_xla = output_xla.reshape(output_shape)
 
-    except Exception as e:
-      print(f'Failed test {self.id()}')
-      raise e
-
-    try:
-      self.assertAllClose(output_non_xla, output_xla,
-                          msg=f'Failed test {self.id()}',
-                          rtol=0.1, atol=0.01)
-      print(f'Passed test {self.id()}')
-    except Exception as e:
-      raise e
+    self.assertAllClose(output_non_xla, output_xla,
+                        msg=f'Failed test {self.id()}',
+                        rtol=0.1, atol=0.01)
 
   @PermuteTestCases({
       'size': [
