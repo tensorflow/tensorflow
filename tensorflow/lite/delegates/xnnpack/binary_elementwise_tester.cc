@@ -298,7 +298,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      TensorType_INT8, 1, 0,
                      CreateQuantizationParameters(
                          builder, /*min=*/0, /*max=*/0,
-                         builder.CreateVector<float>({input1_scale}),
+                         builder.CreateVector<float>(
+                             {static_cast<float>(input1_scale)}),
                          builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights() && Input1Static()) {
     int dims_count = Input1Shape().size();
@@ -334,7 +335,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      TensorType_INT8, 1, 0,
                      CreateQuantizationParameters(
                          builder, /*min=*/0, /*max=*/0,
-                         builder.CreateVector<float>({input2_scale}),
+                         builder.CreateVector<float>(
+                             {static_cast<float>(input2_scale)}),
                          builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights() && Input2Static()) {
     int dims_count = Input2Shape().size();

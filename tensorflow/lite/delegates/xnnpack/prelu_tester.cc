@@ -166,7 +166,8 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
                      TensorType_INT8, /*buffer=*/1, /*name=*/0,
                      CreateQuantizationParameters(
                              builder, /*min=*/0, /*max=*/0,
-                             builder.CreateVector<float>({slope_scale}),
+                             builder.CreateVector<float>(
+                                 {static_cast<float>(slope_scale)}),
                              builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights()) {
     const int dims_count = SlopeShape().size();

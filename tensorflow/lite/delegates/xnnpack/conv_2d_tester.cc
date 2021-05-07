@@ -303,7 +303,8 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
           /*buffer=*/1, /*name=*/0,
           CreateQuantizationParameters(
               builder, /*min=*/0, /*max=*/0,
-              builder.CreateVector<float>({filter_scale}),
+              builder.CreateVector<float>(
+                  {static_cast<float>(filter_scale)}),
               builder.CreateVector<int64_t>({0})),
           /*is_variable=*/false, /*sparsity=*/sparsity_param));
     } else {
@@ -331,7 +332,8 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         TensorType_INT8, /*buffer=*/SparseWeights() ? 0 : 1, /*name=*/0,
         CreateQuantizationParameters(
             builder, /*min=*/0, /*max=*/0,
-            builder.CreateVector<float>({filter_scale}),
+            builder.CreateVector<float>(
+                {static_cast<float>(filter_scale)}),
             builder.CreateVector<int64_t>({0}))));
   }
   tensors.emplace_back(CreateTensor(

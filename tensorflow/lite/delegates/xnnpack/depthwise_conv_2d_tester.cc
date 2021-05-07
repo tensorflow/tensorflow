@@ -283,7 +283,8 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
         TensorType_INT8, /*buffer=*/1, /*name=*/0,
         CreateQuantizationParameters(
             builder, /*min=*/0, /*max=*/0,
-            builder.CreateVector<float>({filter_scale}),
+            builder.CreateVector<float>(
+                {static_cast<float>(filter_scale)}),
             builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights()) {
     // Sparse tensor in TFLite can be in different formats. Here we choose the
