@@ -1733,8 +1733,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
            IsContractionWithAdd(ctx, node_index);
 
   return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
-         is_batch_norm_fusion_candidate() ||
-         is_batch_norm_grad_fusion_candidate();
+         is_batch_norm_fusion_candidate();
 }
 
 }  // namespace
