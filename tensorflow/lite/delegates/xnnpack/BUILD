@@ -25,13 +25,13 @@ cc_library(
     hdrs = ["xnnpack_delegate.h"],
     linkstatic = True,
     deps = [
+        ":quantization_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        ":quantization_util",
         "@XNNPACK//:xnnpack_for_tflite",
     ],
 )
@@ -53,13 +53,13 @@ cc_library(
     copts = ["-DXNNPACK_DELEGATE_TEST_MODE=1"],
     linkstatic = True,
     deps = [
+        ":quantization_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        ":quantization_util",
         "@XNNPACK",
     ],
 )
@@ -71,7 +71,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
-         "@FP16",
+        "@FP16",
     ],
 )
 
