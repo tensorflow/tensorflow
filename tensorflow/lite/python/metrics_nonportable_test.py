@@ -196,8 +196,8 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
-        mock.call.export_metrics(),
-        mock.call.set_converter_param('calibrate_and_quantize', 'True'),
+        mock.call.set_converter_param(
+            'optimization_post_training_integer_quantize', 'True'),
         mock.call.set_converter_param('inference_type', 'tf.int8'),
         mock.call.set_converter_param('select_user_tf_ops', 'None'),
         mock.call.set_converter_param('activations_type', 'tf.int8'),
