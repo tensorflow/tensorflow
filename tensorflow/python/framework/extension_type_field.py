@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Meatadata about fields for user-defined Struct classes."""
+"""Meatadata about fields for user-defined ExtensionType classes."""
 
 import collections
 import collections.abc
@@ -26,8 +26,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 
-# These names may not be used as the name for a Struct field (to prevent name
-# clashes).  All names beginning with `'_tf_struct'` are also reserved.
+# These names may not be used as the name for a ExtensionType field (to prevent
+# name clashes).  All names beginning with `'_tf_extension_type'` are also
+# reserved.
 RESERVED_FIELD_NAMES = [
     'self',
     # Name of the nested TypeSpec class.
@@ -67,16 +68,17 @@ class Sentinel(object):
 
 
 # ==============================================================================
-# StructField
+# ExtensionTypeField
 # ==============================================================================
-class StructField(
-    collections.namedtuple('StructField', ['name', 'value_type', 'default'])):
-  """Metadata about a single field in a `tf.struct` object."""
+class ExtensionTypeField(
+    collections.namedtuple('ExtensionTypeField',
+                           ['name', 'value_type', 'default'])):
+  """Metadata about a single field in a `tf.ExtensionType` object."""
 
-  NO_DEFAULT = Sentinel('StructField.NO_DEFAULT')
+  NO_DEFAULT = Sentinel('ExtensionTypeField.NO_DEFAULT')
 
   def __new__(cls, name, value_type, default=NO_DEFAULT):
-    """Constructs a new StructField containing metadata for a single field.
+    """Constructs a new ExtensionTypeField containing metadata for a single field.
 
     Args:
       name: The name of the new field (`str`).  May not be a reserved name.
@@ -86,11 +88,11 @@ class StructField(
         field has no default value.
 
     Returns:
-      A new `StructField`.
+      A new `ExtensionTypeField`.
 
     Raises:
       TypeError: If the type described by `value_type` is not currently
-          supported by `tf.struct`.
+          supported by `tf.ExtensionType`.
       TypeError: If `default` is specified and its type does not match
         `value_type`.
     """
@@ -102,12 +104,14 @@ class StructField(
     if default is not cls.NO_DEFAULT:
       default = _convert_value(default, value_type,
                                (f'default value for {name}',))
-    return super(StructField, cls).__new__(cls, name, value_type, default)
+    return super(ExtensionTypeField, cls).__new__(cls, name, value_type,
+                                                  default)
 
   @staticmethod
   def is_reserved_name(name):
     """Returns true if `name` is a reserved name."""
-    return name in RESERVED_FIELD_NAMES or name.lower().startswith('_tf_struct')
+    return name in RESERVED_FIELD_NAMES or name.lower().startswith(
+        '_tf_extension_type')
 
 
 def validate_field_value_type(value_type,
@@ -160,7 +164,7 @@ def validate_field_value_type(value_type,
 
 
 # ==============================================================================
-# Type-checking & conversion for StructField values
+# Type-checking & conversion for ExtensionTypeField values
 # ==============================================================================
 
 
@@ -168,7 +172,7 @@ def convert_fields(fields, field_values):
   """Type-checks and converts each field in `field_values` (in place).
 
   Args:
-    fields: A list of `StructField` objects.
+    fields: A list of `ExtensionTypeField` objects.
     field_values: A `dict` mapping field names to values.  Must contain an entry
       for each field.  I.e., `set(field_values.keys())` must be equal to
       `set([f.name for f in fields])`.
@@ -177,7 +181,7 @@ def convert_fields(fields, field_values):
     ValueError: If the keys of `field_values` do not match the names of
       the fields in `fields`.
     TypeError: If any value in `field_values` does not have the type indicated
-      by the corresponding `StructField` object.
+      by the corresponding `ExtensionTypeField` object.
   """
   _convert_fields(fields, field_values, for_spec=False)
 
@@ -192,7 +196,7 @@ def convert_fields_for_spec(fields, field_values):
   (rather than a value described by that TypeSpec).
 
   Args:
-    fields: A list of `StructField` objects.
+    fields: A list of `ExtensionTypeField` objects.
     field_values: A `dict` mapping field names to values.  Must contain an entry
       for each field.  I.e., `set(field_values.keys())` must be equal to
       `set([f.name for f in fields])`.
@@ -201,7 +205,7 @@ def convert_fields_for_spec(fields, field_values):
     ValueError: If the keys of `field_values` do not match the names of
       the fields in `fields`.
     TypeError: If any value in `field_values` does not have the type indicated
-      by the corresponding `StructField` object.
+      by the corresponding `ExtensionTypeField` object.
   """
   _convert_fields(fields, field_values, for_spec=True)
 
@@ -210,7 +214,7 @@ def _convert_fields(fields, field_values, for_spec):
   """Type-checks and converts each field in `field_values` (in place).
 
   Args:
-    fields: A list of `StructField` objects.
+    fields: A list of `ExtensionTypeField` objects.
     field_values: A `dict` mapping field names to values.  Must contain an entry
       for each field.  I.e., `set(field_values.keys())` must be equal to
       `set([f.name for f in fields])`.
@@ -221,7 +225,7 @@ def _convert_fields(fields, field_values, for_spec):
     ValueError: If the keys of `field_values` do not match the names of
       the fields in `fields`.
     TypeError: If any value in `field_values` does not have the type indicated
-      by the corresponding `StructField` object.
+      by the corresponding `ExtensionTypeField` object.
   """
   converted = {}
   if len(fields) != len(field_values):

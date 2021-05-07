@@ -2019,6 +2019,60 @@ bool LiteralBase::IsR1Iota() const {
   return true;
 }
 
+// Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
+// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// literal is not a strided iota.
+absl::optional<int64> LiteralBase::IsR1StridedIota() const {
+  if (!shape().IsArray() || shape().rank() != 1) {
+    return absl::nullopt;
+  }
+
+  const int64 elements = ShapeUtil::ElementsIn(shape());
+  const PrimitiveType type = shape().element_type();
+  if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
+    return absl::nullopt;
+  }
+
+  auto get_element_at = [&](const int64 idx) -> int64 {
+    switch (type) {
+      case U8:
+        return static_cast<int64>(Get<uint8>({idx}));
+      case U16:
+        return static_cast<int64>(Get<uint16>({idx}));
+      case U32:
+        return static_cast<int64>(Get<uint32>({idx}));
+      case U64:
+        return static_cast<int64>(Get<uint64>({idx}));
+      case S8:
+        return Get<int8>({idx});
+      case S16:
+        return Get<int16>({idx});
+      case S32:
+        return Get<int32>({idx});
+      case S64:
+        return Get<int64>({idx});
+      default:
+        CHECK(0);
+        return 0;
+    }
+  };
+
+  // Infer the stride as the second element (since first element is supposed
+  // to be zero).
+  int64 stride = get_element_at(1);
+  if (stride == 0) {
+    return absl::nullopt;
+  }
+
+  for (int64 idx = 0; idx < elements; ++idx) {
+    if (get_element_at(idx) != idx * stride) {
+      return absl::nullopt;
+    }
+  }
+
+  return stride;
+}
+
 bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
   CHECK(shape().IsArray());
   switch (shape().element_type()) {

@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.RandomDataset()`."""
+"""Tests for `tf.data.Dataset.random()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
@@ -36,7 +36,7 @@ class RandomDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expect_determinism = (global_seed is not None) or (local_seed is not None)
 
     random_seed.set_random_seed(global_seed)
-    ds = random_ops.RandomDataset(seed=local_seed).take(10)
+    ds = dataset_ops.Dataset.random(seed=local_seed).take(10)
 
     output_1 = self.getDatasetOutput(ds)
     ds = self.graphRoundTrip(ds)

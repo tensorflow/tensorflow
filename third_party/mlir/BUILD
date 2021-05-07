@@ -5,7 +5,7 @@
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "gentbl_filegroup", "td_library")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
 load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
@@ -27,8 +27,6 @@ package_group(
 exports_files([
     "LICENSE.TXT",
     "include/mlir/Dialect/LLVMIR/LLVMOps.td",
-    "python/mlir/dialects/StandardOps.td",
-    "python/mlir/dialects/BuiltinOps.td",
     "run_lit.sh",
 ])
 
@@ -435,13 +433,8 @@ cc_library(
 )
 
 ##---------------------------------------------------------------------------##
-# Python bindings.
-#
-# This only defines filegroups that are used to construct Python extensions and
-# libraries. Actual libraries can be constructed elsewhere. Note that we define
-# separate filegroups for files in different directories so that we can mirror
-# the tree correctly in Python land.
-##---------------------------------------------------------------------------##
+# Sources of Python bindings.
+#----------------------------------------------------------------------------##
 
 cc_library(
     name = "MLIRBindingsPythonExtension",
@@ -452,115 +445,59 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "MLIRBindingsPythonSourceFiles",
+exports_files(["lib/Bindings/Python/MainModule.cpp"])
+
+cc_library(
+    name = "MLIRBindingsPythonCore",
     srcs = glob(
         include = ["lib/Bindings/Python/*.cpp"],
         exclude = ["lib/Bindings/Python/MainModule.cpp"],
     ),
-)
-
-exports_files(
-    ["lib/Bindings/Python/MainModule.cpp"],
-)
-
-filegroup(
-    name = "MLIRBindingsPythonHeaderFiles",
-    srcs = glob(["lib/Bindings/Python/*.h"]),
-)
-
-td_library(
-    name = "StandardOpsPyTdFiles",
-    srcs = [
-        "include/mlir/Bindings/Python/Attributes.td",
+    hdrs = glob(["lib/Bindings/Python/*.h"]),
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
     ],
-    includes = ["include"],
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
+    ],
+    includes = [
+        "include",
+        "lib/Bindings/Python",
+    ],
     deps = [
-        ":OpBaseTdFiles",
-        ":StdOpsTdFiles",
+        ":CAPIAsync",
+        ":CAPIDebug",
+        ":CAPIExecutionEngine",
+        ":CAPIGPU",
+        ":CAPIIR",
+        ":CAPILinalg",
+        ":CAPIRegistration",
+        ":MLIRBindingsPythonExtension",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
     ],
 )
 
-gentbl_filegroup(
-    name = "StandardOpsPyGen",
-    tbl_outs = [
-        (
-            "-gen-python-op-bindings -bind-dialect=std",
-            "python/mlir/dialects/_std_ops_gen.py",
-        ),
+# Dynamic library with the MLIR Python extension.
+cc_binary(
+    name = "_mlir.so",
+    srcs = ["lib/Bindings/Python/MainModule.cpp"],
+    # These flags are needed for pybind11 to work.
+    copts = [
+        "-fexceptions",
+        "-frtti",
     ],
-    tblgen = ":mlir-tblgen",
-    td_file = "python/mlir/dialects/StandardOps.td",
-    deps = [
-        ":StandardOpsPyTdFiles",
+    features = [
+        # Cannot use header_modules (parse_headers feature fails).
+        "-use_header_modules",
     ],
-)
-
-td_library(
-    name = "BuiltinOpsPyTdFiles",
-    srcs = [
-        "include/mlir/Bindings/Python/Attributes.td",
-        "python/mlir/dialects/BuiltinOps.td",
-    ],
-    includes = ["include"],
-    deps = [
-        ":BuiltinDialectTdFiles",
-        ":OpBaseTdFiles",
-    ],
-)
-
-gentbl_filegroup(
-    name = "BuiltinOpsPyGen",
-    tbl_outs = [
-        (
-            "-gen-python-op-bindings -bind-dialect=builtin",
-            "python/mlir/dialects/_builtin_ops_gen.py",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "python/mlir/dialects/BuiltinOps.td",
-    deps = [
-        ":BuiltinOpsPyTdFiles",
-    ],
-)
-
-filegroup(
-    name = "BuiltinOpsPyFiles",
-    srcs = [
-        "python/mlir/dialects/_builtin_ops_ext.py",
-        "python/mlir/dialects/builtin.py",
-        ":BuiltinOpsPyGen",
-    ],
-)
-
-filegroup(
-    name = "CorePyFiles",
-    srcs = [
-        "python/mlir/_cext_loader.py",
-        "python/mlir/_dlloader.py",
-    ],
-)
-
-filegroup(
-    name = "DialectCorePyFiles",
-    srcs = [
-        "python/mlir/dialects/_ods_common.py",
-    ],
-)
-
-filegroup(
-    name = "IRPyFiles",
-    srcs = [
-        "python/mlir/ir.py",
-    ],
-)
-
-filegroup(
-    name = "StandardOpsPyFiles",
-    srcs = [
-        "python/mlir/dialects/std.py",
-        ":StandardOpsPyGen",
-    ],
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [":MLIRBindingsPythonCore"],
 )
 
 ##---------------------------------------------------------------------------##

@@ -323,11 +323,13 @@ cc_library(
     srcs = ["standalone.cc"],
     hdrs = ["standalone.h"],
     deps = [
+        ":root_dataset",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/memory",
     ],
 )

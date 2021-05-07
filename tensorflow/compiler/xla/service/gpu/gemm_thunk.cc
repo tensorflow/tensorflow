@@ -81,7 +81,7 @@ struct MatrixDescriptor {
 template <typename Element, typename AlphaType>
 static bool DoGemmWithAlgorithm(
     int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, AlphaType alpha, double beta,
+    MatrixDescriptor output_matrix, AlphaType alpha, AlphaType beta,
     se::Stream *stream, absl::optional<se::blas::AlgorithmType> algorithm,
     se::blas::ProfileResult *output_profile_result) {
   DCHECK(!output_matrix.transpose);
@@ -132,10 +132,10 @@ static bool DoGemmWithAlgorithm(
             lhs_transpose, rhs_transpose, output_matrix.num_rows,
             output_matrix.num_cols,
             /*size of reduce dim=*/k,
-            /*alpha=*/static_cast<Element>(alpha), lhs_data,
+            /*alpha=*/se::HostOrDeviceScalar<AlphaType>(alpha), lhs_data,
             /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
             /*leading dim of RHS=*/rhs_matrix.num_rows,
-            /*beta=*/static_cast<Element>(beta), &output_data,
+            /*beta=*/se::HostOrDeviceScalar<AlphaType>(beta), &output_data,
             /*leading dim of output=*/output_matrix.num_rows, computation_type,
             *algorithm, output_profile_result)
         .ok();
@@ -274,13 +274,14 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
     switch (output_shape.element_type()) {
       case F16:
         CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<Eigen::half, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
+        return DoGemmWithAlgorithm<Eigen::half, Eigen::half>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix,
+            static_cast<Eigen::half>(alpha.real()),
+            static_cast<Eigen::half>(beta), stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       case F32:
         CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<float, double>(
+        return DoGemmWithAlgorithm<float, float>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
             beta, stream, best_algorithm,
             /*output_profile_result=*/profile_result);

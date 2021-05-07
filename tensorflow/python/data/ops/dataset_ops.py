@@ -393,10 +393,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     return dataset
 
-  def _apply_options(self):
-    """Apply options, such as optimization configuration, to the dataset."""
-    return _FinalizeDataset(self._apply_debug_options())  # pylint: disable=protected-access
-
   def __iter__(self):
     """Creates an iterator for elements of this dataset.
 
@@ -2658,6 +2654,26 @@ name=None))
         key_func=element_to_bucket_id,
         reduce_func=batching_fn,
         window_size_func=window_size_fn)
+
+  @staticmethod
+  def random(seed=None):
+    """Creates a `Dataset` of pseudorandom values.
+
+    The dataset generates a sequence of uniformly distributed integer values.
+
+    >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
+    >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
+    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    True
+
+    Args:
+      seed: (Optional) If specified, the dataset produces a deterministic
+        sequence of values.
+
+    Returns:
+      Dataset: A `Dataset`.
+    """
+    return RandomDataset(seed=seed)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -5010,18 +5026,6 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     self._options_attr._set_mutable(False)
 
 
-class _FinalizeDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts on the options set on the input dataset."""
-
-  def __init__(self, input_dataset):
-    self._input_dataset = input_dataset
-    with ops.colocate_with(input_dataset._variant_tensor):
-      variant_tensor = gen_dataset_ops.finalize_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
-    super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
-
-
 def normalize_to_dense(dataset):
   """Normalizes non-tensor components in a dataset to dense representations.
 
@@ -5169,6 +5173,21 @@ class _GroupByWindowDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.group_by_window()"
+
+
+class RandomDataset(DatasetSource):
+  """A `Dataset` of pseudorandom values."""
+
+  def __init__(self, seed=None):
+    """A `Dataset` of pseudorandom values."""
+    self._seed, self._seed2 = random_seed.get_seed(seed)
+    variant_tensor = ged_ops.random_dataset(
+        seed=self._seed, seed2=self._seed2, **self._flat_structure)
+    super(RandomDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return tensor_spec.TensorSpec([], dtypes.int64)
 
 
 def _collect_resource_inputs(op):

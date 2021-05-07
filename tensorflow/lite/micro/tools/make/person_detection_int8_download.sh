@@ -43,28 +43,18 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
   exit 1
 fi
 
-DOWNLOADED_CORSTONE_PATH=${DOWNLOADS_DIR}/corstone300
-
-if [ -d ${DOWNLOADED_CORSTONE_PATH} ]; then
-  echo >&2 "${DOWNLOADED_CORSTONE_PATH} already exists, skipping the download."
+DOWNLOADED_PERSON_MODEL_INT8_PATH=${DOWNLOADS_DIR}/person_model_int8
+if [ -d ${DOWNLOADED_PERSON_MODEL_INT8_PATH} ]; then
+  echo >&2 "${DOWNLOADED_PERSON_MODEL_INT8_PATH} already exists, skipping the download."
 else
-  UNAME_S=`uname -s`
-  if [ ${UNAME_S} == Linux ]; then
-    CORSTONE_URL=https://developer.arm.com/-/media/Arm%20Developer%20Community/Downloads/OSS/FVP/Corstone-300/MPS3/FVP_Corstone_SSE-300_Ethos-U55_11.14_24.tgz
-    EXPECTED_MD5=89ca3355452072f879c134d04b6f94e2
-  else
-    echo "OS type ${UNAME_S} not supported."
-    exit 1
-  fi
+  PERSON_MODEL_INT8_URL=https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_12_1.zip
+  EXPECTED_MD5=e765cc76889db8640cfe876a37e4ec00
 
   TEMPFILE=$(mktemp -d)/temp_file
-  wget ${CORSTONE_URL} -O ${TEMPFILE} >&2
+  wget ${PERSON_MODEL_INT8_URL} -O ${TEMPFILE} >&2
   check_md5 ${TEMPFILE} ${EXPECTED_MD5}
+  unzip ${TEMPFILE} -d ${DOWNLOADS_DIR} >&2
 
-  TEMPDIR=$(mktemp -d)
-  tar -C ${TEMPDIR} -xvzf ${TEMPFILE} >&2
-  mkdir ${DOWNLOADED_CORSTONE_PATH}
-  ${TEMPDIR}/FVP_Corstone_SSE-300_Ethos-U55.sh --i-agree-to-the-contained-eula --no-interactive -d ${DOWNLOADED_CORSTONE_PATH} >&2
 fi
 
 echo "SUCCESS"

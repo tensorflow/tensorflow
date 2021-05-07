@@ -7393,7 +7393,7 @@ ENTRY f {
   VLOG(2) << "After rewrite \n" << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reshape(
+              GmockMatch(m::Reshape(m::Convert(
                   m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
 }
 
@@ -7419,6 +7419,47 @@ ENTRY f {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::PartitionId()));
+}
+
+TEST_F(AlgebraicSimplifierTest, ConstantToIota) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %cst = s32[4] constant({0, 25, 50, 75})
+  ROOT %s = s32[4] copy(s32[4] %cst)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Iota(), m::Broadcast())));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfStridedIota) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %cst = s32[4] constant({0, 25, 50, 75})
+  %index = u32[] parameter(0)
+  ROOT %dynamic-slice = s32[1]{0} dynamic-slice(s32[4]{0} %cst, u32[] %index),
+                                  dynamic_slice_sizes={1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(
+                  m::Multiply(m::Convert(m::Clamp()), m::Constant()))));
 }
 
 }  // namespace

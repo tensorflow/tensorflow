@@ -1831,7 +1831,7 @@ def _disable_test(execute_func):
         if execute_func:
           return func(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)

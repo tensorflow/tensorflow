@@ -232,9 +232,7 @@ XLA_MAKE_BINARY(SoftsignGrad,
                          xla::Square(xla::Add(XlaHelpers::One(b, input_type(0)),
                                               xla::Abs(rhs)))));
 
-XLA_MAKE_BINARY(TanhGrad,
-                xla::Mul(rhs, xla::Sub(XlaHelpers::One(b, input_type(0)),
-                                       xla::Mul(lhs, lhs))));
+REGISTER_XLA_OP(Name("TanhGrad"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
 
