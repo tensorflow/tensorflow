@@ -31,6 +31,18 @@ class ResizeNearestNeighborOp : public XlaOpKernel {
   bool is_kernel_bilinear_ = false;
 };
 
+class ResizeNearestNeighborGradOp : public XlaOpKernel {
+ public:
+  explicit ResizeNearestNeighborGradOp(OpKernelConstruction* ctx);
+  void Compile(XlaOpKernelContext* ctx) override;
+
+ protected:
+  bool align_corners_ = true;
+  bool half_pixel_centers_ = true;
+  bool is_kernel_bilinear_ = false;
+  xla::PrimitiveType output_type_;
+};
+
 class ResizeBilinearOp : public XlaOpKernel {
  public:
   explicit ResizeBilinearOp(OpKernelConstruction* ctx);
@@ -52,6 +64,7 @@ class ResizeBilinearGradOp : public XlaOpKernel {
  protected:
   bool align_corners_;
   bool half_pixel_centers_ = true;
+  bool is_kernel_bilinear_ = true;
   xla::PrimitiveType output_type_;
 };
 
