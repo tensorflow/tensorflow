@@ -4448,6 +4448,7 @@ cc_library(
         ":TensorDialect",
         ":TensorTransforms",
         ":TosaDialect",
+        ":TosaToLinalg",
         ":Transforms",
         ":TransformsPassIncGen",
         ":VectorOps",
@@ -4512,9 +4513,7 @@ cc_binary(
 cc_library(
     name = "MlirJitRunner",
     srcs = ["lib/ExecutionEngine/JitRunner.cpp"],
-    hdrs = [
-        "include/mlir/ExecutionEngine/JitRunner.h",
-    ],
+    hdrs = ["include/mlir/ExecutionEngine/JitRunner.h"],
     includes = ["include"],
     deps = [
         ":AllPassesAndDialects",
