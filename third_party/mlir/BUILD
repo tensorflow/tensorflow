@@ -445,7 +445,14 @@ cc_library(
     ],
 )
 
-exports_files(["lib/Bindings/Python/MainModule.cpp"])
+exports_files(
+    [
+        "lib/Bindings/Python/LinalgPasses.cpp",
+        "lib/Bindings/Python/MainModule.cpp",
+        "lib/Bindings/Python/Conversions/Conversions.cpp",
+        "lib/Bindings/Python/Transforms/Transforms.cpp",
+    ],
+)
 
 cc_library(
     name = "MLIRBindingsPythonCore",
@@ -482,22 +489,71 @@ cc_library(
     ],
 )
 
+PYBIND11_COPTS = [
+    "-fexceptions",
+    "-frtti",
+]
+
+PYBIND11_FEATURES = [
+    # Cannot use header_modules (parse_headers feature fails).
+    "-use_header_modules",
+]
+
 # Dynamic library with the MLIR Python extension.
 cc_binary(
     name = "_mlir.so",
     srcs = ["lib/Bindings/Python/MainModule.cpp"],
     # These flags are needed for pybind11 to work.
-    copts = [
-        "-fexceptions",
-        "-frtti",
-    ],
-    features = [
-        # Cannot use header_modules (parse_headers feature fails).
-        "-use_header_modules",
-    ],
+    copts = PYBIND11_COPTS,
+    features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
     deps = [":MLIRBindingsPythonCore"],
+)
+
+# Dynamlic library with the MLIR Conversions Python extension.
+cc_binary(
+    name = "_mlirConversions.so",
+    srcs = ["lib/Bindings/Python/Conversions/Conversions.cpp"],
+    copts = PYBIND11_COPTS,
+    features = PYBIND11_FEATURES,
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [
+        ":CAPIConversion",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+# Dynamlic library with the MLIR Transforms Python extension.
+cc_binary(
+    name = "_mlirTransforms.so",
+    srcs = ["lib/Bindings/Python/Transforms/Transforms.cpp"],
+    copts = PYBIND11_COPTS,
+    features = PYBIND11_FEATURES,
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [
+        ":CAPITransforms",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+# Dynamic library with the MLIR Linalg dialect+passes Python extension.
+cc_binary(
+    name = "_mlirLinalgPasses.so",
+    srcs = ["lib/Bindings/Python/LinalgPasses.cpp"],
+    copts = PYBIND11_COPTS,
+    features = PYBIND11_FEATURES,
+    linkshared = 1,
+    linkstatic = 0,
+    deps = [
+        ":CAPILinalg",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+    ],
 )
 
 ##---------------------------------------------------------------------------##
