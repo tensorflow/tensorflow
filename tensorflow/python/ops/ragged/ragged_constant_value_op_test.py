@@ -73,6 +73,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                   np.array([]), [[5, 6], [7, 8], [9, 0]]],
           ragged_rank=1,
           expected_shape=(3, None, 2)),
+    dict(
+          pylist=[np.array([3, np.array(4)]), [[1, 2]],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          ragged_rank=1,
+          expected_shape=(3, None, 2)),
       dict(
           pylist=[[[1, 2], np.array([3, np.array(4)])],
                   np.array([]), [[5, 6], [7, 8], [9, 0]]],
