@@ -1357,11 +1357,10 @@ class Stream {
                        DeviceMemory<std::complex<double>> *x, int incx);
 
   template <typename InputType>
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k,
-                                 const DeviceMemory<InputType> &a, int lda,
-                                 const DeviceMemory<InputType> &b, int ldb,
-                                 DeviceMemory<InputType> *c, int ldc) {
+  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
+                       uint64 n, uint64 k, const DeviceMemory<InputType> &a,
+                       int lda, const DeviceMemory<InputType> &b, int ldb,
+                       DeviceMemory<InputType> *c, int ldc) {
     InputType alpha{1.0};
     InputType beta{0.0};
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
@@ -1369,13 +1368,11 @@ class Stream {
   }
 
   template <typename InputType, typename ConstantType>
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k,
-                                 ConstantType alpha,
-                                 const DeviceMemory<InputType> &a, int lda,
-                                 const DeviceMemory<InputType> &b, int ldb,
-                                 ConstantType beta, DeviceMemory<InputType> *c,
-                                 int ldc) {
+  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
+                       uint64 n, uint64 k, ConstantType alpha,
+                       const DeviceMemory<InputType> &a, int lda,
+                       const DeviceMemory<InputType> &b, int ldb,
+                       ConstantType beta, DeviceMemory<InputType> *c, int ldc) {
     static_assert(!std::is_same<InputType, Eigen::half>::value ||
                       std::is_same<ConstantType, float>::value ||
                       std::is_same<ConstantType, Eigen::half>::value,
