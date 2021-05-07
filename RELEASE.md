@@ -52,10 +52,12 @@
         lower overall memory usage, and a cleaner API. It does not require
         specifying a `delete_key` and `empty_key` that cannot be inserted into
         the table.
-   *    Added support for specifying number of subdivisions in all reduce host
+    *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
-   *   SavedModel
+    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
+        Hermitian tridiagonal matrix.
+    *   SavedModel
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.
         *   Added a SavedModel load option to allow restoring partial
