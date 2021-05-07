@@ -697,6 +697,18 @@ def OptimizePow2ToSquare : Pat<
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
 
+// Optimize X^(1/2) to √X
+def OptimizePow2ToSqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.5f">)),
+  (TFL_SqrtOp $input)>;
+
+// Optimize X^(-1/2) to 1/√X == rsqrt(x)
+def OptimizePow2ToRsqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "-0.5f">)),
+  (TFL_RsqrtOp $input)>;
+
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
   "$0, $1.cast<DenseIntElementsAttr>())">>;
