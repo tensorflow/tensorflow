@@ -18,6 +18,10 @@ limitations under the License.
 // TODO(b/142492876): Avoid depending on absl internal.
 #include "absl/base/internal/cycleclock.h"
 #include "absl/base/internal/sysinfo.h"
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_split.h"
+
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -180,32 +184,7 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
   return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
 }
 
-// Using StringPiece breaks Windows build.
-struct StringData {
-  struct Hasher {
-    size_t operator()(const StringData& sdata) const {
-      // For dependency reasons, we cannot use hash.h here. Use DBJHash instead.
-      size_t hash = 5381;
-      const char* data = sdata.data;
-      for (const char* top = data + sdata.size; data < top; ++data) {
-        hash = ((hash << 5) + hash) + (*data);
-      }
-      return hash;
-    }
-  };
-
-  StringData() = default;
-  StringData(const char* data, size_t size) : data(data), size(size) {}
-
-  bool operator==(const StringData& rhs) const {
-    return size == rhs.size && memcmp(data, rhs.data, size) == 0;
-  }
-
-  const char* data = nullptr;
-  size_t size = 0;
-};
-
-using VmoduleMap = std::unordered_map<StringData, int, StringData::Hasher>;
+using VmoduleMap = absl::flat_hash_map<std::string, int>;
 
 // Returns a mapping from module name to VLOG level, derived from the
 // TF_CPP_VMODULE environment variable; ownership is transferred to the caller.
@@ -218,32 +197,24 @@ VmoduleMap* VmodulesMapFromEnv() {
     // nullptr so that the ShouldVlogModule() API can fast bail out of it.
     return nullptr;
   }
-  // The memory returned by getenv() can be invalidated by following getenv() or
-  // setenv() calls. And since we keep references to it in the VmoduleMap in
-  // form of StringData objects, make a copy of it.
-  const char* env_data = strdup(env);
-  VmoduleMap* result = new VmoduleMap();
-  while (true) {
-    const char* eq = strchr(env_data, '=');
-    if (eq == nullptr) {
-      break;
-    }
-    const char* after_eq = eq + 1;
 
-    // Comma either points at the next comma delimiter, or at a null terminator.
-    // We check that the integer we parse ends at this delimiter.
-    const char* comma = strchr(after_eq, ',');
-    const char* new_env_data;
-    if (comma == nullptr) {
-      comma = strchr(after_eq, '\0');
-      new_env_data = comma;
-    } else {
-      new_env_data = comma + 1;
+  VmoduleMap* result = new VmoduleMap;
+
+  std::vector<absl::string_view> vmodule_directives = absl::StrSplit(env, ',');
+  for (absl::string_view directive : vmodule_directives) {
+    std::vector<absl::string_view> file_level_pair =
+        absl::StrSplit(directive, '=');
+    int line_number;
+    if (file_level_pair.size() != 2 ||
+        !absl::SimpleAtoi(file_level_pair[1], &line_number)) {
+      std::cerr << "Could not parse vmodule directive \"" << directive
+                << "\", ignoring.";
+      continue;
     }
-    (*result)[StringData(env_data, eq - env_data)] =
-        ParseInteger(after_eq, comma - after_eq);
-    env_data = new_env_data;
+
+    (*result)[file_level_pair[0]] = line_number;
   }
+
   return result;
 }
 
@@ -320,12 +291,13 @@ bool LogMessage::VmoduleActivated(const char* fname, int level) {
   if (TF_PREDICT_TRUE(vmodules == nullptr)) {
     return false;
   }
+
   const char* last_slash = strrchr(fname, '/');
   const char* module_start = last_slash == nullptr ? fname : last_slash + 1;
   const char* dot_after = strchr(module_start, '.');
   const char* module_limit =
       dot_after == nullptr ? strchr(fname, '\0') : dot_after;
-  StringData module(module_start, module_limit - module_start);
+  absl::string_view module(module_start, module_limit - module_start);
   auto it = vmodules->find(module);
   return it != vmodules->end() && it->second >= level;
 }
