@@ -129,6 +129,9 @@ Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
 // padding.
 Status Conv2DShape(shape_inference::InferenceContext* c);
 
+// Shape function for QuantizedConv2D-like operations
+Status QuantizedConv2DShape(shape_inference::InferenceContext* c);
+
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
@@ -140,6 +143,10 @@ Status DepthwiseConv2DNativeShapeWithExplicitPadding(
 // Shape function for DepthwiseConv2D-like operations that do not support
 // explicit padding.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
+
+// Shape function for QuantizedDepthwiseConv2DNative-like operations
+Status QuantizedDepthwiseConv2DNativeShape(
+    shape_inference::InferenceContext* c);
 
 // Shape function for Conv2DBackpropInput.
 Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
