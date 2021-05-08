@@ -15,6 +15,7 @@ ARG LIBNVINFER_MAJOR_VERSION=7
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        clang-format \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas-${CUDA/./-} \
         libcublas-dev-${CUDA/./-} \
@@ -64,7 +65,7 @@ ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth 1 https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 # Link the libcuda stub to the location where tensorflow is searching for it and reconfigure
 # dynamic linker run-time bindings

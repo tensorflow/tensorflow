@@ -1,0 +1,15 @@
+repos:
+ - repo: local
+   hooks:
+   -   id: pylint
+       name: pylint
+       entry: pylint
+       language: system
+       types: [python]
+ - repo: local
+   hooks:
+   -   id: clang-format
+       name: clang-format
+       entry: clang-format -i
+       language: system
+       types_or: [c++, header, c]

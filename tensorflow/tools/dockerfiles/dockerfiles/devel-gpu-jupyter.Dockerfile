@@ -38,6 +38,7 @@ ARG LIBNVINFER_MAJOR_VERSION=7
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        clang-format \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas-${CUDA/./-} \
         libcublas-dev-${CUDA/./-} \
@@ -87,7 +88,7 @@ ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth 1 https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 # Link the libcuda stub to the location where tensorflow is searching for it and reconfigure
 # dynamic linker run-time bindings
@@ -109,6 +110,10 @@ RUN python3 -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -s $(which python3) /usr/local/bin/python
 
+RUN python3 -m pip --no-cache-dir install \
+        pylint==2.7.4 \
+        pre-commit
+RUN if [ "$CHECKOUT_TF_SRC" = 1 ] ; then cd /tensorflow_src && pre-commit install ; fi
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -141,7 +146,6 @@ RUN mkdir /bazel && \
     chmod +x /bazel/installer.sh && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
-
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
