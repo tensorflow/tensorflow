@@ -56,6 +56,7 @@ TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPACE_TO_BATCH_ND();
 TfLiteRegistration Register_SQUEEZE();
 TfLiteRegistration Register_SVDF();
+TfLiteRegistration Register_TANH();
 TfLiteRegistration Register_TRANSPOSE_CONV();
 TfLiteRegistration Register_ZEROS_LIKE();
 
@@ -112,7 +113,6 @@ TfLiteRegistration Register_STRIDED_SLICE();
 TfLiteRegistration Register_SUB();
 TfLiteRegistration Register_UNPACK();
 TfLiteRegistration Register_L2_NORMALIZATION();
-TfLiteRegistration Register_TANH();
 
 }  // namespace micro
 }  // namespace ops

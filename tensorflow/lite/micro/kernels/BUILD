@@ -311,6 +311,7 @@ cc_library(
         "sub.cc",
         "svdf_common.cc",
         "tanh.cc",
+        "tanh_common.cc",
         "transpose_conv.cc",
         "unpack.cc",
         "zeros_like.cc",
@@ -331,6 +332,7 @@ cc_library(
         "quantize.h",
         "softmax.h",
         "svdf.h",
+        "tanh.h",
     ],
     copts = micro_copts(),
     visibility = [
