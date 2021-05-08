@@ -479,11 +479,15 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
-  // Using def-to-use order is sound since we do not modify users.
-  std::vector<HloInstruction*> def_to_use_order =
+  // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
+  // shape mismatch but bitcasts could prevent future h-fusion from happening.
+  // So, a bottom-up, use-to-def order should be more favorable. It also helps
+  // to save compiler iterations to reach the fixed point.
+  std::vector<HloInstruction*> use_to_def_order =
       computation_->MakeInstructionPostOrder();
-  for (size_t i = 0; i < def_to_use_order.size(); ++i) {
-    HloInstruction* consumer = def_to_use_order[i];
+  absl::c_reverse(use_to_def_order);
+  for (size_t i = 0; i < use_to_def_order.size(); ++i) {
+    HloInstruction* consumer = use_to_def_order[i];
     HorizontalLoopFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusibles = fusion_candidates.GetNextSpanOfFusions();
