@@ -152,8 +152,10 @@ def load_data(path='imdb.npz',
     xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
   idx = len(x_train)
-  x_train, y_train = np.array(xs[:idx], dtype="object"), np.array(labels[:idx], dtype="object")
-  x_test, y_test = np.array(xs[idx:], dtype="object"), np.array(labels[idx:], dtype="object")
+  x_train = np.array(xs[:idx], dtype="object")
+  y_train = np.array(labels[:idx], dtype="object")
+  x_test = np.array(xs[idx:], dtype="object")
+  y_test = np.array(labels[idx:], dtype="object")
 
   return (x_train, y_train), (x_test, y_test)
 
