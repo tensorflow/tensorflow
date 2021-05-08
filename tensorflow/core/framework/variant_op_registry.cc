@@ -52,6 +52,16 @@ std::unordered_set<string>* UnaryVariantOpRegistry::PersistentStringStorage() {
   return string_storage;
 }
 
+// Get a pointer to a global UnaryVariantOpRegistry object
+UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal() {
+  static UnaryVariantOpRegistry* global_unary_variant_op_registry = NULL;
+
+  if (global_unary_variant_op_registry == NULL) {
+    global_unary_variant_op_registry = new UnaryVariantOpRegistry;
+  }
+  return global_unary_variant_op_registry;
+}
+
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
     StringPiece type_name) {
   auto found = decode_fns.find(type_name);
