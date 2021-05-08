@@ -83,6 +83,7 @@ py_strict_library(
         ":mode_keys",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",

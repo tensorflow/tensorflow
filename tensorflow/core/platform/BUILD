@@ -426,15 +426,6 @@ cc_library(
     ],
 )
 
-py_test(
-    name = "ram_file_system_test",
-    srcs = ["ram_file_system_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
 cc_library(
     name = "numbers",
     srcs = ["numbers.cc"],
