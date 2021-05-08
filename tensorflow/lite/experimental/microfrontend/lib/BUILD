@@ -20,6 +20,7 @@ cc_library(
         "fft_util.h",
     ],
     deps = [
+        ":fprintf_shim",
         ":memory_util",
         "@kissfft//:kiss_fftr_16",
     ],
@@ -38,8 +39,17 @@ cc_library(
     deps = [
         ":bits",
         ":fft",
+        ":fprintf_shim",
         ":memory_util",
     ],
+)
+
+cc_library(
+    name = "fprintf_shim",
+    hdrs = [
+        "fprintf_shim.h",
+    ],
+    defines = ["MICROFRONTEND_USE_FPRINTF"],
 )
 
 cc_library(
@@ -56,6 +66,7 @@ cc_library(
         ":bits",
         ":fft",
         ":filterbank",
+        ":fprintf_shim",
         ":log_scale",
         ":noise_reduction",
         ":pcan_gain_control",
@@ -100,6 +111,9 @@ cc_library(
         "noise_reduction.h",
         "noise_reduction_util.h",
     ],
+    deps = [
+        ":fprintf_shim",
+    ],
 )
 
 cc_library(
@@ -114,6 +128,7 @@ cc_library(
     ],
     deps = [
         ":bits",
+        ":fprintf_shim",
         ":memory_util",
     ],
 )
@@ -129,6 +144,7 @@ cc_library(
         "window_util.h",
     ],
     deps = [
+        "fprintf_shim",
         ":memory_util",
     ],
 )

@@ -15,10 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/window_util.h"
 
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
 
 // Some platforms don't have M_PI
@@ -38,7 +38,7 @@ int WindowPopulateState(const struct WindowConfig* config,
 
   state->coefficients = microfrontend_alloc(state->size * sizeof(*state->coefficients));
   if (state->coefficients == NULL) {
-    fprintf(stderr, "Failed to allocate window coefficients\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate window coefficients\n");
     return 0;
   }
 
@@ -55,13 +55,13 @@ int WindowPopulateState(const struct WindowConfig* config,
   state->input_used = 0;
   state->input = microfrontend_alloc(state->size * sizeof(*state->input));
   if (state->input == NULL) {
-    fprintf(stderr, "Failed to allocate window input\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate window input\n");
     return 0;
   }
 
   state->output = microfrontend_alloc(state->size * sizeof(*state->output));
   if (state->output == NULL) {
-    fprintf(stderr, "Failed to allocate window output\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate window output\n");
     return 0;
   }
 

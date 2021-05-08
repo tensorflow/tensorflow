@@ -22,7 +22,7 @@ limitations under the License.
 
 // This size has been determined by experimentation, based on the largest
 // allocations used by the micro speech example and tests.
-#define FIXED_POOL_SIZE (20 * 1024)
+#define FIXED_POOL_SIZE (30 * 1024)
 
 void* microfrontend_alloc(size_t size) {
   static unsigned char fixed_pool[FIXED_POOL_SIZE];

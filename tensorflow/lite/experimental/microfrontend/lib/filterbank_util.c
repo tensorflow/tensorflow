@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 
+#include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
 
 #define kFilterbankIndexAlignment 4
@@ -89,7 +89,7 @@ state->channel_frequency_starts =
     microfrontend_free(center_mel_freqs);
     microfrontend_free(actual_channel_starts);
     microfrontend_free(actual_channel_widths);
-    fprintf(stderr, "Failed to allocate channel buffers\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate channel buffers\n");
     return 0;
   }
   
@@ -162,15 +162,17 @@ state->channel_frequency_starts =
   // Allocate the two arrays to store the weights - weight_index_start contains
   // the index of what would be the next set of weights that we would need to
   // add, so that's how many weights we need to allocate.
-  state->weights = calloc(weight_index_start, sizeof(*state->weights));
-  state->unweights = calloc(weight_index_start, sizeof(*state->unweights));
+  state->weights = microfrontend_alloc(weight_index_start * sizeof(*state->weights));
+  memset(state->weights, 0, (weight_index_start * sizeof(*state->weights)));
+  state->unweights = microfrontend_alloc(weight_index_start * sizeof(*state->unweights));
+  memset(state->unweights, 0, (weight_index_start * sizeof(*state->unweights)));
 
   // If the alloc failed, we also need to nuke the arrays.
   if (state->weights == NULL || state->unweights == NULL) {
     microfrontend_free(center_mel_freqs);
     microfrontend_free(actual_channel_starts);
     microfrontend_free(actual_channel_widths);
-    fprintf(stderr, "Failed to allocate weights or unweights\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate weights or unweights\n");
     return 0;
   }
 
@@ -206,7 +208,7 @@ state->channel_frequency_starts =
   microfrontend_free(actual_channel_starts);
   microfrontend_free(actual_channel_widths);
   if (state->end_index >= spectrum_size) {
-    fprintf(stderr, "Filterbank end_index is above spectrum size.\n");
+    MICROFRONTEND_FPRINTF(stderr, "Filterbank end_index is above spectrum size.\n");
     return 0;
   }
   return 1;
