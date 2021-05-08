@@ -80,6 +80,21 @@ REGISTER_OP("StringToHashBucketFast")
     .Attr("num_buckets: int >= 1")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("_TensorToHashBucketFast")
+    .Input("input: T")
+    .Output("output: int64")
+    .Attr("T: {int8, uint8, int16, uint16, int32, uint32, int64, uint64}")
+    .Attr("num_buckets: int >= 1")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Internal operation which is a composition of converting the tensor to a string
+tensor (AsString) and then calling hash functions (StringToHashBucketFast):
+reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
+expected to create these operators.
+)doc");
+
 REGISTER_OP("StringToHashBucketStrong")
     .Input("input: string")
     .Output("output: int64")
