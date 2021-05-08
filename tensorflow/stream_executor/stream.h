@@ -278,14 +278,14 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<Eigen::half> &side_input,
+      const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training,
-      ScratchAllocator *reserve_space_allocator,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
