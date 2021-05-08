@@ -16,19 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_H_
 #define TENSORFLOW_C_TF_STATUS_H_
 
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#include "tensorflow/c/c_api_macros.h"
 
 #ifdef __cplusplus
 extern "C" {

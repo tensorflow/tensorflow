@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_C_C_API_MACROS_H_
 #define TENSORFLOW_C_C_API_MACROS_H_
 
+// Macro to control visibility of exported symbols in the shared library (.so,
+// .dylib, .dll).
+// This duplicates the TF_EXPORT macro definition in
+// tensorflow/core/platform/macros.h in order to keep this .h file independent
+// of any other includes.
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else
