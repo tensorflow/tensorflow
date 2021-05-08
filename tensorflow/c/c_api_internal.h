@@ -185,6 +185,12 @@ struct TF_Server {
 };
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
+// Exposed helper functions
+
+TF_Operation* ToOperation(tensorflow::Node* node);
+
+// End Exposed helper functions
+
 namespace tensorflow {
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
