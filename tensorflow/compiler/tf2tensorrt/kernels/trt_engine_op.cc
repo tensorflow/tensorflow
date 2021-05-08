@@ -484,9 +484,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             "without the input_shapes attribute), then you need to convert the "
             "original model again to TensorRT in order to set the attribute "
             "input_shapes."));
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Explicit batch mode does not support calibration"));
 
     string profile_strategy_name;
     status = context->GetAttr("profile_strategy", &profile_strategy_name);
@@ -504,6 +501,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
+
+  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
+    OP_REQUIRES(context, !calibration_mode_,
+                errors::InvalidArgument(
+                    "Dynamic shape mode does not support calibration"));
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
