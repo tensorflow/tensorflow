@@ -66,7 +66,7 @@ int64 CountAccumulator(const T* begin, const T* end) {
 
 template <>
 int64 CountAccumulator<bool>(const bool* begin, const bool* end) {
-  return std::accumulate(begin, end, 0LL);
+  return end - begin - std::count_if(begin, end, [](bool value) { return !value; });
 }
 
 }  // namespace
