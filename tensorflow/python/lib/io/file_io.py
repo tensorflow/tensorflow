@@ -504,6 +504,7 @@ def recursive_create_dir_v2(path):
   """Creates a directory and all parent/intermediate directories.
 
   It succeeds if path already exists and is writable.
+  If RecursivelyCreateDir method does not work it tries os method.
 
   Args:
     path: string, name of the directory to be created
@@ -511,7 +512,11 @@ def recursive_create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
+  try:
+    _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
+  except:
+    if not os.path.exists(path):
+      os.makedirs(path)
 
 
 @tf_export("io.gfile.copy")
