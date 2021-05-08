@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -243,17 +243,5 @@ REGISTER_QUANTIZED_CONCAT(quint8);
 REGISTER_QUANTIZED_CONCAT(qint32);
 
 #undef REGISTER_QUANTIZED_CONCAT
-
-#ifdef INTEL_MKL
-#define REGISTER_QUANTIZED_CONCATV2(type)                \
-  REGISTER_KERNEL_BUILDER(Name("QuantizedConcatV2")      \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("axis"),       \
-                          QuantizedConcatOp<type>)
-
-REGISTER_QUANTIZED_CONCATV2(quint8);
-REGISTER_QUANTIZED_CONCATV2(qint32);
-#endif
 
 }  // namespace tensorflow

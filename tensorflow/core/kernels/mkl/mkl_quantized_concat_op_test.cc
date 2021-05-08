@@ -43,34 +43,6 @@ namespace tensorflow {
 
 using test::graph::Constant;
 
-static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const TensorShape dummy_shape({8});
-
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
-
-class ConvMklToTF : public OpsTestBase {
- public:
-  template <typename T>
-  void ConvertMKL2TF(DataType dtype, const Tensor& first, const Tensor& second,
-                     Tensor& output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(first.shape(), first.flat<T>());
-    AddInputFromArray<uint8>(second.shape(), second.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    output = *GetOutput(0);
-  }
-  void TestBody(){};
-};
-
 class QuantizedConcatTest : public OpsTestBase {
  protected:
   QuantizedConcatTest() {}
@@ -97,10 +69,6 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
                    .Input(FakeInput(DT_INT32))
                    .Input(FakeInput(2, DT_FLOAT))
                    .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))     // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
                    .Attr("N", 2)
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("Tidx", DT_INT32)
@@ -145,10 +113,6 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
@@ -170,10 +134,6 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
                    .Input(FakeInput(DT_INT32))
                    .Input(FakeInput(2, DT_FLOAT))
                    .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))     // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
                    .Attr("N", 2)
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("Tidx", DT_INT32)
@@ -219,10 +179,6 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
