@@ -64,7 +64,7 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
       // params is a [batch_size, gather_dim_size, slice_size] tensor. Read
       // params[batch_i, gather_i, slice_i] and write it to the i'th position in
       // out.
-      Index params_i =
+      int64 params_i =
           (batch_i * gather_dim_size + gather_i) * slice_size + slice_i;
       out[i] = params[params_i];
     }

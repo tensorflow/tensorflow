@@ -75,7 +75,7 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
     } else {
       // Read params[batch_i, outer_i, gather_i, slice_i] and write it to the
       // i'th position in out.
-      Index params_i = (
+      int64 params_i = (
           (batch_i * outer_size + outer_i) * gather_dim_size + gather_i
       ) * slice_size + slice_i;
       out[i] = params[params_i];
