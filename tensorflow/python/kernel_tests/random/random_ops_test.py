@@ -455,6 +455,21 @@ class RandomShapeTest(test.TestCase):
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))
     self.assertIs(None, rnd3.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
+  def testRandomCrop(self):
+    # If size > value.shape, zero pad the result so that it always has shape
+    # exactly size.
+    i = np.array([[2, 2, 2], [2, 2, 2], [2, 2, 2]])
+    j = np.array([[3, 3, 3], [3, 3, 3], [3, 3, 3]])
+    k = np.array([[4, 4, 4], [4, 4, 4], [4, 4, 4]])
+    ij = np.dstack((i, j))
+    ijk = np.dstack((ij, k))
+    img = ops.convert_to_tensor(ijk)
+    rnd1 = random_ops.random_crop(img, [5, 5, 3])
+    self.assertEqual([5, 5, 3], rnd1.get_shape())
+    rnd2 = random_ops.random_crop(img, [2, 2, 3])
+    self.assertEqual([2, 2, 3], rnd2.get_shape())
+
 
 if __name__ == "__main__":
   test.main()
