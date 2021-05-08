@@ -23,28 +23,17 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
-namespace tensorflow {
-namespace {
+//TODO(mconley): Should the below macro and the one in convert/utils.h be moved to an upper utils directory?
+#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
+  ((NV_TENSORRT_MAJOR > major) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH > patch) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
-class Logger : public nvinfer1::ILogger {
- public:
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override {
-    switch (severity) {
-      case Severity::kINFO:
-        LOG(INFO) << msg;
-        break;
-      case Severity::kWARNING:
-        LOG(WARNING) << msg;
-        break;
-      case Severity::kINTERNAL_ERROR:
-      case Severity::kERROR:
-        LOG(ERROR) << msg;
-        break;
-      default:
-        break;
-    }
-  }
-};
+namespace tensorflow {
+namespace tensorrt {
 
 class ScopedWeights {
  public:
@@ -65,15 +54,18 @@ const char* kOutputTensor = "output";
 
 // Creates a network to compute y=2x+3.
 nvinfer1::IHostMemory* CreateNetwork() {
-  Logger logger;
+  Logger& logger = *Logger::GetLogger();
   nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(logger);
   ScopedWeights weights(2.0);
   ScopedWeights bias(3.0);
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  nvinfer1::INetworkDefinition* network = builder->createNetworkV2(0L);
+#else
   nvinfer1::INetworkDefinition* network = builder->createNetwork();
+#endif
   // Add the input.
   auto input = network->addInput(kInputTensor, nvinfer1::DataType::kFLOAT,
-                                 nvinfer1::DimsCHW{1, 1, 1});
+                                 nvinfer1::Dims3{1, 1, 1});
   EXPECT_NE(input, nullptr);
   // Add the hidden layer.
   auto layer = network->addFullyConnected(*input, 1, weights.get(), bias.get());
@@ -84,8 +76,14 @@ nvinfer1::IHostMemory* CreateNetwork() {
   network->markOutput(*output);
   // Build the engine
   builder->setMaxBatchSize(1);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  auto builderConfig = builder->createBuilderConfig();
+  builderConfig->setMaxWorkspaceSize(1 << 10);
+  auto engine = builder->buildEngineWithConfig(*network, *builderConfig);
+#else
   builder->setMaxWorkspaceSize(1 << 10);
   auto engine = builder->buildCudaEngine(*network);
+#endif
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
   nvinfer1::IHostMemory* model = engine->serialize();
@@ -141,7 +139,7 @@ TEST(TensorrtTest, BasicFunctions) {
   // Create the network model.
   nvinfer1::IHostMemory* model = CreateNetwork();
   // Use the model to create an engine and then an execution context.
-  Logger logger;
+  Logger& logger = *Logger::GetLogger();
   nvinfer1::IRuntime* runtime = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* engine =
       runtime->deserializeCudaEngine(model->data(), model->size(), nullptr);
@@ -160,7 +158,7 @@ TEST(TensorrtTest, BasicFunctions) {
   runtime->destroy();
 }
 
-}  // namespace
+}  // namespace tensorrt
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
