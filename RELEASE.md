@@ -76,6 +76,8 @@
         endpoint.
     *   Promoting `tf.data.experimental.RandomDataset` API to
         `tf.data.Dataset.random` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
+        and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
