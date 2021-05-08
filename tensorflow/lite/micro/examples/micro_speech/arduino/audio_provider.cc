@@ -53,7 +53,7 @@ volatile int32_t g_latest_audio_timestamp = 0;
 
 void CaptureSamples() {
   // This is how many bytes of new data we have each time this is called
-  const int number_of_samples = DEFAULT_PDM_BUFFER_SIZE;
+  const int number_of_samples = DEFAULT_PDM_BUFFER_SIZE / sizeof(int16_t);
   // Calculate what timestamp the last audio sample represents
   const int32_t time_in_ms =
       g_latest_audio_timestamp +
