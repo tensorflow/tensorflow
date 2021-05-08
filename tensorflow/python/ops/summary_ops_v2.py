@@ -356,6 +356,9 @@ class _ResourceSummaryWriter(SummaryWriter):
       if context.executing_eagerly():
         self._closed = True
 
+  def is_closed(self):
+    return self._closed
+
 
 class _TrackableResourceSummaryWriter(_ResourceSummaryWriter,
                                       tracking.TrackableResource):

@@ -39,6 +39,7 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.summary_ops_v2 import ResourceSummaryWriter
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
@@ -785,7 +786,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
                output_dir=None,
                summary_writer=None,
                scaffold=None,
-               summary_op=None):
+               summary_op=None,
+               reopen_secs=7200):
     """Initializes a `SummarySaverHook`.
 
     Args:
@@ -802,6 +804,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
         TF summary methods like `tf.compat.v1.summary.scalar` or
         `tf.compat.v1.summary.merge_all`. It can be passed in as one tensor; if
         more than one, they must be passed in as a list.
+      reopen_secs: `int` close summary file and reopen every N seconds.
+        This helps to avoid creating really large files. 
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.
@@ -816,11 +820,15 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     self._scaffold = scaffold
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
+    self._reopen_timer = SecondOrStepTimer(every_secs=reopen_secs)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
-  def begin(self):
+  def _maybe_init_summary_writer(self):
     if self._summary_writer is None and self._output_dir:
       self._summary_writer = SummaryWriterCache.get(self._output_dir)
+
+  def begin(self):
+    self._maybe_init_summary_writer()
     self._next_step = None
     self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
     if self._global_step_tensor is None:
@@ -835,7 +843,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if self._request_summary:
       if self._get_summary_op() is not None:
         requests["summary"] = self._get_summary_op()
-
+    self._maybe_reopen()
     return SessionRunArgs(requests)
 
   def after_run(self, run_context, run_values):
@@ -857,12 +865,28 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
       if "summary" in run_values.results:
         for summary in run_values.results["summary"]:
           self._summary_writer.add_summary(summary, global_step)
-
+    
+    self._maybe_close()
     self._next_step = global_step + 1
+
 
   def end(self, session=None):
     if self._summary_writer:
       self._summary_writer.flush()
+      self._maybe_close()
+
+  def _maybe_close(self):
+    if self._reopen_timer.should_trigger_for_step(self._next_step):
+      if self._summary_writer and \
+       isinstance(self._summary_writer, ResourceSummaryWriter):
+        self._summary_writer.close()
+
+  def _maybe_reopen(self):
+    self._maybe_init_summary_writer()
+    if self._summary_writer and \
+     isinstance(self._summary_writer, ResourceSummaryWriter) and \
+     self._summary_writer.is_closed():
+      self._summary_writer.reopen()
 
   def _get_summary_op(self):
     """Fetches the summary op either from self._summary_op or self._scaffold.
