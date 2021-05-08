@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
@@ -320,6 +321,91 @@ TEST_F(UtilsTest, DedupControlInputs) {
   EXPECT_EQ(foo.input(0), "bar");
   EXPECT_EQ(foo.input(1), "gnu");
 }
+
+TEST_F(UtilsTest, XlaHints) {
+  using FDH = tensorflow::FunctionDefHelper;
+
+  /*
+   * In the following graph:
+   *
+   *             x:RESOURCE                       y:DT_FLOAT
+   *                 |                                |
+   *                 |                                |
+   *                 v                                v
+   *      launch:XlaLaunch (cluster_f)      not_launch:PCO (XAddX) *
+   *                / \
+   *               /   \
+   *              /     \
+   *             /       \
+   *            v         v
+   *     identity:PCO   read:PCO *
+   * (ResourceIdentity)  (ReadResourceVariable)
+   *
+   * where * nodes are tagged with "_xla_outside_compilation", we expect
+   * the following XLA hints for the functions:
+   *
+   *  function name        | will_be_compiled_by_xla | contains_outside_subgraph
+   *  --------------------------------------------------------------------------
+   *  cluster_f            | true                    | true
+   *  ResourceIdentity     | true                    | false
+   *  ReadResourceVariable | true                    | false
+   *  XAddX                | false                   | false
+   *
+   */
+
+  FunctionDef identity_f = test::function::ResourceIdentity();
+  FunctionDef read_resource_f = test::function::ReadResourceVariable();
+  FunctionDef x_add_x = test::function::XAddX();
+  FunctionDef cluster_f =
+      FDH::Create("cluster_f", {"x: resource"}, {"y: float"}, {},
+                  {{{"identity"},
+                    "PartitionedCall",
+                    {"x"},
+                    {{"Tin", DataTypeSlice{DT_RESOURCE}},
+                     {"Tout", DataTypeSlice{DT_RESOURCE}},
+                     {"f", FDH::FunctionRef("ResourceIdentity")}}},
+                   {{"read"},
+                    "PartitionedCall",
+                    {"x"},
+                    {{"Tin", DataTypeSlice{DT_RESOURCE}},
+                     {"Tout", DataTypeSlice{DT_FLOAT}},
+                     {"f", FDH::FunctionRef("ReadResourceVariable")},
+                     {"_xla_outside_compilation", "outside_subgraph"}}}},
+                  {{"y", "read_resource:y:0"}});
+
+  GraphDef graph = test::function::GDef(
+      {
+          test::function::NDef("x", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          test::function::NDef("y", "Placeholder", {}, {{"T", DT_FLOAT}}),
+          test::function::NDef("launch", "XlaLaunch", {"x"},
+                               {{"Targs", DataTypeSlice{DT_RESOURCE}},
+                                {"Nresources", 1},
+                                {"Tconstants", DataTypeSlice{}},
+                                {"Tresults", DataTypeSlice{DT_RESOURCE}},
+                                {"function", FDH::FunctionRef("cluster_f")}}),
+          test::function::NDef(
+              "not_launch", "PartitionedCall", {"y"},
+              {{"Tin", DataTypeSlice{DT_FLOAT}},
+               {"Tout", DataTypeSlice{DT_FLOAT}},
+               {"_xla_outside_compilation", "outside_subgraph"},
+               {"f", FDH::FunctionRef("XAddX", {{"T", DT_FLOAT}})}}),
+      },
+      {identity_f, read_resource_f, cluster_f, x_add_x});
+
+  FunctionLibraryDefinition flib =
+      FunctionLibraryDefinition(OpRegistry::Global(), graph.library())
+          .ReachableDefinitions(graph);
+  auto xla_hints = GenerateXlaHints(&graph, flib);
+  EXPECT_TRUE(xla_hints["cluster_f"].will_be_compiled_by_xla);
+  EXPECT_TRUE(xla_hints["cluster_f"].contains_outside_subgraph);
+  EXPECT_TRUE(xla_hints["ResourceIdentity"].will_be_compiled_by_xla);
+  EXPECT_FALSE(xla_hints["ResourceIdentity"].contains_outside_subgraph);
+  EXPECT_TRUE(xla_hints["ReadResourceVariable"].will_be_compiled_by_xla);
+  EXPECT_FALSE(xla_hints["ReadResourceVariable"].contains_outside_subgraph);
+  EXPECT_FALSE(xla_hints["XAddX"].will_be_compiled_by_xla);
+  EXPECT_FALSE(xla_hints["XAddX"].contains_outside_subgraph);
+}
+
 
 TEST_F(UtilsTest, NumNonControlOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();

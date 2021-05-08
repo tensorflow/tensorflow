@@ -71,7 +71,106 @@ bool IsShapeConsumer(const NodeDef& node) {
   return op == "Shape" || op == "ShapeN" || op == "Rank" || op == "Size";
 }
 
+bool IsXlaLaunch(const NodeDef& node) { return node.op() == "XlaLaunch"; }
+
+// Helper to generate XLA hints by traversing the call tree with a depth-first
+// pre-order search. A call stack is maintained by entering and exiting nodes
+// separately so that transitive effects can be applied to the entire call
+// stack, e.g the nodes in the following call tree
+// A -+--> B --> D
+//    |
+//    +--> C
+// will be visited with (exit, enter) pairs added to a stack:
+// Step  Action    Stack  Worklist
+// 0     Initial          A(exit) A(enter)
+// 1     A(enter)  A      A(exit) B(exit) B(enter) C(exit) C(enter)
+// 2     C(enter)  AC     A(exit) B(exit) B(enter) C(exit)
+// 3     C(exit)   A      A(exit) B(exit) B(enter)
+// 4     B(enter)  AB     A(exit) B(exit) D(exit) D(enter)
+// 5     D(enter)  ABD    A(exit) B(exit) D(exit)
+// 6     D(exit)   AB     A(exit) B(exit)
+// 7     B(exit)   A      A(exit)
+// 8     A(exit)
+void GenerateXlaHintsHelper(
+    const string& initial_func_name, const FunctionLibraryDefinition flib,
+    absl::flat_hash_map<string, GrapplerXlaHints>& xla_hints) {
+  enum class Direction { kEnter, kExit };
+
+  using Work = std::pair<string, Direction>;
+  std::vector<string> call_stack = {};
+  std::vector<Work> worklist = {{initial_func_name, Direction::kExit},
+                                {initial_func_name, Direction::kEnter}};
+
+  while (!worklist.empty()) {
+    Work work = worklist.back();
+    worklist.pop_back();
+    const string& func_name = work.first;
+
+    // Modify the callstack based on if we're entering or exiting this node.
+    if (work.second == Direction::kExit) {
+      call_stack.pop_back();
+      continue;
+    }
+    // Note: Ignore call cycles in the graph.
+    auto it = std::find(call_stack.begin(), call_stack.end(), func_name);
+    if (it != call_stack.end()) {
+      continue;
+    }
+    call_stack.push_back(func_name);
+
+    // Find funcdef in the flib.
+    const FunctionDef* func_def = flib.Find(func_name);
+    CHECK(func_def) << "not found: " << func_name;
+
+    // Hint that this function will be compiled by XLA.
+    xla_hints[func_name].will_be_compiled_by_xla = true;
+
+    for (const NodeDef& node : func_def->node_def()) {
+      for (const auto attr : node.attr()) {
+        const string& attr_key = attr.first;
+        const AttrValue& attr_value = attr.second;
+        // Enter transitively called functions.
+        if (attr_value.has_func()) {
+          worklist.push_back({attr_value.func().name(), Direction::kExit});
+          worklist.push_back({attr_value.func().name(), Direction::kEnter});
+        }
+        // Also check for any nodes marked with "_xla_outside_compilation"
+        if (attr_key == "_xla_outside_compilation") {
+          // Every function in the call stack contains an outside subgraph.
+          for (const string& call_name : call_stack) {
+            xla_hints[call_name].contains_outside_subgraph = true;
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
+
+absl::flat_hash_map<string, GrapplerXlaHints> GenerateXlaHints(
+    const GraphDef* graph_def, const FunctionLibraryDefinition flib) {
+  absl::flat_hash_map<string, GrapplerXlaHints> xla_hints;
+
+  // Find all XlaLaunch nodes in the NodeDefs and traverse each of them.
+  const auto generate_hints_for_xla_launches =
+      [&](const protobuf::RepeatedPtrField<NodeDef>& node_defs) {
+        NameAttrList fn_name;
+        for (const NodeDef& node : node_defs) {
+          if (IsXlaLaunch(node) &&
+              GetNodeAttr(node, "function", &fn_name).ok()) {
+            GenerateXlaHintsHelper(fn_name.name(), flib, xla_hints);
+          }
+        }
+      };
+
+  // Generate hints for the main graph and all functions in the library.
+  generate_hints_for_xla_launches(graph_def->node());
+  for (const FunctionDef& function : graph_def->library().function()) {
+    generate_hints_for_xla_launches(function.node_def());
+  }
+  return xla_hints;
+}
 
 namespace internal {
 // Specialized template class method GetNodeDefFromGraph.

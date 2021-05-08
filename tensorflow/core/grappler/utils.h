@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -40,6 +41,30 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+// A structure containing a variety of hints about graph XLA compilation for
+// functions that allows Grappler optimizers to conditionally apply only
+// optimizations which are compatible with how the function will be compiled in
+// XLA.
+struct GrapplerXlaHints {
+  // A hint specifying if a GrapplerItem will later be compiled by XLA.
+  // This includes all functions called by XlaLaunch nodes and functions
+  // transitively called from those.
+  bool will_be_compiled_by_xla = false;
+  // A hint specifying if a subgraph of the XLA cluster is going to be
+  // extracted out of it onto another device via the "_xla_outside_compilation"
+  // attribute. It is important for grappler passes that rearrange the graph
+  // to avoid creating communication deadlocks between the cluster and the
+  // extracted subgraph.
+  bool contains_outside_subgraph = false;
+};
+
+// Generate XLA hints for the functions in 'graph_def' and its 'flib'.
+// Returns them in a mapping from function names to GrapplerXlaHints structs.
+// Grappler XLA hints are useful to conditionally apply certain Grappler
+// optimizations which are incompatible with XLA.
+absl::flat_hash_map<string, GrapplerXlaHints> GenerateXlaHints(
+    const GraphDef* graph_def, const FunctionLibraryDefinition flib);
 
 // Utilities for manipulating node name and input strings.
 
