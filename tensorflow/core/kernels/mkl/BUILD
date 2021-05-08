@@ -228,11 +228,18 @@ tf_cc_test_mkl(
 )
 
 tf_cc_test_mkl(
-    name = "mkl_relu_op_test",
+    name = "mkl_eltwise_ops_test",
     size = "small",
-    srcs = ["mkl_relu_op_test.cc"],
+    srcs = ["mkl_eltwise_ops_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
-    deps = ["@com_google_absl//absl/strings"] + MKL_TEST_DEPS,
+    deps = [
+           "@com_google_absl//absl/strings",
+           ":mkl_eltwise_ops",
+           "//tensorflow/cc:cc_ops_internal",
+           "//tensorflow/core:direct_session",
+           "//tensorflow/core/kernels:relu_op",
+           "//tensorflow/core/kernels:cwise_op",
+    ] + MKL_TEST_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -302,8 +309,8 @@ tf_cc_test_mkl(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_relu_op",
-    prefix = "mkl_relu",
+    name = "mkl_eltwise_ops",
+    prefix = "mkl_eltwise_ops",
     deps = MKL_DEPS,
 )
 
