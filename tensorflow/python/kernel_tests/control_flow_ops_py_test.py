@@ -31,6 +31,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
@@ -754,7 +755,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
 
-    with session.Session() as sess:
+    # Disable Loop_optimizer grappler pass for this test because it replaces
+    # Switch with Identity when it's part of a dead branch.
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.loop_optimization = (
+        rewriter_config_pb2.RewriterConfig.OFF)
+
+    with self.session(config=config) as sess:
       run_metadata = config_pb2.RunMetadata()
       options = config_pb2.RunOptions(output_partition_graphs=True)
       sess.run(
@@ -786,7 +793,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         constant_op.constant(True), true_fn,
         lambda: constant_op.constant(0, dtypes.int64))
 
-    with session.Session() as sess:
+    # Disable Loop_optimizer grappler pass for this test because it replaces
+    # Switch with Identity when it's part of a dead branch.
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.loop_optimization = (
+        rewriter_config_pb2.RewriterConfig.OFF)
+
+    with session.Session(config=config) as sess:
       run_metadata = config_pb2.RunMetadata()
       options = config_pb2.RunOptions(output_partition_graphs=True)
       sess.run(
@@ -816,7 +829,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
 
-    with session.Session() as sess:
+    # Disable Loop_optimizer grappler pass for this test because it replaces
+    # Switch with Identity when it's part of a dead branch.
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.loop_optimization = (
+        rewriter_config_pb2.RewriterConfig.OFF)
+
+    with session.Session(config=config) as sess:
       run_metadata = config_pb2.RunMetadata()
       options = config_pb2.RunOptions(output_partition_graphs=True)
       sess.run(
