@@ -285,6 +285,8 @@ class TrtShapeOptimizationProfile {
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
   void OptimalStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
+  Status RangeStrategy(
+      const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
 };
 
 }  // namespace tensorrt
