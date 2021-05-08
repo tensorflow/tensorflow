@@ -808,13 +808,9 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
-  nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
+  nodes_and_registration_.emplace_back();
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
-  if (node.inputs) TfLiteIntArrayFree(node.inputs);
-  if (node.outputs) TfLiteIntArrayFree(node.outputs);
-  if (node.intermediates) TfLiteIntArrayFree(node.intermediates);
-  if (node.temporaries) TfLiteIntArrayFree(node.temporaries);
 
   // NOTE, here we are not using move semantics yet, since our internal
   // representation isn't std::vector, but in the future we would like to avoid
