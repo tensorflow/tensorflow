@@ -729,14 +729,14 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   Returns:
       Output (N+2)-D tensor with shape `output_shape`.
   """
-  inputs_flat = backend.reshape(inputs, (backend.shape(inputs)[0], -1))
+  inputs_flat = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
 
   kernel = kernel_mask * kernel
   kernel = make_2d(kernel, split_dim=backend.ndim(kernel) // 2)
 
   output_flat = math_ops.matmul(inputs_flat, kernel, b_is_sparse=True)
-  output = backend.reshape(output_flat, [
-      backend.shape(output_flat)[0],
+  output = array_ops.reshape(output_flat, [
+      array_ops.shape(output_flat)[0],
   ] + output_shape.as_list()[1:])
   return output
 
