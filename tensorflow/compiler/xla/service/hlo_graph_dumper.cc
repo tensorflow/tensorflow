@@ -1271,7 +1271,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
   }
 
   std::vector<string> lines;
-  for (int64 i = 0; i < instr->called_computations().size(); ++i) {
+  for (int64 i = 0, end = instr->called_computations().size(); i < end; ++i) {
     optional<string> computation_type =
         MatchTrivialComputation(instr->called_computations()[i]);
     if (!computation_type) {
@@ -1437,7 +1437,8 @@ NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
     for (const auto* user : path.back()->users()) {
       if (user == to) {
         auto it = path.begin();
-        for (; it != path.end() && to_display.size() < max_nodes; ++it) {
+        const int64 to_display_size = to_display.size();
+        for (; it != path.end() && to_display_size < max_nodes; ++it) {
           to_display.insert(*it);
         }
         if (it != path.end()) {
