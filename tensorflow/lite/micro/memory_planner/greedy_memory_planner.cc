@@ -15,7 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
 
+#include "tensorflow/lite/micro/micro_string.h"
+
 namespace tflite {
+
+namespace {
+
+// Returns a character representing a numbered buffer
+// for GreedyMemoryPlanner::PrintMemoryPlan()
+char GetOrdinalCharacter(int i) {
+  if (i < 10) {
+    return '0' + i;
+  } else if (i < 36) {
+    return 'a' + (i - 10);
+  } else if (i < 62) {
+    return 'A' + (i - 36);
+  }
+  return '*';
+}
+
+}  // namespace
 
 // Simple stable in-place sort function. Not time-efficient for large arrays.
 // Would normally be in an anonymous namespace to keep it private, but we want
@@ -313,13 +332,14 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
   CalculateOffsetsIfNeeded();
 
   for (int i = 0; i < buffer_count_; ++i) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+    char s[] = {GetOrdinalCharacter(i), 0};
     TF_LITE_REPORT_ERROR(
         error_reporter,
-        "Planner buffer ID: %d, calculated offset: %d, size required: %d, "
-        "first_time_created: %d, "
-        "last_time_used: %d",
-        i, buffer_offsets_[i], requirements_[i].size,
+        "%s (id=%d): size=%d, offset=%d, first_used=%d last_used=%d", s, i,
+        requirements_[i].size, buffer_offsets_[i],
         requirements_[i].first_time_used, requirements_[i].last_time_used);
+#endif
   }
 
   constexpr int kLineWidth = 80;
@@ -343,6 +363,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
     for (int c = 0; c < kLineWidth; ++c) {
       line[c] = '.';
     }
+    int memory_use = 0;
     for (int i = 0; i < buffer_count_; ++i) {
       BufferRequirements* requirements = &requirements_[i];
       if ((t < requirements->first_time_used) ||
@@ -354,28 +375,21 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
         continue;
       }
       const int size = requirements->size;
+      memory_use += size;
       const int line_start = (offset * kLineWidth) / max_size;
       const int line_end = ((offset + size) * kLineWidth) / max_size;
       for (int n = line_start; n < line_end; ++n) {
         if (line[n] == '.') {
-          char display;
-          if (i < 10) {
-            display = '0' + i;
-          } else if (i < 36) {
-            display = 'a' + (i - 10);
-          } else if (i < 62) {
-            display = 'A' + (i - 36);
-          } else {
-            display = '*';
-          }
-          line[n] = display;
+          line[n] = GetOrdinalCharacter(i);
         } else {
           line[n] = '!';
         }
       }
     }
     line[kLineWidth] = 0;
-    TF_LITE_REPORT_ERROR(error_reporter, "%s", (const char*)line);
+
+    TF_LITE_REPORT_ERROR(error_reporter, "%s%d: %s (%dk)", t < 10 ? " " : "", t,
+                         (const char*)line, (memory_use + 1023) / 1024);
   }
 }
 
