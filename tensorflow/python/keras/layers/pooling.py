@@ -972,7 +972,7 @@ class GlobalAveragePooling1D(GlobalPooling1D):
   def call(self, inputs, mask=None):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
     if mask is not None:
-      mask = math_ops.cast(mask, backend.floatx())
+      mask = math_ops.cast(mask, inputs[0].dtype)
       mask = array_ops.expand_dims(
           mask, 2 if self.data_format == 'channels_last' else 1)
       inputs *= mask
