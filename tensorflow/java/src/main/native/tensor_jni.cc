@@ -22,7 +22,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
+
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+
+#include "cuda_runtime_api.h"
 
 namespace {
 
@@ -147,6 +153,45 @@ size_t write1DArray(JNIEnv* env, jarray array, TF_DataType dtype, void* dst,
   }
 }
 
+// Copy a 1-D array of Java primitive types to the tensor buffer dst.
+// Returns the number of bytes written to dst.
+size_t write1DArrayGPU(JNIEnv* env, jarray array, TF_DataType dtype, void* dst,
+                    size_t dst_size) {
+  const int nelems = env->GetArrayLength(array);
+  jboolean is_copy;
+  switch (dtype) {
+#define CASE(dtype, jtype, get_type)                                   \
+  case dtype: {                                                        \
+    jtype##Array a = static_cast<jtype##Array>(array);                 \
+    jtype* values = env->Get##get_type##ArrayElements(a, &is_copy);    \
+    size_t to_copy = nelems * elemByteSize(dtype);                     \
+    if (to_copy > dst_size) {                                          \
+      throwException(                                                  \
+          env, kIllegalStateException,                                 \
+          "cannot write Java array of %d bytes to Tensor of %d bytes", \
+          to_copy, dst_size);                                          \
+      to_copy = 0;                                                     \
+    } else {                                                           \
+      /* memcpy(dst, values, to_copy);*/                               \
+      cudaMemcpy(dst,values,to_copy,cudaMemcpyHostToDevice);           \
+    }                                                                  \
+    env->Release##get_type##ArrayElements(a, values, JNI_ABORT);       \
+    return to_copy;                                                    \
+  }
+    CASE(TF_FLOAT, jfloat, Float);
+    CASE(TF_DOUBLE, jdouble, Double);
+    CASE(TF_INT32, jint, Int);
+    CASE(TF_INT64, jlong, Long);
+    CASE(TF_BOOL, jboolean, Boolean);
+    CASE(TF_UINT8, jbyte, Byte);
+#undef CASE
+    default:
+      throwException(env, kIllegalStateException, "invalid DataType(%d)",
+                     dtype);
+      return 0;
+  }
+}
+
 // Copy the elements of a 1-D array from the tensor buffer src to a 1-D array of
 // Java primitive types. Returns the number of bytes read from src.
 size_t read1DArray(JNIEnv* env, TF_DataType dtype, const void* src,
@@ -194,6 +239,25 @@ size_t writeNDArray(JNIEnv* env, jarray src, TF_DataType dtype, int dims_left,
       jarray row = static_cast<jarray>(env->GetObjectArrayElement(ndarray, i));
       sz +=
           writeNDArray(env, row, dtype, dims_left - 1, dst + sz, dst_size - sz);
+      env->DeleteLocalRef(row);
+      if (env->ExceptionCheck()) return sz;
+    }
+    return sz;
+  }
+}
+
+size_t writeNDArrayGPU(JNIEnv* env, jarray src, TF_DataType dtype, int dims_left,
+                    char* dst, size_t dst_size) {
+  if (dims_left == 1) {
+    return write1DArrayGPU(env, src, dtype, dst, dst_size);
+  } else {
+    jobjectArray ndarray = static_cast<jobjectArray>(src);
+    int len = env->GetArrayLength(ndarray);
+    size_t sz = 0;
+    for (int i = 0; i < len; ++i) {
+      jarray row = static_cast<jarray>(env->GetObjectArrayElement(ndarray, i));
+      sz +=
+          writeNDArrayGPU(env, row, dtype, dims_left - 1, dst + sz, dst_size - sz);
       env->DeleteLocalRef(row);
       if (env->ExceptionCheck()) return sz;
     }
@@ -557,4 +621,94 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
   }
   readNDArray(env, dtype, static_cast<const char*>(data), sz, num_dims,
               static_cast<jarray>(value));
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlongArray shape,
+                                                               jint dtype) {
+    using namespace tensorflow;
+
+    DataType dt_dtype = static_cast<DataType>(dtype);
+
+    // Actually, don't need TF_*
+    //TF_DataType tf_dtype = static_cast<TF_DataType>(dtype);
+    //size_t tf_dtype_size = TF_DataTypeSize(tf_dtype);
+
+    const int num_dims = static_cast<int>(env->GetArrayLength(shape));
+    //int64_t* dims = new int64_t[num_dims];
+    std::vector<tensorflow::int64> dims(num_dims);
+    int64_t num_elements = 1;
+    {
+      jlong* jdims = env->GetLongArrayElements(shape, nullptr);
+      for (int i = 0; i < num_dims; ++i) {
+        dims[i] = static_cast<int64>(jdims[i]);
+        num_elements *= dims[i];
+      }
+      env->ReleaseLongArrayElements(shape, jdims, JNI_ABORT);
+    }
+
+    TensorShape ts_shape = tensorflow::TensorShape(dims);
+
+    tensorflow::PlatformGpuId platform_gpu_id(0);
+
+    tensorflow::GPUMemAllocator *sub_allocator =
+        new tensorflow::GPUMemAllocator(
+            tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+            platform_gpu_id, false, {}, {});
+
+    tensorflow::GPUBFCAllocator *allocator =
+            new tensorflow::GPUBFCAllocator(sub_allocator, num_elements * sizeof(dt_dtype), "GPU_0_bfc");
+
+    Tensor t_gpu = Tensor(allocator, dt_dtype, ts_shape);
+
+    TF_Status* status = TF_NewStatus();
+    TF_Tensor* t = TF_TensorFromTensor(t_gpu, &status->status);
+    return reinterpret_cast<jlong>(t);
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValueGPU(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle,
+                                                              jobject value) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return;
+  int num_dims = TF_NumDims(t);
+  TF_DataType dtype = TF_TensorType(t);
+  void* data = TF_TensorData(t);
+  const size_t sz = TF_TensorByteSize(t);
+
+  writeNDArrayGPU(env, static_cast<jarray>(value), dtype, num_dims,
+               static_cast<char*>(data), sz);
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_getGPUPointer(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle) {
+    TF_Tensor* t = requireHandle(env, handle);
+    if (t == nullptr) return -1;
+    return reinterpret_cast<jlong>(TF_TensorData(t));
+}
+
+JNIEXPORT jboolean JNICALL Java_org_tensorflow_Tensor_isGPUTensor(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+    using namespace tensorflow;
+
+    TF_Tensor* t = requireHandle(env, handle);
+    if (t == nullptr) return false;
+
+    void* data = TF_TensorData(t);
+
+    cudaPointerAttributes attributes;
+    cudaError_t err =
+        cudaPointerGetAttributes(&attributes, data);
+    if (err == cudaErrorInvalidValue)
+        return false;
+    CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
+#if CUDART_VERSION >= 10000
+    return (attributes.type == cudaMemoryTypeDevice);
+#else
+    return (attributes.memoryType == cudaMemoryTypeDevice);
+#endif
 }
