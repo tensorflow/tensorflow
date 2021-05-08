@@ -325,18 +325,8 @@ py_library(
     srcs = ["resampling.py"],
     srcs_version = "PY3",
     deps = [
-        ":batching",
-        ":interleave_ops",
-        ":scan_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
     ],
 )
 

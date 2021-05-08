@@ -518,28 +518,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "rejection_resample_test",
-    size = "small",
-    srcs = ["rejection_resample_test.py"],
-    shard_count = 5,
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:resampling",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
-    ],
-)
-
-tf_py_test(
     name = "replicate_test",
     size = "small",
     srcs = ["replicate_test.py"],
