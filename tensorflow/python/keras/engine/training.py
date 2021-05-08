@@ -52,6 +52,7 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.pickle_utils import pack_model
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -2120,6 +2121,26 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # pylint: enable=line-too-long
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options, save_traces)
+
+  def __reduce__(self):
+    return pack_model(self)
+
+  def __deepcopy__(self, memo):
+    if self.built:
+      deserializer, serialized = pack_model(self)
+      new = deserializer(*serialized)
+      memo[id(self)] = new
+    else:
+      deserializer, serialized, *rest = super(Model, self).__reduce__()
+      new = deserializer(*serialized)
+      memo[id(self)] = new
+      if rest:
+        state = copy.deepcopy(rest[0], memo=memo)
+        new.__setstate__(state)
+    return new
+
+  def __copy__(self):
+    return self.__deepcopy__({})
 
   def save_weights(self,
                    filepath,
