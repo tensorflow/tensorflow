@@ -32,7 +32,7 @@ limitations under the License.
 #ifdef ETHOS_U
 #define TENSOR_ARENA_SIZE (136 * 1024)
 #else
-#define TENSOR_ARENA_SIZE (1024)
+#define TENSOR_ARENA_SIZE (3 * 1024)
 #endif
 #endif
 
@@ -112,7 +112,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 #ifdef ETHOS_U
       memcpy(input->data.int8, g_person_data, input->bytes);
 #else
-      memcpy(input->data.data, input_data[i], input->bytes);
+      memcpy(input->data.data, &input_data[i], input->bytes);
 #endif
     }
     TfLiteStatus invoke_status = interpreter.Invoke();
@@ -143,7 +143,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
     for (size_t i = 0; i < interpreter.outputs_size(); i++) {
       TfLiteTensor* output = interpreter.output(i);
       for (int j = 0; j < tflite::ElementCount(*(output->dims)); ++j) {
-        check_output_elem(output, expected_output_data[i], j);
+        check_output_elem(output, &expected_output_data[i], j);
       }
     }
 #endif

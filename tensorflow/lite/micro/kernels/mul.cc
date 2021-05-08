@@ -62,7 +62,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  if (output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -104,42 +104,21 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node, const OpData* data,
       tflite::micro::GetTensorShape(input1),
       tflite::micro::GetTensorShape(input2), &op_params);
 
-  if (output->type == kTfLiteInt8) {
-    if (need_broadcast) {
-      reference_integer_ops::BroadcastMul4DSlow(
-          op_params, tflite::micro::GetTensorShape(input1),
-          tflite::micro::GetTensorData<int8_t>(input1),
-          tflite::micro::GetTensorShape(input2),
-          tflite::micro::GetTensorData<int8_t>(input2),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<int8_t>(output));
-    } else {
-      reference_integer_ops::Mul(op_params,
-                                 tflite::micro::GetTensorShape(input1),
-                                 tflite::micro::GetTensorData<int8_t>(input1),
-                                 tflite::micro::GetTensorShape(input2),
-                                 tflite::micro::GetTensorData<int8_t>(input2),
-                                 tflite::micro::GetTensorShape(output),
-                                 tflite::micro::GetTensorData<int8_t>(output));
-    }
-  } else if (output->type == kTfLiteUInt8) {
-    if (need_broadcast) {
-      reference_integer_ops::BroadcastMul4DSlow(
-          op_params, tflite::micro::GetTensorShape(input1),
-          tflite::micro::GetTensorData<uint8_t>(input1),
-          tflite::micro::GetTensorShape(input2),
-          tflite::micro::GetTensorData<uint8_t>(input2),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<uint8_t>(output));
-    } else {
-      reference_integer_ops::Mul(op_params,
-                                 tflite::micro::GetTensorShape(input1),
-                                 tflite::micro::GetTensorData<uint8_t>(input1),
-                                 tflite::micro::GetTensorShape(input2),
-                                 tflite::micro::GetTensorData<uint8_t>(input2),
-                                 tflite::micro::GetTensorShape(output),
-                                 tflite::micro::GetTensorData<uint8_t>(output));
-    }
+  if (need_broadcast) {
+    reference_integer_ops::BroadcastMul4DSlow(
+        op_params, tflite::micro::GetTensorShape(input1),
+        tflite::micro::GetTensorData<int8_t>(input1),
+        tflite::micro::GetTensorShape(input2),
+        tflite::micro::GetTensorData<int8_t>(input2),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int8_t>(output));
+  } else {
+    reference_integer_ops::Mul(op_params, tflite::micro::GetTensorShape(input1),
+                               tflite::micro::GetTensorData<int8_t>(input1),
+                               tflite::micro::GetTensorShape(input2),
+                               tflite::micro::GetTensorData<int8_t>(input2),
+                               tflite::micro::GetTensorShape(output),
+                               tflite::micro::GetTensorData<int8_t>(output));
   }
 }
 
@@ -203,7 +182,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   switch (input1->type) {
-    case kTfLiteUInt8:
     case kTfLiteInt8:
       EvalQuantized(context, node, data, input1, input2, output);
       break;

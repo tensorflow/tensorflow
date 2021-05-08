@@ -163,21 +163,6 @@ TF_LITE_MICRO_TEST(SimpleInt8NoAcativationShouldMatchGolden) {
       tflite::testing::scale_simple, 0, output_data, kTfLiteActNone);
 }
 
-TF_LITE_MICRO_TEST(SimpleUInt8NoAcativationShouldMatchGolden) {
-  uint8_t input1_quantized[tflite::testing::flat_size_simple];
-  uint8_t input2_quantized[tflite::testing::flat_size_simple];
-  uint8_t golden_quantized[tflite::testing::flat_size_simple];
-  uint8_t output_data[tflite::testing::flat_size_simple];
-
-  tflite::testing::TestMulQuantized(
-      tflite::testing::dims_simple, tflite::testing::input1_simple,
-      input1_quantized, tflite::testing::dims_simple,
-      tflite::testing::input2_simple, input2_quantized,
-      tflite::testing::scale_simple, 128, tflite::testing::dims_simple,
-      tflite::testing::golden_simple, golden_quantized,
-      tflite::testing::scale_simple, 128, output_data, kTfLiteActNone);
-}
-
 TF_LITE_MICRO_TEST(BroadcastFloatNoActivationShouldMatchGolden) {
   float output_data[tflite::testing::flat_size_broadcast];
 
@@ -212,22 +197,6 @@ TF_LITE_MICRO_TEST(BroadcastInt8NoAcativationShouldMatchGolden) {
       tflite::testing::dims_broadcast, tflite::testing::golden_broadcast,
       golden_quantized, tflite::testing::output_scale_broadcast, 0, output_data,
       kTfLiteActNone);
-}
-
-TF_LITE_MICRO_TEST(BroadcastUInt8NoAcativationShouldMatchGolden) {
-  uint8_t input1_quantized[tflite::testing::flat_size_broadcast];
-  uint8_t input2_quantized[1];
-  uint8_t golden_quantized[tflite::testing::flat_size_broadcast];
-  uint8_t output_data[tflite::testing::flat_size_broadcast];
-
-  tflite::testing::TestMulQuantized(
-      tflite::testing::dims_broadcast, tflite::testing::input1_broadcast,
-      input1_quantized, tflite::testing::dims_scalar_broadcast,
-      tflite::testing::input2_broadcast, input2_quantized,
-      tflite::testing::input_scale_broadcast, 128,
-      tflite::testing::dims_broadcast, tflite::testing::golden_broadcast,
-      golden_quantized, tflite::testing::output_scale_broadcast, 128,
-      output_data, kTfLiteActNone);
 }
 
 TF_LITE_MICRO_TESTS_END
