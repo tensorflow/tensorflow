@@ -676,6 +676,19 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
   def testHasAtomicMove(self):
     self.assertTrue(file_io.has_atomic_move("/a/b/c"))
 
+  def testReadWriteNonBinaryModeUTF8(self):
+    # Test case for GitHub issue 33563
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.FileIO(file_path, "wb").write('Bären')
+    # read whole file should match
+    with open(file_path, 'r') as f:
+      with file_io.FileIO(file_path, mode="r") as g:
+        self.assertEqual(g.read(), f.read())
+    # read partial file should also match
+    with open(file_path, 'r') as f:
+      with file_io.FileIO(file_path, mode="r") as g:
+        self.assertEqual(g.read(2), f.read(2))
+
 
 if __name__ == "__main__":
   test.main()

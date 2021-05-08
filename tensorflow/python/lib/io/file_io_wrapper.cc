@@ -45,6 +45,13 @@ inline TransactionToken* TokenFromPyToken(PyTransactionToken* t) {
 namespace {
 namespace py = pybind11;
 
+const int kUTF8TwoBytesMask = 0xe0;
+const int kUTF8TwoBytesValue = 0xc0;
+const int kUTF8ThreeBytesMask = 0xf0;
+const int kUTF8ThreeBytesValue = 0xe0;
+const int kUTF8FourBytesMask = 0xf8;
+const int kUTF8FourBytesValue = 0xf0;
+
 PYBIND11_MODULE(_pywrap_file_io, m) {
   using tensorflow::PyTransactionToken;
   using tensorflow::TransactionToken;
@@ -301,6 +308,65 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              if (!status.ok() && !tensorflow::errors::IsOutOfRange(status)) {
                result.clear();
                tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             }
+             py::gil_scoped_acquire acquire;
+             return py::bytes(result);
+           })
+      .def("readutf8",
+           [](BufferedInputStream* self, tensorflow::int64 bytes) {
+             py::gil_scoped_release release;
+             tensorflow::tstring result;
+             // Avoid over read:
+             // 1) read at least bytes (utf8 could be 1/2/3/4)
+             // 2) if string ends with partial utf8 (2/3/4),
+             //    read remaining (< 4) bytes.
+             // 3) repeat until bytes == utf8 chars
+             size_t total = 0;
+             while (total < bytes) {
+               // 1) read at least bytes - total
+	       size_t bytes_to_read = bytes - total;
+               tensorflow::tstring result_read;
+               const auto s = self->ReadNBytes(bytes_to_read, &result_read);
+               if (!s.ok() && s.code() != tensorflow::error::OUT_OF_RANGE) {
+                 result.clear();
+                 tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(s);
+                 break;
+               }
+               result.append(result_read);
+               if (s.code() == tensorflow::error::OUT_OF_RANGE) {
+                 break;
+               }
+	       // 2) find partial utf8, and read remain (< 4) bytes.
+               size_t remain = 0;
+               for (size_t i = 0; i < result_read.size(); i++) {
+                 if (remain > 0) {
+                   remain--;
+                   continue;
+                 }
+                 if ((result_read[i] & kUTF8TwoBytesMask) == kUTF8TwoBytesValue) {
+                   // n = 2
+                   remain = 1;
+                 } else if ((result_read[i] & kUTF8ThreeBytesMask) == kUTF8ThreeBytesValue) {
+                   // n = 3
+                   remain = 2;
+                 } else if ((result_read[i] & kUTF8FourBytesMask) == kUTF8FourBytesValue) {
+                   // n = 4
+                   remain = 3;
+                 }
+                 total++;
+               }
+               if (remain > 0) {
+                 const auto s = self->ReadNBytes(remain, &result_read);
+                 if (!s.ok() && s.code() != tensorflow::error::OUT_OF_RANGE) {
+                   result.clear();
+                   tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(s);
+	           break;
+                 }
+                 result.append(result_read);
+                 if (s.code() == tensorflow::error::OUT_OF_RANGE) {
+                   break;
+                 }
+               }
              }
              py::gil_scoped_acquire acquire;
              return py::bytes(result);
