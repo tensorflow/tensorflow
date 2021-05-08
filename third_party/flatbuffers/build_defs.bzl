@@ -394,6 +394,7 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,
         ),
+        use_default_shell_env = True,
     )
 
 _concat_flatbuffer_py_srcs = rule(
