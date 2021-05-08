@@ -373,7 +373,7 @@ inline const char *EnumNameTensorToGrid(TensorToGrid e) {
 enum class CompilerOptions : int8_t {
   ADRENO_FULL_SIMD_LINE = 0,
   ADRENO_MORE_WAVES = 1,
-  POWERVR_FP16 = 2,
+  CL_FAST_RELAXED_MATH = 2,
   CL_OPT_DISABLE = 3,
   CL_2_0 = 4,
   CL_3_0 = 5,
@@ -385,7 +385,7 @@ inline const CompilerOptions (&EnumValuesCompilerOptions())[6] {
   static const CompilerOptions values[] = {
       CompilerOptions::ADRENO_FULL_SIMD_LINE,
       CompilerOptions::ADRENO_MORE_WAVES,
-      CompilerOptions::POWERVR_FP16,
+      CompilerOptions::CL_FAST_RELAXED_MATH,
       CompilerOptions::CL_OPT_DISABLE,
       CompilerOptions::CL_2_0,
       CompilerOptions::CL_3_0};
@@ -395,7 +395,7 @@ inline const CompilerOptions (&EnumValuesCompilerOptions())[6] {
 inline const char *const *EnumNamesCompilerOptions() {
   static const char *const names[7] = {"ADRENO_FULL_SIMD_LINE",
                                        "ADRENO_MORE_WAVES",
-                                       "POWERVR_FP16",
+                                       "CL_FAST_RELAXED_MATH",
                                        "CL_OPT_DISABLE",
                                        "CL_2_0",
                                        "CL_3_0",

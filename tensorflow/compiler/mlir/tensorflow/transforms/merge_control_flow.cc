@@ -66,6 +66,19 @@ struct MergeControlFlowPass
   void runOnOperation() override;
 };
 
+// Gets the IfRegion op and all of ops in the then and else branches.
+llvm::SmallSetVector<Operation*, 4> GetAllOpsFromIf(TF::IfRegionOp if_op) {
+  llvm::SmallSetVector<Operation*, 4> all_ops;
+  all_ops.insert(if_op);
+  for (Operation& op : if_op.then_branch().front()) {
+    all_ops.insert(&op);
+  }
+  for (Operation& op : if_op.else_branch().front()) {
+    all_ops.insert(&op);
+  }
+  return all_ops;
+}
+
 // Returns whether it is safe to merge `source` IfRegion into `destination`
 // IfRegion. `source` must come after `destination`.
 bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
@@ -76,14 +89,9 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
     return false;
   assert(destination.getOperation()->isBeforeInBlock(source.getOperation()));
 
-  llvm::SmallSetVector<Operation*, 4> source_ops;
-  source_ops.insert(source);
-  for (Operation& op : source.then_branch().front()) {
-    source_ops.insert(&op);
-  }
-  for (Operation& op : source.else_branch().front()) {
-    source_ops.insert(&op);
-  }
+  llvm::SmallSetVector<Operation*, 4> source_ops = GetAllOpsFromIf(source);
+  llvm::SmallSetVector<Operation*, 4> destination_ops =
+      GetAllOpsFromIf(destination);
 
   // If there is an intermediate data or side effect dependency between the
   // ops in destination and the ops in the source, it's not safe to merge
@@ -98,12 +106,16 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
   }
   for (Operation& op : destination.then_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) dependencies.push_back(successor);
+      if (!source_ops.contains(successor) &&
+          !destination_ops.contains(successor))
+        dependencies.push_back(successor);
     }
   }
   for (Operation& op : destination.else_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) dependencies.push_back(successor);
+      if (!source_ops.contains(successor) &&
+          !destination_ops.contains(successor))
+        dependencies.push_back(successor);
     }
   }
 

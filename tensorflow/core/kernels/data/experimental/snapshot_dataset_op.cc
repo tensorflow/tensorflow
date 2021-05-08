@@ -18,15 +18,15 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
-#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -120,29 +120,118 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
           const std::string& path, const std::string& compression,
           const std::string& reader_prefix, const std::string& writer_prefix,
           std::unique_ptr<CapturedFunction> reader_func,
-          std::unique_ptr<CapturedFunction> shard_func);
+          std::unique_ptr<CapturedFunction> shard_func)
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        hash_(hash),
+        path_(path),
+        compression_(compression),
+        reader_prefix_(reader_prefix),
+        writer_prefix_(writer_prefix),
+        reader_func_(std::move(reader_func)),
+        shard_func_(std::move(shard_func)) {
+    input_->Ref();
+  }
 
-  ~Dataset() override;
+  ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override;
+      const string& prefix) const override {
+    return absl::make_unique<Iterator>(
+        Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
+  }
 
-  const DataTypeVector& output_dtypes() const override;
+  const DataTypeVector& output_dtypes() const override {
+    return input_->output_dtypes();
+  }
 
-  const std::vector<PartialTensorShape>& output_shapes() const override;
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return input_->output_shapes();
+  }
 
-  string DebugString() const override;
+  string DebugString() const override {
+    return name_utils::DatasetDebugString(kDatasetType);
+  }
 
-  int64 Cardinality() const override;
+  int64 Cardinality() const override { return input_->Cardinality(); }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
 
-  Status CheckExternalState() const override;
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
-                            Node** output) const override;
+                            Node** output) const override {
+    Node* input_graph_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+
+    Node* path = nullptr;
+    TF_RETURN_IF_ERROR(b->AddScalar(path_, &path));
+
+    std::vector<Node*> reader_func_other_args;
+    DataTypeVector reader_func_other_args_types;
+    TF_RETURN_IF_ERROR(reader_func_->AddToGraph(ctx, b, &reader_func_other_args,
+                                                &reader_func_other_args_types));
+
+    std::vector<Node*> shard_func_other_args;
+    DataTypeVector shard_func_other_args_types;
+    TF_RETURN_IF_ERROR(shard_func_->AddToGraph(ctx, b, &shard_func_other_args,
+                                               &shard_func_other_args_types));
+
+    AttrValue compression_attr;
+    b->BuildAttrValue(compression_, &compression_attr);
+
+    AttrValue reader_prefix_attr;
+    b->BuildAttrValue(reader_prefix_, &reader_prefix_attr);
+
+    AttrValue writer_prefix_attr;
+    b->BuildAttrValue(writer_prefix_, &writer_prefix_attr);
+
+    AttrValue hash_valid_attr;
+    b->BuildAttrValue(true, &hash_valid_attr);
+
+    AttrValue hash_attr;
+    b->BuildAttrValue(static_cast<int64>(hash_), &hash_attr);
+
+    AttrValue reader_func_attr;
+    b->BuildAttrValue(reader_func_->func(), &reader_func_attr);
+
+    AttrValue shard_func_attr;
+    b->BuildAttrValue(shard_func_->func(), &shard_func_attr);
+
+    AttrValue reader_func_arguments_types_attr;
+    b->BuildAttrValue(reader_func_other_args_types,
+                      &reader_func_arguments_types_attr);
+
+    AttrValue shard_func_arguments_types_attr;
+    b->BuildAttrValue(shard_func_other_args_types,
+                      &shard_func_arguments_types_attr);
+
+    return b->AddDataset(
+        this,
+        /*inputs=*/
+        {std::make_pair(0, input_graph_node), std::make_pair(1, path)},
+        /*list_inputs=*/
+        {std::make_pair(2, reader_func_other_args),
+         std::make_pair(3, shard_func_other_args)},
+        /*attrs=*/
+        {{kCompression, compression_attr},
+         {kReaderPrefix, reader_prefix_attr},
+         {kWriterPrefix, writer_prefix_attr},
+         {kHashValid, hash_valid_attr},
+         {kHash, hash_attr},
+         {kReaderFunc, reader_func_attr},
+         {kShardFunc, shard_func_attr},
+         {kReaderFuncTarguments, reader_func_arguments_types_attr},
+         {kShardFuncTarguments, shard_func_arguments_types_attr}},
+        output);
+  }
 
  private:
   const DatasetBase* input_;
@@ -155,680 +244,481 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
   std::unique_ptr<CapturedFunction> reader_func_;
   std::unique_ptr<CapturedFunction> shard_func_;
 
-  class Iterator;
-};
-
-class SnapshotDatasetV2Op::Dataset::Iterator : public DatasetIterator<Dataset> {
- public:
-  static constexpr const char* const kIteratorMode = "iterator_mode";
-  static constexpr const char* const kIndex = "index";
-  static constexpr const char* const kGraphHashDirectory =
-      "graph_hash_directory";
-
-  explicit Iterator(const Params& params);
-
-  Status Initialize(IteratorContext* ctx) override;
-
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override;
-
- protected:
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override;
-
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override;
-
- private:
-  Status InitializeIterator(IteratorContext* ctx, IteratorStateReader* reader);
-
-  int64 index_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
-  snapshot_util::Mode mode_ TF_GUARDED_BY(mu_);
-  const std::string hash_dir_;
-
-  mutex mu_;
-
-  class Reader;
-  class Writer;
-  class Passthrough;
-};
-
-class SnapshotDatasetV2Op::Dataset::Iterator::Reader
-    : public DatasetIterator<Dataset> {
- public:
-  static constexpr const char* const kIteratorName = "Reader";
-
-  explicit Reader(const Params& params, int64 start_index);
-
-  ~Reader() override;
-
-  Status Initialize(IteratorContext* ctx) override;
-
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override;
-
- protected:
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override;
-
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override;
-
- private:
-  const int64 start_index_;
-
-  mutex mu_;
-
-  std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-
-  DatasetBase* input_ TF_GUARDED_BY(mu_);
-
-  std::unique_ptr<InstantiatedCapturedFunction> instantiated_reader_func_
-      TF_GUARDED_BY(mu_);
-};
-
-class SnapshotDatasetV2Op::Dataset::Iterator::Writer
-    : public DatasetIterator<Dataset> {
- public:
-  static constexpr const char* const kIteratorName = "Writer";
-  static constexpr const char* const kRunId = "run_id";
-  static constexpr const char* const kCurrentCheckpointId =
-      "current_checkpoint_id";
-
-  explicit Writer(const Params& params);
-
-  ~Writer() override;
-
-  Status Initialize(IteratorContext* ctx) override;
-
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override;
-
- protected:
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override;
-
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override;
-
- private:
-  Status GetShardIndex(IteratorContext* ctx, const std::vector<Tensor>& tensors,
-                       int64* shard_index) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  Status WriteMetadataFile(Env* env, bool finalized)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  void SignalEOF(bool mark_closed) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  mutex mu_;
-  mutex writer_status_mu_;
-  std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-
-  absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
-      writers_ TF_GUARDED_BY(mu_);
-  Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
-  bool writers_closed_ TF_GUARDED_BY(mu_);
-
-  uint64 run_id_ TF_GUARDED_BY(mu_);
-  tstring run_dir_ TF_GUARDED_BY(mu_);
-
-  // Stores the ID of the current checkpoint .snapshot file being read. See top
-  // of this file for the directory layout.
-  uint64 current_checkpoint_id_ TF_GUARDED_BY(mu_);
-
-  std::unique_ptr<InstantiatedCapturedFunction> instantiated_shard_func_
-      TF_GUARDED_BY(mu_);
-};
-
-class SnapshotDatasetV2Op::Dataset::Iterator::Passthrough
-    : public DatasetIterator<Dataset> {
- public:
-  static constexpr const char* const kIteratorName = "Passthrough";
-
-  explicit Passthrough(const Params& params);
-
-  Status Initialize(IteratorContext* ctx) override;
-
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override;
-
- protected:
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override;
-
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override;
-
- private:
-  std::unique_ptr<IteratorBase> input_impl_;
-};
-
-SnapshotDatasetV2Op::Dataset::Dataset(
-    OpKernelContext* ctx, const DatasetBase* input, uint64 hash,
-    const std::string& path, const std::string& compression,
-    const std::string& reader_prefix, const std::string& writer_prefix,
-    std::unique_ptr<CapturedFunction> reader_func,
-    std::unique_ptr<CapturedFunction> shard_func)
-    : DatasetBase(DatasetContext(ctx)),
-      input_(input),
-      hash_(hash),
-      path_(path),
-      compression_(compression),
-      reader_prefix_(reader_prefix),
-      writer_prefix_(writer_prefix),
-      reader_func_(std::move(reader_func)),
-      shard_func_(std::move(shard_func)) {
-  input_->Ref();
-}
-
-SnapshotDatasetV2Op::Dataset::~Dataset() { input_->Unref(); }
-
-std::unique_ptr<IteratorBase>
-SnapshotDatasetV2Op::Dataset::MakeIteratorInternal(const string& prefix) const {
-  return absl::make_unique<Iterator>(
-      Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
-}
-
-const DataTypeVector& SnapshotDatasetV2Op::Dataset::output_dtypes() const {
-  return input_->output_dtypes();
-}
-
-const std::vector<PartialTensorShape>&
-SnapshotDatasetV2Op::Dataset::output_shapes() const {
-  return input_->output_shapes();
-}
-
-string SnapshotDatasetV2Op::Dataset::DebugString() const {
-  return name_utils::DatasetDebugString(kDatasetType);
-}
-
-int64 SnapshotDatasetV2Op::Dataset::Cardinality() const {
-  return input_->Cardinality();
-}
-
-Status SnapshotDatasetV2Op::Dataset::InputDatasets(
-    std::vector<const DatasetBase*>* inputs) const {
-  inputs->push_back(input_);
-  return Status::OK();
-}
-
-Status SnapshotDatasetV2Op::Dataset::CheckExternalState() const {
-  return input_->CheckExternalState();
-}
-
-Status SnapshotDatasetV2Op::Dataset::AsGraphDefInternal(
-    SerializationContext* ctx, DatasetGraphDefBuilder* b, Node** output) const {
-  Node* input_graph_node = nullptr;
-  TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-  Node* path = nullptr;
-  TF_RETURN_IF_ERROR(b->AddScalar(path_, &path));
-
-  std::vector<Node*> reader_func_other_args;
-  DataTypeVector reader_func_other_args_types;
-  TF_RETURN_IF_ERROR(reader_func_->AddToGraph(ctx, b, &reader_func_other_args,
-                                              &reader_func_other_args_types));
-
-  std::vector<Node*> shard_func_other_args;
-  DataTypeVector shard_func_other_args_types;
-  TF_RETURN_IF_ERROR(shard_func_->AddToGraph(ctx, b, &shard_func_other_args,
-                                             &shard_func_other_args_types));
-
-  AttrValue compression_attr;
-  b->BuildAttrValue(compression_, &compression_attr);
-
-  AttrValue reader_prefix_attr;
-  b->BuildAttrValue(reader_prefix_, &reader_prefix_attr);
-
-  AttrValue writer_prefix_attr;
-  b->BuildAttrValue(writer_prefix_, &writer_prefix_attr);
-
-  AttrValue hash_valid_attr;
-  b->BuildAttrValue(true, &hash_valid_attr);
-
-  AttrValue hash_attr;
-  b->BuildAttrValue(static_cast<int64>(hash_), &hash_attr);
-
-  AttrValue reader_func_attr;
-  b->BuildAttrValue(reader_func_->func(), &reader_func_attr);
-
-  AttrValue shard_func_attr;
-  b->BuildAttrValue(shard_func_->func(), &shard_func_attr);
-
-  AttrValue reader_func_arguments_types_attr;
-  b->BuildAttrValue(reader_func_other_args_types,
-                    &reader_func_arguments_types_attr);
-
-  AttrValue shard_func_arguments_types_attr;
-  b->BuildAttrValue(shard_func_other_args_types,
-                    &shard_func_arguments_types_attr);
-
-  return b->AddDataset(
-      this,
-      /*inputs=*/
-      {std::make_pair(0, input_graph_node), std::make_pair(1, path)},
-      /*list_inputs=*/
-      {std::make_pair(2, reader_func_other_args),
-       std::make_pair(3, shard_func_other_args)},
-      /*attrs=*/
-      {{kCompression, compression_attr},
-       {kReaderPrefix, reader_prefix_attr},
-       {kWriterPrefix, writer_prefix_attr},
-       {kHashValid, hash_valid_attr},
-       {kHash, hash_attr},
-       {kReaderFunc, reader_func_attr},
-       {kShardFunc, shard_func_attr},
-       {kReaderFuncTarguments, reader_func_arguments_types_attr},
-       {kShardFuncTarguments, shard_func_arguments_types_attr}},
-      output);
-}
-
-SnapshotDatasetV2Op::Dataset::Iterator::Iterator(const Params& params)
-    : DatasetIterator<Dataset>(params),
-      index_(0),
-      hash_dir_(
-          snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_)) {}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Initialize(
-    IteratorContext* ctx) {
-  return ctx->env()->RecursivelyCreateDir(
-      io::JoinPath(dataset()->writer_prefix_, hash_dir_));
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::SaveInternal(
-    SerializationContext* ctx, IteratorStateWriter* writer) {
-  mutex_lock l(mu_);
-  if (iterator_ != nullptr) {
-    TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIteratorMode),
-                                           static_cast<int64>(mode_)));
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(full_name(kGraphHashDirectory), hash_dir_));
-  }
-
-  return Status::OK();
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::RestoreInternal(
-    IteratorContext* ctx, IteratorStateReader* reader) {
-  mutex_lock l(mu_);
-
-  if (reader->Contains(full_name(kIteratorMode))) {
-    TF_RETURN_IF_ERROR(InitializeIterator(ctx, reader));
-    return RestoreInput(ctx, reader, iterator_);
-  }
-
-  return Status::OK();
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::GetNextInternal(
-    IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-    bool* end_of_sequence) {
-  mutex_lock l(mu_);
-  if (iterator_ == nullptr) {
-    TF_RETURN_IF_ERROR(InitializeIterator(ctx, nullptr));
-  }
-  index_++;
-  return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::InitializeIterator(
-    IteratorContext* ctx, IteratorStateReader* reader)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (reader != nullptr) {
-    // Check whether the computed hash directory is the same.
-    tstring hash_dir;
-    TF_RETURN_IF_ERROR(
-        reader->ReadScalar(full_name(kGraphHashDirectory), &hash_dir));
-    if (hash_dir != hash_dir_) {
-      return errors::DataLoss(
-          "Dataset has changed while restoring from the checkpoint. Old hash "
-          "directory: ",
-          hash_dir, "; new hash directory: ", hash_dir_);
+  class Reader : public DatasetIterator<Dataset> {
+   public:
+    static constexpr const char* const kIteratorName = "Reader";
+
+    Reader(const Params& params, int64 start_index)
+        : DatasetIterator<Dataset>(params), start_index_(start_index) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+
+      TF_RETURN_IF_ERROR(dataset()->reader_func_->Instantiate(
+          ctx, &instantiated_reader_func_));
+
+      auto hash_dir = snapshot_util::HashDirectory(
+          io::JoinPath(dataset()->reader_prefix_, dataset()->path_),
+          dataset()->hash_);
+      bool metadata_file_exists;
+      experimental::SnapshotMetadataRecord metadata;
+      TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
+          ctx->env(), hash_dir, &metadata, &metadata_file_exists));
+
+      auto run_dir = snapshot_util::RunDirectory(hash_dir, metadata.run_id());
+
+      std::vector<std::string> snapshot_shard_dirs;
+      TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
+          io::JoinPath(run_dir,
+                       strings::Printf("%s%s", "*",
+                                       snapshot_util::kShardDirectorySuffix)),
+          &snapshot_shard_dirs));
+      std::sort(snapshot_shard_dirs.begin(), snapshot_shard_dirs.end());
+
+      DatasetBase* dataset_of_snapshot_files;
+      TF_RETURN_IF_ERROR(snapshot_util::Reader::MakeNestedDataset(
+          ctx->env(), snapshot_shard_dirs, dataset()->compression_,
+          metadata.version(), dataset()->output_dtypes(),
+          dataset()->output_shapes(), start_index_,
+          &dataset_of_snapshot_files));
+
+      Tensor input_dataset_tensor(DT_VARIANT, TensorShape({}));
+      TF_RETURN_IF_ERROR(StoreDatasetInVariantTensor(dataset_of_snapshot_files,
+                                                     &input_dataset_tensor));
+
+      std::vector<Tensor> reader_input;
+      std::vector<Tensor> reader_output;
+      reader_input.push_back(std::move(input_dataset_tensor));
+
+      // NOTE: We intentionally ignore resource modeling outside GetNext().
+      TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
+          ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
+      if (reader_output.size() != 1) {
+        return errors::InvalidArgument(
+            "reader_func returns more than one argument.");
+      }
+      TF_RETURN_IF_ERROR(
+          GetDatasetFromVariantTensor(reader_output[0], &input_));
+      return input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    experimental::SnapshotMetadataRecord metadata;
-    bool file_exists;
-    TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
-        ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
-        &metadata, &file_exists));
-    if (!file_exists) {
-      return errors::DataLoss("Snapshot metadata file in ", hash_dir_,
-                              " does not exist any more.");
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      mutex_lock l(mu_);
+      return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
-    int64 iterator_mode;
-    TF_RETURN_IF_ERROR(
-        reader->ReadScalar(full_name(kIteratorMode), &iterator_mode));
-    mode_ = snapshot_util::Mode(iterator_mode);
-
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &index_));
-  } else {
-    experimental::SnapshotMetadataRecord metadata;
-    bool file_exists;
-    TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
-        ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
-        &metadata, &file_exists));
-
-    // `pending_snapshot_expiry_seconds` is a legacy option where we would not
-    // write snapshots that we think were still on-going. We decided that this
-    // would not be necessary as a feature for SnapshotV2, and we would always
-    // write a new snapshot regardless of whether someone else is currently
-    // writing one. Setting this to 0 ensures that all previous snapshots
-    // will be ignored and we will proceed to writing.
-    TF_RETURN_IF_ERROR(snapshot_util::DetermineOpState(
-        /*mode_string=*/"", file_exists, &metadata,
-        /*pending_snapshot_expiry_seconds=*/0, &mode_));
-  }
-
-  switch (mode_) {
-    case snapshot_util::READER:
-      iterator_ = absl::make_unique<Reader>(
-          Reader::Params{dataset(),
-                         absl::StrCat(prefix(), Reader::kIteratorName)},
-          index_);
-      break;
-    case snapshot_util::WRITER:
-      iterator_ = absl::make_unique<Writer>(Writer::Params{
-          dataset(), absl::StrCat(prefix(), Writer::kIteratorName)});
-      break;
-    case snapshot_util::PASSTHROUGH:
-      iterator_ = absl::make_unique<Passthrough>(Passthrough::Params{
-          dataset(), absl::StrCat(prefix(), Passthrough::kIteratorName)});
-      break;
-  }
-  TF_RETURN_IF_ERROR(iterator_->InitializeBase(ctx, this));
-  return iterator_->Initialize(ctx);
-}
-
-SnapshotDatasetV2Op::Dataset::Iterator::Reader::Reader(const Params& params,
-                                                       int64 start_index)
-    : DatasetIterator<Dataset>(params), start_index_(start_index) {}
-
-SnapshotDatasetV2Op::Dataset::Iterator::Reader::~Reader() { input_->Unref(); }
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
-    IteratorContext* ctx) {
-  mutex_lock l(mu_);
-
-  TF_RETURN_IF_ERROR(
-      dataset()->reader_func_->Instantiate(ctx, &instantiated_reader_func_));
-
-  auto hash_dir = snapshot_util::HashDirectory(
-      io::JoinPath(dataset()->reader_prefix_, dataset()->path_),
-      dataset()->hash_);
-  bool metadata_file_exists;
-  experimental::SnapshotMetadataRecord metadata;
-  TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
-      ctx->env(), hash_dir, &metadata, &metadata_file_exists));
-
-  auto run_dir = snapshot_util::RunDirectory(hash_dir, metadata.run_id());
-
-  std::vector<std::string> snapshot_shard_dirs;
-  TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-      io::JoinPath(
-          run_dir,
-          strings::Printf("%s%s", "*", snapshot_util::kShardDirectorySuffix)),
-      &snapshot_shard_dirs));
-  std::sort(snapshot_shard_dirs.begin(), snapshot_shard_dirs.end());
-
-  DatasetBase* dataset_of_snapshot_files;
-  TF_RETURN_IF_ERROR(snapshot_util::Reader::MakeNestedDataset(
-      ctx->env(), snapshot_shard_dirs, dataset()->compression_,
-      metadata.version(), dataset()->output_dtypes(),
-      dataset()->output_shapes(), start_index_, &dataset_of_snapshot_files));
-
-  Tensor input_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_RETURN_IF_ERROR(StoreDatasetInVariantTensor(dataset_of_snapshot_files,
-                                                 &input_dataset_tensor));
-
-  std::vector<Tensor> reader_input;
-  std::vector<Tensor> reader_output;
-  reader_input.push_back(std::move(input_dataset_tensor));
-
-  // NOTE: We intentionally ignore resource modeling outside GetNext().
-  TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
-      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
-  if (reader_output.size() != 1) {
-    return errors::InvalidArgument(
-        "reader_func returns more than one argument.");
-  }
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(reader_output[0], &input_));
-
-  // We need to take a reference here as we will use the input_ and
-  // its iterator.
-  input_->Ref();
-
-  return input_->MakeIterator(ctx, this, prefix(), &input_impl_);
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::GetNextInternal(
-    IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-    bool* end_of_sequence) {
-  mutex_lock l(mu_);
-  return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-}
-
-// We do not need to checkpoint the reader as we are rebuilding the reader
-// datasets from information that is already saved by the main iterator.
-Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::SaveInternal(
-    SerializationContext* ctx, IteratorStateWriter* writer) {
-  return Status::OK();
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::RestoreInternal(
-    IteratorContext* ctx, IteratorStateReader* reader) {
-  return Status::OK();
-}
-
-SnapshotDatasetV2Op::Dataset::Iterator::Writer::Writer(const Params& params)
-    : DatasetIterator<Dataset>(params),
-      writers_closed_(false),
-      run_id_(0),
-      current_checkpoint_id_(0) {}
-
-SnapshotDatasetV2Op::Dataset::Iterator::Writer::~Writer() {
-  mutex_lock l(mu_);
-  SignalEOF(true);
-}
-
-void SnapshotDatasetV2Op::Dataset::Iterator::Writer::SignalEOF(bool mark_closed)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (!writers_closed_) {
-    // Push the end of sequence signal to each of the threads to close files.
-    for (auto& writer : writers_) {
-      writer.second->SignalEOF();
+   protected:
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      // We do not need to checkpoint the reader as we are rebuilding the
+      // reader datasets from information that is already saved by the main
+      // iterator.
+      return Status::OK();
     }
 
-    writers_.clear();
-    writers_closed_ = mark_closed;
-  }
-}
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return Status::OK();
+    }
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::WriteMetadataFile(
-    Env* env, bool finalized) {
-  DCHECK(!run_dir_.empty());
+   private:
+    const int64 start_index_;
 
-  experimental::SnapshotMetadataRecord metadata;
-  metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_graph_hash(strings::StrCat(dataset()->hash_));
-  metadata.set_run_id(strings::StrCat(run_id_));
-  metadata.set_version(kFileFormatVersion);
-  for (const auto& output_dtype : dataset()->output_dtypes()) {
-    metadata.add_dtype(output_dtype);
-  }
-  metadata.set_finalized(finalized);
-  tstring hash_directory = io::JoinPath(
-      dataset()->writer_prefix_,
-      snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_));
+    mutex mu_;
 
-  return snapshot_util::WriteMetadataFile(env, hash_directory, &metadata);
-}
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::Initialize(
-    IteratorContext* ctx) {
-  mutex_lock l(mu_);
-  TF_RETURN_IF_ERROR(
-      dataset()->shard_func_->Instantiate(ctx, &instantiated_shard_func_));
+    DatasetBase* input_ TF_GUARDED_BY(mu_) = nullptr;
 
-  return dataset()->input_->MakeIterator(
-      ctx, this, strings::StrCat(prefix(), "::WriterIterator"), &input_impl_);
-}
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_reader_func_
+        TF_GUARDED_BY(mu_);
+  };
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetShardIndex(
-    IteratorContext* ctx, const std::vector<Tensor>& tensors,
-    int64* shard_index) {
-  std::vector<Tensor> output_tensors;
+  class Writer : public DatasetIterator<Dataset> {
+   public:
+    static constexpr const char* const kIteratorName = "Writer";
+    static constexpr const char* const kRunId = "run_id";
+    static constexpr const char* const kCurrentCheckpointId =
+        "current_checkpoint_id";
 
-  // Run the shard function
-  TF_RETURN_IF_ERROR(instantiated_shard_func_->RunWithBorrowedArgs(
-      ctx, tensors, &output_tensors, model_node()));
+    explicit Writer(const Params& params)
+        : DatasetIterator<Dataset>(params),
+          writers_closed_(false),
+          run_id_(0),
+          current_checkpoint_id_(0) {}
 
-  if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
-      output_tensors[0].NumElements() != 1) {
-    return errors::InvalidArgument("`shard_func` must return a scalar int64.");
-  }
+    ~Writer() override {
+      mutex_lock l(mu_);
+      SignalEOF(true);
+    }
 
-  // Create writable files if we see an index bigger than our current files.
-  *shard_index = output_tensors[0].flat<int64>()(0);
-  return Status::OK();
-}
+    Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(
+          dataset()->shard_func_->Instantiate(ctx, &instantiated_shard_func_));
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
-    IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-    bool* end_of_sequence) {
-  *end_of_sequence = false;
-  snapshot_util::AsyncWriter* current_writer;
+      return dataset()->input_->MakeIterator(
+          ctx, this, strings::StrCat(prefix(), "::WriterIterator"),
+          &input_impl_);
+    }
 
-  {
-    std::vector<Tensor> output_tensors;
-    mutex_lock l(mu_);
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      *end_of_sequence = false;
+      snapshot_util::AsyncWriter* current_writer;
 
-    // We initialize late here because restoring from checkpoint comes after the
-    // the Initialize call. We cannot initialize within Initialize() because
-    // we cannot determine whether we should overwrite an existing metadata
-    // file or not before `RestoreInternal` is potentially called.
-    if (run_dir_.empty()) {
-      run_id_ = random::New64();
+      {
+        std::vector<Tensor> output_tensors;
+        mutex_lock l(mu_);
 
-      // Creates the run directory.
+        // We initialize late here because restoring from checkpoint comes
+        // after the the Initialize call. We cannot initialize within
+        // Initialize() because we cannot determine whether we should
+        // overwrite an existing metadata file or not before `RestoreInternal`
+        // is potentially called.
+        if (run_dir_.empty()) {
+          run_id_ = random::New64();
+
+          // Creates the run directory.
+          run_dir_ = snapshot_util::RunDirectory(
+              snapshot_util::HashDirectory(
+                  io::JoinPath(dataset()->writer_prefix_, dataset()->path_),
+                  dataset()->hash_),
+              run_id_);
+          TF_RETURN_IF_ERROR(ctx->env()->RecursivelyCreateDir(run_dir_));
+          TF_RETURN_IF_ERROR(
+              WriteMetadataFile(ctx->env(), /*finalized=*/false));
+        }
+
+        // Writers have either encountered an error or are closed.
+        {
+          mutex_lock wsl(writer_status_mu_);
+          if (!writer_status_.ok() || writers_closed_) {
+            *end_of_sequence = true;
+            return writer_status_;
+          }
+        }
+
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+
+        // Finalize metadata file when we are at the end of the iterator.
+        if (*end_of_sequence) {
+          SignalEOF(/*mark_closed=*/true);
+          {
+            mutex_lock wsl(writer_status_mu_);
+            TF_RETURN_IF_ERROR(writer_status_);
+          }
+          return WriteMetadataFile(ctx->env(), /*finalized=*/true);
+        }
+
+        int64 shard_index = 0;
+        TF_RETURN_IF_ERROR(GetShardIndex(ctx, *out_tensors, &shard_index));
+
+        // If the index does not exist, we will start a new thread.
+        if (writers_.count(shard_index) == 0) {
+          auto snapshot_shard_directory =
+              snapshot_util::ShardDirectory(run_dir_, shard_index);
+          auto writer = std::make_unique<snapshot_util::AsyncWriter>(
+              ctx->env(), shard_index, snapshot_shard_directory,
+              current_checkpoint_id_, dataset()->compression_,
+              kFileFormatVersion, dataset()->output_dtypes(), [this](Status s) {
+                if (!s.ok()) {
+                  LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
+                  mutex_lock l(writer_status_mu_);
+                  writer_status_ = s;
+                }
+              });
+          writers_.insert({shard_index, std::move(writer)});
+        }
+        current_writer = writers_[shard_index].get();
+      }
+
+      current_writer->Write(*out_tensors);
+      return Status::OK();
+    }
+
+   protected:
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kRunId), static_cast<int64>(run_id_)));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kCurrentCheckpointId),
+                              static_cast<int64>(current_checkpoint_id_)));
+      SignalEOF(/*mark_closed=*/false);
+      writers_.clear();
+      current_checkpoint_id_++;
+      return SaveInput(ctx, writer, input_impl_);
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      int64 run_id_signed;
+      int64 current_checkpoint_id;
+
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_signed));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointId),
+                                            &current_checkpoint_id));
+
+      run_id_ = static_cast<uint64>(run_id_signed);
       run_dir_ = snapshot_util::RunDirectory(
           snapshot_util::HashDirectory(
               io::JoinPath(dataset()->writer_prefix_, dataset()->path_),
               dataset()->hash_),
           run_id_);
-      TF_RETURN_IF_ERROR(ctx->env()->RecursivelyCreateDir(run_dir_));
-      TF_RETURN_IF_ERROR(WriteMetadataFile(ctx->env(), /*finalized=*/false));
+      current_checkpoint_id_ = static_cast<uint64>(current_checkpoint_id);
+
+      return RestoreInput(ctx, reader, input_impl_);
     }
 
-    // Writers have either encountered an error or are closed.
-    {
-      mutex_lock wsl(writer_status_mu_);
-      if (!writer_status_.ok() || writers_closed_) {
-        *end_of_sequence = true;
-        return writer_status_;
+   private:
+    Status GetShardIndex(IteratorContext* ctx,
+                         const std::vector<Tensor>& tensors, int64* shard_index)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::vector<Tensor> output_tensors;
+
+      // Run the shard function
+      TF_RETURN_IF_ERROR(instantiated_shard_func_->RunWithBorrowedArgs(
+          ctx, tensors, &output_tensors, model_node()));
+
+      if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
+          output_tensors[0].NumElements() != 1) {
+        return errors::InvalidArgument(
+            "`shard_func` must return a scalar int64.");
+      }
+
+      // Create writable files if we see an index bigger than our current
+      // files.
+      *shard_index = output_tensors[0].flat<int64>()(0);
+      return Status::OK();
+    }
+
+    Status WriteMetadataFile(Env* env, bool finalized)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      DCHECK(!run_dir_.empty());
+
+      experimental::SnapshotMetadataRecord metadata;
+      metadata.set_creation_timestamp(EnvTime::NowMicros());
+      metadata.set_graph_hash(strings::StrCat(dataset()->hash_));
+      metadata.set_run_id(strings::StrCat(run_id_));
+      metadata.set_version(kFileFormatVersion);
+      for (const auto& output_dtype : dataset()->output_dtypes()) {
+        metadata.add_dtype(output_dtype);
+      }
+      metadata.set_finalized(finalized);
+      tstring hash_directory = io::JoinPath(
+          dataset()->writer_prefix_,
+          snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_));
+
+      return snapshot_util::WriteMetadataFile(env, hash_directory, &metadata);
+    }
+
+    void SignalEOF(bool mark_closed) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!writers_closed_) {
+        // Push the end of sequence signal to each of the threads to close
+        // files.
+        for (auto& writer : writers_) {
+          writer.second->SignalEOF();
+        }
+
+        writers_.clear();
+        writers_closed_ = mark_closed;
       }
     }
 
-    TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+    mutex mu_;
+    mutex writer_status_mu_;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
-    // Finalize metadata file when we are at the end of the iterator.
-    if (*end_of_sequence) {
-      SignalEOF(/*mark_closed=*/true);
-      {
-        mutex_lock wsl(writer_status_mu_);
-        TF_RETURN_IF_ERROR(writer_status_);
+    absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
+        writers_ TF_GUARDED_BY(mu_);
+    Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
+    bool writers_closed_ TF_GUARDED_BY(mu_);
+
+    uint64 run_id_ TF_GUARDED_BY(mu_);
+    tstring run_dir_ TF_GUARDED_BY(mu_);
+
+    // Stores the ID of the current checkpoint .snapshot file being read. See
+    // top of this file for the directory layout.
+    uint64 current_checkpoint_id_ TF_GUARDED_BY(mu_);
+
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_shard_func_
+        TF_GUARDED_BY(mu_);
+  };
+
+  class Passthrough : public DatasetIterator<Dataset> {
+   public:
+    static constexpr const char* const kIteratorName = "Passthrough";
+
+    explicit Passthrough(const Params& params)
+        : DatasetIterator<Dataset>(params) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+    }
+
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+    }
+
+   protected:
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      return SaveInput(ctx, writer, input_impl_);
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return RestoreInput(ctx, reader, input_impl_);
+    }
+
+   private:
+    std::unique_ptr<IteratorBase> input_impl_;
+  };
+
+  class Iterator : public DatasetIterator<Dataset> {
+   public:
+    static constexpr const char* const kIteratorMode = "iterator_mode";
+    static constexpr const char* const kIndex = "index";
+    static constexpr const char* const kGraphHashDirectory =
+        "graph_hash_directory";
+
+    explicit Iterator(const Params& params)
+        : DatasetIterator<Dataset>(params),
+          index_(0),
+          hash_dir_(snapshot_util::HashDirectory(dataset()->path_,
+                                                 dataset()->hash_)) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      return ctx->env()->RecursivelyCreateDir(
+          io::JoinPath(dataset()->writer_prefix_, hash_dir_));
+    }
+
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      mutex_lock l(mu_);
+      if (iterator_ == nullptr) {
+        Status s = InitializeIterator(ctx, /*reader=*/nullptr);
+        if (!s.ok()) {
+          iterator_.reset();
+          return s;
+        }
       }
-      return WriteMetadataFile(ctx->env(), /*finalized=*/true);
+      index_++;
+      return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
-    int64 shard_index = 0;
-    TF_RETURN_IF_ERROR(GetShardIndex(ctx, *out_tensors, &shard_index));
-
-    // If the index does not exist, we will start a new thread.
-    if (writers_.count(shard_index) == 0) {
-      auto snapshot_shard_directory =
-          snapshot_util::ShardDirectory(run_dir_, shard_index);
-      auto writer = std::make_unique<snapshot_util::AsyncWriter>(
-          ctx->env(), shard_index, snapshot_shard_directory,
-          current_checkpoint_id_, dataset()->compression_, kFileFormatVersion,
-          dataset()->output_dtypes(), [this](Status s) {
-            if (!s.ok()) {
-              LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
-              mutex_lock l(writer_status_mu_);
-              writer_status_ = s;
-            }
-          });
-      writers_.insert({shard_index, std::move(writer)});
+   protected:
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      if (iterator_ != nullptr) {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIteratorMode),
+                                               static_cast<int64>(mode_)));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(kGraphHashDirectory), hash_dir_));
+      }
+      return Status::OK();
     }
-    current_writer = writers_[shard_index].get();
-  }
 
-  current_writer->Write(*out_tensors);
-  return Status::OK();
-}
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      if (reader->Contains(full_name(kIteratorMode))) {
+        TF_RETURN_IF_ERROR(InitializeIterator(ctx, reader));
+        return RestoreInput(ctx, reader, iterator_);
+      }
+      return Status::OK();
+    }
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::SaveInternal(
-    SerializationContext* ctx, IteratorStateWriter* writer) {
-  mutex_lock l(mu_);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(full_name(kRunId), static_cast<int64>(run_id_)));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(full_name(kCurrentCheckpointId),
-                          static_cast<int64>(current_checkpoint_id_)));
-  SignalEOF(/*mark_closed=*/false);
-  writers_.clear();
-  current_checkpoint_id_++;
-  return SaveInput(ctx, writer, input_impl_);
-}
+   private:
+    Status InitializeIterator(IteratorContext* ctx, IteratorStateReader* reader)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (reader != nullptr) {
+        // Check whether the computed hash directory is the same.
+        tstring hash_dir;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kGraphHashDirectory), &hash_dir));
+        if (hash_dir != hash_dir_) {
+          return errors::DataLoss(
+              "Dataset has changed while restoring from the checkpoint. Old "
+              "hash "
+              "directory: ",
+              hash_dir, "; new hash directory: ", hash_dir_);
+        }
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::RestoreInternal(
-    IteratorContext* ctx, IteratorStateReader* reader) {
-  mutex_lock l(mu_);
-  int64 run_id_signed;
-  int64 current_checkpoint_id;
+        experimental::SnapshotMetadataRecord metadata;
+        bool file_exists;
+        TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
+            ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
+            &metadata, &file_exists));
+        if (!file_exists) {
+          return errors::DataLoss("Snapshot metadata file in ", hash_dir_,
+                                  " does not exist any more.");
+        }
 
-  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_signed));
-  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointId),
-                                        &current_checkpoint_id));
+        int64 iterator_mode;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kIteratorMode), &iterator_mode));
+        mode_ = snapshot_util::Mode(iterator_mode);
 
-  run_id_ = static_cast<uint64>(run_id_signed);
-  run_dir_ = snapshot_util::RunDirectory(
-      snapshot_util::HashDirectory(
-          io::JoinPath(dataset()->writer_prefix_, dataset()->path_),
-          dataset()->hash_),
-      run_id_);
-  current_checkpoint_id_ = static_cast<uint64>(current_checkpoint_id);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &index_));
+      } else {
+        experimental::SnapshotMetadataRecord metadata;
+        bool file_exists;
+        TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
+            ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
+            &metadata, &file_exists));
 
-  return RestoreInput(ctx, reader, input_impl_);
-}
+        // `pending_snapshot_expiry_seconds` is a legacy option where we would
+        // not write snapshots that we think were still on-going. We decided
+        // that this would not be necessary as a feature for SnapshotV2, and we
+        // would always write a new snapshot regardless of whether someone else
+        // is currently writing one. Setting this to 0 ensures that all previous
+        // snapshots will be ignored and we will proceed to writing.
+        TF_RETURN_IF_ERROR(snapshot_util::DetermineOpState(
+            /*mode_string=*/"", file_exists, &metadata,
+            /*pending_snapshot_expiry_seconds=*/0, &mode_));
+      }
 
-SnapshotDatasetV2Op::Dataset::Iterator::Passthrough::Passthrough(
-    const Params& params)
-    : DatasetIterator<Dataset>(params) {}
+      switch (mode_) {
+        case snapshot_util::READER:
+          iterator_ = absl::make_unique<Reader>(
+              Reader::Params{dataset(),
+                             absl::StrCat(prefix(), Reader::kIteratorName)},
+              index_);
+          break;
+        case snapshot_util::WRITER:
+          iterator_ = absl::make_unique<Writer>(Writer::Params{
+              dataset(), absl::StrCat(prefix(), Writer::kIteratorName)});
+          break;
+        case snapshot_util::PASSTHROUGH:
+          iterator_ = absl::make_unique<Passthrough>(Passthrough::Params{
+              dataset(), absl::StrCat(prefix(), Passthrough::kIteratorName)});
+          break;
+      }
+      TF_RETURN_IF_ERROR(iterator_->InitializeBase(ctx, this));
+      return iterator_->Initialize(ctx);
+    }
 
-Status SnapshotDatasetV2Op::Dataset::Iterator::Passthrough::Initialize(
-    IteratorContext* ctx) {
-  return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Passthrough::GetNextInternal(
-    IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-    bool* end_of_sequence) {
-  return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Passthrough::SaveInternal(
-    SerializationContext* ctx, IteratorStateWriter* writer) {
-  return SaveInput(ctx, writer, input_impl_);
-}
-
-Status SnapshotDatasetV2Op::Dataset::Iterator::Passthrough::RestoreInternal(
-    IteratorContext* ctx, IteratorStateReader* reader) {
-  return RestoreInput(ctx, reader, input_impl_);
-}
+    mutex mu_;
+    int64 index_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
+    snapshot_util::Mode mode_ TF_GUARDED_BY(mu_);
+    const std::string hash_dir_;
+  };
+};
 
 SnapshotDatasetV2Op::SnapshotDatasetV2Op(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {

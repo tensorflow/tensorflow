@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -1078,6 +1079,16 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;
+}
+
+int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count)) {
+    return count;
+  }
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2440,6 +2451,29 @@ OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
     return APFloat(result);
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
+  auto input_type = input().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return nullptr;
+
+  ArrayRef<int64_t> shape = input_type.getShape();
+  auto result_type = getType().cast<ShapedType>();
+  if (result_type.getElementType().isInteger(64)) {
+    return DenseElementsAttr::get<int64_t>(result_type, shape);
+  } else if (result_type.getElementType().isInteger(32)) {
+    SmallVector<int32_t, 4> shape_i32;
+    shape_i32.reserve(shape.size());
+    for (int64_t dim : shape) {
+      shape_i32.push_back(dim);
+    }
+    return DenseElementsAttr::get<int32_t>(result_type, shape_i32);
+  }
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

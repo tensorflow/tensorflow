@@ -145,6 +145,11 @@ bool HasOutsideCompilationAncestorExclusive(Operation* op) {
   return HasOutsideCompilationAncestor(parent_op);
 }
 
+Operation* ApplyXlaHostTransferAttr(Operation* op, OpBuilder& builder) {
+  op->setAttr("_xla_has_host_transfer", builder.getBoolAttr(true));
+  return op;
+}
+
 // Creates a tf._XlaSendFromHost or tf._XlaSendFromHostV2 op. If device ordinal
 // is present, a tf._XlaSendFromHostV2 op is created instead.
 Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
@@ -152,15 +157,20 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
                                 Value device_ordinal,
                                 llvm::StringRef communication_key) {
   if (device_ordinal)
-    return builder.create<TF::_XlaSendFromHostV2Op>(
-        loc, inputs,
-        /*dynamic_key=*/compilation_key, device_ordinal,
-        builder.getStringAttr(communication_key));
+    return ApplyXlaHostTransferAttr(
+        builder.create<TF::_XlaSendFromHostV2Op>(
+            loc, inputs,
+            /*dynamic_key=*/compilation_key, device_ordinal,
+            builder.getStringAttr(communication_key)),
+        builder);
 
-  return builder.create<TF::_XlaSendFromHostOp>(
-      loc, inputs,
-      /*dynamic_key=*/compilation_key, builder.getStringAttr(communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  return ApplyXlaHostTransferAttr(
+      builder.create<TF::_XlaSendFromHostOp>(
+          loc, inputs,
+          /*dynamic_key=*/compilation_key,
+          builder.getStringAttr(communication_key),
+          /*device_ordinal=*/builder.getI64IntegerAttr(0)),
+      builder);
 }
 
 // Creates a tf._XlaRecvAtHost or tf._XlaRecvAtHostV2 op. If device ordinal is
@@ -170,14 +180,18 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
                               Value device_ordinal,
                               llvm::StringRef communication_key) {
   if (device_ordinal)
-    return builder.create<TF::_XlaRecvAtHostV2Op>(
-        loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
-        builder.getStringAttr(communication_key));
+    return ApplyXlaHostTransferAttr(
+        builder.create<TF::_XlaRecvAtHostV2Op>(
+            loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
+            builder.getStringAttr(communication_key)),
+        builder);
 
-  return builder.create<TF::_XlaRecvAtHostOp>(
-      loc, output_types, /*dynamic_key=*/compilation_key,
-      builder.getStringAttr(communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  return ApplyXlaHostTransferAttr(
+      builder.create<TF::_XlaRecvAtHostOp>(
+          loc, output_types, /*dynamic_key=*/compilation_key,
+          builder.getStringAttr(communication_key),
+          /*device_ordinal=*/builder.getI64IntegerAttr(0)),
+      builder);
 }
 
 // Clones an IfRegionOp 'if_region' and attributes and creates then/else regions

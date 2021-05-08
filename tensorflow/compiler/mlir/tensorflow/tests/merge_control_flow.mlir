@@ -590,3 +590,31 @@ func @side_effect_analysis_updated() {
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
+
+// Check that 2 IfRegions can be merged when the first IfRegion contains multiple side effecting ops.
+
+// CHECK-LABEL: func @same_predicate_2_ifregions_multiple_side_effect_ops
+func @same_predicate_2_ifregions_multiple_side_effect_ops() {
+  // CHECK:       "tf.IfRegion"
+  // CHECK-NOT:   "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+      }, {
+      %2 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%0) ( {
+      %4 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}

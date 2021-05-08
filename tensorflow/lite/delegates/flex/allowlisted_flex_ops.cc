@@ -208,6 +208,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "FakeQuantWithMinMaxVarsPerChannelGradient",
           "FakeQueue",
           "Fill",
+          "FinalizeDataset",
           "Fingerprint",
           "Floor",
           "FloorDiv",

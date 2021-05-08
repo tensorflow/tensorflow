@@ -2607,5 +2607,35 @@ class IntermediatesTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(result, 16.0)
 
 
+class DatasetOpsTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testReduceDataset(self):
+
+    @tf.function
+    def model():
+      dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3, 4])
+      output = dataset.reduce(np.int32(0), lambda x, y: x + y)
+      return output
+
+    concrete_func = model.get_concrete_function()
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+
 if __name__ == '__main__':
   test.main()

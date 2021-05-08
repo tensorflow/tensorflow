@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace xla {
 
@@ -62,12 +63,18 @@ class Traceback {
     return frames_;
   }
 
+  // Returns the traceback as a fake Python Traceback object, suitable for
+  // using as an exception traceback.
+  pybind11::object AsPythonTraceback() const;
+
  private:
   absl::InlinedVector<std::pair<PyCodeObject*, int>, 32> frames_;
 
   // Protected by GIL.
   static bool enabled_;
 };
+
+void BuildTracebackSubmodule(pybind11::module& m);
 
 }  // namespace xla
 

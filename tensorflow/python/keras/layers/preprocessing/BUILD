@@ -592,9 +592,9 @@ cuda_py_test(
 
 tf_py_test(
     name = "normalization_test",
-    size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "broken",  # b/170974360
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null

@@ -70,12 +70,8 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   """
 
   def _apply_fn(dataset):
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
     return _CopyToDeviceDataset(
-        dataset, target_device=target_device,
-        source_device=source_device).with_options(options)
+        dataset, target_device=target_device, source_device=source_device)
 
   return _apply_fn
 
@@ -94,7 +90,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       target_device: The name of the device to which elements would be copied.
       source_device: Device where input_dataset would be placed.
     """
-    self._input_dataset = input_dataset._apply_options()  # pylint: disable=protected-access
+    self._input_dataset = input_dataset._apply_debug_options()  # pylint: disable=protected-access
     self._target_device = target_device
     spec = framework_device.DeviceSpec().from_string(self._target_device)
     self._is_gpu_target = (spec.device_type == "GPU")

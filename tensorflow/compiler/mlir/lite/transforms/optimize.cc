@@ -808,7 +808,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
       if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
-        new_bias_values.resize(bias_size, APFloat(0.0));
+        new_bias_values.resize(bias_size,
+                               APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it

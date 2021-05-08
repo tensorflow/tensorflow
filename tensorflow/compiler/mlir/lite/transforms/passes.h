@@ -127,6 +127,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
 // Creates a pass which is responsible for initializing Tensorflow variables
 // as Tensorflow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
+
+// Creates get arithmetic count pass, which will calculate the arithmetic count
+// for each ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
 }  // namespace TFL
 
 }  // namespace mlir

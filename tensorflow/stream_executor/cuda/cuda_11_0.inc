@@ -913,6 +913,8 @@ CUresult CUDAAPI cuArrayGetDescriptor(CUDA_ARRAY_DESCRIPTOR *pArrayDescriptor,
   return func_ptr(pArrayDescriptor, hArray);
 }
 
+#if CUDA_VERSION >= 11100
+
 CUresult CUDAAPI cuArrayGetSparseProperties(
     CUDA_ARRAY_SPARSE_PROPERTIES *sparseProperties, CUarray array) {
   using FuncPtr = CUresult(CUDAAPI *)(CUDA_ARRAY_SPARSE_PROPERTIES *, CUarray);
@@ -930,6 +932,8 @@ CUresult CUDAAPI cuMipmappedArrayGetSparseProperties(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(sparseProperties, mipmap);
 }
+
+#endif  // CUDA_VERSION >= 11100
 
 CUresult CUDAAPI cuArrayGetPlane(CUarray *pPlaneArray, CUarray hArray,
                                  unsigned int planeIdx) {
@@ -1037,6 +1041,8 @@ CUresult CUDAAPI cuMemMap(CUdeviceptr ptr, size_t size, size_t offset,
   return func_ptr(ptr, size, offset, handle, flags);
 }
 
+#if CUDA_VERSION >= 11100
+
 CUresult CUDAAPI cuMemMapArrayAsync(CUarrayMapInfo *mapInfoList,
                                     unsigned int count, CUstream hStream) {
   using FuncPtr = CUresult(CUDAAPI *)(CUarrayMapInfo *, unsigned int, CUstream);
@@ -1044,6 +1050,8 @@ CUresult CUDAAPI cuMemMapArrayAsync(CUarrayMapInfo *mapInfoList,
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(mapInfoList, count, hStream);
 }
+
+#endif  // CUDA_VERSION >= 11100
 
 CUresult CUDAAPI cuMemUnmap(CUdeviceptr ptr, size_t size) {
   using FuncPtr = CUresult(CUDAAPI *)(CUdeviceptr, size_t);

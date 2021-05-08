@@ -898,7 +898,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
-      [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+      [DeclareOpInterfaceMethods<InferTypeOpInterface>,
+       DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -1040,8 +1041,11 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
-   PredOpTrait<"x and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+   PredOpTrait<"x and output must have same element type or they are int8 and int32",
+       Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
+           And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
+                CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
+                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1058,14 +1062,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QI16]>:$x,
-    TFL_TensorOf<[F32, QI8, QI16]>:$y,
+    TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
+    TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8, QI16]>:$output
+    TFL_TensorOf<[F32, QI8, QI16, I32]>:$output
   );
 
   let hasOptions = 1;
@@ -2736,6 +2740,8 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   }]>;
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_RangeOp: TFL_Op<"range", [

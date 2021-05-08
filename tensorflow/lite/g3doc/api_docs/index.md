@@ -9,3 +9,7 @@ platform from the list below.
 *   [Swift API reference](/lite/api_docs/swift/Classes)
 *   Objective-C API reference (coming soon)
 *   [C++ API reference](/lite/api_docs/cc)
+
+We also provide other tools related to TensorFlow Lite.
+
+*   [TensorFlow Lite Model Maker Python API reference](/lite/api_docs/python/tflite_model_maker)

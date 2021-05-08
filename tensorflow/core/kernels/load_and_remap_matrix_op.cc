@@ -123,6 +123,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // Processes the checkpoint source and the provided Tensor name.
     const Tensor* ckpt_path_t;
     OP_REQUIRES_OK(context, context->input("ckpt_path", &ckpt_path_t));
+    OP_REQUIRES(
+        context, ckpt_path_t->NumElements() == 1,
+        errors::InvalidArgument("The `ckpt_path` tensor must have exactly one "
+                                "element, got tensor of shape ",
+                                ckpt_path_t->shape().DebugString()));
     const string& ckpt_path = ckpt_path_t->scalar<tstring>()();
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,

@@ -54,7 +54,7 @@ Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, bool use_function) {
   if (use_function) {
     const char* fn_name = "test_fn";
-    std::unique_ptr<AbstractFunction> scoped_func;
+    core::RefCountPtr<AbstractFunction> scoped_func;
     // Returning null tensors from a tf.function is not supported, so we keep
     // track of indices in the model's outputs are nullptr in this set.
     // The FunctionDef only outputs the non-null tensors. We later pad the

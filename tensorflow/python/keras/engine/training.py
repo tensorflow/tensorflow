@@ -1341,6 +1341,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           test_function, experimental_relax_shapes=True)
 
     self.test_function = test_function
+
+    if self._cluster_coordinator:
+      self.test_function = lambda iterator: self._cluster_coordinator.schedule(  # pylint: disable=g-long-lambda
+          test_function, args=(iterator,))
+
     return self.test_function
 
   def evaluate(self,
@@ -1447,8 +1452,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       raise TypeError('Invalid keyword arguments: %s' % (kwargs,))
 
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.evaluate` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      self._cluster_coordinator = cluster_coordinator.ClusterCoordinator(
+          self.distribute_strategy)
 
     with self.distribute_strategy.scope():
       # Use cached evaluation data only when it's called in `Model.fit`
@@ -2312,24 +2317,30 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # streaming restore for any variables created in the future.
         trackable_utils.streaming_restore(status=status, session=session)
       status.assert_nontrivial_match()
-      return status
-    if h5py is None:
-      raise ImportError(
-          '`load_weights` requires h5py when loading weights from HDF5.')
-    if not self._is_graph_network and not self.built:
-      raise ValueError(
-          'Unable to load weights saved in HDF5 format into a subclassed '
-          'Model which has not created its variables yet. Call the Model '
-          'first, then load the weights.')
-    self._assert_weights_created()
-    with h5py.File(filepath, 'r') as f:
-      if 'layer_names' not in f.attrs and 'model_weights' in f:
-        f = f['model_weights']
-      if by_name:
-        hdf5_format.load_weights_from_hdf5_group_by_name(
-            f, self.layers, skip_mismatch=skip_mismatch)
-      else:
-        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+    else:
+      status = None
+      if h5py is None:
+        raise ImportError(
+            '`load_weights` requires h5py when loading weights from HDF5.')
+      if not self._is_graph_network and not self.built:
+        raise ValueError(
+            'Unable to load weights saved in HDF5 format into a subclassed '
+            'Model which has not created its variables yet. Call the Model '
+            'first, then load the weights.')
+      self._assert_weights_created()
+      with h5py.File(filepath, 'r') as f:
+        if 'layer_names' not in f.attrs and 'model_weights' in f:
+          f = f['model_weights']
+        if by_name:
+          hdf5_format.load_weights_from_hdf5_group_by_name(
+              f, self.layers, skip_mismatch=skip_mismatch)
+        else:
+          hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+
+    # Perform any layer defined finalization of the layer state.
+    for layer in self.layers:
+      layer.finalize_state()
+    return status
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -2724,10 +2735,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     return functions
 
   def _should_eval(self, epoch, validation_freq):
-    if self._cluster_coordinator:
-      raise NotImplementedError(
-          'Evaluation in `model.fit` with '
-          '`ParameterServerStrategy` is not yet supported.')
     epoch = epoch + 1  # one-index the user-facing epoch.
     if isinstance(validation_freq, int):
       return epoch % validation_freq == 0

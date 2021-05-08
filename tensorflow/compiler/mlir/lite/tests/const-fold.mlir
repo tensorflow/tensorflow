@@ -815,3 +815,19 @@ func @ConstantFoldFullyConnectedCheckPrecision() -> tensor<1xf32> {
   // CHECK: %[[CST:.*]] = constant dense<2.000000e+00> : tensor<1xf32>
   // CHECK:  return %[[CST]]
 }
+
+// CHECK-LABEL: @ShapeOpI32
+func @ShapeOpI32(%arg0 : tensor<576x72xf32>) -> tensor<2xi32> {
+  %0 = "tfl.shape"(%arg0) : (tensor<576x72xf32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+  // CHECK: %[[CST:.*]] = constant dense<[576, 72]> : tensor<2xi32>
+  // CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @ShapeOpI64
+func @ShapeOpI64(%arg0 : tensor<576x72xf32>) -> tensor<2xi64> {
+  %0 = "tfl.shape"(%arg0) : (tensor<576x72xf32>) -> tensor<2xi64>
+  return %0 : tensor<2xi64>
+  // CHECK: %[[CST:.*]] = constant dense<[576, 72]> : tensor<2xi64>
+  // CHECK:  return %[[CST]]
+}

@@ -1082,7 +1082,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.map(broken_function)
     self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, "BrokenConst"))
+        dataset, expected_error=(errors.InvalidArgumentError, "Type mismatch"))
 
   @combinations.generate(
       combinations.times(

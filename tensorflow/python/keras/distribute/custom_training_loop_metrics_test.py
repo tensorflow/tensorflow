@@ -23,6 +23,7 @@ from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.platform import test
@@ -99,6 +100,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  @test_util.disable_mlir_bridge("TODO(b/168036682): Support dynamic padder")
   def test_update_keras_metrics_dynamic_shape(self, distribution):
     with distribution.scope():
       metric = metrics.Mean("test_metric", dtype=np.float32)

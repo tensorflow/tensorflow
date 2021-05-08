@@ -24,7 +24,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.service import server_lib
@@ -88,11 +87,9 @@ class DistributedIteratorTestBase(test.TestCase):
                 input_pipeline_id=i,
                 num_replicas_in_sync=len(devices)))
 
-      iterator = input_lib.InputFunctionIterator(
-          dataset_or_input_fn,
-          input_workers,
-          input_contexts,
-          strategy)
+      iterator = input_lib.InputFunctionIterator(dataset_or_input_fn,
+                                                 input_workers, input_contexts,
+                                                 strategy)
     else:
       iterator = input_lib.DatasetIterator(
           dataset_or_input_fn,
@@ -210,8 +207,8 @@ class DistributedIteratorTestBase(test.TestCase):
           self.skipTest("unsupported test combination")
 
     if isinstance(iterator, composite_tensor.CompositeTensor):
-      nest.assert_same_structure(iterator, iterator._type_spec,
-                                 expand_composites=True)
+      nest.assert_same_structure(
+          iterator, iterator._type_spec, expand_composites=True)
 
     if iteration_type == "get_next":
       evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
@@ -397,14 +394,9 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
-    self._test_input_iteration(
-        input_type,
-        api_type,
-        iteration_type,
-        dataset_or_input_fn,
-        worker_device_pairs,
-        expected_values,
-        distribution)
+    self._test_input_iteration(input_type, api_type, iteration_type,
+                               dataset_or_input_fn, worker_device_pairs,
+                               expected_values, distribution)
 
   @combinations.generate(
       combinations.combine(
@@ -425,18 +417,13 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
-    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+    expected_values = [[i, i + 1] for i in range(0, 10, 2)]
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
-    self._test_input_iteration(
-        input_type,
-        api_type,
-        iteration_type,
-        dataset_or_input_fn,
-        worker_device_pairs,
-        expected_values,
-        distribution)
+    self._test_input_iteration(input_type, api_type, iteration_type,
+                               dataset_or_input_fn, worker_device_pairs,
+                               expected_values, distribution)
 
   @combinations.generate(
       combinations.combine(
@@ -462,14 +449,9 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
-    self._test_input_iteration(
-        input_type,
-        api_type,
-        iteration_type,
-        dataset_or_input_fn,
-        worker_device_pairs,
-        expected_values,
-        distribution)
+    self._test_input_iteration(input_type, api_type, iteration_type,
+                               dataset_or_input_fn, worker_device_pairs,
+                               expected_values, distribution)
 
   @combinations.generate(
       combinations.combine(
@@ -496,18 +478,15 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
-    expected_values = [[(i, i**2), (i+1, (i+1)**2)] for i in range(0, 10, 2)]
+    expected_values = [
+        [(i, i**2), (i + 1, (i + 1)**2)] for i in range(0, 10, 2)
+    ]
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
-    self._test_input_iteration(
-        input_type,
-        api_type,
-        iteration_type,
-        dataset_or_input_fn,
-        worker_device_pairs,
-        expected_values,
-        distribution)
+    self._test_input_iteration(input_type, api_type, iteration_type,
+                               dataset_or_input_fn, worker_device_pairs,
+                               expected_values, distribution)
 
   @combinations.generate(
       combinations.combine(
@@ -568,6 +547,47 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
   @combinations.generate(
       combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+          ]))
+  def testIterableIteratorError(self, distribution):
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    iterator = iter(dist_dataset)
+    # Raises error when next(iterator) is called without strategy scope
+    with self.assertRaises(ValueError):
+
+      def replica_fn1(iterator):
+        return next(iterator)
+
+      distribution.run(replica_fn1, args=(iterator,))
+
+    if distribution.num_replicas_in_sync == 1:
+      expected_result = [[[0, 1]], [[2, 3]], [[4, 5]], [[6, 7]], [[8, 9]]]
+    elif distribution.num_replicas_in_sync == 2:
+      expected_result = [[[0], [1]], [[2], [3]], [[4], [5]], [[6], [7]],
+                         [[8], [9]]]
+
+    with distribution.scope():
+
+      def replica_fn2(iterator):
+        return iterator
+
+      result = distribution.run(replica_fn2, args=(next(iterator),))
+      self.assertAllEqual(
+          distribution.experimental_local_results(result), expected_result[0])
+
+    # Confirm default ReplicaContext also works
+    iterator = iter(dist_dataset)
+    for i, element in enumerate(iterator):
+      self.assertAllEqual(
+          distribution.experimental_local_results(element), expected_result[i])
+
+  @combinations.generate(
+      combinations.combine(
           mode=["graph", "eager"],
           input_type=["input_fn", "dataset"],
           api_type=["wrap_into_iterator", "wrap_into_dataset"],
@@ -592,14 +612,9 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     else:
       expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8], []]]
     distribution.extended.experimental_enable_get_next_as_optional = True
-    self._test_input_iteration(
-        input_type,
-        api_type,
-        iteration_type,
-        dataset_or_input_fn,
-        worker_device_pairs,
-        expected_values,
-        distribution)
+    self._test_input_iteration(input_type, api_type, iteration_type,
+                               dataset_or_input_fn, worker_device_pairs,
+                               expected_values, distribution)
 
   @combinations.generate(
       combinations.combine(
@@ -748,9 +763,10 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     updated_batch_size = (
         batch_size //
         num_replicas_in_sync if num_replicas_in_sync else batch_size)
-    expected_values = [[range(i, i+updated_batch_size),
-                        range(i+updated_batch_size, i+2*updated_batch_size)]
-                       for i in range(0, 100, updated_batch_size*2)]
+    expected_values = [[
+        range(i, i + updated_batch_size),
+        range(i + updated_batch_size, i + 2 * updated_batch_size)
+    ] for i in range(0, 100, updated_batch_size * 2)]
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
@@ -861,9 +877,6 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
   def testShuffleAcrossIterations(self, distribution, reshuffle):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
-
-    if not reshuffle and not compat.forward_compatible(2020, 5, 22):
-      self.skipTest("Functionality currently not supported.")
 
     dataset = dataset_ops.Dataset.range(12).shuffle(
         12, reshuffle_each_iteration=reshuffle).batch(4)
@@ -1044,8 +1057,10 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
 
-    defun = {"lambda": lambda f: f,
-             "tf_function": def_function.function}[defun_type]
+    defun = {
+        "lambda": lambda f: f,
+        "tf_function": def_function.function
+    }[defun_type]
     distribution.extended.experimental_enable_get_next_as_optional = True
     global_batch_size = 8
 
@@ -1140,8 +1155,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     # expect 310 here when using an input function (as there are 5 batches of
     # size 4 round robined over 2 replicas.
     expected_for_sum = 200.
-    if (not drop_remainder or (
-        defun_type == "tf_function" and input_type == "input_fn")):
+    if (not drop_remainder or
+        (defun_type == "tf_function" and input_type == "input_fn")):
       expected_for_sum = 310.
     self.assertAllEqual(nest.flatten(for_sums), [expected_for_sum] * 3)
 
@@ -1157,11 +1172,10 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
           tensor_type=["sparse", "ragged"],
-          enable_get_next_as_optional=[True, False]
-      ))
-  def testRaggedSparseGetNextAsOptional(
-      self, distribution, input_type, drop_remainder, tensor_type,
-      enable_get_next_as_optional):
+          enable_get_next_as_optional=[True, False]))
+  def testRaggedSparseGetNextAsOptional(self, distribution, input_type,
+                                        drop_remainder, tensor_type,
+                                        enable_get_next_as_optional):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
@@ -1211,8 +1225,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
       ))
-  def testRaggedSparseGetNextAsOptionalInLoop(
-      self, distribution, input_type, drop_remainder):
+  def testRaggedSparseGetNextAsOptionalInLoop(self, distribution, input_type,
+                                              drop_remainder):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
     self.skipTest("b/323359921")
 

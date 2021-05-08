@@ -1299,8 +1299,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                             k, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1329,8 +1329,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                             k, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1867,8 +1867,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+                             se::blas::Transpose::kTranspose, n, m, k, a_ptr, n,
+                             b_ptr, m, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1895,8 +1895,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+                             se::blas::Transpose::kTranspose, n, m, k, b_ptr, n,
+                             a_ptr, m, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,

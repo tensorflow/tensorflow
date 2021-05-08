@@ -308,7 +308,10 @@ TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
 }
 
 TfLiteStatus Interpreter::ResetVariableTensors() {
-  return primary_subgraph().ResetVariableTensors();
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->ResetVariableTensors());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(

@@ -1411,12 +1411,23 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   }
 
   // If a literal is an increasing sequence from zero, replace it with an iota.
-  if (constant->shape().rank() == 1 &&
-      ShapeUtil::ElementsIn(constant->shape()) > 1 &&
+  if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsR1Iota()) {
     return ReplaceWithNewInstruction(
         constant, HloInstruction::CreateIota(constant->shape(), 0));
   }
+
+  if (absl::optional<int64> stride = constant->literal().IsR1StridedIota()) {
+    // Replace the constant with iota * stride.
+    HloInstruction* stride_hlo = MakeScalarLike(constant, *stride);
+    HloInstruction* iota = computation_->AddInstruction(
+        HloInstruction::CreateIota(constant->shape(), 0));
+    return ReplaceWithNewInstruction(
+        constant,
+        HloInstruction::CreateBinary(constant->shape(), HloOpcode::kMultiply,
+                                     iota, stride_hlo));
+  }
+
   return Status::OK();
 }
 
@@ -4442,45 +4453,75 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   }
 
   // Convert the dynamic slice of an iota to just a reference to the index
-  // (possibly clamped). Index is always a scalar integer. Output should be a
-  // rank 1 array of size 1 with element type matching that of the scalar index
-  // (except the signedness).
+  // (possibly clamped and scaled). Index is always a scalar integer. Output
+  // should be a rank 1 array of size 1 with element type matching that of the
+  // scalar index (except the signedness).
   const PrimitiveType element_type = dynamic_slice->shape().element_type();
-  if (operand->opcode() == HloOpcode::kIota && operand->shape().rank() == 1 &&
-      dynamic_slice->shape().rank() == 1 &&
+  if (operand->shape().rank() == 1 && dynamic_slice->shape().rank() == 1 &&
       dynamic_slice->shape().dimensions(0) == 1 &&
       (element_type == S32 || element_type == U32)) {
-    // This dynamic_slice will have a single start_index operand (since its
-    // operand is rank 1).
-    HloInstruction* index = dynamic_slice->mutable_operand(1);
-    const PrimitiveType index_type = index->shape().element_type();
-
-    auto create_constant = [&](int64 value) {
-      if (index_type == S32) {
-        return MakeScalarLike<int32_t>(index, value);
-      } else {
-        return MakeScalarLike<uint32_t>(index, value);
+    // Match multiply(x, broadcast(scalar)) and return the scalar
+    // constant.
+    auto match_multiply_with_scalar =
+        [&](HloInstruction* hlo) -> HloInstruction* {
+      if (hlo->opcode() != HloOpcode::kMultiply) {
+        return nullptr;
       }
+      HloInstruction* broadcast = hlo->mutable_operand(1);
+      if (broadcast->opcode() == HloOpcode::kBroadcast &&
+          broadcast->dimensions().empty() &&
+          ShapeUtil::IsScalar(broadcast->operand(0)->shape())) {
+        return broadcast->mutable_operand(0);
+      }
+      return nullptr;
     };
 
-    if (index_type == S32 || index_type == U32) {
-      // Clamp the index to the range of the iota.
-      int64 iota_size = operand->shape().dimensions(0);
-      HloInstruction* low = create_constant(0);
-      HloInstruction* high = create_constant(iota_size - 1);
-      HloInstruction* clamped =
-          computation_->AddInstruction(HloInstruction::CreateTernary(
-              index->shape(), HloOpcode::kClamp, low, index, high));
-      Shape reshape_shape = ShapeUtil::MakeShape(index_type, {1});
-      HloInstruction* result = computation_->AddInstruction(
-          HloInstruction::CreateReshape(reshape_shape, clamped));
+    HloInstruction* multiplier = match_multiply_with_scalar(operand);
+    if (multiplier) {
+      operand = operand->mutable_operand(0);
+    }
 
-      if (index_type != element_type) {
-        result = computation_->AddInstruction(
-            HloInstruction::CreateConvert(dynamic_slice->shape(), result));
+    if (operand->opcode() == HloOpcode::kIota) {
+      // This dynamic_slice will have a single start_index operand (since its
+      // operand is rank 1).
+      HloInstruction* index = dynamic_slice->mutable_operand(1);
+      const PrimitiveType index_type = index->shape().element_type();
+
+      auto create_constant = [&](int64 value) {
+        if (index_type == S32) {
+          return MakeScalarLike<int32_t>(index, value);
+        } else {
+          return MakeScalarLike<uint32_t>(index, value);
+        }
+      };
+
+      if (index_type == S32 || index_type == U32) {
+        // Clamp the index to the range of the iota.
+        int64 iota_size = operand->shape().dimensions(0);
+        HloInstruction* low = create_constant(0);
+        HloInstruction* high = create_constant(iota_size - 1);
+        HloInstruction* clamped =
+            computation_->AddInstruction(HloInstruction::CreateTernary(
+                index->shape(), HloOpcode::kClamp, low, index, high));
+
+        // Convert the clamped index from index_type to element_type and
+        // multiply with the multiplier.
+        HloInstruction* result = clamped;
+        if (index_type != element_type) {
+          result = computation_->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeScalarShape(element_type), clamped));
+        }
+
+        if (multiplier) {
+          result = computation_->AddInstruction(HloInstruction::CreateBinary(
+              result->shape(), HloOpcode::kMultiply, result, multiplier));
+        }
+
+        return ReplaceWithNewInstruction(
+            dynamic_slice,
+            HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(element_type, {1}), result));
       }
-
-      return ReplaceInstruction(dynamic_slice, result);
     }
   }
 

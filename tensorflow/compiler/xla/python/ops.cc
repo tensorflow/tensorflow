@@ -142,6 +142,24 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
+  ops.def(
+      "CustomCallWithAliasing",
+      [](XlaBuilder* builder, const py::bytes& call_target_name,
+         absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
+         absl::Span<const Shape> operand_shapes_with_layout,
+         const py::bytes& opaque, bool has_side_effect,
+         absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+             output_operand_aliasing,
+         const Literal* literal) -> XlaOp {
+        return CustomCallWithLayout(
+            builder, call_target_name, operands, shape_with_layout,
+            operand_shapes_with_layout, opaque, has_side_effect,
+            output_operand_aliasing, literal);
+      },
+      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
+      py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
+      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);
@@ -165,13 +183,14 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("operand"), py::arg("update"), py::arg("start_indices"));
   ops.def(
       "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter,
-         float epsilon) -> std::pair<XlaOp, XlaOp> {
-        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
+      [](XlaOp a, bool lower, int64 max_iter, float epsilon,
+         bool sort_eigenvalues) -> std::pair<XlaOp, XlaOp> {
+        auto eigh =
+            SelfAdjointEig(a, lower, max_iter, epsilon, sort_eigenvalues);
         return std::make_pair(eigh.v, eigh.w);
       },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
+      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 15,
+      py::arg("epsilon") = 1e-5, py::arg("sort_eigenvalues") = true);
   ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
           py::arg("fft_length"));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
