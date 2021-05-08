@@ -2683,6 +2683,13 @@ name=None))
     `scan()` accumulates one or more state tensors, whose initial values are
     `initial_state`.
 
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> initial_state = tf.constant(0, dtype=tf.int64)
+    >>> scan_func = lambda state, i: (state + i, state + i)
+    >>> dataset = dataset.scan(initial_state=initial_state, scan_func=scan_func)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+
     Args:
       initial_state: A nested structure of tensors, representing the initial
         state of the accumulator.
