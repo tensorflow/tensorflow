@@ -400,6 +400,10 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
     }
   }
 
+  if (fbody->fdef.attr().find("_implements") != fbody->fdef.attr().end())
+    return errors::InvalidArgument(
+        "Function was declared with experimental_implements");
+
   if (!options.ignore_noinline) {
     TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
   }
