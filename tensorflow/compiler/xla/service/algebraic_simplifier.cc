@@ -2868,13 +2868,12 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
-            m::MultiplyAnyOrder(
-                m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
-                m::Constant(&c2))) ||
-      Match(multiply, m::MultiplyAnyOrder(
-                          m::MultiplyAnyOrder(
-                              m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
-                          m::Broadcast(m::ConstantScalar(&c2))))) {
+            m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
+                        m::Constant(&c2))) ||
+      Match(multiply,
+            m::Multiply(
+                m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
+                m::Broadcast(m::ConstantScalar(&c2))))) {
     TF_ASSIGN_OR_RETURN(auto* product_of_constants,
                         MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
     if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
