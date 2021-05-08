@@ -1,0 +1,1 @@
+ARG REDHAT_VERSION=latest
