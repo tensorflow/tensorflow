@@ -38,6 +38,9 @@ struct OpData {
   int32_t input_range_radius;
   int32_t input_multiplier;
   int input_left_shift;
+  float input_scale;
+  int32_t output_zero_point;
+  float output_scale;
 };
 
 TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
@@ -64,6 +67,11 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
 
     data->input_range_radius =
         CalculateInputRadius(kInputIntegerBits, data->input_left_shift, 31);
+  } else if (input->type == kTfLiteUInt8) {
+    data->input_zero_point = input->params.zero_point;
+    data->input_scale = input->params.scale;
+    data->output_zero_point = output->params.zero_point;
+    data->output_scale = output->params.scale;
   }
   return kTfLiteOk;
 }
@@ -114,6 +122,23 @@ TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
             NumElements(input->dims),
             tflite::micro::GetTensorData<int8_t>(input),
             tflite::micro::GetTensorData<int8_t>(output));
+        return kTfLiteOk;
+      }
+      default:
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
+        return kTfLiteError;
+    }
+  } else if (input->type == kTfLiteUInt8) {
+    switch (output->type) {
+      case kTfLiteUInt8: {
+        reference_ops::Logistic(tflite::micro::GetTensorShape(input),
+                                tflite::micro::GetTensorData<uint8_t>(input),
+                                data->input_scale, data->input_zero_point,
+                                tflite::micro::GetTensorShape(output),
+                                tflite::micro::GetTensorData<uint8_t>(output),
+                                data->output_scale, data->output_zero_point);
         return kTfLiteOk;
       }
       default:
