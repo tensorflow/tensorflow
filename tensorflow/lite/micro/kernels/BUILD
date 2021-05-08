@@ -311,6 +311,7 @@ cc_library(
         "sub.cc",
         "svdf_common.cc",
         "tanh.cc",
+        "transpose.cc",
         "transpose_conv.cc",
         "unpack.cc",
         "zeros_like.cc",
@@ -1181,6 +1182,19 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = [
+        "transpose_test.cc"
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
