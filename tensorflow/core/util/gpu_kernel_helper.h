@@ -30,7 +30,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
-#define TF_RED_WARPSIZE 64
+// We don't define TF_RED_WARPSIZE here, because it can be either 32 or 64
+// and the value is not known at compile time.
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
