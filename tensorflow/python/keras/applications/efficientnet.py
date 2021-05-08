@@ -197,6 +197,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
         Defaults to 'softmax'.
         When loading pretrained weights, `classifier_activation` can only
         be `None` or `"softmax"`.
+    lite: boolean. Whether To use lite variant of the model. 
 
   Returns:
     A `keras.Model` instance.
@@ -219,7 +220,9 @@ def EfficientNet(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax'):
+    classifier_activation='softmax',
+    lite=False,
+):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
   Args:
@@ -260,6 +263,8 @@ def EfficientNet(
     classifier_activation: A `str` or callable. The activation function to use
         on the "top" layer. Ignored unless `include_top=True`. Set
         `classifier_activation=None` to return the logits of the "top" layer.
+    lite: boolean. Whether to create lite variants of the network.
+        Only applicable for B0-B4 variants.
 
   Returns:
     A `keras.Model` instance.
@@ -317,14 +322,22 @@ def EfficientNet(
 
   # Build stem
   x = img_input
-  x = layers.Rescaling(1. / 255.)(x)
-  x = layers.Normalization(axis=bn_axis)(x)
+
+  if lite:
+    x = layers.Normalization(
+      mean=127.0, variance=128.0**2, axis=bn_axis
+    )(x)
+  else:
+    x = layers.Rescaling(1. / 255.)(x)
+    x = layers.Normalization(axis=bn_axis)(x)
 
   x = layers.ZeroPadding2D(
       padding=imagenet_utils.correct_pad(x, 3),
       name='stem_conv_pad')(x)
+
+  stem_filters = 32 if lite else round_filters(32)
   x = layers.Conv2D(
-      round_filters(32),
+      stem_filters,
       3,
       strides=2,
       padding='valid',
@@ -332,20 +345,30 @@ def EfficientNet(
       kernel_initializer=CONV_KERNEL_INITIALIZER,
       name='stem_conv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name='stem_bn')(x)
-  x = layers.Activation(activation, name='stem_activation')(x)
+  x = get_activation(activation, name='stem_activation', lite=lite)(x)
 
   # Build blocks
   blocks_args = copy.deepcopy(blocks_args)
 
   b = 0
-  blocks = float(sum(round_repeats(args['repeats']) for args in blocks_args))
+
+  if lite:
+    blocks = float(sum(args['repeats'] for args in blocks_args))
+  else:
+    blocks = float(sum(round_repeats(args['repeats']) for args in blocks_args))
+
   for (i, args) in enumerate(blocks_args):
     assert args['repeats'] > 0
     # Update block input and output filters based on depth multiplier.
     args['filters_in'] = round_filters(args['filters_in'])
     args['filters_out'] = round_filters(args['filters_out'])
 
-    for j in range(round_repeats(args.pop('repeats'))):
+    if lite and i in (0, len(blocks_args) - 1):
+      repeats = args.pop('repeats')
+    else:
+      repeats = round_repeats(args.pop('repeats'))
+
+    for j in range(repeats):
       # The first block needs to take care of stride and filter size increase.
       if j > 0:
         args['strides'] = 1
@@ -355,19 +378,21 @@ def EfficientNet(
           activation,
           drop_connect_rate * b / blocks,
           name='block{}{}_'.format(i + 1, chr(j + 97)),
+          lite=lite,
           **args)
       b += 1
 
   # Build top
+  top_filters = 1280 if lite else round_filters(1280)
   x = layers.Conv2D(
-      round_filters(1280),
+      top_filters,
       1,
       padding='same',
       use_bias=False,
       kernel_initializer=CONV_KERNEL_INITIALIZER,
       name='top_conv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name='top_bn')(x)
-  x = layers.Activation(activation, name='top_activation')(x)
+  x = get_activation(activation, name='top_activation', lite=lite)(x)
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
     if dropout_rate > 0:
@@ -424,7 +449,8 @@ def block(inputs,
           strides=1,
           expand_ratio=1,
           se_ratio=0.,
-          id_skip=True):
+          id_skip=True,
+          lite=False):
   """An inverted residual block.
 
   Args:
@@ -439,6 +465,8 @@ def block(inputs,
       expand_ratio: integer, scaling coefficient for the input filters.
       se_ratio: float between 0 and 1, fraction to squeeze the input filters.
       id_skip: boolean.
+      lite: boolean. Whether to create block for lite variant. Lite variant
+        is not using SE and has different activation function.
 
   Returns:
       output tensor for the block.
@@ -457,7 +485,7 @@ def block(inputs,
         name=name + 'expand_conv')(
             inputs)
     x = layers.BatchNormalization(axis=bn_axis, name=name + 'expand_bn')(x)
-    x = layers.Activation(activation, name=name + 'expand_activation')(x)
+    x = get_activation(activation, name=name+'expand_activation', lite=lite)(x)
   else:
     x = inputs
 
@@ -477,10 +505,10 @@ def block(inputs,
       depthwise_initializer=CONV_KERNEL_INITIALIZER,
       name=name + 'dwconv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name=name + 'bn')(x)
-  x = layers.Activation(activation, name=name + 'activation')(x)
+  x = get_activation(activation, name=name + 'activation', lite=lite)(x)
 
   # Squeeze and Excitation phase
-  if 0 < se_ratio <= 1:
+  if (0 < se_ratio <= 1) and not lite:
     filters_se = max(1, int(filters_in * se_ratio))
     se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
     if bn_axis == 1:
@@ -522,6 +550,14 @@ def block(inputs,
   return x
 
 
+def get_activation(activation, name, lite):
+    """Returns activation layer for given model variant."""
+    if lite:
+      return layers.ReLU(max_value=6, name=name)
+    else:
+      return layers.Activation(activation, name=name)
+
+
 @keras_export('keras.applications.efficientnet.EfficientNetB0',
               'keras.applications.EfficientNetB0')
 def EfficientNetB0(include_top=True,
@@ -531,13 +567,14 @@ def EfficientNetB0(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
+                   lite=False,
                    **kwargs):
   return EfficientNet(
       1.0,
       1.0,
       224,
       0.2,
-      model_name='efficientnetb0',
+      model_name='efficientnetlite0' if lite else 'efficientnetb0',
       include_top=include_top,
       weights=weights,
       input_tensor=input_tensor,
@@ -545,6 +582,7 @@ def EfficientNetB0(include_top=True,
       pooling=pooling,
       classes=classes,
       classifier_activation=classifier_activation,
+      lite=lite,
       **kwargs)
 
 
@@ -557,13 +595,14 @@ def EfficientNetB1(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
+                   lite=False,
                    **kwargs):
   return EfficientNet(
       1.0,
       1.1,
       240,
       0.2,
-      model_name='efficientnetb1',
+      model_name='efficientnetlite1' if lite else 'efficientnetb1',
       include_top=include_top,
       weights=weights,
       input_tensor=input_tensor,
@@ -571,6 +610,7 @@ def EfficientNetB1(include_top=True,
       pooling=pooling,
       classes=classes,
       classifier_activation=classifier_activation,
+      lite=lite,
       **kwargs)
 
 
@@ -583,13 +623,14 @@ def EfficientNetB2(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
+                   lite=False,
                    **kwargs):
   return EfficientNet(
       1.1,
       1.2,
       260,
       0.3,
-      model_name='efficientnetb2',
+      model_name='efficientnetlite2' if lite else 'efficientnetb2',
       include_top=include_top,
       weights=weights,
       input_tensor=input_tensor,
@@ -597,6 +638,7 @@ def EfficientNetB2(include_top=True,
       pooling=pooling,
       classes=classes,
       classifier_activation=classifier_activation,
+      lite=lite,
       **kwargs)
 
 
@@ -609,13 +651,14 @@ def EfficientNetB3(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
+                   lite=False,
                    **kwargs):
   return EfficientNet(
       1.2,
       1.4,
-      300,
+      280 if lite else 300,
       0.3,
-      model_name='efficientnetb3',
+      model_name='efficientnetlite3' if lite else 'efficientnetb3',
       include_top=include_top,
       weights=weights,
       input_tensor=input_tensor,
@@ -623,6 +666,7 @@ def EfficientNetB3(include_top=True,
       pooling=pooling,
       classes=classes,
       classifier_activation=classifier_activation,
+      lite=lite,
       **kwargs)
 
 
@@ -635,13 +679,14 @@ def EfficientNetB4(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
+                   lite=False,
                    **kwargs):
   return EfficientNet(
       1.4,
       1.8,
-      380,
-      0.4,
-      model_name='efficientnetb4',
+      300 if lite else 380,
+      0.3 if lite else 0.4,
+      model_name='efficientnetlite4' if lite else 'efficientnetb4',
       include_top=include_top,
       weights=weights,
       input_tensor=input_tensor,
@@ -649,6 +694,7 @@ def EfficientNetB4(include_top=True,
       pooling=pooling,
       classes=classes,
       classifier_activation=classifier_activation,
+      lite=lite,
       **kwargs)
 
 
@@ -662,6 +708,7 @@ def EfficientNetB5(include_top=True,
                    classes=1000,
                    classifier_activation='softmax',
                    **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       1.6,
       2.2,
@@ -688,6 +735,7 @@ def EfficientNetB6(include_top=True,
                    classes=1000,
                    classifier_activation='softmax',
                    **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       1.8,
       2.6,
@@ -714,6 +762,7 @@ def EfficientNetB7(include_top=True,
                    classes=1000,
                    classifier_activation='softmax',
                    **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       2.0,
       3.1,
