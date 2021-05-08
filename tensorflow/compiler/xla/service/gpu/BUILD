@@ -1473,6 +1473,7 @@ tf_cc_test(
     ],
     tags = [
         "gpu",
+        "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
         # positives in msan.
     ],

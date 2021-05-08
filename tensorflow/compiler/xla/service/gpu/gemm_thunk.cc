@@ -122,6 +122,12 @@ static bool DoGemmWithAlgorithm(
                                             : se::blas::Transpose::kNoTranspose;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
+  // Ignore the "algorithm" field on the ROCm platform. This is because
+  // autotuning for GEMM is not yet available on the ROCm platform
+  // The "algorithm" field does not get populated in the "normal" flow
+  // on the ROCm platform, but atleast one unittest directly populates it
+  // and hence the need for this check
+#if !defined(TENSORFLOW_USE_ROCM)
   if (algorithm) {
     // Autotuning is disabled for batch_size != 1.
     CHECK_EQ(1, batch_size);
@@ -138,6 +144,7 @@ static bool DoGemmWithAlgorithm(
             *algorithm, output_profile_result)
         .ok();
   }
+#endif  // !defined(TENSORFLOW_USE_ROCM)
 
   if (batch_size != 1) {
     int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
