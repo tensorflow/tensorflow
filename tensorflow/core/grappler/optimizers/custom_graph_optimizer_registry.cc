@@ -197,19 +197,5 @@ ConfigList PluginGraphOptimizerRegistry::GetPluginConfigs(
   return ret_plugin_configs;
 }
 
-bool PluginGraphOptimizerRegistry::IsConfigsConflict(
-    ConfigList& user_config, ConfigList& plugin_config) {
-  if (plugin_config == DefaultPluginConfigs()) return false;
-  if (user_config.disable_model_pruning != plugin_config.disable_model_pruning)
-    return true;
-  // Returns true if user_config is turned on but plugin_config is turned off.
-  for (auto& pair : user_config.toggle_config) {
-    if ((user_config.toggle_config[pair.first] == RewriterConfig::ON) &&
-        (plugin_config.toggle_config[pair.first] == RewriterConfig::OFF))
-      return true;
-  }
-  return false;
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow
