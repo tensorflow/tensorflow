@@ -257,6 +257,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseFullyConnected(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_GATHER: {
+      return ParseGather(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_GATHER_ND: {
       return ParseGatherNd(op, error_reporter, allocator, builtin_data);
     }
@@ -651,10 +655,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       }
       *builtin_data = params.release();
       return kTfLiteOk;
-    }
-
-    case BuiltinOperator_GATHER: {
-      return ParseGather(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_SPARSE_TO_DENSE: {
       auto params = safe_allocator.Allocate<TfLiteSparseToDenseParams>();

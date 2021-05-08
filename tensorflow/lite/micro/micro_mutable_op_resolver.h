@@ -254,6 +254,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseFullyConnected);
   }
 
+  TfLiteStatus AddGather() {
+    return AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(), ParseGather);
+  }
+
   TfLiteStatus AddGatherNd() {
     return AddBuiltin(BuiltinOperator_GATHER_ND, tflite::Register_GATHER_ND(),
                       ParseGatherNd);

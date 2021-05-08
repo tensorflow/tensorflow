@@ -282,6 +282,7 @@ tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/floor_div_test.cc \
 tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
+tensorflow/lite/micro/kernels/gather_test.cc \
 tensorflow/lite/micro/kernels/gather_nd_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
@@ -350,6 +351,7 @@ tensorflow/lite/micro/kernels/floor_div.cc \
 tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
+tensorflow/lite/micro/kernels/gather.cc \
 tensorflow/lite/micro/kernels/gather_nd.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
@@ -446,6 +448,7 @@ tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/floor_div.h \
 tensorflow/lite/kernels/internal/reference/floor_mod.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/gather.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
