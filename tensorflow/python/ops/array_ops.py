@@ -2894,6 +2894,7 @@ def matrix_set_diag(
 
 def _constant_if_small(value, shape, dtype, name):
   try:
+    shape = nest.map_structure(tensor_util.constant_value, shape)
     if np.prod(shape) < 1000:
       return constant(value, shape=shape, dtype=dtype, name=name)
   except TypeError:
@@ -3205,6 +3206,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
       one = np.ones([]).astype(dtype.as_numpy_dtype)
     else:
       one = 1
+
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
