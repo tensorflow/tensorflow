@@ -105,6 +105,8 @@ bool IsAssign(const NodeDef& node) {
 
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
+bool IsAsString(const NodeDef& node) { return node.op() == "AsString"; }
+
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }
 
 bool IsBetainc(const NodeDef& node) { return node.op() == "Betainc"; }
@@ -574,6 +576,10 @@ bool IsStridedSlice(const NodeDef& node) { return node.op() == "StridedSlice"; }
 
 bool IsStridedSliceGrad(const NodeDef& node) {
   return node.op() == "StridedSliceGrad";
+}
+
+bool IsStringToHashBucketFast(const NodeDef& node) {
+  return node.op() == "StringToHashBucketFast";
 }
 
 bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }
