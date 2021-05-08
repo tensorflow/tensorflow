@@ -125,8 +125,8 @@ function install_ubuntu_16_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
-  # Now, install the deps, as listed in setup.py
+  "${PIP_CMD}" install --user 'numpy >= 1.19.2,< 1.21'
+  # Now, install the deps, as listed in setup. py
   "${PIP_CMD}" install --user 'absl-py ~= 0.10'
   "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
   "${PIP_CMD}" install --user 'flatbuffers ~= 1.12.0'
@@ -149,7 +149,7 @@ function install_ubuntu_16_pip_deps {
   # Test dependencies
   "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
-  "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
+  "${PIP_CMD}" install --user 'scipy >= 1.5.2, < 1.7'
   # LINT.ThenChange(:mac_pip_installations)
   # Need to be addressed later. Unblocking 2.4 branchcut
   "${PIP_CMD}" install --user 'PyYAML ~= 5.3.1'
@@ -182,7 +182,7 @@ function install_ubuntu_16_python_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --user 'numpy ~= 1.19.2'
+  ${PIP_CMD} install --user 'numpy >= 1.19.2, < 1.21'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install --user 'absl-py ~= 0.10'
   ${PIP_CMD} install --user 'astunparse ~= 1.6.3'
@@ -206,7 +206,7 @@ function install_ubuntu_16_python_pip_deps {
   # Test dependencies
   ${PIP_CMD} install --user 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
-  ${PIP_CMD} install --user 'scipy ~= 1.5.2'
+  ${PIP_CMD} install --user 'scipy >= 1.5.2, <1.7'
   # LINT.ThenChange(:mac_pip_installations)
   # Need to be addressed later. Unblocking 2.4 branchcut
   ${PIP_CMD} install --user 'PyYAML ~= 5.3.1'
@@ -225,7 +225,7 @@ function install_macos_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2'
+  ${PIP_CMD} install 'numpy >= 1.19.2 , <1.21'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10'
   ${PIP_CMD} install 'astunparse ~= 1.6.3'
@@ -249,7 +249,7 @@ function install_macos_pip_deps {
   # Test dependencies
   ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install 'portpicker ~= 1.3.1'
-  ${PIP_CMD} install 'scipy ~= 1.5.2'
+  ${PIP_CMD} install 'scipy >= 1.5.2, < 1.7'
   ${PIP_CMD} install --upgrade certifi
 
   # LINT.ThenChange(:linux_pip_installations_orig)
@@ -272,7 +272,7 @@ function install_macos_pip_deps_no_venv {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2' --user
+  ${PIP_CMD} install 'numpy >= 1.19.2, <1.21' --user
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10' --user
   ${PIP_CMD} install 'astunparse ~= 1.6.3' --user
@@ -296,7 +296,7 @@ function install_macos_pip_deps_no_venv {
   # Test dependencies
   ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0' --user
   ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
-  ${PIP_CMD} install 'scipy ~= 1.5.2' --user
+  ${PIP_CMD} install 'scipy >= 1.5.2, <1.7' --user
   ${PIP_CMD} install --upgrade certifi --user
 
   # LINT.ThenChange(:install_macos_pip_deps)
