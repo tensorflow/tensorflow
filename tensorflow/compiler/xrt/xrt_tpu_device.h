@@ -44,6 +44,10 @@ class XRTTpuDeviceAccessor {
     xla::Backend* backend() { return node_context_->backend(); }
     int device_ordinal() { return ordinal_; }
 
+    se::DeviceMemoryAllocator* GetMemoryAllocator() {
+      return backend()->memory_allocator();
+    }
+
    private:
     // XRTTpuDeviceAccessor::InitScopedRef is the only way to initialize
     // ScopedRef.
