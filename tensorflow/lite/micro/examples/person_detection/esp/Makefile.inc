@@ -33,12 +33,12 @@ person_detection_ESP_PROJECT_FILES := \
   main/Kconfig.projbuild
 
 # Remap downloaded model files as if they were in tensorflow/lite/micro/examples/..
-MODEL_DOWNLOADS_DIR := tensorflow/lite/micro/tools/make/downloads/person_model_grayscale
-MODEL_EXAMPLES_DIR := tensorflow/lite/micro/examples/person_detection/person_model_grayscale
+MODEL_DOWNLOADS_DIR := tensorflow/lite/micro/tools/make/downloads/person_model_int8
+MODEL_EXAMPLES_DIR := tensorflow/lite/micro/examples/person_detection/person_model_int8
 person_detection_SRCS := $(patsubst $(MODEL_DOWNLOADS_DIR)/%,$(MODEL_EXAMPLES_DIR)/%,$(person_detection_SRCS))
 
 # Custom rule to transform downloaded model files
-$(PRJDIR)person_detection/esp-idf/main/person_model_grayscale/%: $(MODEL_DOWNLOADS_DIR)/%
+$(PRJDIR)person_detection/esp-idf/main/person_model_int8/%: $(MODEL_DOWNLOADS_DIR)/%
 	@mkdir -p $(dir $@)
 	@python tensorflow/lite/micro/tools/make/transform_source.py \
         --platform=esp \

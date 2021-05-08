@@ -77,5 +77,10 @@ $(eval $(call microlite_test,detection_responder_test_int8,\
 $(DETECTION_RESPONDER_TEST_SRCS),$(DETECTION_RESPONDER_TEST_HDRS)))
 
 # Builds a standalone object recognition binary.
+ifneq ($(TARGET), esp)
 $(eval $(call microlite_test,person_detection_int8,\
 $(person_detection_SRCS),$(person_detection_HDRS)))
+else
+$(eval $(call microlite_test,person_detection,\
+$(person_detection_SRCS),$(person_detection_HDRS)))
+endif
