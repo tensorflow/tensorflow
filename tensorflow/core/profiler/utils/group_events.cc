@@ -568,6 +568,22 @@ void EventForest::ConnectInterThread(
 }
 
 void EventForest::CreateEventGroups() {
+
+  if(!root_events_.empty()) {
+    SortEventList(&root_events_);
+    // Create a group for each top root event while ignoring TF's legacy root
+    // events for JAX profiles.
+    for (EventNode* root_event : root_events_) {
+      if (IsTopRoot(root_event) &&
+          (!HasJaxEvent(event_node_map_) ||
+          !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
+        ProcessRootEvent(next_group_id_++, /*set_step_name=*/true, root_event,
+                        &group_metadata_map_);
+      }
+    }
+    return ;
+  }
+
   // Handle inference batching profiles.
   if (event_node_map_.contains(HostEventType::kProcessBatch)) {
     // Assign group_id per batch.
@@ -600,18 +616,6 @@ void EventForest::CreateEventGroups() {
   // Create a group for each TF loop iteration in non-JAX profiles.
   if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
-      ProcessRootEvent(next_group_id_++, /*set_step_name=*/true, root_event,
-                       &group_metadata_map_);
-    }
-    return;
-  }
-  SortEventList(&root_events_);
-  // Create a group for each top root event while ignoring TF's legacy root
-  // events for JAX profiles.
-  for (EventNode* root_event : root_events_) {
-    if (IsTopRoot(root_event) &&
-        (!HasJaxEvent(event_node_map_) ||
-         !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
       ProcessRootEvent(next_group_id_++, /*set_step_name=*/true, root_event,
                        &group_metadata_map_);
     }
