@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.take_while()`."""
+"""Tests for `tf.data.Dataset.take_while()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -44,10 +43,8 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
     def _predicate_func(elem):
       return array_ops.shape(elem)[0] > (window_size - 1)
 
-    take_while = take_while_ops.take_while(_predicate_func)
-
     dataset = dataset_ops.Dataset.range(num_elements).batch(window_size)
-    dataset = dataset.apply(take_while).flat_map(
+    dataset = dataset.take_while(predicate=_predicate_func).flat_map(
         dataset_ops.Dataset.from_tensor_slices)
 
     expected_num_elements = int(num_elements / window_size) * window_size
@@ -75,8 +72,9 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
       return lambda x: math_ops.not_equal(x, constant_op.constant(string))
 
     string = ["this", "is", "the", "test", "for", "strings"]
-    dataset = dataset_ops.Dataset.from_tensor_slices(string).apply(
-        take_while_ops.take_while(not_equal("test")))
+    dataset = dataset_ops.Dataset.from_tensor_slices(string).take_while(
+        predicate=not_equal("test")
+    )
 
     next_element = self.getNext(dataset)
     self.assertEqual(b"this", self.evaluate(next_element()))
@@ -100,8 +98,9 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     boolean_array = [True] * size
     boolean_array[index] = False
-    dataset = dataset_ops.Dataset.from_tensor_slices(boolean_array).apply(
-        take_while_ops.take_while(_predicate_func))
+    dataset = dataset_ops.Dataset.from_tensor_slices(boolean_array).take_while(
+        predicate=_predicate_func
+    )
 
     next_element = self.getNext(dataset)
 
@@ -113,8 +112,8 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testTakeWhileDatasetWithRepeat(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        take_while_ops.take_while(lambda x: x < 2)).repeat(5)
+    dataset = dataset_ops.Dataset.range(10).take_while(
+        predicate=lambda x: x < 2).repeat(5)
     self.assertDatasetProduces(dataset, np.tile([0, 1], 5))
 
 
@@ -122,8 +121,9 @@ class TakeWhileCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                               parameterized.TestCase):
 
   def _build_dataset(self, num_elements, upper_bound):
-    return dataset_ops.Dataset.range(num_elements).apply(
-        take_while_ops.take_while(lambda x: x < upper_bound))
+    return dataset_ops.Dataset.range(num_elements).take_while(
+        predicate=lambda x: x < upper_bound
+    )
 
   @combinations.generate(
       combinations.times(
