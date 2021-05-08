@@ -29,7 +29,6 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
-
 BASE_WEIGHTS_PATH = (
     'https://storage.googleapis.com/tensorflow/keras-applications/resnet/')
 WEIGHTS_HASHES = {
@@ -47,8 +46,8 @@ WEIGHTS_HASHES = {
                     'ed17cf2e0169df9d443503ef94b23b33'),
     'resnext50': ('67a5b30d522ed92f75a1f16eef299d1a',
                   '62527c363bdd9ec598bed41947b379fc'),
-    'resnext101':
-        ('34fb605428fcc7aa4d62f44404c11509', '0f678c91647380debd923963594981b3')
+    'resnext101': ('34fb605428fcc7aa4d62f44404c11509',
+                   '0f678c91647380debd923963594981b3')
 }
 
 layers = None
@@ -202,7 +201,8 @@ def ResNet(stack_fn,
         BASE_WEIGHTS_PATH + file_name,
         cache_subdir='models',
         file_hash=file_hash)
-    model.load_weights(weights_path)
+    by_name = True if 'resnext' in model_name else False
+    model.load_weights(weights_path, by_name=by_name)
   elif weights is not None:
     model.load_weights(weights)
 
@@ -500,6 +500,48 @@ def ResNet152(include_top=True,
                 input_tensor, input_shape, pooling, classes, **kwargs)
 
 
+@keras_export('keras.applications.resnet.ResNeXt50',
+              'keras.applications.ResNeXt50')
+def ResNeXt50(include_top=True,
+              weights='imagenet',
+              input_tensor=None,
+              input_shape=None,
+              pooling=None,
+              classes=1000,
+              **kwargs):
+  """Instantiates the ResNeXt50 architecture."""
+
+  def stack_fn(x):
+    x = stack3(x, 128, 3, stride1=1, name='conv2')
+    x = stack3(x, 256, 4, name='conv3')
+    x = stack3(x, 512, 6, name='conv4')
+    return stack3(x, 1024, 3, name='conv5')
+
+  return ResNet(stack_fn, False, False, 'resnext50', include_top, weights,
+                input_tensor, input_shape, pooling, classes, **kwargs)
+
+
+@keras_export('keras.applications.resnet.ResNeXt101',
+              'keras.applications.ResNeXt101')
+def ResNeXt101(include_top=True,
+               weights='imagenet',
+               input_tensor=None,
+               input_shape=None,
+               pooling=None,
+               classes=1000,
+               **kwargs):
+  """Instantiates the ResNeXt101 architecture."""
+
+  def stack_fn(x):
+    x = stack3(x, 128, 3, stride1=1, name='conv2')
+    x = stack3(x, 256, 4, name='conv3')
+    x = stack3(x, 512, 23, name='conv4')
+    return stack3(x, 1024, 3, name='conv5')
+
+  return ResNet(stack_fn, False, False, 'resnext101', include_top, weights,
+                input_tensor, input_shape, pooling, classes, **kwargs)
+
+
 @keras_export('keras.applications.resnet50.preprocess_input',
               'keras.applications.resnet.preprocess_input')
 def preprocess_input(x, data_format=None):
@@ -582,3 +624,5 @@ DOC = """
 setattr(ResNet50, '__doc__', ResNet50.__doc__ + DOC)
 setattr(ResNet101, '__doc__', ResNet101.__doc__ + DOC)
 setattr(ResNet152, '__doc__', ResNet152.__doc__ + DOC)
+setattr(ResNeXt50, '__doc__', ResNeXt50.__doc__ + DOC)
+setattr(ResNeXt101, '__doc__', ResNeXt101.__doc__ + DOC)
