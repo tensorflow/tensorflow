@@ -61,6 +61,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 
 
 class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -951,7 +953,8 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
     self.assertNotIn(None, grads)
 
 
-class GetDependentVariablesTest(test_util.TensorFlowTestCase):
+class GetDependentVariablesTest(test_util.TensorFlowTestCase,
+                                parameterized.TestCase):
 
   def testNoVariables(self):
     with ops.Graph().as_default():
@@ -1023,6 +1026,29 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
       dependent_vars = custom_gradient._get_dependent_variables(
           [input_t], [result_t])
       self.assertEqual(dependent_vars, [])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          mode=["graph"]))
+  def testVariablesMultiGPUs(self, distribution):
+    with context.graph_mode(), distribution.scope():
+      init = constant_op.constant(100.0)
+      var = variable_scope.variable(init, name='a')
+
+      # The variable is closed over. It should be found.
+      def func(input_t):
+        result_t = array_ops.identity(input_t) + 5.0 + var
+        dependent_vars = custom_gradient.get_dependent_variables(
+            [input_t], [result_t])
+        return dependent_vars
+
+      input_t = constant_op.constant(2.0)
+      in_model_fn = distribution.extended.call_for_each_replica(func, [input_t])
+      dependent_vars = distribution.experimental_local_results(in_model_fn)
+      self.assertEqual(len(dependent_vars), 1)
 
   def testVariablesOutsideAndNonTrainable(self):
     with ops.Graph().as_default():
