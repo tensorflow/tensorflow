@@ -204,7 +204,8 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
                compression=None,
                reader_func=None,
                pending_snapshot_expiry_seconds=None,
-               use_legacy_function=False):
+               use_legacy_function=False,
+               hash_code=None):
 
     if reader_func is None:
       reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
@@ -236,6 +237,9 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
       raise TypeError(
           "shard_func must return a 0-dimension tensor containing an int.")
 
+    # Toggle hash_valid based on the availability of hash_code
+    hash_valid = hash_code is not None
+
     variant_tensor = ged_ops.snapshot_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         path,
@@ -244,6 +248,8 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         compression=compression,
         reader_func=self._reader_func.function,
         shard_func=self._shard_func.function,
+        hash_valid=hash_valid,
+        hash=hash_code,
         **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
@@ -255,7 +261,7 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
 
 @tf_export("data.experimental.snapshot")
-def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
+def snapshot(path, compression="AUTO", reader_func=None, shard_func=None, hash_code=None):
   """API to persist the output of the input dataset.
 
   The snapshot API allows users to transparently persist the output of their
@@ -315,6 +321,14 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
   By default, snapshot parallelizes reads by the number of cores available on
   the system, but will not attempt to shuffle the data.
 
+  `hash_code` is a user provided hash code that uniquily identifies the snapshot
+  fingerprint. If not provided it will use the graph hash by default, which varies
+  based on the dataset chain and input dataset.
+  Note: If the hash_code is under-sensitive to collision, it may read datasets
+  despite changes in input data and/or dataset call-chain/graph. On the other hand, if
+  the hash_code is over-sensitive to collision, it will not match a previously
+  generated snapshot despite having the same input dataset and graph.
+
   Args:
     path: Required. A directory to use for storing / loading the snapshot to /
       from.
@@ -326,6 +340,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
       shards.
     shard_func: Optional. A function to control how to shard data when writing a
       snapshot.
+    hash_code: Optional. A hash_code(int64) that uniquily identifies the input dataset.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -352,7 +367,8 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
         reader_func=reader_func,
         # This will not do the right thing where the graph is built on a
         # different machine than the executor (e.g. Cloud TPUs).
-        shard_func=local_shard_func)
+        shard_func=local_shard_func,
+        hash_code=hash_code)
     if project_func is not None:
       dataset = dataset.map(project_func)
     return dataset

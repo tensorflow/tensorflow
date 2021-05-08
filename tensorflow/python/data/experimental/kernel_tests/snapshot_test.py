@@ -276,6 +276,37 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
         num_snapshot_shards_per_run=multiprocessing.cpu_count())
 
   @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetSimpleCustomHash(self):
+    hash_code = 66666
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir, hash_code=hash_code))
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    fingerprint_dir = os.path.join(self._snapshot_dir, hash_code)
+    self.assertNotEmpty(os.listdir(fingerprint_dir))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetMultipleFingerprintsCustomHash(self):
+    hash_code = 76972
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir, hash_code=hash_code))
+    self.assertDatasetProduces(dataset1, list(range(1000)))
+
+    dataset2 = dataset_ops.Dataset.range(2000)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir, hash_code=hash_code))
+    self.assertDatasetProduces(dataset2, list(range(2000)))
+
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testWriteSnapshotDatasetMultipleFingerprints(self):
     dataset1 = dataset_ops.Dataset.range(1000)
     dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir))
@@ -300,6 +331,23 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
     dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir))
     self.assertDatasetProduces(dataset2, list(range(1000)))
 
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetSameFingerprintMultipleCompleteRunsCustomHash(self):
+    hash_code = 785938493
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir, hash_code=hash_code))
+    self.assertDatasetProduces(dataset1, list(range(1000)))
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir, hash_code=hash_code))
+    self.assertDatasetProduces(dataset2, list(range(1000)))
+    fingerprint_dir = os.path.join(self._snapshot_dir, str(hash_code))
+    self.assertNotEmpty(os.listdir(fingerprint_dir))
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,
