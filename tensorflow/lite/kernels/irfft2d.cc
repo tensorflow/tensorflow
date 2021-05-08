@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,18 +21,18 @@ limitations under the License.
 #include <algorithm>
 #include <complex>
 
-#include "third_party/fft2d/fft2d.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "third_party/fft2d/fft2d.h"
 
 namespace tflite {
 namespace ops {
-namespace builtin {
-namespace rfft2d {
+namespace custom {
+namespace irfft2d {
 
 using std::complex;
 
@@ -128,7 +128,7 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
   output_shape->data[num_dims - 2] = fft_length_data[0];
-  output_shape->data[num_dims - 1] = fft_length_data[1] / 2 + 1;
+  output_shape->data[num_dims - 1] = fft_length_data[1];
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_shape));
 
   // Resize temporary tensors, fft_integer_working_area.
@@ -173,9 +173,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE(context, NumDimensions(input) >= 2);
-  if (input->type != kTfLiteFloat32) {
+  if (input->type != kTfLiteComplex64) {
     context->ReportError(context,
-                         "Type '%s' for input is not supported by rfft2d.",
+                         "Type '%s' for input is not supported by irfft2.",
                          TfLiteTypeGetName(input->type));
     return kTfLiteError;
   }
@@ -190,7 +190,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, fft_length_shape.Dims(0), 2);
   if (fft_length->type != kTfLiteInt32) {
     context->ReportError(context,
-                         "Type '%s' for fft_length is not supported by rfft2d.",
+                         "Type '%s' for fft_length is not supported by irfft2.",
                          TfLiteTypeGetName(fft_length->type));
     return kTfLiteError;
   }
@@ -202,7 +202,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  output->type = kTfLiteComplex64;
+  output->type = kTfLiteFloat32;
 
   // Exit early if fft_length is a non-const tensor. Set output tensor and
   // temporary tensors to dynamic, so that their tensor sizes can be determined
@@ -226,99 +226,84 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// Reorder the result so that it matches the pattern of tf.signal.rfft2d.
-// In tf.signal.fft2d the frequency matrix of a 4x4 input is
-//    [[F(0, 0),  F(0, 1/4),   F(0, 2/4)],
-//    [F(1/4, 0), F(1/4, 1/4), F(1/4, 2/4)],
-//    [F(2/4, 0), F(2/4, 1/4), F(2/4, 2/4)],
-//    [F(3/4, 0), F(3/4, 1/4), F(3/4, 2/4)]]
-// While in rdft2d, the frequency matrix of a 4x4 input is
-//    [[(F(0, 0), F(0, -2/4))       F(0, -1/4),   0],
-//     [ F(-1/4, 0),                F(-1/4, -1/4), 0],
-//     [(F(-2/4, 0),F(-2/4, -2/4)), F(-2/4, -1/4), 0],
-//     [ j*F(-3/4, -2/4),           F(-3/4, -1/4), 0]]
-// Since real fft has the property that
-//   Real(u,v) = Real(-u, -v)
-//   Img(u,v) = - Img(-u, -v)
-// Result of rdft2d can be reordered and match the pattern of tf.signal.rfft2d.
-// For example,
-//   Real(-3/4, 0) = Real(1/4, 0) = Real(-1/4, 0)
-//   Img(-3/4, 0) = Img(1/4, 0) = -Img(-1/4, 0)
-void Rfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
-  ruy::profiler::ScopeLabel label("Rfft2dReorder");
-  const int kForwardFft = 1;
-  rdft2dsort(fft_height, fft_width, kForwardFft, fft_input_output);
-
-  // Reorder the frequency matrix from
-  //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
-  //    [F(-1/4, 0), F(-1/4, -1/4), F(-1/4, -2/4)],
-  //    [F(-2/4, 0), F(-2/4, -1/4), F(-2/4, -2/4)],
-  //    [F(-3/4, 0), F(-3/4, -1/4), F(-3/4, -2/4)]]
-  // to
-  //    [[F(0, 0),  F(0, 1/4),   F(0, 2/4)],
-  //    [F(1/4, 0), F(1/4, 1/4), F(1/4, 2/4)],
-  //    [F(2/4, 0), F(2/4, 1/4), F(2/4, 2/4)],
-  //    [F(3/4, 0), F(3/4, 1/4), F(3/4, 2/4)]]
+// Reorder the input so that it takes the pattern of tf.signal.irfft2.
+//
+// In tf.signal.fft2d the frequency matrix is the complex conjugate
+// of what rdft2d takes as input.
+//
+// Additionally, rdft2d requires calling a rdft2dsort function to arrange
+// the matrix in the right way for rdft2d to operate.
+void Irfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
+  ruy::profiler::ScopeLabel label("Irfft2dReorder");
+  // Take complex conjugate of frequency matrix
   for (int i = 0; i < fft_height; ++i) {
     for (int j = 1; j < fft_width + 2; j += 2) {
       fft_input_output[i][j] = -fft_input_output[i][j];
     }
   }
+
+  // Arrange matrix into correct format for rdft2d function
+  const int kBackwardFft = -1;
+  rdft2dsort(fft_height, fft_width, kBackwardFft, fft_input_output);
 }
 
-void Rfft2dImpl(int fft_height, int fft_width, double** fft_input_output,
-                int* fft_integer_working_area_data,
-                double* fft_double_working_area_data) {
-  ruy::profiler::ScopeLabel label("Rfft2dImpl");
+void Irfft2dImpl(int fft_height, int fft_width, double** fft_input_output,
+                 int* fft_integer_working_area_data,
+                 double* fft_double_working_area_data) {
+  ruy::profiler::ScopeLabel label("Irfft2dImpl");
+  Irfft2dReorder(fft_height, fft_width, fft_input_output);
 
   // Working data areas for the FFT routines.
   double* fft_dynamic_working_area = nullptr;
-  const int kForwardFft = 1;
-  rdft2d(fft_height, fft_width, kForwardFft, fft_input_output,
+  const int kBackwardFft = -1;
+  rdft2d(fft_height, fft_width, kBackwardFft, fft_input_output,
          fft_dynamic_working_area, fft_integer_working_area_data,
          fft_double_working_area_data);
-  Rfft2dReorder(fft_height, fft_width, fft_input_output);
 }
 
-void PrepareInputBuffer(const float* input_data, int input_height,
+void PrepareInputBuffer(const complex<float>* input_data, int input_height,
                         int input_width, int fft_height, int fft_width,
                         double** fft_input_output) {
   int valid_input_height = std::min(input_height, fft_height);
-  int valid_input_width = std::min(input_width, fft_width);
+  int valid_input_width = std::min(input_width, fft_width / 2 + 1);
   for (int i = 0; i < valid_input_height; ++i) {
     int in_pos = i * input_width;
     for (int j = 0; j < valid_input_width; ++j) {
-      fft_input_output[i][j] = input_data[in_pos++];
+      fft_input_output[i][2 * j] = input_data[in_pos].real();
+      fft_input_output[i][2 * j + 1] = input_data[in_pos].imag();
+      ++in_pos;
     }
     // Zero-pad the rest of the input buffer
-    for (int j = valid_input_width; j < fft_width + 2; ++j) {
-      fft_input_output[i][j] = 0;
+    for (int j = valid_input_width; j < fft_width / 2 + 1; ++j) {
+      fft_input_output[i][2 * j] = 0;
+      fft_input_output[i][2 * j + 1] = 0;
     }
   }
 
   // Zero-pad input buffer, if fft_height is greater than valid_input_height.
   for (int i = valid_input_height; i < fft_height; ++i) {
-    for (int j = 0; j < fft_width + 2; ++j) {
-      fft_input_output[i][j] = 0;
-    }
-  }
-}
-
-void PrepareOutputBuffer(complex<float>* output_data, int fft_height,
-                         int fft_width, double** fft_input_output) {
-  int cnt = 0;
-  for (int i = 0; i < fft_height; ++i) {
     for (int j = 0; j < fft_width / 2 + 1; ++j) {
-      output_data[cnt++] = complex<float>(fft_input_output[i][j * 2],
-                                          fft_input_output[i][j * 2 + 1]);
+      fft_input_output[i][2 * j] = 0;
+      fft_input_output[i][2 * j + 1] = 0;
     }
   }
 }
 
-TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
+void PrepareOutputBuffer(float* output_data, int fft_height, int fft_width,
+                         double** fft_input_output) {
+  int cnt = 0;
+  float norm = 2.0 / float(fft_height) / float(fft_width);
+  for (int i = 0; i < fft_height; ++i) {
+    for (int j = 0; j < fft_width; ++j) {
+      output_data[cnt++] = fft_input_output[i][j] * norm;
+    }
+  }
+}
+
+TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  const float* input_data = GetTensorData<float>(input);
+  const complex<float>* input_data = GetTensorData<complex<float>>(input);
   const TfLiteTensor* fft_length;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kFftLengthTensor, &fft_length));
@@ -326,7 +311,7 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  complex<float>* output_data = GetTensorData<complex<float>>(output);
+  float* output_data = GetTensorData<float>(output);
 
   int fft_height, fft_width;
   fft_height = fft_length_data[0];
@@ -345,7 +330,7 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   int input_height = input_dims_data[input_dims_count - 2];
   int input_width = input_dims_data[input_dims_count - 1];
   int input_slice_size = input_height * input_width;
-  int output_slice_size = fft_height * (fft_width / 2 + 1);
+  int output_slice_size = fft_height * fft_width;
 
   // Create input/output buffer for FFT
   double** fft_input_output = new double*[fft_height];
@@ -376,8 +361,8 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
                        fft_width, fft_input_output);
     memset(fft_integer_working_area_data, 0, fft_integer_working_area->bytes);
     memset(fft_double_working_area_data, 0, fft_double_working_area->bytes);
-    Rfft2dImpl(fft_height, fft_width, fft_input_output,
-               fft_integer_working_area_data, fft_double_working_area_data);
+    Irfft2dImpl(fft_height, fft_width, fft_input_output,
+                fft_integer_working_area_data, fft_double_working_area_data);
     PrepareOutputBuffer(output_data, fft_height, fft_width, fft_input_output);
     input_data += input_slice_size;
     output_data += output_slice_size;
@@ -403,9 +388,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type != kTfLiteComplex64) {
+  if (output->type != kTfLiteFloat32) {
     context->ReportError(context,
-                         "Type '%s' for output is not supported by rfft2d.",
+                         "Type '%s' for output is not supported by irfft2.",
                          TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
@@ -422,20 +407,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 2),
                       fft_length_data[0]);
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 1),
-                      fft_length_data[1] / 2 + 1);
+                      fft_length_data[1]);
   }
 
-  return Rfft2dHelper(context, node);
+  return Irfft2dHelper(context, node);
 }
 
-}  // namespace rfft2d
+}  // namespace irfft2d
 
-TfLiteRegistration* Register_RFFT2D() {
-  static TfLiteRegistration r = {rfft2d::Init, rfft2d::Free, rfft2d::Prepare,
-                                 rfft2d::Eval};
+TfLiteRegistration* Register_IRFFT2D() {
+  static TfLiteRegistration r = {irfft2d::Init, irfft2d::Free, irfft2d::Prepare,
+                                 irfft2d::Eval};
   return &r;
 }
 
-}  // namespace builtin
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
