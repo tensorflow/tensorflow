@@ -25,7 +25,7 @@ namespace tflite {
 
 namespace {
 // Softmax parameter data that persists in user_data
-const int kInt16LUTArraySize = 513;
+const int kInt16LUTArraySize = lut_size<int16_t>();
 
 TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
                                     const TfLiteTensor* input,
@@ -125,10 +125,12 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     // exp LUT only used on negative values
     // we consider exp(-10.0) is insignificant to accumulation
-    gen_lut([](float value) { return std::exp(value); }, -10.0f, 0.0f,
-            op_data->exp_lut, kInt16LUTArraySize);
-    gen_lut([](float value) { return 1.0f / (1.0f + value); }, 0.0f, 1.0f,
-            op_data->one_over_one_plus_x_lut, kInt16LUTArraySize);
+    gen_lut<float, int16_t, int16_t>(
+        [](float value) { return std::exp(value); }, -10.0f, 0.0f, -1.0f, 1.0f,
+        op_data->exp_lut);
+    gen_lut<float, int16_t, int16_t>(
+        [](float value) { return 1.0f / (1.0f + value); }, 0.0f, 1.0f, -1.0f,
+        1.0f, op_data->one_over_one_plus_x_lut);
     op_data->zero_point = output->params.zero_point;
     op_data->scale = output->params.scale;
   }

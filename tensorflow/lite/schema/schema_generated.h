@@ -376,6 +376,9 @@ struct HashtableImportOptionsT;
 struct HashtableSizeOptions;
 struct HashtableSizeOptionsT;
 
+struct TableOptions;
+struct TableOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -840,11 +843,12 @@ enum BuiltinOperator {
   BuiltinOperator_HASHTABLE_IMPORT = 138,
   BuiltinOperator_HASHTABLE_SIZE = 139,
   BuiltinOperator_REDUCE_ALL = 140,
+  BuiltinOperator_TABLE = 141,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_REDUCE_ALL
+  BuiltinOperator_MAX = BuiltinOperator_TABLE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[141] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[142] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -986,13 +990,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[141] {
     BuiltinOperator_HASHTABLE_FIND,
     BuiltinOperator_HASHTABLE_IMPORT,
     BuiltinOperator_HASHTABLE_SIZE,
-    BuiltinOperator_REDUCE_ALL
+    BuiltinOperator_REDUCE_ALL,
+    BuiltinOperator_TABLE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[142] = {
+  static const char * const names[143] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1134,13 +1139,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "HASHTABLE_IMPORT",
     "HASHTABLE_SIZE",
     "REDUCE_ALL",
+    "TABLE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_REDUCE_ALL)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_TABLE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1257,11 +1263,12 @@ enum BuiltinOptions {
   BuiltinOptions_HashtableFindOptions = 108,
   BuiltinOptions_HashtableImportOptions = 109,
   BuiltinOptions_HashtableSizeOptions = 110,
+  BuiltinOptions_TableOptions = 111,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_HashtableSizeOptions
+  BuiltinOptions_MAX = BuiltinOptions_TableOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[111] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[112] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1373,13 +1380,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[111] {
     BuiltinOptions_HashtableOptions,
     BuiltinOptions_HashtableFindOptions,
     BuiltinOptions_HashtableImportOptions,
-    BuiltinOptions_HashtableSizeOptions
+    BuiltinOptions_HashtableSizeOptions,
+    BuiltinOptions_TableOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[112] = {
+  static const char * const names[113] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1491,13 +1499,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "HashtableFindOptions",
     "HashtableImportOptions",
     "HashtableSizeOptions",
+    "TableOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_HashtableSizeOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_TableOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1944,6 +1953,10 @@ template<> struct BuiltinOptionsTraits<tflite::HashtableImportOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::HashtableSizeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_HashtableSizeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::TableOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_TableOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2857,6 +2870,14 @@ struct BuiltinOptionsUnion {
   const tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() const {
     return type == BuiltinOptions_HashtableSizeOptions ?
       reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value) : nullptr;
+  }
+  tflite::TableOptionsT *AsTableOptions() {
+    return type == BuiltinOptions_TableOptions ?
+      reinterpret_cast<tflite::TableOptionsT *>(value) : nullptr;
+  }
+  const tflite::TableOptionsT *AsTableOptions() const {
+    return type == BuiltinOptions_TableOptions ?
+      reinterpret_cast<const tflite::TableOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10116,6 +10137,46 @@ inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(
 
 flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct TableOptionsT : public flatbuffers::NativeTable {
+  typedef TableOptions TableType;
+  TableOptionsT() {
+  }
+};
+
+struct TableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef TableOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  TableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(TableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<TableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct TableOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit TableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  TableOptionsBuilder &operator=(const TableOptionsBuilder &);
+  flatbuffers::Offset<TableOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<TableOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<TableOptions> CreateTableOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  TableOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<TableOptions> CreateTableOptions(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -10596,6 +10657,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::HashtableSizeOptions *builtin_options_as_HashtableSizeOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_HashtableSizeOptions ? static_cast<const tflite::HashtableSizeOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::TableOptions *builtin_options_as_TableOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_TableOptions ? static_cast<const tflite::TableOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -11070,6 +11134,10 @@ template<> inline const tflite::HashtableImportOptions *Operator::builtin_option
 
 template<> inline const tflite::HashtableSizeOptions *Operator::builtin_options_as<tflite::HashtableSizeOptions>() const {
   return builtin_options_as_HashtableSizeOptions();
+}
+
+template<> inline const tflite::TableOptions *Operator::builtin_options_as<tflite::TableOptions>() const {
+  return builtin_options_as_TableOptions();
 }
 
 struct OperatorBuilder {
@@ -15003,6 +15071,27 @@ inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flat
       _fbb);
 }
 
+inline TableOptionsT *TableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new TableOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+inline void TableOptions::UnPackTo(TableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+inline flatbuffers::Offset<TableOptions> TableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateTableOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<TableOptions> CreateTableOptions(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const TableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateTableOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -15918,6 +16007,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_TableOptions: {
+      auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -16376,6 +16469,11 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_TableOptions: {
+      auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+
     default: return nullptr;
   }
 }
@@ -16822,6 +16920,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value);
       return CreateHashtableSizeOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_TableOptions: {
+      auto ptr = reinterpret_cast<const tflite::TableOptionsT *>(value);
+      return CreateTableOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -17266,6 +17368,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_HashtableSizeOptions: {
       value = new tflite::HashtableSizeOptionsT(*reinterpret_cast<tflite::HashtableSizeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_TableOptions: {
+      value = new tflite::TableOptionsT(*reinterpret_cast<tflite::TableOptionsT *>(u.value));
       break;
     }
     default:
@@ -17822,6 +17928,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_HashtableSizeOptions: {
       auto ptr = reinterpret_cast<tflite::HashtableSizeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_TableOptions: {
+      auto ptr = reinterpret_cast<tflite::TableOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -162,6 +162,7 @@ TfLiteRegistration* Register_CONV_3D_REF();
 TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_REAL();
 TfLiteRegistration* Register_COMPLEX_ABS();
+TfLiteRegistration* Register_TABLE();
 
 namespace {
 
@@ -471,6 +472,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_IMAG, Register_IMAG());
   AddBuiltin(BuiltinOperator_REAL, Register_REAL());
   AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
+  AddBuiltin(BuiltinOperator_TABLE, Register_TABLE());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
