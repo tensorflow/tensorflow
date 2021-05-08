@@ -71,7 +71,7 @@ func TestOperationAttrs(t *testing.T) {
 				"boundaries": []float32(nil),
 			},
 		},
-    /* TODO(ashankar): debug this issue and add it back later.
+		/* TODO(ashankar): debug this issue and add it back later.
 		{
 			Name: "list(type),list(shape)",
 			Type: "InfeedEnqueueTuple",
@@ -112,7 +112,7 @@ func TestOperationAttrs(t *testing.T) {
 				"device_ordinal": int64(0),
 			},
 		},
-    */
+		*/
 		{
 			Name: "list(int),int",
 			Type: "StringToHashBucketStrong",
@@ -177,15 +177,16 @@ func TestOperationAttrs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(out, want) {
-				t.Fatalf("%d. %q: Got %#v, wanted %#v", i, key, out, want)
-			}
 			wantT, ok := want.(*Tensor)
 			if ok {
 				wantVal := wantT.Value()
 				outVal := out.(*Tensor).Value()
 				if !reflect.DeepEqual(outVal, wantVal) {
 					t.Fatalf("%d. %q: Got %#v, wanted %#v", i, key, outVal, wantVal)
+				}
+			} else {
+				if !reflect.DeepEqual(out, want) {
+					t.Fatalf("%d. %q: Got %#v, wanted %#v", i, key, out, want)
 				}
 			}
 		}
