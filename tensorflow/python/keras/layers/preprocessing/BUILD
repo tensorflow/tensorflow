@@ -230,7 +230,6 @@ py_library(
         ":category_encoding",
         ":string_lookup",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
