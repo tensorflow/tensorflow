@@ -9,11 +9,11 @@
 
 // Verify tensors in interpreter state:
 // ------------------------------------
-// CHECK: Tensor 0 pconst kTfLiteInt32 kTfLiteMmapRo 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 2 val kTfLiteFloat32 kTfLiteMmapRo 4B ( 0.0 MB) [1]
-// CHECK-NEXT: Tensor 3 tfl.while kTfLiteInt32 kTfLiteArenaRw 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4B ( 0.0 MB) [1]
+// CHECK: Tensor 0 pconst kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 2 val kTfLiteFloat32 kTfLiteMmapRo 4 / 0.00 [1] [{{.*}})
+// CHECK-NEXT: Tensor 3 tfl.while kTfLiteInt32 kTfLiteArenaRw 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4 / 0.00 [1] [{{.*}})
 
 // Verify while was not folded away:
 // ------------------------------------
