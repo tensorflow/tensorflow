@@ -56,7 +56,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
 // Creates a pass that marks variables whether they are initialized or not.
 std::unique_ptr<OperationPass<FuncOp>> CreateMarkInitializedVariablesPass(
-    tensorflow::Session* session);
+    ::tensorflow::Session* session);
 
 }  // namespace tf_saved_model
 

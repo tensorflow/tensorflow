@@ -326,6 +326,15 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, output_shape, &output));
 
+    // Given access patterns in SpatialMaxPoolWithArgMaxHelper, these tensors
+    // must have elements.
+    OP_REQUIRES(
+        context, tensor_out_arg_max.NumElements() > 0,
+        errors::InvalidArgument("tensor_out_arg_max must not be empty, got ",
+                                tensor_out_arg_max.DebugString()));
+    OP_REQUIRES(context, out_backprop.NumElements() > 0,
+                errors::InvalidArgument("out_backprop must not be empty, got ",
+                                        out_backprop.DebugString()));
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T, int64>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
         out_backprop, params, true);
@@ -1014,6 +1023,9 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
         const int input_start = start * input_size_per_batch;
         const int input_end = limit * input_size_per_batch;
         for (int64 index = input_start; index < input_end; index++) {
+          if (index >= argmax.NumElements()) {
+            break;
+          }
           int64 grad_out_index = argmax_flat(index);
           if (!include_batch_in_index) {
             const int64 cur_batch = index / input_size_per_batch;
@@ -1084,6 +1096,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, out_shape, &grad_out));
+
+    if (out_shape.num_elements() == 0) return;  // nothing to be done
 
     LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);

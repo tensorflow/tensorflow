@@ -865,6 +865,7 @@ distribute_py_test(
     shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -939,37 +940,42 @@ distribute_py_test(
         "notsan",  # TODO(b/184542721)
     ],
     deps = [
-        ":multi_worker_testing_utils",
+        ":dataset_creator_model_fit_test_base",
         ":strategy_combinations",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/framework:test_combinations_lib",
         "//tensorflow/python/keras:callbacks",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/engine:base_layer",
-        "//tensorflow/python/keras/layers:core",
-        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
-        "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/utils:dataset_creator",
-        "//tensorflow/python/keras/utils:engine_utils",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training:server_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "dataset_creator_model_fit_ps_only_test",
+    srcs = ["dataset_creator_model_fit_ps_only_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
+    full_precision = True,
+    main = "dataset_creator_model_fit_ps_only_test.py",
+    shard_count = 9,
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
+        "notsan",  # TODO(b/184542721)
+    ],
+    deps = [
+        ":dataset_creator_model_fit_test_base",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/framework:test_combinations_lib",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/platform",
     ],
 )
 
@@ -1062,5 +1068,32 @@ py_library(
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:multi_worker_util",
+    ],
+)
+
+py_library(
+    name = "dataset_creator_model_fit_test_base",
+    srcs = [
+        "dataset_creator_model_fit_test_base.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":multi_worker_testing_utils",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:dataset_creator",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

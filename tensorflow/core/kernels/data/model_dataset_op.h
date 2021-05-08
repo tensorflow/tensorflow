@@ -34,9 +34,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kCpuBudget = "cpu_budget";
   static constexpr const char* const kRamBudget = "ram_budget";
 
-  // Creates and returns a ModelDatasetOp::Dataset in output, given the
-  // input, algorithm, cpu_budget and ram_budget parameters. This method is used
-  // to create the dataset without explicitly using the ModelDatasetOp.
+  // Executes the logic of the ModelDatasetOp directly (as opposed to through
+  // executing the ModelDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
                                      model::AutotuneAlgorithm algorithm,
                                      bool cpu_budget, bool ram_budget,

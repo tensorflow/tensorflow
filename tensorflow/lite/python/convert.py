@@ -52,8 +52,8 @@ def _requires_input_stats(toco_flags: _toco_flags_pb2.TocoFlags()) -> bool:
     True, if the `inference_type` or the `inference_input_type` is a quantized
     type and it is not post training quantization, else False.
   """
-  quantized_inference_types = \
-    [_types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8]
+  quantized_inference_types = (
+      [_types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8])
   return ((toco_flags.inference_type in quantized_inference_types or
            toco_flags.inference_input_type in quantized_inference_types) and
           not toco_flags.post_training_quantize)
@@ -179,8 +179,8 @@ class OpsSet(enum.Enum):
   # finalized.
   # They are only compatible with CPU execution, and have not been optimized for
   # production.
-  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
-    "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = (
+      "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8")
 
   def __str__(self):
     return str(self.value)

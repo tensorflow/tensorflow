@@ -26,7 +26,16 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "hifi5"))
     $(NNLIB_PATH)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_8x16.c \
     $(NNLIB_PATH)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_8x8.c \
     $(NNLIB_PATH)/algo/kernels/activations/hifi5/xa_nn_activations_8_8.c \
-    $(NNLIB_PATH)/algo/kernels/fc/hifi4/xa_nn_fully_connected.c
+    $(NNLIB_PATH)/algo/kernels/fc/hifi4/xa_nn_fully_connected.c \
+    $(NNLIB_PATH)/algo/kernels/activations/hifi5/xa_nn_softmax_asym8_asym8.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_matXvec_sym8sxasym8s_asym8s_circ.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_circ_buf.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_conv2d_std_circ_buf.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_conv2d_std_sym8sxasym8s.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c \
+    $(NNLIB_PATH)/algo/kernels/cnn/hifi5/xa_nn_conv2d_pointwise_sym8sxasym8s.c \
+    $(NNLIB_PATH)/algo/kernels/matXvec/hifi5/xa_nn_matmul_sym8sxasym8s.c
 
   INCLUDES += \
     -I$(NNLIB_PATH)/ \

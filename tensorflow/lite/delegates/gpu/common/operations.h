@@ -44,6 +44,7 @@ enum class OperationType {
   CONVOLUTION_TRANSPOSED,
   COPY,
   COS,
+  DENSIFY,
   DEPTHWISE_CONVOLUTION,
   DEPTH_TO_SPACE,
   DIV,
@@ -470,6 +471,10 @@ struct Pad3DAttributes {
 BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr);
 
 struct ConstTensorAttributes {
+  Tensor<BHWC, DataType::FLOAT32> tensor;
+};
+
+struct DensifyAttributes {
   Tensor<BHWC, DataType::FLOAT32> tensor;
 };
 

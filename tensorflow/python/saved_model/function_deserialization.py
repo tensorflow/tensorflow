@@ -32,6 +32,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -72,6 +73,8 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
+    elif isinstance(expected, resource_variable_ops.VariableSpec):
+      tensor_inputs.append(arg)
   result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
@@ -309,16 +312,22 @@ def recreate_function(saved_function, concrete_functions):
       decorator_argspec=function_spec.fullargspec)
 
 
-def load_function_def_library(library, load_shared_name_suffix=None):
+def load_function_def_library(library,
+                              load_shared_name_suffix=None,
+                              wrapper_function=None):
   """Load a set of functions as concrete functions without captured inputs.
 
   Functions names are manipulated during load such that they do not overlap
   with previously created ones.
 
+  Gradients are re-registered under new names. Ops that reference the gradients
+  are updated to reflect the new registered names.
+
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
       names. Otherwise, a unique name is generated.
+    wrapper_function: An object that will be wrapped on newly created functions.
 
   Returns:
     Map of original function names in the library to instances of
@@ -346,8 +355,29 @@ def load_function_def_library(library, load_shared_name_suffix=None):
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
-  for fdef in _sort_function_defs(library, library_function_names):
-    copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
+
+  # Custom gradient functions must be re-registered under new UIDs.
+  library_gradient_names = {}  # Maps old op type to old function name
+  new_gradient_op_types = {}  # Maps old gradient op type to new op type.
+  gradients_to_register = {}  # Maps old function name to new op type
+  for gdef in library.registered_gradients:
+    if gdef.registered_op_type:
+      new_op_type = custom_gradient.generate_name()
+      old_op_type = compat.as_bytes(gdef.registered_op_type)
+
+      library_gradient_names[old_op_type] = gdef.gradient_func
+      new_gradient_op_types[old_op_type] = new_op_type
+      gradients_to_register[gdef.gradient_func] = new_op_type
+
+  function_deps = {}
+  for fdef in library.function:
+    function_deps[fdef.signature.name] = _list_function_deps(
+        fdef, library_function_names, library_gradient_names)
+
+  loaded_gradients = {}
+  for fdef in _sort_function_defs(library, function_deps):
+    copy = _fix_fdef(fdef, functions, load_shared_name_suffix,
+                     new_gradient_op_types)
 
     # There is no need to copy all functions into the function def graph. It
     # leads to a O(n^2) increase of memory when importing functions and the
@@ -356,9 +386,11 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # import).
     with graph.as_default():
       func_graph = function_def_lib.function_def_to_graph(copy)
-    _restore_gradient_functions(func_graph, renamed_functions)
+    # Restores gradients for function-call ops (not the same as ops that use
+    # custom gradients)
+    _restore_gradient_functions(func_graph, renamed_functions, loaded_gradients)
 
-    for dep in _list_function_deps(fdef, library_function_names):
+    for dep in function_deps[fdef.signature.name]:
       functions[dep].add_to_graph(func_graph)
 
     # We do not initialize the new ConcreteFunction's function_spec and/or
@@ -372,6 +404,8 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     if "_input_shapes" in copy.attr:
       del copy.attr["_input_shapes"]
     func = function_lib.ConcreteFunction(func_graph, attrs=copy.attr)
+    if wrapper_function:
+      func = wrapper_function(func)
     func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func
@@ -382,10 +416,24 @@ def load_function_def_library(library, load_shared_name_suffix=None):
       # with previous behavior.
       func.add_to_graph(ops.get_default_graph())
 
+    if fdef.signature.name in gradients_to_register:
+      gradient_op_type = gradients_to_register[fdef.signature.name]
+      loaded_gradients[compat.as_bytes(gradient_op_type)] = func
+      ops.RegisterGradient(gradient_op_type)(_gen_gradient_func(func))
+
   return functions
 
 
-def _restore_gradient_functions(func_graph, renamed_functions):
+def _gen_gradient_func(func):
+
+  def gradient_func(unused_op, *result_grads):
+    return func(*result_grads)
+
+  return gradient_func
+
+
+def _restore_gradient_functions(func_graph, renamed_functions,
+                                loaded_gradients):
   """Populate function op's _gradient_function with default gradient."""
   for op in func_graph.get_operations():
     # TODO(andresp): This code assumes that the gradient registered for this
@@ -395,18 +443,26 @@ def _restore_gradient_functions(func_graph, renamed_functions):
       function = renamed_functions[compat.as_bytes(
           op.node_def.attr["f"].func.name)]
       op._gradient_function = function._get_gradient_function()  # pylint: disable=protected-access
+    try:
+      gradient_op_type = op.get_attr("_gradient_op_type")
+    except ValueError:
+      pass
+    else:
+      if gradient_op_type in loaded_gradients:
+        grad_fn = loaded_gradients[gradient_op_type]
+        grad_fn._num_positional_args = len(op.inputs)  # pylint: disable=protected-access
+        grad_fn._arg_keywords = [inp.name for inp in op.inputs]  # pylint: disable=protected-access
 
 
-def _sort_function_defs(library, library_function_names):
+def _sort_function_defs(library, function_deps):
   """Return a topologic sort of FunctionDefs in a library."""
   edges = collections.defaultdict(list)
   in_count = collections.defaultdict(lambda: 0)
 
-  for fdef in library.function:
-    for dep in _list_function_deps(fdef, library_function_names):
-      edges[dep].append(fdef.signature.name)
-      in_count[fdef.signature.name] += 1
-
+  for fname, deps in function_deps.items():
+    for dep in deps:
+      edges[dep].append(fname)
+      in_count[fname] += 1
   ready = [
       fdef.signature.name
       for fdef in library.function
@@ -430,10 +486,12 @@ def _sort_function_defs(library, library_function_names):
   return [reverse[x] for x in output]
 
 
-def _check_op_has_custom_gradients(node_def):
-  """Returns True if op has custom gradients."""
-  return ("_gradient_op_type" in node_def.attr and
-          node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"])
+def _get_gradient_op_type(node_def):
+  """Returns the custom gradient op type."""
+  if ("_gradient_op_type" in node_def.attr and
+      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
+    return node_def.attr["_gradient_op_type"].s
+  return None
 
 
 def fix_node_def(node_def, functions, shared_name_suffix):
@@ -476,7 +534,7 @@ def fix_node_def(node_def, functions, shared_name_suffix):
           shared_name + compat.as_bytes(shared_name_suffix))
 
 
-def _fix_fdef(orig_fdef, functions, shared_name_suffix):
+def _fix_fdef(orig_fdef, functions, shared_name_suffix, new_gradient_op_types):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
@@ -489,36 +547,46 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
       `shared_name` collisions across loads. Two functions from the same load
       using the same `shared_name` still need to share, but functions from
       different loads with the same `shared_name` should not.
+    new_gradient_op_types: map from old gradient op type to newly generated
+      op type.
 
   Returns:
-    A fixed copy of the original FunctionDef.
+    A fixed copy of the original FunctionDef
   """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
-  contains_custom_gradients = False
+  contains_unsaved_custom_gradients = False
 
   for node_def in fdef.node_def:
     fix_node_def(node_def, functions, shared_name_suffix)
-    if not contains_custom_gradients:
-      contains_custom_gradients = _check_op_has_custom_gradients(node_def)
-  if contains_custom_gradients:
+    op_type = _get_gradient_op_type(node_def)
+    if op_type is not None:
+      if op_type in new_gradient_op_types:
+        node_def.attr["_gradient_op_type"].s = compat.as_bytes(
+            new_gradient_op_types[op_type])
+      else:
+        contains_unsaved_custom_gradients = True
+  if contains_unsaved_custom_gradients:
     logging.warning(
-        "Importing a function (%s) with ops with custom gradients. Will likely "
-        "fail if a gradient is requested.", fdef.signature.name)
+        "Importing a function (%s) with ops with unsaved custom gradients. Will"
+        " likely fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
 
 
-def _list_function_deps(fdef, library_function_names):
+def _list_function_deps(fdef, library_function_names, library_gradient_names):
   """Find functions referenced in `fdef`."""
   # TODO(andresp): Recurse into list attributes and into NameAttrList attrs both
   # when listing deps and when fixing them. `function_def_to_graph` also
   # requires fixes.
   deps = set()
   for node_def in fdef.node_def:
+    grad_op_type = _get_gradient_op_type(node_def)
     if node_def.op in library_function_names:
       deps.add(node_def.op)
+    elif grad_op_type and grad_op_type in library_gradient_names:
+      deps.add(library_gradient_names[grad_op_type])
     else:
       for _, attr_value in node_def.attr.items():
         if attr_value.WhichOneof("value") == "func":

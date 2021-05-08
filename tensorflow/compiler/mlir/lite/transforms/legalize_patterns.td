@@ -281,6 +281,9 @@ def LegalizeDiv : Pat<(TF_DivOp $lhs, $rhs),
 // When batch size is known, TF BatchMatMul gets unfolded to TFL FullyConnected
 // with additional ops. In the case of unknown batch size, the match will
 // fall through to here and convert to TF Lite BatchMatMul.
+def LegalizeBatchMatMulV3UnknownBatch : Pat<
+  (TF_BatchMatMulV3Op $lhs, $rhs, $adj_x, $adj_y),
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
 def LegalizeBatchMatMulV2UnknownBatch : Pat<
   (TF_BatchMatMulV2Op $lhs, $rhs, $adj_x, $adj_y),
   (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;

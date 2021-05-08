@@ -1438,16 +1438,16 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
   }
 
   std::vector<std::vector<int64>> device_groups(Product(group_dim_sizes));
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 device) {
-        int64 group_id = 0;
-        for (int64 i = 0; i < group_dims.size(); ++i) {
-          group_id *= sharding.tile_assignment().dim(group_dims[i]) /
-                      group_dim_shards[i];
-          group_id += indices[group_dims[i]] / group_dim_shards[i];
-        }
-        device_groups[group_id].push_back(device);
-      });
+  sharding.tile_assignment().Each([&](absl::Span<const int64> indices,
+                                      int64 device) {
+    int64 group_id = 0;
+    for (int64 i = 0; i < group_dims.size(); ++i) {
+      group_id *=
+          sharding.tile_assignment().dim(group_dims[i]) / group_dim_shards[i];
+      group_id += indices[group_dims[i]] / group_dim_shards[i];
+    }
+    device_groups[group_id].push_back(device);
+  });
   auto grouped = GroupedSharding(
       std::move(device_groups),
       std::vector<int64>(group_dims.begin(), group_dims.end()),
@@ -1994,6 +1994,28 @@ int64 FindRotateRightPattern(const HloInstruction* concat,
     return -1;
   }
   return lhs->shape().dimensions(dim);
+}
+
+absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
+    const HloInstruction* concat, const HloInstruction* lhs,
+    const HloInstruction* mid, const HloInstruction* rhs) {
+  if (!lhs || !mid || !rhs) {
+    return absl::nullopt;
+  }
+
+  const int64 dim = concat->concatenate_dimension();
+  if (lhs->opcode() != HloOpcode::kSlice ||
+      rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
+      rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
+      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
+      rhs->sharding() != mid->sharding() ||
+      lhs->sharding() != concat->sharding()) {
+    return absl::nullopt;
+  }
+  PadWithWrapPattern pad_pattern;
+  pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
+  pad_pattern.rhs_slice_start = rhs->slice_starts(dim);
+  return pad_pattern;
 }
 
 }  // namespace spmd

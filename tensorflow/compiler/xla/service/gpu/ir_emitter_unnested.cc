@@ -755,15 +755,12 @@ Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
   //
   // We may have to be more clever here in the future if we notice that we're
   // keeping around too many globals because of their linkage.
-  unsigned global_address_space =
-      llvm_ir::GetGlobalMemoryAddressSpace(*ir_emitter_context_->llvm_module());
-
   llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
       global_type, /*isConstant=*/should_emit_initializer,
       llvm::GlobalValue::ExternalLinkage,
       /*Initializer=*/initializer, global.sym_name(),
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/global_address_space,
+      /*AddressSpace=*/0,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   ir_emitter_context_->llvm_module()->getGlobalList().push_back(
@@ -1363,23 +1360,17 @@ Status VerifyBatchNormForThunkEmission(
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
 bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
+  const auto is_row_major = [](mlir::Value value) {
+    // Only tested when the inputs are row-major. So only
+    // enable that case. Maybe it would works if only the
+    // inner dimensions is contiguous.
+    return LayoutUtil::IsMonotonicWithDim0Major(
+        TypeToShape(value.getType()).layout());
+  };
   bool row_vectorized =
       fusion.getFusionResults().size() == 1 &&  // Not tested with MOF.
-      absl::c_all_of(GetHloOperands(fusion),
-                     [](const mlir::Value& value) {
-                       // Only tested when the inputs are row-major. So only
-                       // enable that case. Maybe it would works if only the
-                       // inner dimensions is contiguous.
-                       if (auto op = value.getDefiningOp()) {
-                         return IsMonotonicWithDim0Major(value.getDefiningOp());
-                       }
-                       // Reuse TypeToShape to not duplicate the layout
-                       // convertion code.
-                       return LayoutUtil::IsMonotonicWithDim0Major(
-                           TypeToShape(value.getType()).layout());
-                     }) &&
-      // Only tested when the output is row-major.
-      absl::c_all_of(GetOutputOps(fusion), IsMonotonicWithDim0Major);
+      absl::c_all_of(GetHloOperands(fusion), is_row_major) &&
+      absl::c_all_of(GetHloOutputs(fusion), is_row_major);
 
   // Check that the operations in the fusion are supported.  Each
   // supported operation (or category) must be manually vetted as XLA

@@ -17,6 +17,28 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["bad_devi
     return
   }
 }
+
+// -----
+
+// Checks that model parallelism doesn't cause error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: func @model_parallelism
+  func @model_parallelism() -> () {
+    // CHECK:      "tf_device.launch"
+    "tf_device.cluster"() ( {
+      "tf.A"() : () -> ()
+      "tf_device.launch"() ( {
+        "tf.B"() : () -> ()
+	tf_device.return
+      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+      "tf.C"() : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 2, topology = "", device_assignment = []} : () -> ()
+    return
+  }
+}
+
 // -----
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {

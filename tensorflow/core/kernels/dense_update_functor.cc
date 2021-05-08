@@ -71,25 +71,24 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
 
 }  // namespace functor
 
-#define CPU_DENSE_COPY(T)                                                \
-  case DataTypeToEnum<T>::value: {                                       \
-    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;            \
-    copy_functor_(context->eigen_device<CPUDevice>(), tensor->flat<T>(), \
-                  from.flat<T>());                                       \
-    break;                                                               \
+#define CPU_DENSE_COPY(T)                                               \
+  case DataTypeToEnum<T>::value: {                                      \
+    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;           \
+    copy_functor_(context->eigen_device<CPUDevice>(), tensor.flat<T>(), \
+                  from.flat<T>());                                      \
+    break;                                                              \
   }
 
 #define INSTANTIATE_GET_VARIANT_COPY_FN(DEVICE, TYPE_CALLER, TYPE_DENSE_COPY) \
   template <>                                                                 \
   Status VariantCopyFn<DEVICE>(OpKernelContext * context, const Tensor& from, \
                                Tensor* to) {                                  \
-    PersistentTensor tmp;                                                     \
-    Tensor* tensor;                                                           \
+    Tensor tensor;                                                            \
     AllocatorAttributes attr;                                                 \
     attr.set_gpu_compatible(true);                                            \
     attr.set_nic_compatible(true);                                            \
-    TF_RETURN_IF_ERROR(context->allocate_persistent(                          \
-        from.dtype(), from.shape(), &tmp, &tensor, attr));                    \
+    TF_RETURN_IF_ERROR(                                                       \
+        context->allocate_temp(from.dtype(), from.shape(), &tensor, attr));   \
     switch (from.dtype()) {                                                   \
       TYPE_CALLER(TYPE_DENSE_COPY);                                           \
       default:                                                                \
@@ -99,19 +98,19 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
             DataTypeString(from.dtype()),                                     \
             " using device: ", context->device()->name());                    \
     }                                                                         \
-    *to = *tensor;                                                            \
+    *to = tensor;                                                             \
     return Status::OK();                                                      \
   }
 
 INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define GPU_DENSE_COPY(T)                                                \
-  case DataTypeToEnum<T>::value: {                                       \
-    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
-    copy_functor_(context->eigen_device<GPUDevice>(), tensor->flat<T>(), \
-                  from.flat<T>());                                       \
-    break;                                                               \
+#define GPU_DENSE_COPY(T)                                               \
+  case DataTypeToEnum<T>::value: {                                      \
+    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;           \
+    copy_functor_(context->eigen_device<GPUDevice>(), tensor.flat<T>(), \
+                  from.flat<T>());                                      \
+    break;                                                              \
   }
 #define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
   TF_CALL_GPU_ALL_TYPES(T);                 \

@@ -877,19 +877,16 @@ func @fused_batch_norm_v3_training(%arg0 : tensor<1x1x6x2xf32>, %arg1 : tensor<2
   %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = true} : (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<*xf32>)
   return %0 : tensor<1x1x6x2xf32>
   // CHECK-LABEL: fused_batch_norm_v3_training
-  // CHECK: %[[CST:.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
-  // CHECK: %[[CST0:.*]] = constant dense<0.166666672> : tensor<1xf32>
+  // CHECK: %[[CST:.*]] = constant dense<[0, 1, 2]> : tensor<3xi32>
   // CHECK: %[[CST1:.*]] = constant dense<1.000000e-03> : tensor<f32>
-  // CHECK:  %[[SUM:.*]] = "tf.Sum"(%arg0, %[[CST]]) {keep_dims = false} : (tensor<1x1x6x2xf32>, tensor<3xi64>) -> tensor<2xf32>
-  // CHECK:  %[[MUL:.*]] = "tf.Mul"(%[[SUM]], %[[CST0]]) : (tensor<2xf32>, tensor<1xf32>) -> tensor<2xf32>
-  // CHECK:  %[[SQ:.*]] = "tf.SquaredDifference"(%arg0, %[[MUL]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
-  // CHECK:  %[[SUM0:.*]] = "tf.Sum"(%[[SQ]], %[[CST]]) {keep_dims = false} : (tensor<1x1x6x2xf32>, tensor<3xi64>) -> tensor<2xf32>
-  // CHECK:  %[[MUL0:.*]] = "tf.Mul"(%[[SUM0]], %[[CST0]]) : (tensor<2xf32>, tensor<1xf32>) -> tensor<2xf32>
-  // CHECK:  %[[ADD:.*]] = "tf.Add"(%[[MUL0]], %[[CST1]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK:  %[[MEAN:.*]] = "tf.Mean"(%arg0, %[[CST]]) {keep_dims = false} : (tensor<1x1x6x2xf32>, tensor<3xi32>) -> tensor<2xf32>
+  // CHECK:  %[[SQ:.*]] = "tf.SquaredDifference"(%arg0, %[[MEAN]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
+  // CHECK:  %[[MEAN0:.*]] = "tf.Mean"(%[[SQ]], %[[CST]]) {keep_dims = false} : (tensor<1x1x6x2xf32>, tensor<3xi32>) -> tensor<2xf32>
+  // CHECK:  %[[ADD:.*]] = "tf.Add"(%[[MEAN0]], %[[CST1]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
   // CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[ADD]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK:  %[[MUL1:.*]] = "tf.Mul"(%arg1, %[[RSQRT]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK:  %[[MUL2:.*]] = "tf.Mul"(%arg0, %[[MUL1]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
-  // CHECK:  %[[MUL3:.*]] = "tf.Mul"(%[[MUL]], %[[MUL1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK:  %[[MUL3:.*]] = "tf.Mul"(%[[MEAN]], %[[MUL1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK:  %[[SUB:.*]] = "tf.Sub"(%arg2, %[[MUL3]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK:  %[[ADD0:.*]] = "tf.Add"(%[[MUL2]], %[[SUB]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
   // CHECK:  return %[[ADD0]] : tensor<1x1x6x2xf32>

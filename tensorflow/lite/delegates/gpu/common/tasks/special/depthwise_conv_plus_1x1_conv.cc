@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -45,9 +46,9 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
     }
   }
   // dw weights loading
-  for (int y = 0; y < dw_attr.weights.shape.h; ++y) {
-    for (int x = 0; x < dw_attr.weights.shape.w; ++x) {
-      for (int d = 0; d < dw_dst_ch_aligned / 4; ++d) {
+  for (int d = 0; d < dw_dst_ch_aligned / 4; ++d) {
+    for (int y = 0; y < dw_attr.weights.shape.h; ++y) {
+      for (int x = 0; x < dw_attr.weights.shape.w; ++x) {
         for (int i = 0; i < 4; ++i) {
           const int d_ch = d * 4 + i;
           if (d_ch < dw_attr.weights.shape.i) {
@@ -177,22 +178,23 @@ std::string GenerateCode(const OperationDef& op_def,
 
   const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
   c += "  FLT4 src;\n";
-  for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
-    c += "  y_c = y_offseted + " + std::to_string(ky) + " * args.dilation_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
-      c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
-      c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
-    }
-    for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
-      c += "  x_c = x_offseted + " + std::to_string(kx) +
-           " * args.dilation_x;\n";
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
-        c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
-        c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+  for (int d = 0; d < intermediate_depth; ++d) {
+    const int src_ch_count = std::min(4, dw_attr.weights.shape.i - d * 4);
+    const std::string s_postfix = postfixes[src_ch_count - 1];
+    for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
+      c += "  y_c = y_offseted + " + std::to_string(ky) +
+           " * args.dilation_y;\n";
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+        c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
+        c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
       }
-      for (int d = 0; d < intermediate_depth; ++d) {
-        const int src_ch_count = std::min(4, dw_attr.weights.shape.i - d * 4);
-        const std::string s_postfix = postfixes[src_ch_count - 1];
+      for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
+        c += "  x_c = x_offseted + " + std::to_string(kx) +
+             " * args.dilation_x;\n";
+        if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+          c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
+          c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+        }
         std::string multiplier =
             check.empty() ? "" : " * INIT_FLT(" + check + ")";
         c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
@@ -231,7 +233,7 @@ std::string GenerateCode(const OperationDef& op_def,
 }  // namespace
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const OperationDef& definition,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr) {
   const auto dw_shape = dw_attr.weights.shape;
@@ -243,11 +245,35 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       conv_attr.strides.h == 1 && conv_attr.padding.prepended.w == 0 &&
       conv_attr.padding.prepended.h == 0 && conv_attr.padding.appended.w == 0 &&
       conv_attr.padding.appended.h == 0;
-  bool recommended_dw =
-      dw_shape.i <= 16 && dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
-  bool recommended_conv =
-      conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 16 * 32;
-  return good_dw && good_conv && recommended_dw && recommended_conv;
+  if (gpu_info.IsApple()) {
+    if (definition.precision == CalculationsPrecision::F16) {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 16 && conv_shape.i * conv_shape.o <= 16 * 16;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    } else {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 8 && conv_shape.i * conv_shape.o <= 8 * 16;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    }
+  } else {
+    if (definition.precision == CalculationsPrecision::F16) {
+      bool recommended_dw = dw_shape.i <= 32 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 32;
+      bool recommended_conv =
+          conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 32 * 32;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    } else {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 32 && conv_shape.i * conv_shape.o <= 16 * 32;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    }
+  }
 }
 
 GPUOperation CreateDepthwiseConvPlus1x1Conv(

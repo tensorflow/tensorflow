@@ -138,6 +138,7 @@ message TypeSpecProto {
     ROW_PARTITION_SPEC = 10;  // RowPartitionSpec from ragged/row_partition.py
     reserved 11;
     REGISTERED_TYPE_SPEC = 12;  // The type registered as type_spec_class_name.
+    EXTENSION_TYPE_SPEC = 13;   // Subclasses of tf.ExtensionType
   }
   TypeSpecClass type_spec_class = 1;
 

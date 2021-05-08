@@ -14,129 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
-
-from absl import logging
-from absl.testing import parameterized
-import numpy as np
-
-from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
-from tensorflow.python.framework import config
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import callbacks as callbacks_lib
-from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.distribute import dataset_creator_model_fit_test_base as test_base
 from tensorflow.python.keras.distribute import strategy_combinations
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.layers import core as core_layers
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.keras.utils import dataset_creator
-from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
-
-
-class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
-
-  def _model_compile(self,
-                     strategy,
-                     steps_per_execution=1,
-                     run_eagerly=False,
-                     with_normalization_layer=False):
-
-    class ResultAssertingCallback(callbacks_lib.Callback):
-
-      def __init__(self):
-        self._prev_epoch = -1
-        self._loss_to_compare_against = 2  # Empirical initial value
-
-      def on_epoch_end(self, epoch, logs=None):
-        logging.info("testModelFit: epoch=%r, logs=%r", epoch, logs)
-        if epoch <= self._prev_epoch:
-          raise RuntimeError("Epoch is supposed to be larger than previous.")
-        self._prev_epoch = epoch
-        is_loss_float = (
-            logs.get("loss", None) is not None and
-            isinstance(logs["loss"], (float, np.floating)))
-        if not is_loss_float:
-          raise RuntimeError("loss is supposed to be in the logs and float.")
-        if epoch == 0 or epoch == 9:
-          # Making sure the loss of first epoch is below 1, and that of last
-          # epoch is smaller than the first epoch.
-          if logs["loss"] > self._loss_to_compare_against:
-            raise RuntimeError(
-                "loss at epoch {} is larger than previous.".format(epoch))
-          self._loss_to_compare_against = logs["loss"]
-
-      def on_train_end(self, logs=None):
-        if self._prev_epoch != 9:
-          raise RuntimeError("Unexpected last epoch: {}".format(
-              self._prev_epoch))
-
-    # TODO(b/182193218): Use ParameterServerStrategy as a proper strategy
-    # combination.
-    if strategy == "ParameterServerStrategy":
-      gpu_devices = config.list_physical_devices("GPU")
-      if len(gpu_devices) > 1:
-        self.skipTest("b/178452835: Multi-GPUs not supported in "
-                      "ParameterServerStrategy.")
-      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-          multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
-          variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
-
-    with strategy.scope():
-      model = sequential.Sequential([core_layers.Dense(10)])
-      if with_normalization_layer:
-        norm = keras.layers.BatchNormalization(
-            axis=-1, input_shape=(4, 4, 3), momentum=0.8)
-        model.add(norm)
-
-    model.compile(
-        gradient_descent.SGD(),
-        loss="mse",
-        steps_per_execution=steps_per_execution,
-        run_eagerly=run_eagerly)
-    return model, [ResultAssertingCallback()]
-
-  def _model_fit(self,
-                 strategy,
-                 steps_per_execution=1,
-                 validation_data=None,
-                 x=None,
-                 steps_per_epoch=10,
-                 run_eagerly=False,
-                 with_normalization_layer=False,
-                 callbacks=None):
-    if callbacks is None:
-      callbacks = []
-
-    model, default_callbacks = self._model_compile(strategy,
-                                                   steps_per_execution,
-                                                   run_eagerly,
-                                                   with_normalization_layer)
-    callbacks += default_callbacks
-
-    def dataset_fn(input_context):
-      del input_context
-      x = random_ops.random_uniform((10, 10))
-      y = random_ops.random_uniform((10,))
-      return dataset_ops.DatasetV2.from_tensor_slices(
-          (x, y)).shuffle(10).repeat().batch(2)
-
-    x = x or dataset_creator.DatasetCreator(dataset_fn)
-
-    model.fit(
-        x,
-        epochs=10,
-        steps_per_epoch=steps_per_epoch,
-        callbacks=callbacks,
-        validation_data=validation_data)
-    return model
 
 
 @ds_combinations.generate(
@@ -145,12 +30,15 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
         strategy_combinations.multi_worker_mirrored_strategies +
         ["ParameterServerStrategy"],
         mode="eager"))
-class DatasetCreatorModelFitTest(DatasetCreatorModelFitTestBase):
+class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
   def testModelFit(self, strategy):
     model = self._model_fit(strategy)
     self.assertEqual(model.optimizer.iterations, 100)
-    return model
+
+  def testModelFitWithLookupLayer(self, strategy):
+    model = self._model_fit(strategy, use_lookup_layer=True)
+    self.assertEqual(model.optimizer.iterations, 100)
 
   def testModelFitWithNormalizationLayer(self, strategy):
     model = self._model_fit(strategy, with_normalization_layer=True)
@@ -163,57 +51,48 @@ class DatasetCreatorModelFitTest(DatasetCreatorModelFitTestBase):
   def testModelFitWithNoStepsPerEpoch(self, strategy):
     with self.assertRaisesRegex(
         ValueError, "When using a "
-        "`tf.keras.utils.experimental.DatasetCreator`, "
-        "`steps_per_epoch` argument must be provided in "
-        "`Model.fit`."):
+        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
+        "`validation_steps` or `steps` argument must be provided in "
+        "`Model.fit` or `Model.evaluate`."):
       self._model_fit(strategy, steps_per_epoch=None)
 
 
 @ds_combinations.generate(
     combinations.combine(strategy=["ParameterServerStrategy"], mode="eager"))
-class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
-    DatasetCreatorModelFitTestBase):
-
-  def testModelFitWithRunEagerly(self, strategy):
-    with self.assertRaisesRegex(
-        ValueError, "When using `Model` with `ParameterServerStrategy`, "
-        "`run_eagerly` is not supported."):
-      self._model_fit(strategy, run_eagerly=True)
-
-  def testModelFitWithValidationData(self, strategy):
-    with self.assertRaisesRegex(
-        NotImplementedError, "Evaluation in `model.fit` with "
-        "`ParameterServerStrategy` is not yet supported."):
-      self._model_fit(
-          strategy,
-          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  def testModelFitWithDatasetInstance(self, strategy):
-    with self.assertRaisesRegex(
-        NotImplementedError, "Only `DatasetCreator` input is supported in "
-        "`ParameterServerStrategy` at this time."):
-      self._model_fit(
-          strategy, x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+class DatasetCreatorModelEvaluateParameterServerStrategyOnlyTest(
+    test_base.DatasetCreatorModelFitTestBase):
 
   def testModelEvaluate(self, strategy):
-    model, _ = self._model_compile(strategy)
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.evaluate` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.evaluate(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+    self._model_evaluate(strategy)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
 
-  def testModelPredict(self, strategy):
-    model, _ = self._model_compile(strategy)
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.predict` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.predict(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+  def testModelEvaluateWithNormalizationLayer(self, strategy):
+    self._model_evaluate(strategy, with_normalization_layer=True)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
 
-  def testClusterCoordinatorSingleInstance(self, strategy):
-    model = self._model_fit(strategy)
-    strategy = model.distribute_strategy
-    self.assertIs(strategy._cluster_coordinator,
-                  coordinator_lib.ClusterCoordinator(strategy))
+  def testModelEvaluateWithStepsPerExecution(self, strategy):
+    self._model_evaluate(strategy, steps_per_execution=10)
+    self.assertGreaterEqual(self._metric.result(), 0.0)
+
+  def testModelEvaluateWithNoStepsPerEpoch(self, strategy):
+    with self.assertRaisesRegex(
+        ValueError, "When using a "
+        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
+        "`validation_steps` or `steps` argument must be provided in "
+        "`Model.fit` or `Model.evaluate`."):
+      self._model_evaluate(strategy, steps=None)
+
+  def testModelEvaluateWithDatasetInstance(self, strategy):
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        "Only `tf.keras.utils.experimental.DatasetCreator` input is supported "
+        "with `ParameterServerStrategy` at this time. Please see "
+        "`tf.keras.utils.experimental.DatasetCreator` class docstring for more "
+        "information."
+    ):
+      self._model_evaluate(
+          strategy,
+          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
 
   def testModelFitErrorOnBatchLevelCallbacks(self, strategy):
 
@@ -225,42 +104,7 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     with self.assertRaisesRegex(ValueError,
                                 "Batch-level `Callback`s are not supported"):
       callbacks = [BatchLevelCallback()]
-      self._model_fit(strategy, callbacks=callbacks)
-
-  def testModelFitCallbackSupportsTFLogs(self, strategy):
-
-    class MyCallback(callbacks_lib.Callback):
-
-      def __init__(self):
-        super(MyCallback, self).__init__()
-        # Fetches the RemoteValues if necessary.
-        self._supports_tf_logs = True
-
-      def on_train_batch_end(self, batch, logs=None):
-        assert isinstance(logs, coordinator_lib.RemoteValue)
-
-    my_callback = MyCallback()
-    callbacks = [my_callback]
-    self._model_fit(strategy, callbacks=callbacks)
-
-  def testModelFitVerbosity(self, strategy):
-
-    class MyCallback(callbacks_lib.Callback):
-      pass
-
-    my_callback = MyCallback()
-    callbacks = [my_callback]
-    self._model_fit(strategy, callbacks=callbacks)
-    # PSStrategy should default to epoch-level logging.
-    self.assertEqual(my_callback.params["verbose"], 2)
-
-  def testModelFitTensorBoardEpochLevel(self, strategy):
-    log_dir = self.get_temp_dir()
-    callbacks = [callbacks_lib.TensorBoard(log_dir)]
-    self._model_fit(strategy, callbacks=callbacks)
-    self.assertTrue(gfile.Exists(log_dir))
-    files = gfile.ListDirectory(log_dir)
-    self.assertGreaterEqual(len(files), 1)
+      self._model_evaluate(strategy, callbacks=callbacks)
 
 
 if __name__ == "__main__":

@@ -1917,9 +1917,82 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
     }
     return success();
   }
+
+  // If all returned values in the ReduceOp region exists outside
+  // the region replace the ReduceOp with those values.
+  mlir::Block& bb = this->body().front();
+  SmallVector<Value> replaced_results;
+  if (auto ret_op = mlir::dyn_cast<ReturnOp>(bb.back())) {
+    for (Value result : ret_op.results()) {
+      if (result.getParentRegion() == ret_op->getParentRegion())
+        return failure();
+      replaced_results.push_back(result);
+    }
+
+    results.insert(results.end(), replaced_results.begin(),
+                   replaced_results.end());
+    return success();
+  }
+
   return failure();
 }
 
+// Enable constant folding to occur within the region of the ReduceOp
+// by replacing block argument uses with constants if:
+//  1. All the ReduceOp operands are splat constants.
+//  2. The ReduceOp region consists of a single logical AND or logical OR.
+// The pattern leverages the idempotent property of the AND and OR operators
+// to determine the value of a reduction on splat constants. Other boolean
+// operators do not have this property, and need separate patterns to resolve
+// reductions of their splat constants.
+struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
+  using OpRewritePattern<ReduceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    mlir::Block& bb = op.body().front();
+
+    // Ensure only a compute op and return op exist and the
+    // compute op is an AND or OR op.
+    if (bb.getOperations().size() != 2) return failure();
+    if (!mlir::isa<mhlo::AndOp, mhlo::OrOp>(bb.front())) return failure();
+
+    // Ensure all operands are splat constants.
+    SmallVector<DenseElementsAttr, 4> barg_cst_attrs;
+    for (auto inp_and_barg : llvm::zip(op.getOperands(), bb.getArguments())) {
+      Value inp = std::get<0>(inp_and_barg);
+      BlockArgument barg = std::get<1>(inp_and_barg);
+      ConstOp cst = inp.getDefiningOp<ConstOp>();
+      if (!cst) return failure();
+
+      auto cst_attr = cst.value().dyn_cast_or_null<DenseElementsAttr>();
+      if (!cst_attr.isSplat()) {
+        return rewriter.notifyMatchFailure(op, "Must be splat constant.");
+      }
+
+      auto barg_shaped_type = barg.getType().dyn_cast<ShapedType>();
+      if (!barg_shaped_type) return failure();
+
+      auto barg_cst_attr =
+          DenseElementsAttr::get(barg_shaped_type, cst_attr.getSplatValue());
+      barg_cst_attrs.push_back(barg_cst_attr);
+    }
+
+    // Create new splat constants to replace block arguments.
+    for (BlockArgument barg : bb.getArguments()) {
+      int arg_idx = barg.getArgNumber();
+      mhlo::ConstOp new_cst = rewriter.create<mhlo::ConstOp>(
+          bb.front().getLoc(), barg.getType(), barg_cst_attrs[arg_idx]);
+      barg.replaceAllUsesWith(new_cst);
+    }
+    return success();
+  }
+};
+
+void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<LowerBoolSplatConstantsIntoRegion>(context);
+}
 //===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//

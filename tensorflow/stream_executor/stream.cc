@@ -369,11 +369,13 @@ Stream &Stream::ThenBatchNormalizationForward(
 
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
-    const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-    const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<float> &scale, const DeviceMemory<float> &offset,
+    const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+    const DeviceMemory<float> &y, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-    DeviceMemory<float> *offset_backprop,
+    dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
+    DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+    DeviceMemory<float> *side_input_backprop,
     DeviceMemory<uint8> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
@@ -381,9 +383,10 @@ Stream &Stream::ThenBatchNormalizationBackward(
             PARAM(scale_backprop), PARAM(offset_backprop));
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoBatchNormalizationBackward(
-        this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
-        epsilon, x_backprop, scale_backprop, offset_backprop,
-        reserve_space_data, workspace_allocator));
+        this, y_backprop, x, scale, offset, mean, inv_var, y, x_desc,
+        scale_offset_desc, epsilon, activation_mode, x_backprop, scale_backprop,
+        offset_backprop, side_input_backprop, reserve_space_data,
+        workspace_allocator));
   } else {
     SetErrorAndLogNoDnnSupport();
   }
@@ -421,11 +424,13 @@ Stream &Stream::ThenBatchNormalizationForward(
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<Eigen::half> &y_backprop,
     const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-    const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+    const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
+    const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::half> &y,
     const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    DeviceMemory<Eigen::half> *x_backprop, DeviceMemory<float> *scale_backprop,
-    DeviceMemory<float> *offset_backprop,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *x_backprop,
+    DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+    DeviceMemory<Eigen::half> *side_input_backprop,
     DeviceMemory<uint8> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
@@ -433,9 +438,10 @@ Stream &Stream::ThenBatchNormalizationBackward(
             PARAM(scale_backprop), PARAM(offset_backprop));
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoBatchNormalizationBackward(
-        this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
-        epsilon, x_backprop, scale_backprop, offset_backprop,
-        reserve_space_data, workspace_allocator));
+        this, y_backprop, x, scale, offset, mean, inv_var, y, x_desc,
+        scale_offset_desc, epsilon, activation_mode, x_backprop, scale_backprop,
+        offset_backprop, side_input_backprop, reserve_space_data,
+        workspace_allocator));
 
   } else {
     SetErrorAndLogNoDnnSupport();
@@ -3424,157 +3430,6 @@ Stream &Stream::ThenBlasGemmWithProfiling(
   return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
               m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
               output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<Eigen::half> &alpha,
-    const DeviceMemory<Eigen::half> &a, int lda,
-    const DeviceMemory<Eigen::half> &b, int ldb,
-    const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64, uint64, uint64,
-      const HostOrDeviceScalar<Eigen::half> &,
-      const DeviceMemory<Eigen::half> &, int, const DeviceMemory<Eigen::half> &,
-      int, const HostOrDeviceScalar<Eigen::half> &, DeviceMemory<Eigen::half> *,
-      int, blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
-              algorithm, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<int> &alpha, const DeviceMemory<int8> &a,
-    int lda, const DeviceMemory<int8> &b, int ldb,
-    const HostOrDeviceScalar<int> &beta, DeviceMemory<int> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64, uint64, uint64,
-      const HostOrDeviceScalar<int> &, const DeviceMemory<int8> &, int,
-      const DeviceMemory<int8> &, int, const HostOrDeviceScalar<int> &,
-      DeviceMemory<int> *, int, blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
-              algorithm, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<float> &alpha,
-    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
-    int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64, uint64, uint64,
-      const HostOrDeviceScalar<float> &, const DeviceMemory<float> &, int,
-      const DeviceMemory<float> &, int, const HostOrDeviceScalar<float> &,
-      DeviceMemory<float> *, int, blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
-              algorithm, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<double> &alpha,
-    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
-    int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64, uint64, uint64,
-      const HostOrDeviceScalar<double> &, const DeviceMemory<double> &, int,
-      const DeviceMemory<double> &, int, const HostOrDeviceScalar<double> &,
-      DeviceMemory<double> *, int, blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, HostOrDeviceScalar<double>(alpha), a, lda, b, ldb,
-              HostOrDeviceScalar<double>(beta), c, ldc, computation_type,
-              algorithm, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<std::complex<float>> &alpha,
-    const DeviceMemory<std::complex<float>> &a, int lda,
-    const DeviceMemory<std::complex<float>> &b, int ldb,
-    const HostOrDeviceScalar<std::complex<float>> &beta,
-    DeviceMemory<std::complex<float>> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<blas::Transpose, blas::Transpose, uint64, uint64,
-                          uint64,
-                          const HostOrDeviceScalar<std::complex<float>> &,
-                          const DeviceMemory<std::complex<float>> &, int,
-                          const DeviceMemory<std::complex<float>> &, int,
-                          const HostOrDeviceScalar<std::complex<float>> &,
-                          DeviceMemory<std::complex<float>> *, int,
-                          blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
-              algorithm, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithAlgorithm(
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, const HostOrDeviceScalar<std::complex<double>> &alpha,
-    const DeviceMemory<std::complex<double>> &a, int lda,
-    const DeviceMemory<std::complex<double>> &b, int ldb,
-    const HostOrDeviceScalar<std::complex<double>> &beta,
-    DeviceMemory<std::complex<double>> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
-            PARAM(algorithm));
-
-  ThenBlasWithProfileImpl<blas::Transpose, blas::Transpose, uint64, uint64,
-                          uint64,
-                          const HostOrDeviceScalar<std::complex<double>> &,
-                          const DeviceMemory<std::complex<double>> &, int,
-                          const DeviceMemory<std::complex<double>> &, int,
-                          const HostOrDeviceScalar<std::complex<double>> &,
-                          DeviceMemory<std::complex<double>> *, int,
-                          blas::ComputationType, blas::AlgorithmType>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
-              algorithm, output_profile_result);
 }
 
 Stream &Stream::ThenBlasHemm(blas::Side side, blas::UpperLower uplo, uint64 m,

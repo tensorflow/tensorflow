@@ -216,7 +216,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
   std::error_code error_code;
   llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
-                               llvm::sys::fs::F_None);
+                               llvm::sys::fs::OF_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -696,7 +696,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   // Dump LLVM IR.
   std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
-      new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
+      new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::OF_None));
   module->print(*ir_fs, nullptr);
   ir_fs->flush();
 
@@ -713,7 +713,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   llvm::SmallVector<char, 0> stream;
   llvm::raw_svector_ostream pstream(stream);
   std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(
-      new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_Text));
+      new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
                                       llvm::CGFT_ObjectFile);
@@ -722,7 +722,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   if (keep_tempfiles) {
     std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
-        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::F_None));
+        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::OF_None));
     module->print(*ir_fs, nullptr);
     ir_fs->flush();
   }

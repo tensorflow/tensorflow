@@ -1091,6 +1091,7 @@ cc_library(
         ":verify_suitable_for_graph_export",
         ":visitor_util",
         ":xla_sharding_util",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:validators",

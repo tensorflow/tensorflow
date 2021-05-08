@@ -338,7 +338,8 @@ def GpuSupportsHalfMatMulAndConv():
 
 
 def IsMklEnabled():
-  return _pywrap_util_port.IsMklEnabled()
+  return (_pywrap_util_port.IsMklEnabled() or
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "False").lower() in ["true", "1"])
 
 
 def InstallStackTraceHandler():
@@ -1830,7 +1831,7 @@ def _disable_test(execute_func):
         if execute_func:
           return func(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)

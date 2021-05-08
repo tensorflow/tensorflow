@@ -427,6 +427,19 @@ int64 FindRotateRightPattern(const HloInstruction* concat,
                              const HloInstruction* lhs,
                              const HloInstruction* rhs);
 
+// Describes the pad with wrap pattern.
+struct PadWithWrapPattern {
+  int64 lhs_slice_start;
+  int64 rhs_slice_start;
+};
+
+// Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to
+// padding mid with wrapping (i.e., padding mid with slices of itself). Return
+// absl::nullopt if the pattern is not found.
+absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
+    const HloInstruction* concat, const HloInstruction* lhs,
+    const HloInstruction* mid, const HloInstruction* rhs);
+
 }  // namespace spmd
 }  // namespace xla
 

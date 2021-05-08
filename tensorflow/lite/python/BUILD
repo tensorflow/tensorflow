@@ -3,7 +3,10 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/tflite_micro:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
