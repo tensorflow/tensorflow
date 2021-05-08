@@ -865,6 +865,7 @@ distribute_py_test(
     shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":multi_worker_testing_utils",
