@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -230,6 +230,150 @@ TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
           bias_quantized, scales, zero_points, output_shape, golden_data,
           golden_quantized, output_scale, output_zero_point, &conv_params,
           tflite::Register_CONV_2D(), output_data));
+}
+
+TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelPadding) {
+  TfLiteConvParams padding_conv_params = {
+      kTfLitePaddingSame,  // padding
+      1,                   // stride_width
+      1,                   // stride_height
+      kTfLiteActNone,      // activation
+      1,                   // dilation_width_factor
+      1,                   // dilation_height_factor
+  };
+
+  const int kInputElements = 9;
+  const int kInputShape[] = {4, 1, 3, 3, 1};
+  const float kInputData[] = {1, 1, 1, 2, 2, 2, 3, 3, 3};
+  const int kFilterElements = 9;
+  const int kFilterShape[] = {4, 1, 3, 3, 1};
+  const float kFilterData[] = {1, 1, 1, 2, 2, 2, 3, 3, 3};
+  const int kBiasElements = 1;
+  const int kBiasShape[] = {1, 1};
+  const float kBiasData[] = {1};
+  const int kOutputShape[] = {4, 1, 3, 3, 1};
+  const float kGoldenData[] = {17, 25, 17, 29, 43, 29, 17, 25, 17};
+
+  const int output_dims_count = 9;
+  int8_t output_data[output_dims_count];
+
+  const float input_scale = 0.5f;
+  const float output_scale = 1.0f;
+  const int input_zero_point = -2;
+  const int output_zero_point = -2;
+  int zero_points[kBiasElements + 1];
+  float scales[kBiasElements + 1];
+
+  int8_t input_quantized[kInputElements];
+  int8_t filter_quantized[kFilterElements];
+  int32_t bias_quantized[kBiasElements];
+  int8_t golden_quantized[output_dims_count];
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      tflite::testing::TestConvQuantizedPerChannel(
+          kInputShape, kInputData, input_quantized, input_scale,
+          input_zero_point, kFilterShape, kFilterData, filter_quantized,
+          kBiasShape, kBiasData, bias_quantized, scales, zero_points,
+          kOutputShape, kGoldenData, golden_quantized, output_scale,
+          output_zero_point, &padding_conv_params, tflite::Register_CONV_2D(),
+          output_data));
+}
+
+TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelPaddingOffset) {
+  TfLiteConvParams padding_conv_params = {
+      kTfLitePaddingSame,  // padding
+      2,                   // stride_width
+      2,                   // stride_height
+      kTfLiteActNone,      // activation
+      1,                   // dilation_width_factor
+      1,                   // dilation_height_factor
+  };
+
+  const int kInputElements = 16;
+  const int kInputShape[] = {4, 1, 4, 4, 1};
+  const float kInputData[] = {1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4};
+  const int kFilterElements = 9;
+  const int kFilterShape[] = {4, 1, 3, 3, 1};
+  const float kFilterData[] = {1, 1, 1, 2, 2, 2, 3, 3, 3};
+  const int kBiasElements = 1;
+  const int kBiasShape[] = {1, 1};
+  const float kBiasData[] = {1};
+  const int kOutputShape[] = {4, 1, 2, 2, 1};
+  const float kGoldenData[] = {43, 29, 34, 23};
+
+  const int output_dims_count = 4;
+  int8_t output_data[output_dims_count];
+
+  const float input_scale = 0.5f;
+  const float output_scale = 1.0f;
+  const int input_zero_point = -2;
+  const int output_zero_point = -2;
+  int zero_points[kBiasElements + 1];
+  float scales[kBiasElements + 1];
+
+  int8_t input_quantized[kInputElements];
+  int8_t filter_quantized[kFilterElements];
+  int32_t bias_quantized[kBiasElements];
+  int8_t golden_quantized[output_dims_count];
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      tflite::testing::TestConvQuantizedPerChannel(
+          kInputShape, kInputData, input_quantized, input_scale,
+          input_zero_point, kFilterShape, kFilterData, filter_quantized,
+          kBiasShape, kBiasData, bias_quantized, scales, zero_points,
+          kOutputShape, kGoldenData, golden_quantized, output_scale,
+          output_zero_point, &padding_conv_params, tflite::Register_CONV_2D(),
+          output_data));
+}
+
+TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelValidPadding) {
+  TfLiteConvParams padding_conv_params = {
+      kTfLitePaddingValid,  // padding
+      2,                    // stride_width
+      2,                    // stride_height
+      kTfLiteActNone,       // activation
+      1,                    // dilation_width_factor
+      1,                    // dilation_height_factor
+  };
+
+  const int kInputElements = 9;
+  const int kInputShape[] = {4, 1, 3, 3, 1};
+  const float kInputData[] = {1, 1, 1, 2, 2, 2, 3, 3, 3};
+  const int kFilterElements = 4;
+  const int kFilterShape[] = {4, 1, 2, 2, 1};
+  const float kFilterData[] = {1, 1, 2, 2};
+  const int kBiasElements = 1;
+  const int kBiasShape[] = {1, 1};
+  const float kBiasData[] = {1};
+  const int kOutputShape[] = {4, 1, 1, 1, 1};
+  const float kGoldenData[] = {11};
+
+  const int output_dims_count = 1;
+  int8_t output_data[output_dims_count];
+
+  const float input_scale = 0.5f;
+  const float output_scale = 1.0f;
+  const int input_zero_point = -2;
+  const int output_zero_point = -2;
+  int zero_points[kBiasElements + 1];
+  float scales[kBiasElements + 1];
+
+  int8_t input_quantized[kInputElements];
+  int8_t filter_quantized[kFilterElements];
+  int32_t bias_quantized[kBiasElements];
+  int8_t golden_quantized[output_dims_count];
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      tflite::testing::TestConvQuantizedPerChannel(
+          kInputShape, kInputData, input_quantized, input_scale,
+          input_zero_point, kFilterShape, kFilterData, filter_quantized,
+          kBiasShape, kBiasData, bias_quantized, scales, zero_points,
+          kOutputShape, kGoldenData, golden_quantized, output_scale,
+          output_zero_point, &padding_conv_params, tflite::Register_CONV_2D(),
+          output_data));
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelRelu6) {
@@ -588,13 +732,13 @@ TF_LITE_MICRO_TEST(Int8Input32x1Filter32x32ShouldMatchGolden) {
 
   // Quantization Parameters.  All scales except output are 1.0, and all zero
   // points are 0. This direct-maps the values to floating point and makes it
-  // easy to reson about them.
+  // easy to reason about them.
   int input_zero_point = 0;
   float input_scale = 1.0f;
   int filter_zero_point = 0;
   float filter_scale = 1.0f;
   int output_zero_point = 0;
-  // Output scale of 50 is needed to accomodate a float range of [-6400, 6350]
+  // Output scale of 50 is needed to accommodate a float range of [-6400, 6350]
   float output_scale = 50.0f;
 
   // Create per-tensor quantized int8_t input tensor.

@@ -588,6 +588,31 @@ TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDimsWithPrecision) {
       output_zero_point, &params);
 }
 
+TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDimsWithPrecisionQuant) {
+  const int kInputShape4D[] = {4, 2, 2, 3, 1};
+  const float kInputData4D[] = {1.0,  24.0, 13.0, 3.0,  9.0,  17.0,
+                                11.0, 36.0, 14.0, 19.0, 17.0, 22.0};
+  const int kOutputShape[] = {2, 2, 1};
+  const float kGoldenData[] = {11.166667, 19.833334};
+  TfLiteReducerParams params = {
+      false  // keep_dims
+  };
+  float input_scale = 0.5f;
+  int input_zero_point = 0;
+  float output_scale = 0.25f;
+  int output_zero_point = 0;
+
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+  int8_t input_data_quant[12];
+
+  tflite::testing::TestMeanOpQuantized<int8_t>(
+      kInputShape4D, kInputData4D, input_data_quant, input_scale,
+      input_zero_point, tflite::testing::kAxisShape4D, tflite::testing::kAxisData4D,
+      kOutputShape, kGoldenData, output_data_quant, expected_output_data_quant,
+      output_scale, output_zero_point, &params);
+}
+
 TF_LITE_MICRO_TEST(MeanUInt84DWithoutKeepDimsWithPrecision) {
   const int kInputShape4D[] = {4, 2, 2, 3, 1};
   const float kInputData4D[] = {1.0,  24.0, 13.0, 3.0,  9.0,  17.0,
