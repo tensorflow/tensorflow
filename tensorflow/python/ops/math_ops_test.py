@@ -245,7 +245,6 @@ class MatMulTest(test_util.TensorFlowTestCase):
       c_np = constant_op.constant([[58, 64], [139, 154]],
                                   shape=(2, 2),
                                   dtype=dtype)
-      c = math_ops.matmul(a, b)
       self.assertAllClose(c, c_np, atol=1e-2)
 
   def testBatchMatMul(self):
@@ -257,7 +256,6 @@ class MatMulTest(test_util.TensorFlowTestCase):
           [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
           shape=[2, 2, 2],
           dtype=dtype)
-      c = math_ops.matmul(a, b)
       self.assertAllClose(c, c_np, atol=1e-2)
 
   def testUnsupportedtypeMatmul(self):
