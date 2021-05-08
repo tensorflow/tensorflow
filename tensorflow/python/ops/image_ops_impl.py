@@ -4393,6 +4393,12 @@ def ssim_multiscale(img1,
     divisor = [1, 2, 2, 1]
     divisor_tensor = constant_op.constant(divisor[1:], dtype=dtypes.int32)
 
+    #fixes filter_size issue #33840
+    if not(shape1[-3:-1][0]/(2**(len(power_factors)-1)) and shape2[-3:-1][0]/(2**(len(power_factors)-1)) >= filter_size):
+        H = tf.math.reduce_min((shape1,shape2))
+        suggested_filter_size = int(H/(2**(len(power_factors)-1)))
+        filter_size = suggested_filter_size
+
     def do_pad(images, remainder):
       padding = array_ops.expand_dims(remainder, -1)
       padding = array_ops.pad(padding, [[1, 0], [1, 0]])
