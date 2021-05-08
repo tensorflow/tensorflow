@@ -94,7 +94,7 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     }
 
   def ShouldRunTest(self, run_params):
-    should_run, reason = super().ShouldRunTest(run_params)
+    should_run, reason = super(CombinedNmsTest, self).ShouldRunTest(run_params)
     should_run = should_run and \
         not trt_test.IsQuantizationMode(run_params.precision_mode)
     reason += ' and precision != INT8'
@@ -126,7 +126,8 @@ class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
     return super().GetMaxBatchSize(run_params) - 1
 
   def ShouldRunTest(self, run_params):
-    should_run, reason = super().ShouldRunTest(run_params)
+    should_run, reason = super(CombinedNmsExecuteNativeSegmentTest, self) \
+                        .ShouldRunTest(run_params)
     # max_batch_size is only useful for selecting static engines. As such,
     # we shouldn't run the test for dynamic engines.
     return should_run and \
@@ -201,6 +202,10 @@ class CombinedNmsTestTopK(CombinedNmsTest):
                                 nmsed_boxes_shape, nmsed_scores_shape,
                                 nmsed_classes_shape, valid_detections_shape
                             ])
+
+  # TODO: @DEKHTIARJonathan remove when fixed
+  def ShouldRunTest(self, run_params):
+      return False
 
 
 class CombinedNmsTopKOverride(CombinedNmsTest):

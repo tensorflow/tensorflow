@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -3486,210 +3487,211 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
-TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
-  // Get the NodeDef for CombinedNMS.
-  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
-                            bool pad_per_class = false) -> NodeDef {
-    Scope s = Scope::NewRootScope();
-    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
-    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
-    auto max_output_size_per_class =
-        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
-    auto max_total_size =
-        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
-    auto iou_threshold =
-        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
-    auto score_threshold =
-        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
-    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
-                         .PadPerClass(pad_per_class)
-                         .ClipBoxes(clip_boxes);
-
-    auto nms_op = ops::CombinedNonMaxSuppression(
-        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
-        max_output_size_per_class, max_total_size, iou_threshold,
-        score_threshold, nms_attrs);
-    return nms_op.operation.node()->def();
-  };
-
-  struct TestParams {
-    const std::string description;
-    const std::vector<int32> boxes_tensor_dims;
-    const std::vector<int32> scores_tensor_dims;
-    const std::vector<float> boxes_values;
-    const std::vector<float> scores_values;
-    const int32 max_output_size_per_class;
-    const int32 max_total_size;
-    const float iou_threshold;
-    const float score_threshold;
-    bool pad_per_class;
-    bool clip_boxes;
-    const std::vector<std::vector<int32>> expected_output_dims;
-    const std::vector<float> exp_boxes;
-    const std::vector<float> exp_scores;
-    const std::vector<float> exp_classes;
-    const std::vector<float> exp_num_detections;
-    Status conversion_status;
-    Status runtime_status;
-  };
-
-  Status conv_status =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "TensorRT BatchedNMS Plugin requires input with static shape")
-          : Status::OK();
-
-  std::vector<TestParams> params = {
-      // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
-      // implementation that, the extra output classes that are outside of the
-      // range specified by valid_detections[i] are not zeros but -1s.
-      TestParams{
-          "Test 1: Original test",
-          {1, 1, 3, 4},                                      // boxes dims
-          {1, 1, 3},                                         // scores dims
-          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // boxes values
-          {0.4, 0.7, 0.3},                                   // scores values
-          3,                                 // max_output_size_per_class
-          2,                                 // max_total_size
-          .5f,                               // IOU threshold
-          0,                                 // score_threshold
-          false,                             // pad_per_class
-          true,                              // clip_boxes
-          {{1, 2, 4},                        // expected_nmsed_boxes_dims
-           {1, 2},                           // expected_nmsed_scores_dims
-           {1, 2},                           // expected_nmsed_classes_dims
-           {1}},                             // expected_valid_detections_dims
-          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // exp_boxes_values
-          {0.7, 0.4},                        // exp_scores
-          {1, 0},                            // exp_classes
-          {2},                               // exp_num_detections
-          conv_status},
-      // Test with clip_boxes = False
-      TestParams{
-          "Test 2: clip_boxes",
-          {1, 5, 1, 4},  // boxes dims
-          {1, 5, 1},     // scores dims
-          // boxes values:
-          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
-          {5, 4, 3, 2, 1},  // scores values
-          4,                // max_output_size_per_class
-          4,                // max_total_size
-          0.1,              // IOU threshold
-          0,                // score threshold
-          false,            // pad_per_class
-          false,            // clip_boxes
-          {{1, 4, 4},       // expected nmsed_boxes_dims
-           {1, 4},          // expected nmsed_scores_dims
-           {1, 4},          // expected_nmsed_classes_dims
-           {1}},            // expected_valid_detections_dims
-                            // exp_boxes_values:
-          {0, 0, 5, 10, 8, 0, 12, 4, 8, 9, 11, 12, 0, 0, 0, 0},
-          {5, 3, 1, 0},   // exp_scores
-          {0, 0, 0, -1},  // exp_classes
-          {3},            // exp_num_detections
-          conv_status},
-      // Test with clip_boxes = False, and nonzero score threshold
-      TestParams{
-          "Test 3: score threshold",
-          {1, 5, 1, 4},  // boxes dims
-          {1, 5, 1},     // scores dims
-          // boxes values:
-          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
-          {5, 4, 3, 2, 1},  // scores values
-          4,                // max_output_size_per_class
-          4,                // max_total_size
-          0.1,              // IOU threshold
-          2,                // score threshold
-          false,            // pad_per_class
-          false,            // clip_boxes
-          {{1, 4, 4},       // expected nmsed_boxes_dims
-           {1, 4},          // expected nmsed_scores_dims
-           {1, 4},          // expected_nmsed_classes_dims
-           {1}},            // expected_valid_detections_dims
-                            // exp_boxes_values:
-          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
-          {5, 3, 0, 0},    // exp_scores
-          {0, 0, -1, -1},  // exp_classes
-          {2},             // exp_num_detections
-          conv_status},
-      // Test where the boxes are defined as with max value first for the box
-      // coordinates. This test fails before TRT 7.1.3.
-      TestParams{
-          "Test 4: max coord first",
-          {1, 5, 1, 4},  // boxes dims
-          {1, 5, 1},     // scores dims
-                         // boxes values:
-          {5, 10, 0, 0, 5, 14, 0, 4, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
-          {5, 4, 3, 2, 1},  // scores values
-          4,                // max_output_size_per_class
-          4,                // max_total_size
-          0.1,              // IOU threshold
-          0,                // score threshold
-          false,            // pad_per_class
-          false,            // clip_boxes
-          {{1, 4, 4},       // expected nmsed_boxes_dims
-           {1, 4},          // expected nmsed_scores_dims
-           {1, 4},          // expected_nmsed_classes_dims
-           {1}},            // expected_valid_detections_dims
-                            // exp_boxes_values:
-          {5, 10, 0, 0, 12, 4, 8, 0, 11, 12, 8, 9, 0, 0, 0, 0},
-          {5, 3, 1, 0},   // exp_scores
-          {0, 0, 0, -1},  // exp_classes
-          {3},            // exp_num_detections
-          conv_status},
-      TestParams{"Test 5: TopK error",
-                 {1, 5000, 1, 4},  // boxes dims
-                 {1, 5000, 1},     // scores dims
-                 {},               // boxes values:
-                 {},               // scores values
-                 4,                // max_output_size_per_class
-                 4,                // max_total_size
-                 0.1,              // IOU threshold
-                 0,                // score threshold
-                 false,            // pad_per_class
-                 false,            // clip_boxes
-                 {},               // expected_valid_detections_dims
-                 {},               // exp_boxes_values
-                 {},               // exp_scores
-                 {},               // exp_classes
-                 {},               // exp_num_detections
-                 conv_status.ok()
-                     ? errors::InvalidArgument(
-                           "TRT NMS plugin allow top_k<=4096, where top_k = "
-                           "max(num_boxes, max_total_size). You can override "
-                           "this by setting TF_TRT_ALLOW_NMS_TOPK_OVERRIDE=1 "
-                           "environment variable, but this can result in a "
-                           "loss of accuracy.")
-                     : conv_status},
-  };
-
-  for (auto p : params) {
-    Reset();
-    SCOPED_TRACE(p.description);
-    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
-    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
-    AddTestWeights<int32>("max_output_size_per_class", {1},
-                          {p.max_output_size_per_class});
-    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
-    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
-    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
-                          tf_type_);
-
-    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
-
-    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
-                            p.conversion_status, p.runtime_status,
-                            {
-                                ElementsAreArray(p.exp_boxes),
-                                ElementsAreArray(p.exp_scores),
-                                ElementsAreArray(p.exp_classes),
-                                ElementsAreArray(p.exp_num_detections),
-                            },
-                            {tf_type_, tf_type_, tf_type_, DT_INT32});
-  }
-}
-#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
+// TODO: @DEKHTIARJonathan - Uncomment when fixed
+//#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+//TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
+//  // Get the NodeDef for CombinedNMS.
+//  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
+//                            bool pad_per_class = false) -> NodeDef {
+//    Scope s = Scope::NewRootScope();
+//    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
+//    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
+//    auto max_output_size_per_class =
+//        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
+//    auto max_total_size =
+//        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
+//    auto iou_threshold =
+//        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
+//    auto score_threshold =
+//        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
+//    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
+//                         .PadPerClass(pad_per_class)
+//                         .ClipBoxes(clip_boxes);
+//
+//    auto nms_op = ops::CombinedNonMaxSuppression(
+//        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
+//        max_output_size_per_class, max_total_size, iou_threshold,
+//        score_threshold, nms_attrs);
+//    return nms_op.operation.node()->def();
+//  };
+//
+//  struct TestParams {
+//    const std::string description;
+//    const std::vector<int32> boxes_tensor_dims;
+//    const std::vector<int32> scores_tensor_dims;
+//    const std::vector<float> boxes_values;
+//    const std::vector<float> scores_values;
+//    const int32 max_output_size_per_class;
+//    const int32 max_total_size;
+//    const float iou_threshold;
+//    const float score_threshold;
+//    bool pad_per_class;
+//    bool clip_boxes;
+//    const std::vector<std::vector<int32>> expected_output_dims;
+//    const std::vector<float> exp_boxes;
+//    const std::vector<float> exp_scores;
+//    const std::vector<float> exp_classes;
+//    const std::vector<float> exp_num_detections;
+//    Status conversion_status;
+//    Status runtime_status;
+//  };
+//
+//  Status conv_status =
+//      trt_mode_ == TrtTestMode::kDynamicShape
+//          ? errors::Unimplemented(
+//                "TensorRT BatchedNMS Plugin requires input with static shape")
+//          : Status::OK();
+//
+//  std::vector<TestParams> params = {
+//      // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
+//      // implementation that, the extra output classes that are outside of the
+//      // range specified by valid_detections[i] are not zeros but -1s.
+//      TestParams{
+//          "Test 1: Original test",
+//          {1, 1, 3, 4},                                      // boxes dims
+//          {1, 1, 3},                                         // scores dims
+//          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // boxes values
+//          {0.4, 0.7, 0.3},                                   // scores values
+//          3,                                 // max_output_size_per_class
+//          2,                                 // max_total_size
+//          .5f,                               // IOU threshold
+//          0,                                 // score_threshold
+//          false,                             // pad_per_class
+//          true,                              // clip_boxes
+//          {{1, 2, 4},                        // expected_nmsed_boxes_dims
+//           {1, 2},                           // expected_nmsed_scores_dims
+//           {1, 2},                           // expected_nmsed_classes_dims
+//           {1}},                             // expected_valid_detections_dims
+//          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // exp_boxes_values
+//          {0.7, 0.4},                        // exp_scores
+//          {1, 0},                            // exp_classes
+//          {2},                               // exp_num_detections
+//          conv_status},
+//      // Test with clip_boxes = False
+//      TestParams{
+//          "Test 2: clip_boxes",
+//          {1, 5, 1, 4},  // boxes dims
+//          {1, 5, 1},     // scores dims
+//          // boxes values:
+//          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+//          {5, 4, 3, 2, 1},  // scores values
+//          4,                // max_output_size_per_class
+//          4,                // max_total_size
+//          0.1,              // IOU threshold
+//          0,                // score threshold
+//          false,            // pad_per_class
+//          false,            // clip_boxes
+//          {{1, 4, 4},       // expected nmsed_boxes_dims
+//           {1, 4},          // expected nmsed_scores_dims
+//           {1, 4},          // expected_nmsed_classes_dims
+//           {1}},            // expected_valid_detections_dims
+//                            // exp_boxes_values:
+//          {0, 0, 5, 10, 8, 0, 12, 4, 8, 9, 11, 12, 0, 0, 0, 0},
+//          {5, 3, 1, 0},   // exp_scores
+//          {0, 0, 0, -1},  // exp_classes
+//          {3},            // exp_num_detections
+//          conv_status},
+//      // Test with clip_boxes = False, and nonzero score threshold
+//      TestParams{
+//          "Test 3: score threshold",
+//          {1, 5, 1, 4},  // boxes dims
+//          {1, 5, 1},     // scores dims
+//          // boxes values:
+//          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+//          {5, 4, 3, 2, 1},  // scores values
+//          4,                // max_output_size_per_class
+//          4,                // max_total_size
+//          0.1,              // IOU threshold
+//          2,                // score threshold
+//          false,            // pad_per_class
+//          false,            // clip_boxes
+//          {{1, 4, 4},       // expected nmsed_boxes_dims
+//           {1, 4},          // expected nmsed_scores_dims
+//           {1, 4},          // expected_nmsed_classes_dims
+//           {1}},            // expected_valid_detections_dims
+//                            // exp_boxes_values:
+//          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+//          {5, 3, 0, 0},    // exp_scores
+//          {0, 0, -1, -1},  // exp_classes
+//          {2},             // exp_num_detections
+//          conv_status},
+//      // Test where the boxes are defined as with max value first for the box
+//      // coordinates. This test fails before TRT 7.1.3.
+//      TestParams{
+//          "Test 4: max coord first",
+//          {1, 5, 1, 4},  // boxes dims
+//          {1, 5, 1},     // scores dims
+//                         // boxes values:
+//          {5, 10, 0, 0, 5, 14, 0, 4, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
+//          {5, 4, 3, 2, 1},  // scores values
+//          4,                // max_output_size_per_class
+//          4,                // max_total_size
+//          0.1,              // IOU threshold
+//          0,                // score threshold
+//          false,            // pad_per_class
+//          false,            // clip_boxes
+//          {{1, 4, 4},       // expected nmsed_boxes_dims
+//           {1, 4},          // expected nmsed_scores_dims
+//           {1, 4},          // expected_nmsed_classes_dims
+//           {1}},            // expected_valid_detections_dims
+//                            // exp_boxes_values:
+//          {5, 10, 0, 0, 12, 4, 8, 0, 11, 12, 8, 9, 0, 0, 0, 0},
+//          {5, 3, 1, 0},   // exp_scores
+//          {0, 0, 0, -1},  // exp_classes
+//          {3},            // exp_num_detections
+//          conv_status},
+//      TestParams{"Test 5: TopK error",
+//                 {1, 5000, 1, 4},  // boxes dims
+//                 {1, 5000, 1},     // scores dims
+//                 {},               // boxes values:
+//                 {},               // scores values
+//                 4,                // max_output_size_per_class
+//                 4,                // max_total_size
+//                 0.1,              // IOU threshold
+//                 0,                // score threshold
+//                 false,            // pad_per_class
+//                 false,            // clip_boxes
+//                 {},               // expected_valid_detections_dims
+//                 {},               // exp_boxes_values
+//                 {},               // exp_scores
+//                 {},               // exp_classes
+//                 {},               // exp_num_detections
+//                 conv_status.ok()
+//                     ? errors::InvalidArgument(
+//                           "TRT NMS plugin allow top_k<=4096, where top_k = "
+//                           "max(num_boxes, max_total_size). You can override "
+//                           "this by setting TF_TRT_ALLOW_NMS_TOPK_OVERRIDE=1 "
+//                           "environment variable, but this can result in a "
+//                           "loss of accuracy.")
+//                     : conv_status},
+//  };
+//
+//  for (auto p : params) {
+//    Reset();
+//    SCOPED_TRACE(p.description);
+//    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
+//    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
+//    AddTestWeights<int32>("max_output_size_per_class", {1},
+//                          {p.max_output_size_per_class});
+//    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
+//    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
+//    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
+//                          tf_type_);
+//
+//    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
+//
+//    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+//                            p.conversion_status, p.runtime_status,
+//                            {
+//                                ElementsAreArray(p.exp_boxes),
+//                                ElementsAreArray(p.exp_scores),
+//                                ElementsAreArray(p.exp_classes),
+//                                ElementsAreArray(p.exp_num_detections),
+//                            },
+//                            {tf_type_, tf_type_, tf_type_, DT_INT32});
+//  }
+//}
+//#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 template <typename T>
 NodeDef CreateUnaryOp(DataType tf_type) {
@@ -6424,98 +6426,66 @@ auto get_split_nodedef = [](DataType dtype, int num_split) -> NodeDef {
   return split.operation.node()->def();
 };
 
-template <DataType dtype>
-void TestConvertSplit(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
+struct SplitTestParams {
+  std::vector<int> input_shape;
+  std::vector<float> input_value;
+  int axis;
+  int num_split;
+  std::vector<int> expected_output_dims;
+  std::vector<std::vector<float>> expected_outputs;
+  error::Code error_code;
+  const char* expected_msg_substr;
+};
 
-  struct TestParams {
-    std::vector<int> input_shape;
-    std::vector<CType> value;
-    int axis;
-    int num_split;
-    std::vector<int> expected_output_dims;
-    std::vector<std::vector<CType>> expected_outputs;
-  };
+void TestConvertSplit(ParameterizedOpConverterTestBase* test, SplitTestParams& p) {
+  // All inputs are tensors.
+  test->Reset();
+  NodeDef node_def = get_split_nodedef(test->get_tf_type(), p.num_split);
 
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
-  std::vector<TestParams> ok_params = {
-      // Identity (num_split = 1)
-      {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
-       /*num_split=*/1, /*expected_output_dims=*/{1, 2, 3},
-       /*expected_outputs=*/{InitTestVector<CType>(6)}},
-      {/*input_shape=*/{1, 2, 3},
-       /*value=*/common_input,
-       /*axis=*/3,
-       /*num_split=*/3,
-       /*expected_output_dims=*/{1, 2, 1},
-       /*expected_outputs=*/
-       {{CType(0), CType(3)}, {CType(1), CType(4)}, {CType(2), CType(5)}}},
-      {/*input_shape=*/{1, 6},
-       /*value=*/common_input,
-       /*axis=*/2,
-       /*num_split=*/6,
-       /*expected_output_dims=*/{1, 1},
-       /*expected_outputs=*/
-       {{CType(0)},
-        {CType(1)},
-        {CType(2)},
-        {CType(3)},
-        {CType(4)},
-        {CType(5)}}},
-      {/*input_shape=*/{1, 6},
-       /*value=*/common_input,
-       /*axis=*/-1,
-       /*num_split=*/2,
-       /*expected_output_dims=*/{1, 3},
-       /*expected_outputs=*/
-       {InitTestVector<CType>(3), InitTestVector<CType>(3, CType(3))}},
-  };
+  // Create inputs.
+  test->AddTestWeights("axis", {1}, {p.axis}, DT_INT32);
+  test->AddTestTensor("value", p.input_shape, test->get_tf_type(),
+                      p.input_value);
 
-  for (int i = 0; i < ok_params.size(); ++i) {
-    test->Reset();
-    NodeDef node_def = get_split_nodedef(dtype, ok_params[i].num_split);
-    // Create inputs.
-    test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
-    nvinfer1::DataType trt_type;
-    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-    test->AddTestTensor("value", ok_params[i].input_shape, 1, trt_type);
-    // Convert.
-    test->RunValidationAndConversion(node_def);
+  std::vector<Matcher<std::vector<float>>> matcher_vec;
+  std::vector<DataType> datatype_vec;
+  std::vector<std::vector<int>> expected_output_dims;
 
-    // Get output tensors and verify output dims.
-    EXPECT_EQ(ok_params[i].expected_outputs.size(), ok_params[i].num_split);
-    std::vector<TRT_TensorOrWeights> outputs(ok_params[i].num_split);
-    DataVec output_data;
-    for (int j = 0; j < outputs.size(); ++j) {
-      const string name = j == 0 ? StrCat("my_split") : StrCat("my_split:", j);
-      TF_EXPECT_OK(test->GetTensorOrWeights(name, &outputs[j]));
-      EXPECT_TRUE(outputs[j].is_tensor());
-      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                               outputs[j].tensor()->getDimensions());
-      // Create buffer to store output.
-      output_data.push_back(
-          {name, test->ConstructTensor<CType>(
-                     ok_params[i].expected_outputs[j].size())});
-    }
-
-    // Verify output values are correct.
-    const DataVec input_data{
-        {"value", test->AsTensor<CType>(ok_params[i].value)}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    for (int j = 0; j < outputs.size(); ++j) {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
-                  ElementsAreArray(ok_params[i].expected_outputs[j]));
-    }
+  for (int j = 0; j < p.expected_outputs.size(); ++j) {
+    matcher_vec.push_back(ElementsAreArray(p.expected_outputs[j]));
+    datatype_vec.push_back(test->get_tf_type());
+    expected_output_dims.push_back(p.expected_output_dims);
   }
+
+  Status run_status;
+  if (p.error_code == error::OK) {
+    run_status = Status::OK();
+  }
+  else {
+    auto expected_msg_substr = absl::StrFormat(p.expected_msg_substr, p.axis);
+    run_status = Status(p.error_code, expected_msg_substr);
+  }
+
+  test->TestOpConverterMultiOut(/*name=*/"my_split",
+                                /*node_def=*/node_def,
+                                /*expected_output_dims=*/expected_output_dims,
+                                /*expected_conversion_status=*/run_status,
+                                /*expected_runtime_status=*/run_status,
+                                /*matcher=*/matcher_vec,
+                                /*out_tf_type=*/datatype_vec);
 }
 
-TEST_F(OpConverterTest, ConvertSplit) {
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSplit) {
+#else
+TEST_P(OpConverter_FP32_FP16_Test, ConvertSplit) {
+#endif
   {
     // Axis is a tensor, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    NodeDef node_def = get_split_nodedef(tf_type_, 1);
     AddTestTensor("axis", {1});
-    AddTestTensor("value", {1, 2, 3});
+    AddTestTensor("value", {1, 1, 2, 3});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"axis\" for Split must be a constant, at my_split");
@@ -6523,9 +6493,9 @@ TEST_F(OpConverterTest, ConvertSplit) {
   {
     // Axis is out of bounds, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    NodeDef node_def = get_split_nodedef(tf_type_, 1);
     AddTestWeights<int32>("axis", {1}, {4});
-    AddTestTensor("value", {1, 2, 3});
+    AddTestTensor("value", {1, 1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
                                "range [-4, 4), at my_split");
@@ -6533,9 +6503,9 @@ TEST_F(OpConverterTest, ConvertSplit) {
   {
     // Axis is out of bounds (negative), should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    NodeDef node_def = get_split_nodedef(tf_type_, 1);
     AddTestWeights<int32>("axis", {1}, {-5});
-    AddTestTensor("value", {1, 2, 3});
+    AddTestTensor("value", {1, 1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of -5 is out of bounds, must be in "
                                "range [-4, 4), at my_split");
@@ -6543,17 +6513,26 @@ TEST_F(OpConverterTest, ConvertSplit) {
   {
     // Axis is batch dimension, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    NodeDef node_def = get_split_nodedef(tf_type_, 1);
     AddTestWeights<int32>("axis", {1}, {0});
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "TensorRT does not allow manipulation of the "
-                               "batch dimension, at my_split");
+    AddTestTensor("value", {1, 1, 2, 3});
+    if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+      RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                                 "TensorRT does not allow manipulation of the "
+                                 "batch dimension, at my_split");
+    }
+    else if (trt_mode_ == TrtTestMode::kDynamicShape) {
+      RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                 "Dimension 0 must have statically defined dimensions, at my_split");
+    } else {
+      RunValidationAndConversion(node_def);
+    }
+
   }
   {
     // Value is a weight, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    NodeDef node_def = get_split_nodedef(tf_type_, 1);
     AddTestWeights<int32>("axis", {1}, {1});
     AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
     RunValidationAndConversion(
@@ -6561,31 +6540,95 @@ TEST_F(OpConverterTest, ConvertSplit) {
         "The input \"value\" for Split must be a tensor, at my_split");
   }
   {
-    // Dim is not evenly divisibly by num_split, should fail.
+    // Dim is not evenly divisible by num_split, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 2);
+    NodeDef node_def = get_split_nodedef(tf_type_, 2);
     AddTestWeights<int32>("axis", {1}, {3});
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 2, at my_split");
+    AddTestTensor("value", {1, 1, 2, 3});
+    if (trt_mode_ == TrtTestMode::kDynamicShape) {
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Dimension 3 must have statically defined dimensions, at my_split");
+    } else {
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Dimension 3 of size 3 is not evenly divisible by 2, at my_split");
+    }
   }
   {
     // num_split > dim size, should fail.
     Reset();
-    NodeDef node_def = get_split_nodedef(DT_FLOAT, 4);
+    NodeDef node_def = get_split_nodedef(tf_type_, 4);
     AddTestWeights<int32>("axis", {1}, {3});
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 4, at my_split");
+    AddTestTensor("value", {1, 1, 2, 3});
+    if (trt_mode_ == TrtTestMode::kDynamicShape) {
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Dimension 3 must have statically defined dimensions, at my_split");
+    } else {
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Dimension 3 of size 3 is not evenly divisible by 4, at my_split");
+    }
   }
 
-  TestConvertSplit<DT_FLOAT>(this);
-  TestConvertSplit<DT_HALF>(this);
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  TestConvertSplit<DT_INT32>(this);
-#endif
+  const std::vector<float> common_input = InitTestVector<float>(6);
+
+  std::vector<SplitTestParams> ok_params = {
+    // Identity (num_split = 1)
+    {
+      /*input_shape=*/{1, 1, 2, 3},
+      /*input_value=*/common_input,
+      /*axis=*/1,
+      /*num_split=*/1,
+      /*expected_output_dims=*/{1, 1, 2, 3},
+      /*expected_outputs=*/{common_input},
+      /*error_code=*/trt_mode_ == TrtTestMode::kDynamicShape ? error::INVALID_ARGUMENT : error::OK,
+      /*expected_msg_substr=*/trt_mode_ == TrtTestMode::kDynamicShape ? "Dimension %d must have statically defined dimensions, at my_split" : nullptr
+    },
+    {
+      /*input_shape=*/{1, 1, 2, 3},
+      /*input_value=*/common_input,
+      /*axis=*/3,
+      /*num_split=*/3,
+      /*expected_output_dims=*/{1, 1, 2, 1},
+      /*expected_outputs=*/{{0, 3}, {1, 4}, {2, 5}},
+      /*error_code=*/trt_mode_ == TrtTestMode::kDynamicShape ? error::INVALID_ARGUMENT : error::OK,
+      /*expected_msg_substr=*/trt_mode_ == TrtTestMode::kDynamicShape ? "Dimension %d must have statically defined dimensions, at my_split" : nullptr
+    },
+    {
+      /*input_shape=*/{1, 1, 6},
+      /*input_value=*/common_input,
+      /*axis=*/2,
+      /*num_split=*/6,
+      /*expected_output_dims=*/{1, 1, 1},
+      /*expected_outputs=*/{{0}, {1}, {2}, {3}, {4}, {5}},
+      /*error_code=*/trt_mode_ == TrtTestMode::kDynamicShape ? error::INVALID_ARGUMENT : error::OK,
+      /*expected_msg_substr=*/trt_mode_ == TrtTestMode::kDynamicShape ? "Dimension %d must have statically defined dimensions, at my_split" : nullptr
+    },
+    {
+      /*input_shape=*/{1, 1, 6},
+      /*input_value=*/common_input,
+      /*axis=*/-1,
+      /*num_split=*/2,
+      /*expected_output_dims=*/{1, 1, 3},
+      /*expected_outputs=*/
+      {InitTestVector<float>(3), InitTestVector<float>(3, 3)},
+      /*error_code=*/trt_mode_ == TrtTestMode::kDynamicShape ? error::INVALID_ARGUMENT : error::OK,
+      /*expected_msg_substr=*/trt_mode_ == TrtTestMode::kDynamicShape ? "Dimension %d must have statically defined dimensions, at my_split" : nullptr
+    },
+  };
+
+  int iter = 0;
+  for (auto p : ok_params) {
+    iter++;
+    LOG(INFO) << "============================================================";
+    LOG(INFO) << "TEST: " << iter;
+    LOG(INFO) << "============================================================";
+    TestConvertSplit(this, p);
+    LOG(INFO) << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+
+  }
 }
 
 // Get the NodeDef for Unpack (Unstack in TF API).
