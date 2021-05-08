@@ -25,6 +25,8 @@ the network is used only for inference. These include:
 
  - Removing debug operations like CheckNumerics.
 
+ - Fusing a group of primitive ops for batch normalization to FusedBatchNorm op.
+
  - Folding batch normalization ops into the pre-calculated weights.
 
  - Fusing common operations into unified versions.
@@ -115,6 +117,7 @@ def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
       placeholder_type_enum)
   optimized_graph_def = graph_util.remove_training_nodes(
       optimized_graph_def, output_node_names)
+  optimized_graph_def = fuse_decomposed_batch_norm(optimized_graph_def)
   optimized_graph_def = fold_batch_norms(optimized_graph_def)
   if not toco_compatible:
     optimized_graph_def = fuse_resize_and_conv(optimized_graph_def,
@@ -530,4 +533,262 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
     result_graph_def.node.extend([new_node])
 
   result_graph_def.node.extend(new_ops)
+  return result_graph_def
+
+def get_const_dim_count(node_def):
+  """Get the number of dimensions for a Const node.
+
+  Args:
+    node_def: Const NodeDef.
+
+  Returns:
+    Number of dimensions for the Const node.
+  """
+  const_value = values_from_const(node_def)
+  return const_value.ndim
+
+def fuse_decomposed_batch_norm(input_graph_def):
+  """Fuse individual ops in batch normalization to FusedBatchNorm.
+
+  In some models, the batch normalizatin is performed via a group of individual
+  ops instead of using single FusedBatchNorm op. This function identifies a
+  pattern of batch normalization subgraph which is made of multiple ops and
+  transforms the graph by replacing those individual ops with FusedBatchNorm op.
+  This will provide the opportunity to further fold the FusedBatchNorm with
+  convolution ops to reduce the computation steps during inference.
+  This function currently recognizes batch normalization patterns described
+  below, this could be extended if newer patterns are seen. Also, the fusion
+  is only attempted if the input graph is in NHWC format or has no format set.
+
+  Computation function:
+    (X * multiplier) + (Beta - Mean * multiplier)
+      where multiplier = rsqrt (Variance + Epsilon) * Gamma
+                    OR = rsqrt (Variance + Epsilon) when Gamma is 1
+
+  Subgraph:
+  {"Add"
+      {{"Mul"  // mul_0
+          {{"*"},  // input to apply batchnorm
+           {"Mul"  // mul_1, same op is used inside the Sub block
+              {{"Rsqrt"
+                  {"Add"
+                      {{"Const"},  // Variance
+                       {"Const"}  // Epsilon
+                      }
+                  }
+                },  // end - Rsqrt
+                {"Const"}  // Gamma
+              }
+            }  // end - mul_1
+          }
+       },  // end - mul_0
+       {"Sub"
+          {{"Const"},  // Beta
+           {"Mul"  // mul_3
+              {{"Const"},  // Mean
+               {"Mul"  // same mul_1 op as in previous block
+                  {{"Rsqrt"
+                      {"Add"
+                          {{"Const"},  // Variance
+                           {"Const"}  // Epsilon
+                          }
+                      }
+                   },  // end - Rsqrt
+                   {"Const"}  // Gamma
+                  }
+                }  // end - mul_1
+              }
+            }  // end - mul_3
+          }
+        }  // end - Sub
+      }
+  }  // end - Add
+
+  Subgraph pattern when gamma value is 1 and the gamma scaling Mul is skipped
+  {"Add"
+      {{"Mul"  // mul_0
+          {{"*"},  // input to apply batchnorma
+           {"Rsqrt"  // same Rsqrt op used in Sub block
+              {"Add"
+                 {{"Const"},  // Variance
+                  {"Const"}  // Epsilon
+                 }
+              }
+            }  // end - Rsqrt
+          }
+        },  // end - mul_0
+        {"Sub"
+          {{"Const"},  // Beta
+           {"Mul"  // mul_1
+              {{"Const"},  // Mean
+               {"Rsqrt"  // same Rsqrt op as in previous mul_0 block
+                  {"Add"
+                    {{"Const"},  // Variance
+                     {"Const"}  // Epsilon
+                    }
+                  }
+                }  // end - Rsqrt
+              }
+           }  // end - mul_1
+          }
+        }  // end - Sub
+      }
+  }  // end - Add
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with individual ops that made up of batch normalization
+    fused to FusedBatchNorm.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map:
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  # Check format and only proceed if graph is in NHWC or has no format set.
+  data_format = None
+  for node in input_graph_def.node:
+    if "data_format" in node.attr.keys():
+      data_format = node.attr["data_format"]
+      if data_format is not None and data_format.s != b"NHWC":
+        tf_logging.warn("%s in %s format, not candidate for batchnorm fusion."
+                        % (node.name, data_format.s))
+        return input_graph_def
+    else:
+      continue
+
+  nodes_to_skip = {}
+  new_ops = []
+  for node in input_graph_def.node:
+    if node.op != "Add":
+      continue
+
+    # Add (Mul, Sub) or Add (Sub, Mul)
+    input0_op = node_from_map(input_node_map, node.input[0])
+    input1_op = node_from_map(input_node_map, node.input[1])
+
+    if input0_op.op == "Mul" and input1_op.op == "Sub":
+      data_scale_mul_op = input0_op
+      bias_mean_sub_op = input1_op
+    elif input0_op.op == "Sub" and input1_op.op == "Mul":
+      bias_mean_sub_op = input0_op
+      data_scale_mul_op = input1_op
+    else:
+      continue
+
+    # Mul (input, Mul)
+    input_data_op = node_from_map(input_node_map, data_scale_mul_op.input[0])
+    scale_op = node_from_map(input_node_map, data_scale_mul_op.input[1])
+
+    if scale_op.op == "Rsqrt":
+      gamma_op = None
+      rsqrt_op = scale_op
+    elif scale_op.op == "Mul":
+      # Mul (Rsqrt, Constant_gamma)
+      rsqrt_op = node_from_map(input_node_map, scale_op.input[0])
+      gamma_op = node_from_map(input_node_map, scale_op.input[1])
+      if rsqrt_op.op != "Rsqrt":
+        continue
+      if gamma_op.op != "Const" or get_const_dim_count(gamma_op) != 1:
+        continue
+    else:
+      continue
+
+    # Sub (Constant_beta, Mul)
+    beta_op = node_from_map(input_node_map, bias_mean_sub_op.input[0])
+    mean_scale_mul_op = node_from_map(input_node_map, bias_mean_sub_op.input[1])
+    if mean_scale_mul_op.op != "Mul":
+      continue
+    if beta_op.op != "Const" or get_const_dim_count(beta_op) != 1:
+      continue
+
+    # Common scale applies to both input and running mean
+    if scale_op != node_from_map(input_node_map,
+                                 mean_scale_mul_op.input[1]):
+      continue
+
+    mean_op = node_from_map(input_node_map, mean_scale_mul_op.input[0])
+    if mean_op.op != "Const" or get_const_dim_count(mean_op) != 1:
+      continue
+
+    # Add (Constant_variance, Constant_epsilon)
+    variance_epsilon_add_op = node_from_map(input_node_map, rsqrt_op.input[0])
+    if variance_epsilon_add_op.op != "Add":
+      continue
+
+    variance_op = node_from_map(input_node_map,
+                                variance_epsilon_add_op.input[0])
+    epsilon_op = node_from_map(input_node_map,
+                               variance_epsilon_add_op.input[1])
+    if epsilon_op.op != "Const" or get_const_dim_count(epsilon_op) != 0:
+      continue
+    if variance_op.op != "Const" or get_const_dim_count(variance_op) != 1:
+      continue
+
+    epsilon = values_from_const(epsilon_op)
+
+    nodes_to_skip[node.name] = True
+    nodes_to_skip[data_scale_mul_op.name] = True
+    nodes_to_skip[bias_mean_sub_op.name] = True
+    nodes_to_skip[mean_scale_mul_op.name] = True
+    nodes_to_skip[scale_op.name] = True
+    if scale_op.op != "Rsqrt":
+      nodes_to_skip[rsqrt_op.name] = True
+    nodes_to_skip[variance_epsilon_add_op.name] = True
+
+    if gamma_op is None:
+      gamma_op = node_def_pb2.NodeDef()
+      gamma_op.op = "Const"
+      # Assign name with same root of Rsqrt op's name plus "gamma"
+      m = re.search(r"(.*)/(.*)", scale_op.name)
+      if m:
+        gamma_op.name = m.group(1) + "/gamma"
+      else:
+        gamma_op.name = scale_op.name + "/gamma"
+      gamma_op.attr["dtype"].CopyFrom(beta_op.attr["dtype"])
+      beta_value = values_from_const(beta_op)
+      gamma_op.attr["value"].CopyFrom(
+          attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
+              1, beta_value.dtype.type, beta_value.shape,
+              allow_broadcast=True)))
+      new_ops.append(gamma_op)
+
+    new_fused_batchnorm_op = node_def_pb2.NodeDef()
+    new_fused_batchnorm_op.op = "FusedBatchNorm"
+    new_fused_batchnorm_op.name = node.name
+    new_fused_batchnorm_op.attr["T"].CopyFrom(node.attr["T"])
+    new_fused_batchnorm_op.attr["is_training"].CopyFrom(
+        attr_value_pb2.AttrValue(b=False))
+    new_fused_batchnorm_op.attr["epsilon"].CopyFrom(
+        attr_value_pb2.AttrValue(f=epsilon.tolist()))
+    if data_format is not None:
+      new_fused_batchnorm_op.attr["data_format"].CopyFrom(data_format)
+    new_fused_batchnorm_op.input.extend([input_data_op.name, gamma_op.name,
+                                         beta_op.name, mean_op.name,
+                                         variance_op.name])
+
+    new_ops.append(new_fused_batchnorm_op)
+
+  result_graph_def = graph_pb2.GraphDef()
+  for node in input_graph_def.node:
+    if node.name in nodes_to_skip:
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    retained_input = []
+    for input_node in new_node.input:
+      if not input_node.startswith("^") or input_node[1:] not in nodes_to_skip:
+        retained_input.append(input_node)
+    new_node.input[:] = retained_input
+    result_graph_def.node.append(new_node)
+
+  result_graph_def.node.extend(new_ops)
+  result_graph_def.versions.CopyFrom(input_graph_def.versions)
   return result_graph_def
