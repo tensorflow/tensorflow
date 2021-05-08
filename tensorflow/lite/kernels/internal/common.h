@@ -37,12 +37,21 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
                                 float* output_activation_max) {
   switch (ac) {
     case FusedActivationFunctionType::kNone:
-      *output_activation_min = std::numeric_limits<float>::lowest();
-      *output_activation_max = std::numeric_limits<float>::max();
+      // At least for most common floating point representations such as
+      // IEC 559/IEEE 754 and bfloat16, -infinity is the representation of
+      // negative infinity. Otherwise, there is no such guarantee.
+      *output_activation_min = std::numeric_limits<float>::has_infinity
+                                   ? -std::numeric_limits<float>::infinity()
+                                   : std::numeric_limits<float>::lowest();
+      *output_activation_max = std::numeric_limits<float>::has_infinity
+                                   ? std::numeric_limits<float>::infinity()
+                                   : std::numeric_limits<float>::max();
       break;
     case FusedActivationFunctionType::kRelu:
       *output_activation_min = 0.f;
-      *output_activation_max = std::numeric_limits<float>::max();
+      *output_activation_max = std::numeric_limits<float>::has_infinity
+                                   ? std::numeric_limits<float>::infinity()
+                                   : std::numeric_limits<float>::max();
       break;
     case FusedActivationFunctionType::kRelu1:
       *output_activation_min = -1.f;
