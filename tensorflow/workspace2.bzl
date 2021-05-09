@@ -682,12 +682,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "lmdb",
         build_file = "//third_party:lmdb.BUILD",
-        sha256 = "f3927859882eb608868c8c31586bb7eb84562a40a6bf5cc3e13b6b564641ea28",
-        strip_prefix = "lmdb-LMDB_0.9.22/libraries/liblmdb",
+        sha256 = "22054926b426c66d8f2bc22071365df6e35f3aacf19ad943bc6167d4cae3bebb",
+        strip_prefix = "lmdb-LMDB_0.9.29/libraries/liblmdb",
         system_build_file = "//third_party/systemlibs:lmdb.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
-            "https://github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/LMDB/lmdb/archive/LMDB_0.9.29.tar.gz",
+            "https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_0.9.29.tar.gz",
         ],
     )
 
