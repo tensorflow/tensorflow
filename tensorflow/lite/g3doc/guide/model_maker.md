@@ -11,11 +11,12 @@ the amount of training data required and shorten the training time.
 The Model Maker library currently supports the following ML tasks. Click the
 links below for guides on how to train the model.
 
-Supported Tasks                                                                                          | Task Utility
--------------------------------------------------------------------------------------------------------- | ------------
-Image Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification) | Classify images into predefined categories.
-Text Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification)   | Classify text into predefined categories.
-BERT Question Answer [guide](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer)      | Find the answer in a certain context for a given question with BERT.
+Supported Tasks                                                                                                                            | Task Utility
+------------------------------------------------------------------------------------------------------------------------------------------ | ------------
+Image Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification)                                   | Classify images into predefined categories.
+Text Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification)                                     | Classify text into predefined categories.
+BERT Question Answer [guide](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer)                                        | Find the answer in a certain context for a given question with BERT.
+Recommendation [demo](https://github.com/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/recommendation_demo.py) | Recommend items based on the context information for on-device scenario.
 
 ## End-to-End Example
 
@@ -67,3 +68,8 @@ git clone https://github.com/tensorflow/examples
 cd examples/tensorflow_examples/lite/model_maker/pip_package
 pip install -e .
 ```
+
+## Python API Reference
+
+You can find out Model Maker's public APIs in
+[API reference](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker).

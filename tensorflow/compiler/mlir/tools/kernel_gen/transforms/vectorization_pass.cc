@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "mlir/Analysis/BufferAliasAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
@@ -248,7 +248,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 // alias or writing data to an alias but never reading from or interacting with
 // the memref in other ways.
 void RemoveDeadMemrefCode(FuncOp func) {
-  BufferAliasAnalysis baa(func);
+  BufferViewFlowAnalysis baa(func);
   llvm::SmallSet<Operation *, 8> to_remove;
 
   // Gather all operations interacting with memrefs guaranteed to never be read

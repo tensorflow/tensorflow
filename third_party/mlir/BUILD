@@ -4448,6 +4448,7 @@ cc_library(
         ":TensorDialect",
         ":TensorTransforms",
         ":TosaDialect",
+        ":TosaToLinalg",
         ":Transforms",
         ":TransformsPassIncGen",
         ":VectorOps",
@@ -4470,6 +4471,10 @@ cc_binary(
     name = "mlir-lsp-server",
     srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
     includes = ["include"],
+    visibility = [
+        ":friends",
+        "//devtools/cider/extensions/mlird:__pkg__",
+    ],
     deps = [
         ":AllPassesAndDialects",
         ":IR",
@@ -4512,9 +4517,7 @@ cc_binary(
 cc_library(
     name = "MlirJitRunner",
     srcs = ["lib/ExecutionEngine/JitRunner.cpp"],
-    hdrs = [
-        "include/mlir/ExecutionEngine/JitRunner.h",
-    ],
+    hdrs = ["include/mlir/ExecutionEngine/JitRunner.h"],
     includes = ["include"],
     deps = [
         ":AllPassesAndDialects",

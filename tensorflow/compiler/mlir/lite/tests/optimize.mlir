@@ -1402,6 +1402,26 @@ func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: return %[[RESULT]]
 }
 
+func @ConvertPowHalfToSqrt(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.500000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPowHalfToSqrt
+// CHECK: %[[RESULT:.*]] = "tfl.sqrt"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
+func @ConvertPowMinusHalfToRsqrt(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<-0.500000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPowMinusHalfToRsqrt
+// CHECK: %[[RESULT:.*]] = "tfl.rsqrt"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
 func @ConvertIdentityGatherNdOp(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
   %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
   %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3xf32>, tensor<4x1xi32>) -> tensor<4x3xf32>

@@ -486,7 +486,8 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
 //     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
 //             frobenius_norm + diag_norm)
 //   return A, V
-XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
+XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
+                              bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -587,7 +588,9 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
 
-    TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
+    if (sort_eigenvalues) {
+      TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
+    }
     return Tuple(builder, {v, w});
   });
 }
@@ -628,14 +631,16 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
         absl::StrSplit(instruction->raw_backend_config_string(), ',');
     int lower;
     int64 max_iter;
+    int sort_eigenvalues;
     float tol;
-    if (config_strs.size() != 3 || !absl::SimpleAtoi(config_strs[0], &lower) ||
-        !absl::SimpleAtoi(config_strs[1], &max_iter) ||
-        !absl::SimpleAtof(config_strs[2], &tol)) {
+    if (config_strs.size() != 4 || !absl::SimpleAtoi(config_strs[0], &lower) ||
+        !absl::SimpleAtoi(config_strs[1], &sort_eigenvalues) ||
+        !absl::SimpleAtoi(config_strs[2], &max_iter) ||
+        !absl::SimpleAtof(config_strs[3], &tol)) {
       return Internal("Unable to parse arguments to Eigh custom call, got: %s",
                       instruction->raw_backend_config_string());
     }
-    XlaOp result = BuildEigh(a, lower, max_iter, tol);
+    XlaOp result = BuildEigh(a, lower, max_iter, tol, sort_eigenvalues);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
 
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,

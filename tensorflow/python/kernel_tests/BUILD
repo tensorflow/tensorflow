@@ -2188,6 +2188,7 @@ cuda_py_test(
     name = "linalg_ops_test",
     size = "medium",
     srcs = ["linalg_ops_test.py"],
+    shard_count = 4,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",

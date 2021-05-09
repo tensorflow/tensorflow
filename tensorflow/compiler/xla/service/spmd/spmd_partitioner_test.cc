@@ -7783,6 +7783,80 @@ ENTRY %xla_computation_apply_fn__4.61 (parameter.7: f32[3,16,16,16,16,132]) -> f
   }
 }
 
+TEST_F(SpmdPartitioningTest, PadWrapWithNegatePattern) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]0,1}
+  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]0,1}
+  %negate.2 = f32[1,2] negate(f32[1,2] %slice.16), sharding={devices=[1,2]0,1}
+  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]0,1}
+  %negate.3 = f32[1,2] negate(f32[1,2] %slice.17), sharding={devices=[1,2]0,1}
+  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %negate.2, f32[1,18] %parameter.1, f32[1,2] %negate.3), dimensions={1}, sharding={devices=[1,2]0,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  // Check that the partitioned code does not have all-reduce or trivial
+  // collective permute
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+      EXPECT_NE(hlo->opcode(), HloOpcode::kAllReduce) << hlo->ToString();
+    }
+  }
+}
+
+TEST_F(SpmdPartitioningTest, PadWrapWithMultipleModifiersPattern) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]0,1}
+  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]0,1}
+  %mod0.16 = f32[1,2] rsqrt(f32[1,2] %slice.16), sharding={devices=[1,2]0,1}
+  %mod1.16 = f32[1,2] sine(f32[1,2] %mod0.16), sharding={devices=[1,2]0,1}
+  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]0,1}
+  %mod0.17 = f16[1,2] convert(f32[1,2] %slice.17), sharding={devices=[1,2]0,1}
+  %mod1.17 = f16[1,2] cosine(f16[1,2] %mod0.17), sharding={devices=[1,2]0,1}
+  %mod2.17 = f32[1,2] convert(f16[1,2] %mod1.17), sharding={devices=[1,2]0,1}
+  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %mod1.16, f32[1,18] %parameter.1, f32[1,2] %mod2.17), dimensions={1}, sharding={devices=[1,2]0,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  std::cerr << module->ToString();
+
+  // Check that the partitioned code does not have all-reduce or trivial
+  // collective permute. Also make sure modifiers have the right dependencies.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      const HloOpcode op = hlo->opcode();
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+      EXPECT_NE(op, HloOpcode::kAllReduce) << hlo->ToString();
+      if (hlo->operand_count() != 1) {
+        continue;
+      }
+      const PrimitiveType type = hlo->shape().element_type();
+      const HloOpcode child_op = hlo->operand(0)->opcode();
+      const PrimitiveType child_type = hlo->operand(0)->shape().element_type();
+
+      if (op == HloOpcode::kSin) {
+        EXPECT_EQ(child_op, HloOpcode::kRsqrt);
+      } else if (op == HloOpcode::kConvert && type == F32) {
+        EXPECT_EQ(child_op, HloOpcode::kCos);
+        EXPECT_EQ(child_type, F16);
+      } else if (op == HloOpcode::kCos) {
+        EXPECT_EQ(child_op, HloOpcode::kConvert);
+        EXPECT_EQ(child_type, F16);
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

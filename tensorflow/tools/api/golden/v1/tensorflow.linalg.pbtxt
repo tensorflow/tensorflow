@@ -125,6 +125,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "eigh_tridiagonal"
+    argspec: "args=[\'alpha\', \'beta\', \'eigvals_only\', \'select\', \'select_range\', \'tol\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'a\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "eigvalsh"
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
