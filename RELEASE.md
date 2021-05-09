@@ -1,24 +1,8 @@
 # Release 2.5.0
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-## Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
-  `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
-
-## Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNWON LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
 ## Major Features and Improvements
 
-* <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-* <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
+* Support for Python3.9 has been added.
 * TPU embedding support
   * Added `profile_data_directory` to `EmbeddingConfigSpec` in
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
@@ -67,24 +51,42 @@
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
       * Register custom graph optimization passes with
-        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
-* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md).
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN)
   CPU performance optimizations from
   [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
-  are now available in the official x86-64 Linux and Windows builds. 
+  are now available in the official x86-64 Linux and Windows builds.
     * They are off by default. Enable them by setting the environment variable
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been
       sufficiently tested with GPUs yet.
+* TensorFlow pip packages are now built with CUDA11.2 and cuDNN 8.1.0      
+      
+## Breaking Changes
+
+* The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
+  `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
 ## Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
 *   `tf.keras`:
-    *   Improvements to Keras preprocessing layers:
-        *   Discretization combiner implemented, with additional arg `epsilon`.
+    *   Preprocessing layers API consistency changes:
+        *   `StringLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`.
+        *   `IntegerLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`. Renamed `max_values`, `oov_value` and
+            `mask_value` to `max_tokens`, `oov_token` and `mask_token` to align
+            with `StringLookup` and `TextVectorization`.
+        *   `TextVectorization` default for `pad_to_max_tokens` switched to
+            False.
+        *   `CategoryEncoding` no longer supports `adapt`, `IntegerLookup`
+            now supports equivalent functionality. `max_tokens` argument renamed
+            to `num_tokens`.
+        *   `Discretization` added `num_bins` argument for learning bins
+            boundaries through calling `adapt` on a dataset. Renamed `bins`
+            argument to `bin_boundaries` for specifying bins without `adapt`.
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
     *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
@@ -108,6 +110,7 @@
         the input pipeline to insert sharding transformations.
     *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
         boundaries.
+        
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -157,7 +160,7 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
-  *  The Python TF Lite Interpreter bindings now have an option
+    *  The Python TF Lite Interpreter bindings now has an option
         `experimental_preserve_all_tensors` to aid in debugging conversion.
     *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
        AVX support.
@@ -175,7 +178,7 @@
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
     * Added `tf.config.experimental.get_memory_info`, returning a dict with the
-      current and peak memory usage. Deprecated 
+      current and peak memory usage. Deprecated
       `tf.config.experimental.get_memory_usage` in favor of this new function.
     *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
         control Tensor-Float-32 evaluation in RNNs.
@@ -185,9 +188,9 @@
         https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
 
 *   `tf.summary`:
-  *   New `tf.summary.graph` allows manual write of TensorFlow graph
-      (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
-      replacement for the trace-based API.
+    *   New `tf.summary.graph` allows manual write of TensorFlow graph
+        (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
+        replacement for the trace-based API.
 
 *   Set `/d2ReducedOptimizeHugeFunctions` by default for Windows builds. This
     provides a big compile-time speedup, and effectively raises the minimum
@@ -221,10 +224,39 @@
         the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
         FallbackEnabled mode when an analysis of the graph determines
         that the graph does not have unsupported features.
-
+*   Deterministic Op Functionality:
+    *   Add determinism-unimplemented exception-throwing to the segment-sum ops.
+        When the environment variable `TF_DETERMINISTIC_OPS` is set to `"true"`
+        or `"1"` (when op-determinism is expected), an attempt to run the
+        folowing ops on a GPU will throw `tf.errors.UnimplementedError` (with an
+        understandable message) when `data` is a floating-point type, including
+        complex types (if supported): `tf.math.segment_prod`,
+        `tf.math.segment_sum`, `tf.math.unsorted_segment_mean`,
+        `tf.math.unsorted_segment_sqrt_n`, `tf.math.unsorted_segment_prod`,
+        `tf.math.unsorted_segment_sum`, and therefore also
+        `tf.convert_to_tensor` when `value` is of type `tf.IndexedSlices` (such
+        as in the backprop though `tf.gather` into a dense embedding). See
+        issue [39751](https://github.com/tensorflow/tensorflow/issues/39751)
+        which this change addresses, but does not solve. This exception-throwing
+        behavior can be disabled by setting the environment variable
+        `TF_DISABLE_SEGMENT_REDUCTION_OP_DETERMINISM_EXCEPTIONS` to `"true"` or
+        `"1"`. For more information about these changes, see the description in
+        pull request
+        [47772](https://github.com/tensorflow/tensorflow/pull/47772).
+    *   In previous versions of TensorFlow, when a GPU was available,
+        `tf.sparse.sparse_dense_matmul` introduced truly random noise in the
+        forward path for data of type `tf.float32` but not for data of type
+        `tf.float64` (for which there was no GPU implementation). In this
+        current release, GPU support for other floating-point types
+        (`tf.float16`, `tf.float64`, `tf.complex64`, and `tf.complex128`) has
+        been added for this op. If you were relying on the determinism of the
+        `tf.float64` CPU implementation being automatically selected because of
+        the absence of the `tf.float64` GPU implementation, you with either
+        need to force the op to run on the CPU or use a different data type.
+        
 * Other
-    *   Adding show_debug_info to mlir.convert_graph_def and
-        mlir.convert_function.
+    *   Added `show_debug_info` to `mlir.convert_graph_def` and
+        `mlir.convert_function`.
     *   Added [Arm Compute Library (ACL)](https://github.com/ARM-software/ComputeLibrary)
         support to `--config=mkl_aarch64` build.
 
@@ -232,7 +264,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+8bitmp3, Aaron S. Mondal, Abhilash Mahendrakar, Abhinav Upadhyay, Abhishek Kulkarni, Abolfazl Shahbazi, Adam Hillier, Aditya Kane, Ag Ramesh, ahmedsabie, Albert Villanova Del Moral, Aleksey Vitebskiy, Alex Hoffman, Alexander Bayandin, Alfie Edwards, Aman Kishore, Amogh Joshi, andreABbauer, Andrew Goodbody, Andrzej Pomirski, Artemiy Ryabinkov, Ashish Jha, ather, Ayan Moitra, Bairen Yi, Bart Ribbers, Bas Aarts, Behzad Abghari, Ben Arnao, Ben Barsdell, Benjamin Klimczak, bhack, Brendan Collins, Can Wang, Cheng Ren, Chris Leary, Chris Olivier, Clemens Giuliani, Cloud Han, Corey Cole, Cui, Yifeng, Cuong V. Nguyen, Daniel Moore, Dawid Wojciechowski, Ddavis-2015, Dean Wyatte, Denisa Roberts, dependabot[bot], Dmitry Volodin, Dominic Jack, Duncan Riach, dushuai, Elena Zhelezina, Eli Osherovich, Erik Smistad, ewsn1593, Felix Fent, fo40225, François Chollet, Frederic Bastien, Freedom" Koan-Sin Tan, fsx950223, ganand1, gbaned, Georgiy Manuilov, gerbauz, Guillaume Klein, Guozhong Zhuang, Harry Slatyer, Harsh188, henri, Henri Woodcock, Hiran Sarkar, Hollow Man, Håkon Sandsmark, I Wayan Dharmana, icysapphire, Ikko Ashimine, Jab Hofmeier, Jack Hessel, Jacob Valdez, Jakub Jatczak, James Bernardi, Jared Smolens, Jason Zaman, jedlimlx, Jenny Plunkett, Jens Elofsson, Jerry Shih, jgehw, Jia Fu Low, Jim Fisher, jpodivin, Julien Stephan, Jungsub Lim, Junha Park, Junhyuk So, justkw, Kaixi Hou, kashyapraval, Kasra Bigdeli, Kazuaki Ishizaki, Keith Mok, Kevin Cheng, kopytjuk, Kristian Hartikainen, ksood12345, Kulin Seth, kushanam, latyas, Lequn Chen, Leslie-Fang, Long M. Lưu, Lukas Geiger, machineko, Mahmoud Abuzaina, Manish, Mao Yunfei, Maozhou, Ge, Marcin Juszkiewicz, Marcin Owsiany, Marconi Jiang, Marcos Pereira, Maria Romanenko Vexlard, Maria Vexlard, Marius Brehler, marload, Martin Kubovčík, Matej, Mateusz Holenko, Maxiwell S. Garcia, Mazhar, mazharul, mbhuiyan, mdfaijul, Michael Gielda, Michael Kuchnik, Michal Szutenberg, Mikhail Stepanov, Milan Straka, Mitchel Humpherys, Mohamed Moselhy, Mohamed Nour Abouelseoud, Måns Bermell, Måns Nilsson, Nathan Luehr, Nico Jahn, Niroop Ammbashankar, Oceania2018, Omri Steiner, Orivej Desh, Oskar Flordal, oujiafan, Patrik Laurell, Paul B. Isaac'S, Paul Klinger, Pawel Piskorski, Pedro Marques, Phat Tran, Piotr Zierhoffer, piyushdatta, Pnikam-Cad, Prashant Kumar, Prateek Gupta, PratsBhatt, Pravin Karandikar, qqq.jq, QQ喵, Quintin, Rama Ketineni, ravikyram, Rehan Guha, rhdong, rmothukuru, Roger Cheng, Rohit Santhanam, rposts, Rsanthanam-Amd, rsun, Rsun-Bdti, Ryan Kuester, ryanking13, Saduf2019, Sami Kama, Samuel Marks, Scott Tseng, Sean Moriarity, Sergey Popov, Sergii Khomenko, Sheng, Yang, shwetaoj, Sidong-Wei, Simon Maurer, Simrit Kaur, Srini511, Srinivasan Narayanamoorthy, Stephan, Stephen Matthews, Sungmann Cho, Sunoru, Suraj Sudhir, Suraj Upadhyay, Taebum Kim, Takayoshi Koizumi, Tamas Bela Feher, Teng Lu, Thibaut Goetghebuer-Planchon, Tomwildenhain-Microsoft, Tony, Traun Leyden, Trent Lo, TVLIgnacy, Tzu-Wei Sung, vaibhav, Vignesh Kothapalli, Vikram Dattu, viktprog, Vinayaka Bandishti, Vincent Abriou, Vishakha Agrawal, Vivek Panyam, Vladimir Silyaev, Võ Văn Nghĩa, wamuir, Wang, Yanzhang, wangsiyu, Waqar Hameed, wxinix, Xiao Yang, xiaohong1031, Xiaoming (Jason) Cui, Xinan Jiang, Yair Ehrenwald, Yajush Vyas, Yasir Modak, Yimei Sun, Yong Tang, Yosshi999, youshenmebutuo, yqtianust, Yuan Tang, yuanbopeng, Yuriy Chernyshov, Yuta Fukasawa, Zachary Deane-Mayer, Zeno Gantner, Zhoulong Jiang, zhuyie, zilinzhu, 彭震东
 
 # Release 2.4.1
 
