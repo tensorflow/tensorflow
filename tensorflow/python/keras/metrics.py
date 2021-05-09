@@ -617,13 +617,29 @@ class MeanMetricWrapper(Mean):
       **kwargs)`.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
+    pred_tranform_function: (Optional) Tensor function to transform y_pred before updating the metric state.
+      This function accepts one argument with tensor data type
     **kwargs: The keyword arguments that are passed on to `fn`.
+
+  Usage of 'pred_transform_function':
+    `y_true`: Ground truth values, e.g. [5, 4, 4, 3, 2]
+    `y_pred`: The predicted values, e.g. [4.92, 4.30, 3.98, 2.78, 1.98]
+    `pred_transform_function`: Tensor function to transform `y_pred`, accepts one argument,
+      for example `pred_transform_function`: transform_fn
+
+      where
+      
+      def transform_fn(x):
+        return tf.math.round(tf.clip_by_value(x, 0, 5))
+    
+    `y_pred` will be transformed into [5, 4, 4, 3, 2] in the metric calculation.
   """
 
-  def __init__(self, fn, name=None, dtype=None, **kwargs):
+  def __init__(self, fn, name=None, dtype=None, pred_transform_function=None, **kwargs):
     super(MeanMetricWrapper, self).__init__(name=name, dtype=dtype)
     self._fn = fn
     self._fn_kwargs = kwargs
+    self._pred_transform_function = pred_transform_function
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates metric statistics.
@@ -648,6 +664,8 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
+    if self._pred_transform_function:
+      y_pred = self._pred_transform_function(y_pred)
     [y_true, y_pred], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_true, y_pred], sample_weight)
@@ -697,6 +715,8 @@ class Accuracy(MeanMetricWrapper):
   Args:
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
+    pred_tranform_function: (Optional) Tensor function to transform y_pred before updating the metric state.
+      This function accepts one argument with tensor data type
 
   Standalone usage:
 
@@ -718,10 +738,17 @@ class Accuracy(MeanMetricWrapper):
                 loss='mse',
                 metrics=[tf.keras.metrics.Accuracy()])
   ```
+
+  Usage with `pred_transform_function` argument:
+  >>> def transform_fn(x): return tf.math.round(tf.clip_by_value(x, 0, 5))
+  >>> m = tf.keras.metrics.Accuracy(pred_transform_function = transform_fn)
+  >>> m.update_state([[1], [2], [3], [4]], [[0.12], [2.10], [2.99], [4.12]])
+  >>> m.result().numpy()
+  0.75 # [[0.12], [2.10], [2.99], [4.12]] transformed to [[0], [2], [3], [4]]
   """
 
-  def __init__(self, name='accuracy', dtype=None):
-    super(Accuracy, self).__init__(accuracy, name, dtype=dtype)
+  def __init__(self, name='accuracy', pred_transform_function=None, dtype=None):
+    super(Accuracy, self).__init__(accuracy, name, dtype=dtype, pred_transform_function=pred_transform_function)
 
 
 @keras_export('keras.metrics.BinaryAccuracy')
