@@ -1,6 +1,6 @@
-diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
---- a/icu4c/source/common/udata.cpp	2019-04-17 12:03:04.000000000 +0000
-+++ b/icu4c/source/common/udata.cpp	2020-07-14 23:49:37.836668741 +0000
+diff -ruN a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
+--- a/icu4c/source/common/udata.cpp	2021-05-09 19:28:29.342798850 +0000
++++ b/icu4c/source/common/udata.cpp	2021-05-09 19:35:03.859262671 +0000
 @@ -18,11 +18,10 @@
  
  #include "unicode/utypes.h"  /* U_PLATFORM etc. */
@@ -17,7 +17,7 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
  #endif
  
  #include "unicode/putil.h"
-@@ -649,10 +648,9 @@
+@@ -651,10 +650,9 @@
   * partial-data-library access functions where each returns a pointer
   * to its data package, if it is linked in.
   */
@@ -31,7 +31,7 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
  
  /*----------------------------------------------------------------------*
   *                                                                      *
-@@ -710,10 +708,11 @@
+@@ -713,10 +711,10 @@
          if (uprv_getICUData_collation) {
              setCommonICUDataPointer(uprv_getICUData_collation(), FALSE, pErrorCode);
          }
@@ -40,13 +40,12 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
              setCommonICUDataPointer(uprv_getICUData_conversion(), FALSE, pErrorCode);
          }
 -        */
-+
- #if U_PLATFORM_HAS_WINUWP_API == 0 // Windows UWP Platform does not support dll icu data at this time
+ #if !defined(ICU_DATA_DIR_WINDOWS)
+ // When using the Windows system data, we expect only a single data file.
          setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
-         {
-diff -ru a/icu4c/source/common/unicode/uconfig.h b/icu4c/source/common/unicode/uconfig.h
---- a/icu4c/source/common/unicode/uconfig.h	2019-04-17 12:03:04.000000000 +0000
-+++ b/icu4c/source/common/unicode/uconfig.h	2020-07-14 23:49:37.836668741 +0000
+diff -ruN a/icu4c/source/common/unicode/uconfig.h b/icu4c/source/common/unicode/uconfig.h
+--- a/icu4c/source/common/unicode/uconfig.h	2021-05-09 19:28:29.346798604 +0000
++++ b/icu4c/source/common/unicode/uconfig.h	2021-05-09 19:29:48.594193508 +0000
 @@ -55,6 +55,11 @@
  #include "uconfig_local.h"
  #endif
