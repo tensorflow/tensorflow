@@ -163,6 +163,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   ...     values, value_rowids=[0, 0, 0, 0, 2, 2, 2, 3], nrows=5)
   >>> rt4 = RaggedTensor.from_row_starts(values, row_starts=[0, 4, 4, 7, 8])
   >>> rt5 = RaggedTensor.from_row_limits(values, row_limits=[4, 4, 7, 8, 8])
+  >>> rt6 = RaggedTensor.from_uniform_row_length(values, uniform_row_length=2)
 
   ### Multiple Ragged Dimensions
 
