@@ -1086,7 +1086,6 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

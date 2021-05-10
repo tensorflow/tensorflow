@@ -16,7 +16,6 @@
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
 
 import os
-from absl import logging
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -33,6 +32,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.utils import dataset_creator
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
