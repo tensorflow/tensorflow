@@ -1568,7 +1568,7 @@ class BinaryCrossentropyTest(test.TestCase):
     #        = [(0 + 15.33) / 2, (0 + 0) / 2]
     # Reduced metric = 7.665 / 2
 
-    self.assertAllClose(self.evaluate(result), 3.9855, atol=1e-3)
+    self.assertAllClose(self.evaluate(result), 3.833, atol=1e-3)
 
   def test_unweighted_with_logits(self):
     bce_obj = metrics.BinaryCrossentropy(from_logits=True)
@@ -1611,7 +1611,7 @@ class BinaryCrossentropyTest(test.TestCase):
     # Weighted metric = [7.665 * 1.5, 0]
     # Reduced metric = 7.665 * 1.5 / (1.5 + 2)
 
-    self.assertAllClose(self.evaluate(result), 3.4162, atol=1e-3)
+    self.assertAllClose(self.evaluate(result), 3.285, atol=1e-3)
 
   def test_weighted_from_logits(self):
     bce_obj = metrics.BinaryCrossentropy(from_logits=True)
