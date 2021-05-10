@@ -18,6 +18,7 @@
     # This file was assembled from multiple pieces, whose use is documented
     # throughout. Please refer to the TensorFlow dockerfiles documentation
     # for more information.
+    #
 
 # Number of days of inactivity before an Issue or Pull Request becomes stale
 daysUntilStale: 7
