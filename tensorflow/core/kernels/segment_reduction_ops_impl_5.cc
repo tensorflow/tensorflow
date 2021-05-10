@@ -102,6 +102,14 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
 REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
+// TODO(benbarsdell): These kernels are disabled on Windows as a workaround for
+// a CI build error: "formal parameter with requested alignment of 128 won't be
+// aligned". The root cause is suspected to be an aligned type (AlignedVector)
+// being passed to a function by value, possibly inside the CUB library
+// somewhere, but I have not yet been able to reproduce it in isolation outside
+// of the GitHub CI.
+#if !defined(PLATFORM_WINDOWS)
+
 #define REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE(type, index_type) \
   REGISTER_GPU_SPARSE_KERNELS(type, index_type, int32)                         \
   REGISTER_GPU_SPARSE_KERNELS(type, index_type, int64)
@@ -171,6 +179,8 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
           GPUDevice, type, index_type, segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
+
+#endif  // !defined(PLATFORM_WINDOWS)
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \
