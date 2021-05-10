@@ -710,7 +710,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
     OP_REQUIRES(
         context, out_grad_backprop.NumElements() > 0,
         errors::InvalidArgument("received empty tensor out_grad_backprop: ",
-                                out_grad_backprop.DebugString()));
+                                out_grad_backprop.DebugString()))
     OP_REQUIRES(context,
                 tensor_in.NumElements() == out_grad_backprop.NumElements(),
                 errors::InvalidArgument("tensor_in and out_grad_backprop must "
