@@ -78,6 +78,7 @@ tensorflow/lite/experimental/microfrontend/lib/fft.h \
 tensorflow/lite/experimental/microfrontend/lib/fft_util.h \
 tensorflow/lite/experimental/microfrontend/lib/filterbank.h \
 tensorflow/lite/experimental/microfrontend/lib/filterbank_util.h \
+tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h \
 tensorflow/lite/experimental/microfrontend/lib/frontend.h \
 tensorflow/lite/experimental/microfrontend/lib/frontend_util.h \
 tensorflow/lite/experimental/microfrontend/lib/log_lut.h \
