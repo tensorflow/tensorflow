@@ -471,6 +471,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
     ],
