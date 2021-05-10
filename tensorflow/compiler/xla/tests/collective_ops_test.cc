@@ -973,5 +973,37 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
   }
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    p0 = u32[2, 1] broadcast(id), dimensions={}
+    p1 = f32[2, 1] convert(p0)
+    allgather = (u32[2, 2], f32[2, 2]) all-gather(p0, p1), dimensions={1}
+    ag0 = u32[2, 2] get-tuple-element(allgather), index=0
+    ag1 = f32[2, 2] get-tuple-element(allgather), index=1
+    r0 = u32[4] reshape(ag0)
+    r1 = f32[4] reshape(ag1)
+    ROOT out = (u32[4], f32[4]) tuple(r0, r1)
+  }
+  )";
+  const int64 kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32>({0, 1, 0, 1}, rs[0]);
+    LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, rs[1],
+                                         ErrorSpec{1e-5, 1e-5});
+  }
+}
+
 }  // namespace
 }  // namespace xla
