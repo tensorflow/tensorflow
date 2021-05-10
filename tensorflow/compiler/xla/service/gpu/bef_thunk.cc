@@ -41,7 +41,7 @@ namespace {
 
 #if BEF_THUNKS
 StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
-    mlir::Operation* op) {
+    mlir::Operation* op, tfrt::HostContext* host) {
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(op->getContext()));
   if (tensorflow::LhloGpuOpToTfrtCudaModule(op, module.get()).failed()) {
@@ -56,7 +56,6 @@ StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
   }
 
   auto buffer = tfrt::AlignedBuffer<8>(bef.data(), bef.data() + bef.size());
-  auto* host = runtime().core_runtime()->GetHostContext();
   // TODO(hanbinyoon): Programmatically get the function name after b/186927461.
   return absl::make_unique<tfrt::gpu::Program>(std::move(buffer),
                                                "main_sync_region", host);
@@ -83,7 +82,9 @@ StatusOr<std::unique_ptr<BefThunk>> BefThunk::Create(
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto thunk = absl::WrapUnique(
       new BefThunk(thunk_info, kind, std::move(inputs), std::move(outputs)));
-  TF_ASSIGN_OR_RETURN(thunk->program_, ConvertToGpuProgram(op));
+  TF_ASSIGN_OR_RETURN(
+      thunk->gpu_program_,
+      ConvertToGpuProgram(op, runtime().core_runtime()->GetHostContext()));
   return thunk;
 #endif  // BEF_THUNKS
 }
@@ -148,7 +149,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // TODO(hanbinyoon): BorrowedGpuStream releases context/stream information
   // upon destruction. Change it to not use wrapper::OwningContext and
   // wrapper::OwningStream.
-  host->Await(chain);
+  // TODO(b/184696034): Remove this. Right now we need this to ensure kernels
+  // in bef function have been dispatched to stream.
+  host->Quiesce();
   return Status::OK();
 #endif  // BEF_THUNKS
 }

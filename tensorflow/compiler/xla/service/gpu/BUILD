@@ -590,7 +590,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
     ]),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_using_bef_thunks(["-DBEF_THUNKS=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
