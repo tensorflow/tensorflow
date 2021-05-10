@@ -91,6 +91,15 @@ class CUDABlas : public blas::BlasSupport {
                           bool pointer_mode_host, bool err_on_failure,
                           cublasMath_t math_type, Args... args);
 
+  // Same as above, but returns Status.
+  template <typename... Args>
+  port::Status DoBlasInternalImplStatus(Args... args) {
+    if (!DoBlasInternalImpl(args...)) {
+      return port::InternalError("Failed calling cuBLAS");
+    }
+    return port::Status::OK();
+  }
+
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>
@@ -111,16 +120,6 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, Scalar beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
-
-  // Helper function for implementing DoBlasGemmWithAlgorithm.
-  template <typename InT, typename OutT, typename CompT>
-  bool DoBlasGemmWithAlgorithmImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const HostOrDeviceScalar<CompT> &alpha,
-      const DeviceMemory<InT> &a, int lda, const DeviceMemory<InT> &b, int ldb,
-      const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>

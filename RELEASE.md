@@ -11,6 +11,12 @@
   recommended to use the
   [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
   instead.
+
+* `tf.lite`:
+  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
+  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
+  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -33,10 +39,6 @@
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
-* `tf.saved_model`:
-    *   SavedModels can now save custom gradients. Use the option
-        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature.
 
 ## Bug Fixes and Other Changes
 
@@ -50,10 +52,12 @@
         lower overall memory usage, and a cleaner API. It does not require
         specifying a `delete_key` and `empty_key` that cannot be inserted into
         the table.
-   *    Added support for specifying number of subdivisions in all reduce host
+    *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
-   *   SavedModel
+    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
+        Hermitian tridiagonal matrix.
+    *   SavedModel
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.
         *   Added a SavedModel load option to allow restoring partial

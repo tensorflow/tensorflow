@@ -87,7 +87,6 @@ DECL_CONVERT_OP(FloorDiv);
 DECL_CONVERT_OP(AddN);
 DECL_CONVERT_OP(AveragePool2D);
 DECL_CONVERT_OP(MaxPool2D);
-DECL_CONVERT_OP(Concatenation);
 DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Rank);
 DECL_CONVERT_OP(Shape);
@@ -109,7 +108,6 @@ DECL_CONVERT_OP(DepthwiseConv2D);
 DECL_CONVERT_OP(FullyConnected);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
-DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Transpose);
 DECL_CONVERT_OP(Tile);
@@ -1554,31 +1552,6 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_concat_op = cast<TFL::ConcatenationOp>(op);
-
-  SmallVector<Value, 8> values(tfl_concat_op.values());
-
-  IntegerAttr axis_attr;
-  {
-    auto tmpAttr = tfl_concat_op.axisAttr();
-    if (!tmpAttr) {
-      tmpAttr = rewriter.getI64IntegerAttr(0);
-    }
-    axis_attr = tmpAttr;
-  }
-  int32_t axis = axis_attr.getInt();
-
-  llvm::Optional<Value> result =
-      convertConcatV2Op(rewriter, op, tfl_concat_op.getResult(), values, axis);
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
-  return success();
-}
-
 LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
@@ -2001,31 +1974,6 @@ LogicalResult ConvertTFLTransposeOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<tosa::TransposeOp>(
       op, output_type, tfl_transpose_op.input(), tfl_transpose_op.perm());
-
-  return success();
-}
-
-LogicalResult ConvertTFLPackOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_pack_op = cast<TFL::PackOp>(op);
-
-  SmallVector<Value, 8> inputs(tfl_pack_op.values());
-  assert(inputs.size() >= 2);
-
-  IntegerAttr axis_attr;
-  {
-    auto tmpAttr = tfl_pack_op.axisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    axis_attr = tmpAttr;
-  }
-  int32_t axis_i32 = axis_attr.getInt();
-
-  llvm::Optional<Value> result =
-      convertPackOp(rewriter, op, tfl_pack_op.getResult(), inputs, axis_i32);
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
 
   return success();
 }
@@ -3070,7 +3018,6 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLAddN);
   DEF_PATTERN_INSERT(TFLAveragePool2D);
   DEF_PATTERN_INSERT(TFLMaxPool2D);
-  DEF_PATTERN_INSERT(TFLConcatenation);
   DEF_PATTERN_INSERT(TFLReshape);
   DEF_PATTERN_INSERT(TFLRank);
   DEF_PATTERN_INSERT(TFLShape);
@@ -3092,7 +3039,6 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLFullyConnected);
   DEF_PATTERN_INSERT(TFLSplit);
   DEF_PATTERN_INSERT(TFLSplitV);
-  DEF_PATTERN_INSERT(TFLPack);
   DEF_PATTERN_INSERT(TFLUnpack);
   DEF_PATTERN_INSERT(TFLTranspose);
   DEF_PATTERN_INSERT(TFLTile);

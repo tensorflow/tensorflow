@@ -414,12 +414,26 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
+#ifdef __ANDROID__
+  // On Android the log message below is used for diagnosing delegation success
+  // also in production builds. Delegation happens sufficiently rarely that the
+  // message isn't spammy.
   TFLITE_LOG_PROD(
       tflite::TFLITE_LOG_INFO,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
+#else   // !__ANDROID__
+  // Server-side, delegation may happen so often as to make logging spammy + we
+  // don't have a clear need for the diagnostic in production builds.
+  TFLITE_LOG(
+      tflite::TFLITE_LOG_INFO,
+      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
+      nodes_to_replace->size,
+      registration.custom_name ? registration.custom_name : "unknown",
+      node_subsets.size());
+#endif  // __ANDROID__
 
   execution_plan_.clear();
 
@@ -794,13 +808,9 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
-  nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
+  nodes_and_registration_.emplace_back();
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
-  if (node.inputs) TfLiteIntArrayFree(node.inputs);
-  if (node.outputs) TfLiteIntArrayFree(node.outputs);
-  if (node.intermediates) TfLiteIntArrayFree(node.intermediates);
-  if (node.temporaries) TfLiteIntArrayFree(node.temporaries);
 
   // NOTE, here we are not using move semantics yet, since our internal
   // representation isn't std::vector, but in the future we would like to avoid

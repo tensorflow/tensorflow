@@ -3426,7 +3426,6 @@ tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + if_cuda_or_rocm([
-        ":gpu_prim_helpers",
         "//tensorflow/core/util:cuda_solvers",
     ]),
 )
@@ -6048,6 +6047,7 @@ filegroup(
         "//tensorflow/core/kernels/data:model_dataset_op.h",
         "//tensorflow/core/kernels/data:optimize_dataset_op.h",
         "//tensorflow/core/kernels/data:optional_ops.h",
+        "//tensorflow/core/kernels/data:reduce_dataset_op.h",
         "//tensorflow/core/kernels/data:repeat_dataset_op.h",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
         "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
@@ -6386,6 +6386,7 @@ filegroup(
         "//tensorflow/core/kernels/data:model_dataset_op.cc",
         "//tensorflow/core/kernels/data:optimize_dataset_op.cc",
         "//tensorflow/core/kernels/data:optional_ops.cc",
+        "//tensorflow/core/kernels/data:reduce_dataset_op.cc",
         "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",

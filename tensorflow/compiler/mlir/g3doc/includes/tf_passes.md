@@ -304,6 +304,17 @@ will be transformed into this region-based operation
       "tf.Yield"(%1) : (tensor<*xf32>) -> ()
     }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
 ```
+### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
+This pass hoists replicate invariant resource variable writes outside
+tf_device.replicate op. These may have been inserted by other passes such as
+resource op lifting. However, if the resource variable is not replicated, writes
+to such variables for each replica are redundant and can be replaced by writing
+a single value from first replica.
+
+The benefit of this optimization is reduced memory requirement on host. For
+multiple writes (one from each replica) to such variables, the host would
+allocate buffer space to recieve the device output from all replicas, which is
+not required. We can use the output of first replica in such cases.
 ### `-tf-mark-ops-for-outside-compilation`: Marks ops in device cluster for outside compilation if they are unsupported on device.
 This pass marks unsupported ops in a device cluster with
 `_xla_outside_compilation` attribute so the operations will run on the host

@@ -539,7 +539,7 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]>,
 
 // Common base class for AllReduce, AllGather, and AllToAll.
 class LHLO_CollectiveCommunicationOp<string name, list<OpTrait> traits = []> :
-  LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize, SameOperandsElementType])> {
+  LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
   dag arguments_base = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
@@ -562,13 +562,13 @@ def LHLO_AllGatherOp : LHLO_CollectiveCommunicationOp<"all_gather">,
     (ins I64Attr:$all_gather_dimension));
 }
 
-def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce">,
+def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce", [SameOperandsElementType]>,
                        BASE_HLO_AllReduceOp {
   let arguments = arguments_base;
   let regions = (region SizedRegion<1>:$computation);
 }
 
-def LHLO_AllToAllOp : LHLO_CollectiveCommunicationOp<"all_to_all">,
+def LHLO_AllToAllOp : LHLO_CollectiveCommunicationOp<"all_to_all", [SameOperandsElementType]>,
                        BASE_HLO_AllToAllOp {
   let arguments = !con(
     arguments_base,

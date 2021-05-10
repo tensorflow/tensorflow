@@ -275,8 +275,8 @@ struct LaunchConvOp<GPUDevice, T> {
       auto no_transpose = se::blas::Transpose::kNoTranspose;
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                             a_ptr, k, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -302,8 +302,8 @@ struct LaunchConvOp<GPUDevice, T> {
       auto no_transpose = se::blas::Transpose::kNoTranspose;
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                             a_ptr, k, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,

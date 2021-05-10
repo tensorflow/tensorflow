@@ -32,7 +32,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.engine import base_layer
@@ -255,16 +254,8 @@ class KPLCreatedInDatasetsFromFunctionTest(test.TestCase,
         return dataset_ops.DatasetV2.from_tensor_slices(
             (x, y)).shuffle(10).repeat().batch(2).map(map_fn)
 
-      def wrapped_dataset_fn(input_context):
-        # TODO(b/186692679): Currently we need to remove the device scope
-        # imposed in `distribute_datasets_from_function` lib so the
-        # `StaticHashTable` is placed on the coordinator. Remove this workaround
-        # once resolved.
-        with ops.device_v2(None):
-          return dataset_fn(input_context)
-
       return self.coordinator.strategy.distribute_datasets_from_function(
-          wrapped_dataset_fn)
+          dataset_fn)
 
     per_worker_distribute_dataset = self.coordinator.create_per_worker_dataset(
         per_worker_dataset_fn)

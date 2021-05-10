@@ -31,12 +31,6 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
-// Lowers the Pack operator to TOSA.
-llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
-                                    Value result_value,
-                                    SmallVector<Value, 8>& inputs,
-                                    int32_t axis);
-
 // Lowers the Unpack operator to TOSA.
 llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
                                            Operation* op, Value input_value,
@@ -68,12 +62,6 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 // Lowers the Round operator to TOSA.
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input);
-
-// Lowers ConcatV2 to TOSA.
-llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
-                                        SmallVector<Value, 8>& values,
-                                        int32_t axis);
 
 // Lowers SpaceToBatchND to TOSA.
 llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
