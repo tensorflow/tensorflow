@@ -1322,15 +1322,17 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   }
   if (conv_params.AreWeightsBuffer()) {
     if (gpu_info.IsApple()) {
-      conv_params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+      conv_params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
-      conv_params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+      conv_params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
     }
   } else {
     if (gpu_info.IsApple()) {
-      conv_params.weights_layout = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+      conv_params.weights_layout =
+          WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
     } else {
-      conv_params.weights_layout = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+      conv_params.weights_layout =
+          WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
     }
   }
 
