@@ -25,8 +25,7 @@ limitations under the License.
 #include <stdio.h>
 
 // Redirect to the real fprintf.
-#define MICROFRONTEND_FPRINTF(stream, format, ...) \
-  fprintf(stream, format, __VA_ARGS__)
+#define MICROFRONTEND_FPRINTF fprintf
 
 #else  // MICROFRONTEND_USE_FPRINTF
 

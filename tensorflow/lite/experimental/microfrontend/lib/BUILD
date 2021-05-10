@@ -113,6 +113,7 @@ cc_library(
     ],
     deps = [
         ":fprintf_shim",
+        ":memory_util",
     ],
 )
 
