@@ -43,5 +43,5 @@ int NoiseReductionPopulateState(const struct NoiseReductionConfig* config,
 }
 
 void NoiseReductionFreeStateContents(struct NoiseReductionState* state) {
-  free(state->estimate);
+  microfrontend_free(state->estimate);
 }
