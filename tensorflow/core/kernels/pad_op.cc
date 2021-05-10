@@ -248,8 +248,7 @@ class PadOp : public OpKernel {
       paddings_array[i] = {paddings(i, 0), paddings(i, 1)};
     }
     functor::Pad<Device, T, Tpadding, Dims> functor;
-    auto out = output->tensor<T, Dims>();
-    functor(context->eigen_device<Device>(), out, input,
+    functor(context->eigen_device<Device>(), output->tensor<T, Dims>(), input,
             paddings_array, pad_value);
   }
 };
@@ -294,17 +293,15 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T, Dims)                                         \
   template <>                                                             \
   void Pad<GPUDevice, T, int32, Dims>::operator()(                        \
-      const GPUDevice& d, typename TTypes<T, Dims>::Tensor& output,       \
-      typename TTypes<T, Dims>::ConstTensor& input,                       \
-      Eigen::array<Eigen::IndexPair<int32>, Dims>& paddings,              \
-      T& pad_value);                                                      \
+      const GPUDevice& d, typename TTypes<T, Dims>::Tensor output,        \
+      typename TTypes<T, Dims>::ConstTensor input,                        \
+      Eigen::array<Eigen::IndexPair<int32>, Dims> paddings, T pad_value); \
   extern template struct Pad<GPUDevice, T, int32, Dims>;                  \
   template <>                                                             \
   void Pad<GPUDevice, T, int64, Dims>::operator()(                        \
-      const GPUDevice& d, typename TTypes<T, Dims>::Tensor& output,       \
-      typename TTypes<T, Dims>::ConstTensor& input,                       \
-      Eigen::array<Eigen::IndexPair<int64>, Dims>& paddings,              \
-      T& pad_value);                                                      \
+      const GPUDevice& d, typename TTypes<T, Dims>::Tensor output,        \
+      typename TTypes<T, Dims>::ConstTensor input,                        \
+      Eigen::array<Eigen::IndexPair<int64>, Dims> paddings, T pad_value); \
   extern template struct Pad<GPUDevice, T, int64, Dims>;
 
 #define DECLARE_GPU_SPECS(T) \

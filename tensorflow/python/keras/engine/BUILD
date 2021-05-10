@@ -605,7 +605,7 @@ tf_py_test(
     tags = [
         "no-internal-py3",
         "no_rocm",
-         "nomac",  # TODO(mihaimaruseac): b/127695564
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
         ":base_layer",

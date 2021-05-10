@@ -60,17 +60,12 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
-#if defined(TENSORFLOW_USE_ROCM)
-auto acos_test_config = test::OpsTestConfig();
-#else
-auto acos_test_config = test::OpsTestConfig().ExpectStrictlyEqual();
-#endif
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-    std::acos, acos_test_config)
+    std::acos, test::OpsTestConfig())
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, acos_test_config)
+    std::acos, test::OpsTestConfig())
 
 /// Test `tf.Acosh`.
 

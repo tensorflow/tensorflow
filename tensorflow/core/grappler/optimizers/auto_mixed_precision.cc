@@ -43,7 +43,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-
 namespace {
 
 #if GOOGLE_CUDA
@@ -99,8 +98,8 @@ bool HasFastFP16Support(const DeviceProperties& props) {
   std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
   return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
 #endif
+  return false;
 }
-
 
 // Instances of this class represent unique type attribute identifiers within a
 // node. It handles regular type attributes, list type attributes (where
@@ -1989,10 +1988,9 @@ int GetNumGPUs(const Cluster& cluster) {
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
-    if (device_properties.type() == "GPU"){
-        if(ShouldIgnorePerformance() || HasFastFP16Support(device_properties)) {
-            num_gpus++;
-        }
+    if (device_properties.type() == "GPU" &&
+        (ShouldIgnorePerformance() || HasFastFP16Support(device_properties))) {
+      num_gpus++;
     }
   }
   return num_gpus;
@@ -2020,6 +2018,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Start by copying input graph to output.
   *output = item.graph;
+
   int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // AutoMixedPrecision is currently only tuned for GPU.

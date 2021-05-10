@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_MIXED_PRECISION_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
-#include "tensorflow/core/protobuf/device_properties.pb.h" 
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
