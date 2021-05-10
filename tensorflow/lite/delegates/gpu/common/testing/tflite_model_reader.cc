@@ -106,8 +106,7 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Conversion from TfLite model failed.");
   }
 
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
+  ModelTransformer transformer(graph);
   if (!ApplyModelTransformations(&transformer)) {
     return absl::InternalError("Graph transformations failed");
   }
