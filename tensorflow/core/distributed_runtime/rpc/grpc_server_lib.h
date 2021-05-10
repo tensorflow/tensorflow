@@ -128,6 +128,18 @@ class GrpcServer : public ServerInterface {
   virtual Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                     WorkerCacheInterface** worker_cache);
 
+  // Override to return extra services to be brought up and managed along with
+  // the standard {master, worker, eager} services. The map key is an aribtrary
+  // string and the value is a pointer to the service to be brought up.
+  // Ownership of the pointer is transferred to GrpcServer after this call
+  // returns, and the service will be destroyed during the destruction of
+  // GrpcServer. Each service will have its HandleRPCsLoop called in a separate
+  // thread. An example usage would be to add a RDMA based partial worker
+  // service to offload tensor and data buffer transfers.
+  virtual std::map<std::string, AsyncServiceInterface*> ExtraServices() {
+    return {};
+  }
+
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
   Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                           GrpcChannelSpec* channel_spec);
@@ -172,6 +184,10 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
   std::unique_ptr<Thread> master_thread_ TF_GUARDED_BY(mu_);
+
+  std::map<std::string, AsyncServiceInterface*> extra_services_;
+  std::vector<std::unique_ptr<Thread>> extra_service_threads_
+      TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
