@@ -1837,91 +1837,6 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   return true;
 }
 
-<<<<<<< HEAD
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<int> &alpha,
-    const DeviceMemory<int8> &a, int lda, const DeviceMemory<int8> &b, int ldb,
-    const HostOrDeviceScalar<int> &beta, DeviceMemory<int32> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"int8\" datatype";
-  return false;
-}
-
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<Eigen::half> &alpha,
-    const DeviceMemory<Eigen::half> &a, int lda,
-    const DeviceMemory<Eigen::half> &b, int ldb,
-    const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"half\" datatype";
-  return false;
-}
-
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<float> &alpha,
-    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
-    int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"float\" datatype";
-  return false;
-}
-
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<double> &alpha,
-    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
-    int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
-    int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"double\" datatype";
-  return false;
-}
-
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<std::complex<float>> &alpha,
-    const DeviceMemory<std::complex<float>> &a, int lda,
-    const DeviceMemory<std::complex<float>> &b, int ldb,
-    const HostOrDeviceScalar<std::complex<float>> &beta,
-    DeviceMemory<std::complex<float>> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"complex<float>\" datatype";
-  return false;
-}
-
-bool ROCMBlas::DoBlasGemmWithAlgorithm(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const HostOrDeviceScalar<std::complex<double>> &alpha,
-    const DeviceMemory<std::complex<double>> &a, int lda,
-    const DeviceMemory<std::complex<double>> &b, int ldb,
-    const HostOrDeviceScalar<std::complex<double>> &beta,
-    DeviceMemory<std::complex<double>> *c, int ldc,
-    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
-  LOG(ERROR)
-      << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"complex<double>\" datatype";
-  return false;
-}
-
-
 struct memory_copy_op {
     char* src_ptr;
     char* dst_ptr;
@@ -1964,8 +1879,6 @@ static bool fold(memory_copy_op& y, const memory_copy_op& x)
   return false;
 }
 
-=======
->>>>>>> google_upstream/master
 // This copies from source memory: raw_ptrs[i] to target memory:
 // device_memory_ptr at the interval of matrix_byte_size, or vice versa.
 // The below algorithm tries to minimize the number of memcpy by consolidating
