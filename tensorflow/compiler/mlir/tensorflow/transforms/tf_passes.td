@@ -404,6 +404,25 @@ func @outside_compilation() -> tensor<f32> {
   let constructor = "TFTPU::CreateTPUExtractOutsideCompilationPass()";
 }
 
+def HoistReplicateInvariantResourceWritesPass : FunctionPass<"tf-hoist-replicate-invariant-resource-writes"> {
+  let summary = "Hoists writes to replicate invariant resource variables.";
+
+  let description = [{
+This pass hoists replicate invariant resource variable writes outside
+tf_device.replicate op. These may have been inserted by other passes such as
+resource op lifting. However, if the resource variable is not replicated, writes
+to such variables for each replica are redundant and can be replaced by writing
+a single value from first replica.
+
+The benefit of this optimization is reduced memory requirement on host. For
+multiple writes (one from each replica) to such variables, the host would
+allocate buffer space to recieve the device output from all replicas, which is
+not required. We can use the output of first replica in such cases.
+  }];
+
+  let constructor = "TF::CreateHoistReplicateInvariantResourceWritesPass()";
+}
+
 def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
   let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
 
