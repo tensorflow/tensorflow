@@ -203,8 +203,8 @@ def custom_gradient(f=None):
     gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   
   Raises:
-    RuntimeError: tf.gradients is not supported when eager execution is
-      enabled. Use tf.GradientTape instead.
+    RuntimeError: `tf.gradients` is not supported when eager execution is
+      enabled. Use `tf.GradientTape` instead.
   """
 
   if f is None:
