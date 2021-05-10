@@ -1975,6 +1975,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "ResizeBilinear",
                                      "ResizeBilinearGrad",
                                      "ResizeNearestNeighbor",
+                                     "ResizeNearestNeighborGrad",
                                      "ResourceApplyAdaMax",
                                      "ResourceApplyAdadelta",
                                      "ResourceApplyAdagrad",
