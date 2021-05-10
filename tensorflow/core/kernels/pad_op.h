@@ -29,10 +29,10 @@ template <typename Device, typename T, typename Tpadding, int Dims>
 struct Pad {
   // Pad "input" into "output", as specified by "paddings" and "pad_value".
   // See pad_op.cc for details.
-  void operator()(const Device& d, typename TTypes<T, Dims>::Tensor& output,
-                  typename TTypes<T, Dims>::ConstTensor& input,
-                  Eigen::array<Eigen::IndexPair<Tpadding>, Dims>& paddings,
-                  T& pad_value) {
+  void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
+                  typename TTypes<T, Dims>::ConstTensor input,
+                  Eigen::array<Eigen::IndexPair<Tpadding>, Dims> paddings,
+                  T pad_value) {
     if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value &&
         (output.size() <= std::numeric_limits<int32>::max())) {
       To32Bit(output).device(d) = To32Bit(input).pad(paddings, pad_value);
@@ -45,9 +45,9 @@ struct Pad {
 template <typename Device, typename T, typename Tpadding>
 struct Pad<Device, T, Tpadding, 0> {
   // In the scalar case we simply copy the input.
-  void operator()(const Device& d, typename TTypes<T, 0>::Tensor& output,
-                  typename TTypes<T, 0>::ConstTensor& input,
-                  Eigen::array<Eigen::IndexPair<Tpadding>, 0>&, T&) {
+  void operator()(const Device& d, typename TTypes<T, 0>::Tensor output,
+                  typename TTypes<T, 0>::ConstTensor input,
+                  Eigen::array<Eigen::IndexPair<Tpadding>, 0>, T) {
     output.device(d) = input;
   }
 };

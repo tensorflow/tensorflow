@@ -28,7 +28,6 @@ import re
 # dependency.  This is why the logging import here is okay.
 from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.platform import build_info
 
 
 class AllocationMaximum(collections.namedtuple(

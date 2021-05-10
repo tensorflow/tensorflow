@@ -91,9 +91,7 @@ void VerifyGraphsEquivalent(const GraphDef& original_graph,
 // float16 GPU OpKernel, but without CUDA/HIP there are no GPU OpKernels at all.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
-#endif
 
 class AutoMixedPrecisionTest : public GrapplerTest {
  protected:
@@ -101,7 +99,7 @@ class AutoMixedPrecisionTest : public GrapplerTest {
     int num_gpus = GetNumAvailableGPUs();
     // If GPUs are available, require that they all satisfy the min arch.
     gpu_available_ = (num_gpus > 0);
-#if GOOGLE_CUDA 
+#if GOOGLE_CUDA
     gpu_available_ =
         gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
 #else  // Here we force Tensorflow to use the virtual GFX906
@@ -121,7 +119,7 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
-     }
+    }
     TF_CHECK_OK(virtual_cluster_->Provision());
   }
 
