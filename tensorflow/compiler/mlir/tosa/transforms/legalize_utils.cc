@@ -202,7 +202,7 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
                              double max) {
-  llvm::SmallVector<int16_t, 4> table_vec;
+  llvm::SmallVector<int16_t, 513> table_vec;
 
   double step = (max - min) / 512.0f;
   double half_step = step / 2.0f;
@@ -541,10 +541,7 @@ Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
-  if (output_element_type.getStorageTypeIntegralWidth() == 8)
-    return true;
-  else
-    return false;
+  return (output_element_type.getStorageTypeIntegralWidth() == 8);
 }
 
 }  // namespace tosa

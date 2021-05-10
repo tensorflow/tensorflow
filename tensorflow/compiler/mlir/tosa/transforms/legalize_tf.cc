@@ -1232,8 +1232,9 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits(), 1.0);
+  llvm::Optional<Value> result =
+      convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                       tf_softmax_op.logits(), /*beta=*/1.0);
 
   if (!result) return failure();
 
@@ -1500,12 +1501,9 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   assert(inputs.size() >= 2);
 
-  IntegerAttr axis_attr;
-  {
-    auto tmpAttr = tf_pack_op.axisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    axis_attr = tmpAttr;
-  }
+  IntegerAttr axis_attr = tf_pack_op.axisAttr();
+  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+
   int32_t axis_i32 = axis_attr.getInt();
 
   llvm::Optional<Value> result =
