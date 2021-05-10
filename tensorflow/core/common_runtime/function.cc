@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -920,6 +921,10 @@ constexpr int kMaxNodesForSingleThreadedExecutor = 32;
 // SingleThreadedExecutor. This is an intentional subset of the ops which
 // technically can be run via single-threaded execution to avoid issues with
 // recursion or function invocation.
+//
+// SingleThreadedExecutor runs asynchronous kernels synchronously: this can lead
+// to deadlocks. This function attempts to exclude all async kernels in lieu of
+// kernel instantiation.
 bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
   if (n.IsFunctionCall() || n.IsPartitionedCall() || n.IsIfNode() ||
       n.IsWhileNode() || n.IsCaseNode()) {
@@ -940,6 +945,9 @@ bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
     }
   }
   if (str_util::StrContains(n.op_def().name(), "PyFunc")) {
+    return false;
+  }
+  if (str_util::StrContains(str_util::Lowercase(n.op_def().name()), "grpc")) {
     return false;
   }
   return true;
