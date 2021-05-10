@@ -9,6 +9,7 @@ To build a binary wheel run this script:
 
 ```sh
 sudo apt install swig libjpeg-dev zlib1g-dev python3-dev python3-numpy
+pip install numpy pybind11
 sh tensorflow/lite/tools/make/download_dependencies.sh
 sh tensorflow/lite/tools/pip_package/build_pip_package.sh
 ```
@@ -55,42 +56,52 @@ There is another build steps to build a binary wheel which uses Bazel instead of
 Makefile. You don't need to install additional dependencies.
 This approach can leverage TF's ci_build.sh for ARM cross builds.
 
-### Native build for your workstation
+### Normal build for your workstation
 
 ```sh
 tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
 ```
 
+### Optimized build for your workstation
+The output may have a compatibility issue with other machines but it gives the
+best performance for your workstation.
+
+```sh
+tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
+```
+
 ### Cross build for armhf Python 3.5
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 
 ### Cross build for armhf Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 
 ### Cross build for aarch64 Python 3.5
 
 ```sh
-  CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
-### Cross build for aarch64 Python 3.7
+### Cross build for aarch64 Python 3.8
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
+```
+
+### Native build for Windows
+
+```sh
+bash tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh windows
 ```
 
 ## Enable TF OP support (Flex delegate)
@@ -101,19 +112,18 @@ You can build TFLite interpreter with flex ops support by providing
 
 Here are some examples.
 
-### Native build with Flex for your workstation
+### Normal build with Flex for your workstation
 
 ```sh
 CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
 ```
 
-### Cross build with Flex for armhf Python 3.5
+### Cross build with Flex for armhf Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
-  -e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 

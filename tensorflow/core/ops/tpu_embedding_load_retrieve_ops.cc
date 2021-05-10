@@ -37,8 +37,7 @@ REGISTER_OP("LoadTPUEmbeddingAdagradParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdagrad,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingAdagradParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -50,8 +49,7 @@ REGISTER_OP("LoadTPUEmbeddingAdagradParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdagrad,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingAdagradParameters")
     .Output("parameters: float32")
@@ -62,8 +60,7 @@ REGISTER_OP("RetrieveTPUEmbeddingAdagradParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdagrad,
-                                        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingAdagradParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -75,8 +72,7 @@ REGISTER_OP("RetrieveTPUEmbeddingAdagradParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdagrad,
-                                        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingStochasticGradientDescentParameters")
     .Input("parameters: float32")
@@ -86,9 +82,7 @@ REGISTER_OP("LoadTPUEmbeddingStochasticGradientDescentParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kStochasticGradientDescent,
-        /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -99,9 +93,7 @@ REGISTER_OP("LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kStochasticGradientDescent,
-        /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingStochasticGradientDescentParameters")
     .Output("parameters: float32")
@@ -111,9 +103,7 @@ REGISTER_OP("RetrieveTPUEmbeddingStochasticGradientDescentParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kStochasticGradientDescent,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP(
     "RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug")
@@ -125,9 +115,7 @@ REGISTER_OP(
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kStochasticGradientDescent,
-        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingFTRLParameters")
     .Input("parameters: float32")
@@ -139,8 +127,7 @@ REGISTER_OP("LoadTPUEmbeddingFTRLParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kFtrl,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingFTRLParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -153,8 +140,7 @@ REGISTER_OP("LoadTPUEmbeddingFTRLParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kFtrl,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingFTRLParameters")
     .Output("parameters: float32")
@@ -166,8 +152,7 @@ REGISTER_OP("RetrieveTPUEmbeddingFTRLParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kFtrl,
-                                        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingFTRLParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -180,8 +165,7 @@ REGISTER_OP("RetrieveTPUEmbeddingFTRLParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kFtrl,
-                                        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingADAMParameters")
     .Input("parameters: float32")
@@ -193,8 +177,7 @@ REGISTER_OP("LoadTPUEmbeddingADAMParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdam,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingADAMParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -207,8 +190,7 @@ REGISTER_OP("LoadTPUEmbeddingADAMParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdam,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingADAMParameters")
     .Output("parameters: float32")
@@ -220,8 +202,7 @@ REGISTER_OP("RetrieveTPUEmbeddingADAMParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdam,
-                                        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingADAMParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -234,8 +215,7 @@ REGISTER_OP("RetrieveTPUEmbeddingADAMParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdam,
-                                        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingMomentumParameters")
     .Input("parameters: float32")
@@ -246,8 +226,7 @@ REGISTER_OP("LoadTPUEmbeddingMomentumParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kMomentum,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingMomentumParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -259,8 +238,7 @@ REGISTER_OP("LoadTPUEmbeddingMomentumParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kMomentum,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingMomentumParameters")
     .Output("parameters: float32")
@@ -271,9 +249,7 @@ REGISTER_OP("RetrieveTPUEmbeddingMomentumParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kMomentum,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingMomentumParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -285,9 +261,7 @@ REGISTER_OP("RetrieveTPUEmbeddingMomentumParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kMomentum,
-        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingRMSPropParameters")
     .Input("parameters: float32")
@@ -299,8 +273,7 @@ REGISTER_OP("LoadTPUEmbeddingRMSPropParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kRmsProp,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingRMSPropParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -313,8 +286,7 @@ REGISTER_OP("LoadTPUEmbeddingRMSPropParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kRmsProp,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingRMSPropParameters")
     .Output("parameters: float32")
@@ -326,8 +298,7 @@ REGISTER_OP("RetrieveTPUEmbeddingRMSPropParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kRmsProp,
-                                        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -340,8 +311,7 @@ REGISTER_OP("RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{/*alg=*/OptimizationAlgorithm::kRmsProp,
-                                        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingCenteredRMSPropParameters")
     .Input("parameters: float32")
@@ -354,9 +324,7 @@ REGISTER_OP("LoadTPUEmbeddingCenteredRMSPropParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kCenteredRmsProp,
-        /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingCenteredRMSPropParameters")
     .Output("parameters: float32")
@@ -369,9 +337,7 @@ REGISTER_OP("RetrieveTPUEmbeddingCenteredRMSPropParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kCenteredRmsProp,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingMDLAdagradLightParameters")
     .Input("parameters: float32")
@@ -384,9 +350,7 @@ REGISTER_OP("LoadTPUEmbeddingMDLAdagradLightParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kMdlAdagradLight,
-        /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingMDLAdagradLightParameters")
     .Output("parameters: float32")
@@ -399,9 +363,7 @@ REGISTER_OP("RetrieveTPUEmbeddingMDLAdagradLightParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kMdlAdagradLight,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingAdadeltaParameters")
     .Input("parameters: float32")
@@ -413,8 +375,7 @@ REGISTER_OP("LoadTPUEmbeddingAdadeltaParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdadelta,
-                                    /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingAdadeltaParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -427,8 +388,7 @@ REGISTER_OP("LoadTPUEmbeddingAdadeltaParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{/*alg=*/OptimizationAlgorithm::kAdadelta,
-                                    /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingAdadeltaParameters")
     .Output("parameters: float32")
@@ -440,9 +400,7 @@ REGISTER_OP("RetrieveTPUEmbeddingAdadeltaParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kAdadelta,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -455,9 +413,7 @@ REGISTER_OP("RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kAdadelta,
-        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingProximalAdagradParameters")
     .Input("parameters: float32")
@@ -468,9 +424,7 @@ REGISTER_OP("LoadTPUEmbeddingProximalAdagradParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalAdagrad,
-        /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -482,9 +436,7 @@ REGISTER_OP("LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalAdagrad,
-        /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingProximalAdagradParameters")
     .Output("parameters: float32")
@@ -495,9 +447,7 @@ REGISTER_OP("RetrieveTPUEmbeddingProximalAdagradParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalAdagrad,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -509,9 +459,7 @@ REGISTER_OP("RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalAdagrad,
-        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingProximalYogiParameters")
     .Input("parameters: float32")
@@ -523,9 +471,7 @@ REGISTER_OP("LoadTPUEmbeddingProximalYogiParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalYogi,
-        /*is_debug_op=*/false});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("LoadTPUEmbeddingProximalYogiParametersGradAccumDebug")
     .Input("parameters: float32")
@@ -538,9 +484,7 @@ REGISTER_OP("LoadTPUEmbeddingProximalYogiParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(LoadOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalYogi,
-        /*is_debug_op=*/true});
+    .SetShapeFn(LoadOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingProximalYogiParameters")
     .Output("parameters: float32")
@@ -552,9 +496,7 @@ REGISTER_OP("RetrieveTPUEmbeddingProximalYogiParameters")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalYogi,
-        /*is_debug_op=*/false});
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 REGISTER_OP("RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug")
     .Output("parameters: float32")
@@ -567,9 +509,53 @@ REGISTER_OP("RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug")
     .Attr("shard_id: int")
     .Attr("config: string = \"\"")
     .SetIsStateful()
-    .SetShapeFn(RetrieveOpShapeFunction{
-        /*alg=*/OptimizationAlgorithm::kProximalYogi,
-        /*is_debug_op=*/true});
+    .SetShapeFn(RetrieveOpShapeFunction());
+
+REGISTER_OP("LoadTPUEmbeddingFrequencyEstimatorParameters")
+    .Input("parameters: float32")
+    .Input("last_hit_step: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(LoadOpShapeFunction());
+
+REGISTER_OP("LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug")
+    .Input("parameters: float32")
+    .Input("last_hit_step: float32")
+    .Input("gradient_accumulators: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(LoadOpShapeFunction());
+
+REGISTER_OP("RetrieveTPUEmbeddingFrequencyEstimatorParameters")
+    .Output("parameters: float32")
+    .Output("last_hit_step: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(RetrieveOpShapeFunction());
+
+REGISTER_OP("RetrieveTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug")
+    .Output("parameters: float32")
+    .Output("last_hit_step: float32")
+    .Output("gradient_accumulators: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(RetrieveOpShapeFunction());
 
 }  // namespace tpu
 }  // namespace tensorflow

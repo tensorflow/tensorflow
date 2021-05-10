@@ -43,14 +43,16 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let cppNamespace = "tf_executor";
+  let cppNamespace = "::mlir::tf_executor";
 }
 
 // Control type.
-def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">;
+def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">,
+                     BuildableType<"$_builder.getType<ControlType>()">;
 
 // Token type.
-def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">,
+                   BuildableType<"$_builder.getType<TokenType>()">;
 
 // TODO(hinsu): Define and use TensorType instead of AnyType for data operands
 // and results. For example, MergeOp output type.
@@ -141,14 +143,18 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     Variadic<AnyType>:$fetches
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result",
+  let builders = [
+    OpBuilder<(ins),
     [{
-      build(builder, result, {});
+      build($_builder, $_state, {});
     }]>
    ];
 
+  let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
+
   let verifier = ?;
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_IslandOp : TfExecutor_Op<"island",
@@ -222,14 +228,18 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
     Variadic<AnyType>:$fetches
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result",
+  let builders = [
+    OpBuilder<(ins),
     [{
-      build(builder, result, {});
+      build($_builder, $_state, {});
     }]>
    ];
 
+  let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
+
   let verifier = ?;
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
@@ -278,14 +288,14 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
    let verifier = ?;
 }
 
-def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
+def TfExecutor_SwitchNOp : TfExecutor_Op<"_SwitchN",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
-    The "tf_executor.SwitchN" operation takes two inputs, `data` and `index` and
-    an integer attribute `num_outs` indicating the number of outputs. The `data`
-    input is copied to output indicated by the `index` input. The other outputs
-    are marked as dead. If one of the inputs or a control token is dead, then
-    all of the outputs are marked as dead as well.
+    The "tf_executor._SwitchN" operation takes two inputs, `data` and `index`
+    and an integer attribute `num_outs` indicating the number of outputs. The
+    `data` input is copied to output indicated by the `index` input. The other
+    outputs are marked as dead. If one of the inputs or a control token is
+    dead, then all of the outputs are marked as dead as well.
   }];
 
   let description = [{
@@ -449,14 +459,14 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
     TfeControlType:$control
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Type result_type, "
-    "ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilder<(ins "Type":$result_type,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
-      Type token_type = TokenType::get(builder.getContext());
-      Type control_type = ControlType::get(builder.getContext());
-      result.types = { result_type, token_type, control_type };
-      result.attributes.append(attributes.begin(), attributes.end());
+      Type token_type = TokenType::get($_builder.getContext());
+      Type control_type = ControlType::get($_builder.getContext());
+      $_state.types = { result_type, token_type, control_type };
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 
@@ -466,6 +476,10 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
     }
   }];
 
+  let assemblyFormat = "`:` type($output) attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 
@@ -515,18 +529,27 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
     Variadic<TfeControlType>:$controlInputs
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value token, "
-    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilder<(ins "Value":$token, "ArrayRef<Value>":$operands,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
              "expects at least one operand");
-      result.operands.push_back(token);
-      result.operands.insert(result.operands.end(), operands.begin(),
+      $_state.operands.push_back(token);
+      $_state.operands.insert($_state.operands.end(), operands.begin(),
                               operands.end());
-      result.attributes.append(attributes.begin(), attributes.end());
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let extraClassDeclaration = [{
+    NextIterationSourceOp GetSource();
+  }];
+
+  let assemblyFormat = " `[` $token `]` $input (`,` $controlInputs^)? `:` type($input) attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
@@ -552,7 +575,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
        .Attr("T: type")
 
     For example:
-     %1:2 = tf_executor.Exit %0#0 {T: "tfdtype$DT_INT32"} : tensor<*xi32>
+     %1:2 = tf_executor.Exit %0#0 : tensor<*xi32> {T: "tfdtype$DT_INT32"}
 
     Note: Additional result corresponds to the control output.
   }];
@@ -594,19 +617,24 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 
   let hasCanonicalizer = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, "
-    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilder<(ins "ArrayRef<Value>":$operands,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
-      result.operands.insert(result.operands.end(), operands.begin(),
+      $_state.operands.insert($_state.operands.end(), operands.begin(),
                               operands.end());
-      Type control_type = ControlType::get(builder.getContext());
-      result.types = {control_type};
-      result.attributes.append(attributes.begin(), attributes.end());
+      Type control_type = ControlType::get($_builder.getContext());
+      $_state.types = {control_type};
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let assemblyFormat = "$controlInputs attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",

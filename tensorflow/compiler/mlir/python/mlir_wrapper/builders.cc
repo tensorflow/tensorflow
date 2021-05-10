@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 
 void init_builders(py::module& m) {

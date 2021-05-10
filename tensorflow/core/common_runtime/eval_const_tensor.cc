@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -123,6 +124,17 @@ bool HasCpuKernel(const Node& node) {
       .ok();
 }
 
+Status GetArgNodeIndex(const Node* node, int num_function_inputs, int* index) {
+  DCHECK(node->IsArg());
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", index));
+  if (*index < 0 || num_function_inputs <= *index) {
+    return errors::Internal(
+        "Function instantiation included invalid input index: ", index,
+        " not in [0, ", num_function_inputs, ").");
+  }
+  return Status::OK();
+}
+
 // Extracts the subgraph ending at 'target_node' that is statically computable
 // and inserts into 'out_graph'. If statically computable, 'is_constant_graph'
 // will be set to true.
@@ -130,7 +142,8 @@ Status ExtractConstantSubgraph(
     const Node& target_node, const ShapeRefiner& refiner,
     const std::unordered_map<string, Tensor>* cached_values, Graph* out_graph,
     bool* is_constant_graph,
-    std::vector<std::pair<string, Tensor>>* const_inputs) {
+    std::vector<std::pair<string, Tensor>>* const_inputs,
+    InferenceContext* outer_context) {
   *is_constant_graph = false;
   std::unordered_set<string> const_inputs_added;
 
@@ -187,8 +200,9 @@ Status ExtractConstantSubgraph(
     edges_to_visit.pop_front();
     Node* current_node = current_edge->src();
 
-    // If the node is stateful, assume the graph is not constant.
-    if (current_node->op_def().is_stateful()) {
+    // If the node is stateful, assume the graph is not constant unless it is
+    // an Arg node which is handled later on.
+    if (!current_node->IsArg() && current_node->op_def().is_stateful()) {
       *is_constant_graph = false;
       return Status::OK();
     }
@@ -223,9 +237,32 @@ Status ExtractConstantSubgraph(
     }
 
     // If there is nothing more to recurse down, see if
-    // the generator node is a constant.
+    // the generator node is a constant or an Arg node whose value is available
+    // in the `outer_context`.
     if (current_node->num_inputs() == 0) {
-      if (!current_node->IsConstant()) {
+      if (outer_context && current_node->IsArg()) {
+        const string& tensor_name =
+            strings::StrCat(current_node->name(), ":", 0);
+        // If we do not already have a constant Tensor for this Arg try to
+        // fetch it from the outer context.
+        if (const_inputs_added.count(tensor_name) == 0) {
+          int index;
+          TF_RETURN_IF_ERROR(GetArgNodeIndex(
+              current_node, outer_context->num_inputs(), &index));
+          const Tensor* const_tensor = outer_context->input_tensor(index);
+          if (const_tensor) {
+            const_inputs->emplace_back(tensor_name, *const_tensor);
+            const_inputs_added.insert(tensor_name);
+          } else {
+            // Request a constant value for this Arg. If that is statically
+            // computable, shape refiner will re-run the shape inference for
+            // this function with this tensor's value.
+            outer_context->request_input_tensor(index);
+            *is_constant_graph = false;
+            return Status::OK();
+          }
+        }
+      } else if (!current_node->IsConstant()) {
         // Generator node is not a constant, so subgraph is not
         // constant.
         *is_constant_graph = false;
@@ -314,7 +351,8 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
                               Tensor* result, GraphRunner* graph_runner,
                               std::unordered_map<string, Tensor>* cached_values,
                               int64 max_cached_value_size,
-                              bool disable_constant_propagation) {
+                              bool disable_constant_propagation,
+                              InferenceContext* outer_context) {
   *evaluated = false;
   const Node* src = tensor.node;
 
@@ -324,6 +362,22 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
       *evaluated = true;
       return Status::OK();
     }
+  }
+
+  // If the source node is an Arg return its value, if available in the outer
+  // context.
+  if (src->IsArg() && outer_context) {
+    int index;
+    TF_RETURN_IF_ERROR(
+        GetArgNodeIndex(src, outer_context->num_inputs(), &index));
+    const Tensor* const_tensor = outer_context->input_tensor(index);
+    if (const_tensor) {
+      *evaluated = true;
+      *result = *(outer_context->input_tensor(index));
+    } else {
+      outer_context->request_input_tensor(index);
+    }
+    return Status::OK();
   }
 
   if (disable_constant_propagation) {
@@ -339,7 +393,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
   std::vector<std::pair<string, Tensor>> const_inputs;
   TF_RETURN_IF_ERROR(ExtractConstantSubgraph(*src, refiner, cached_values,
                                              &subgraph, &is_constant_graph,
-                                             &const_inputs));
+                                             &const_inputs, outer_context));
   if (!is_constant_graph) {
     return Status::OK();
   }

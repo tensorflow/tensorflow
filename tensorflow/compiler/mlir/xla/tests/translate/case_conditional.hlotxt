@@ -26,21 +26,21 @@ ENTRY %indexed_conditional () -> f32[] {
 }
 
 // CHECK-LABEL: func @main() -> tensor<f32>
-// CHECK: %[[INDEX:.*]] = constant  {name = "constant"} dense<1> : tensor<i32>
-// CHECK: %[[OPERAND_1:.*]] = constant  {name = "{{.*}}"} dense<5.600000e+01> : tensor<f32>
-// CHECK: %[[OPERAND_2:.*]] = constant  {name = "{{.*}}"} dense<1.200000e+01> : tensor<f32>
-// CHECK: %[[OPERAND_3:.*]] = constant  {name = "{{.*}}"} dense<1.300000e+01> : tensor<f32>
-// CHECK: %[[RESULT:.*]] = "xla_hlo.case"(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]) ( {
+// CHECK: %[[INDEX:.*]] = mhlo.constant dense<1> : tensor<i32>
+// CHECK: %[[OPERAND_1:.*]] = mhlo.constant dense<5.600000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_2:.*]] = mhlo.constant dense<1.200000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_3:.*]] = mhlo.constant dense<1.300000e+01> : tensor<f32>
+// CHECK: %[[RESULT:.*]] = "mhlo.case"(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]) ( {
 // CHECK:   ^bb0(%[[ARG_1:.*]]: tensor<f32>):
-// CHECK:     %[[RES_1:.*]] = "xla_hlo.negate"(%[[ARG_1]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
-// CHECK:     "xla_hlo.return"(%[[RES_1]]) : (tensor<f32>) -> ()
+// CHECK:     %[[RES_1:.*]] = "mhlo.negate"(%[[ARG_1]]) : (tensor<f32>) -> tensor<f32>
+// CHECK:     "mhlo.return"(%[[RES_1]]) : (tensor<f32>) -> ()
 // CHECK:   },  {
 // CHECK:   ^bb0(%[[ARG_2:.*]]: tensor<f32>):
-// CHECK:     %[[RES_2:.*]] = "xla_hlo.copy"(%[[ARG_2]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
-// CHECK:     "xla_hlo.return"(%[[RES_2]]) : (tensor<f32>) -> ()
+// CHECK:     %[[RES_2:.*]] = "mhlo.copy"(%[[ARG_2]]) : (tensor<f32>) -> tensor<f32>
+// CHECK:     "mhlo.return"(%[[RES_2]]) : (tensor<f32>) -> ()
 // CHECK:   },  {
 // CHECK:   ^bb0(%[[ARG_3:.*]]: tensor<f32>):
-// CHECK:     %[[RES_3:.*]] = "xla_hlo.floor"(%[[ARG_3]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
-// CHECK:     "xla_hlo.return"(%[[RES_3]]) : (tensor<f32>) -> ()
-// CHECK:   }) {name = "{{.*}}"} : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK:     %[[RES_3:.*]] = "mhlo.floor"(%[[ARG_3]]) : (tensor<f32>) -> tensor<f32>
+// CHECK:     "mhlo.return"(%[[RES_3]]) : (tensor<f32>) -> ()
+// CHECK:   }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
 // CHECK: return %[[RESULT]] : tensor<f32>

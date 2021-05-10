@@ -65,14 +65,16 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -182,7 +184,7 @@ class DirectSessionFactory : public SessionFactory {
 
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
-      EnableCPUAllocatorFullStats(true);
+      EnableCPUAllocatorFullStats();
     }
     std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
@@ -500,18 +502,24 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
-  profiler::TraceMe activity(
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          return strings::StrCat("SessionRun#id=", step_id,
-                                 ",model_id=", model_metadata.name(), ":",
-                                 model_metadata.version(), "#");
+          string model_id = strings::StrCat(model_metadata.name(), ":",
+                                            model_metadata.version());
+          return profiler::TraceMeEncode("SessionRun",
+                                         {{"id", step_id},
+                                          {"_r", 1} /*root_event*/,
+                                          {"model_id", model_id}});
         } else {
-          return strings::StrCat("SessionRun#id=", step_id, "#");
+          return profiler::TraceMeEncode(
+              "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
+      profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -547,7 +555,8 @@ Status DirectSession::RunInternal(
                                            drl.get(),
                                            "/job:localhost/replica:0/task:0"));
       collective_executor_mgr_.reset(new CollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
+          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl),
+          MaybeCreateNcclCommunicator()));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
@@ -666,7 +675,9 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create();
+    ProfileOptions options = ProfilerSession::DefaultOptions();
+    options.set_host_tracer_level(0);
+    profiler_session = ProfilerSession::Create(options);
   }
 
   // Register this step with session's cancellation manager, so that
@@ -1331,12 +1342,10 @@ Status DirectSession::CreateExecutors(
       options_.config.experimental().has_session_metadata()
           ? &options_.config.experimental().session_metadata()
           : nullptr;
-  const CustomKernelCreator* custom_kernel_creator =
-      GetDefaultCustomKernelCreator();
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
-      /*parent=*/nullptr, custom_kernel_creator, session_metadata,
+      /*parent=*/nullptr, session_metadata,
       Rendezvous::Factory{
           [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
@@ -1517,8 +1526,6 @@ Status DirectSession::GetOrCreateExecutors(
     auto it = executors_.find(sorted_key);
     if (it != executors_.end()) {
       *executors_and_keys = it->second.get();
-      // Insert this under the original key.
-      executors_.emplace(key, it->second);
       return Status::OK();
     }
   }
@@ -1688,6 +1695,7 @@ Status DirectSession::CreateGraphs(
   for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
+    device_graph->SetConstructionContext(ConstructionContext::kDirectSession);
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;

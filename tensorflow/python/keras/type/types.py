@@ -20,18 +20,12 @@ implementations. It is designed be used as base class for other concrete
 classes, type checks, and python3 type hints.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-import six
 
 # TODO(scottzhu): Export all the types under this module with API symbol.
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Layer(object):
+class Layer(object, metaclass=abc.ABCMeta):
   """This is the class from which all layers inherit.
 
   A layer is a callable object that takes as input one or more tensors and
@@ -157,10 +151,10 @@ class Layer(object):
   ```
 
   For more information about creating layers, see the guide
-  [Writing custom layers and models with Keras](
+  [Making new Layers and Models via subclassing](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights (default of
@@ -176,9 +170,9 @@ class Layer(object):
   Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
+      precision is used with a `tf.keras.mixed_precision.Policy`, this is
+      instead just the dtype of the layer's weights, as the computations are
+      done in a different dtype.
     updates: List of update ops of this layer.
     losses: List of losses added by this layer.
     trainable_weights: List of variables to be included in backprop.
@@ -197,7 +191,6 @@ class Layer(object):
   if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
   layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
   precision is used, layers may have different computation and variable dtypes.
-  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
-  dtypes.
+  See `tf.keras.mixed_precision.Policy` for details on layer dtypes.
   """
   pass

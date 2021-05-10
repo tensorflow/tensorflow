@@ -13,13 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Built-in activation functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import six
-
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
+from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
@@ -33,7 +29,6 @@ from tensorflow.python.util.tf_export import keras_export
 # internal method name is returned in serialization. This results in errors in
 # model exporting and loading as Keras can't find any activation function with
 # the name of `softmax_v2`.
-
 # This dict maps the activation function name from its v2 version to its
 # canonical name.
 _TF_ACTIVATIONS_V2 = {
@@ -44,7 +39,7 @@ _TF_ACTIVATIONS_V2 = {
 @keras_export('keras.activations.softmax')
 @dispatch.add_dispatch_support
 def softmax(x, axis=-1):
-  """Softmax converts a real vector to a vector of categorical probabilities.
+  """Softmax converts a vector of values to a probability distribution.
 
   The elements of the output vector are in range (0, 1) and sum to 1.
 
@@ -60,46 +55,92 @@ def softmax(x, axis=-1):
 
   The input values in are the log-odds of the resulting probability.
 
-  Arguments:
-      x : Input tensor.
-      axis: Integer, axis along which the softmax normalization is applied.
+  Args:
+    x : Input tensor.
+    axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
-      Tensor, output of softmax transformation (all values are non-negative
-        and sum to 1).
+    Tensor, output of softmax transformation (all values are non-negative
+      and sum to 1).
 
-  Raises:
-      ValueError: In case `dim(x) == 1`.
+  Examples:
+
+  **Example 1: standalone usage**
+
+  >>> inputs = tf.random.normal(shape=(32, 10))
+  >>> outputs = tf.keras.activations.softmax(inputs)
+  >>> tf.reduce_sum(outputs[0, :])  # Each sample in the batch now sums to 1
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0000001>
+
+  **Example 2: usage in a `Dense` layer**
+
+  >>> layer = tf.keras.layers.Dense(32, activation=tf.keras.activations.softmax)
   """
-  ndim = K.ndim(x)
-  if ndim == 2:
-    return nn.softmax(x)
-  elif ndim > 2:
-    e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
-    s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    return e / s
+  if x.shape.rank > 1:
+    if isinstance(axis, int):
+      output = nn.softmax(x, axis=axis)
+    else:
+      # nn.softmax does not support tuple axis.
+      e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
+      s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
+      output = e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D. '
                      'Received input: %s' % (x,))
+
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.elu')
 @dispatch.add_dispatch_support
 def elu(x, alpha=1.0):
-  """Exponential linear unit.
+  """Exponential Linear Unit.
 
-  Arguments:
+  The exponential linear unit (ELU) with `alpha > 0` is:
+  `x` if `x > 0` and
+  `alpha * (exp(x) - 1)` if `x < 0`
+  The ELU hyperparameter `alpha` controls the value to which an
+  ELU saturates for negative net inputs. ELUs diminish the
+  vanishing gradient effect.
+
+  ELUs have negative values which pushes the mean of the activations
+  closer to zero.
+  Mean activations that are closer to zero enable faster learning as they
+  bring the gradient closer to the natural gradient.
+  ELUs saturate to a negative value when the argument gets smaller.
+  Saturation means a small derivative which decreases the variation
+  and the information that is propagated to the next layer.
+
+  Example Usage:
+
+  >>> import tensorflow as tf
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Conv2D(32, (3, 3), activation='elu',
+  ...          input_shape=(28, 28, 1)))
+  >>> model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+  >>> model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
+  >>> model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+  >>> model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
+
+  <tensorflow.python.keras.engine.sequential.Sequential object ...>
+
+  Args:
       x: Input tensor.
-      alpha: A scalar, slope of negative section.
+      alpha: A scalar, slope of negative section. `alpha` controls the value to
+        which an ELU saturates for negative net inputs.
 
   Returns:
-      The exponential linear activation: `x` if `x > 0` and
-        `alpha * (exp(x)-1)` if `x < 0`.
+      The exponential linear unit (ELU) activation function: `x` if `x > 0` and
+      `alpha * (exp(x) - 1)` if `x < 0`.
+
 
   Reference:
-      - [Clevert et al. 2016](https://arxiv.org/abs/1511.07289)
+      [Fast and Accurate Deep Network Learning by Exponential Linear Units
+      (ELUs) (Clevert et al, 2016)](https://arxiv.org/abs/1511.07289)
   """
-  return K.elu(x, alpha)
+  return backend.elu(x, alpha)
 
 
 @keras_export('keras.activations.selu')
@@ -138,7 +179,7 @@ def selu(x):
   ...                                 activation='selu'))
   >>> model.add(tf.keras.layers.Dense(num_classes, activation='softmax'))
 
-  Arguments:
+  Args:
       x: A tensor or variable to compute the activation function for.
 
   Returns:
@@ -151,7 +192,7 @@ def selu(x):
         `tf.keras.layers.AlphaDropout` (not regular dropout).
 
   References:
-      - [Klambauer et al., 2017](https://arxiv.org/abs/1706.02515)
+      - [backendlambauer et al., 2017](https://arxiv.org/abs/1706.02515)
   """
   return nn.selu(x)
 
@@ -169,13 +210,13 @@ def softplus(x):
   array([2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00,
            2.0000000e+01], dtype=float32)
   
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
       The softplus activation: `log(exp(x) + 1)`.
   """
-  return nn.softplus(x)
+  return math_ops.softplus(x)
 
 
 @keras_export('keras.activations.softsign')
@@ -190,7 +231,7 @@ def softsign(x):
   >>> b.numpy()
   array([-0.5,  0. ,  0.5], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -218,7 +259,7 @@ def swish(x):
   array([-4.1223075e-08, -2.6894143e-01,  0.0000000e+00,  7.3105860e-01,
             2.0000000e+01], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -254,7 +295,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   >>> tf.keras.activations.relu(foo, threshold=5).numpy()
   array([-0., -0.,  0.,  0., 10.], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input `tensor` or `variable`.
       alpha: A `float` that governs the slope for values lower than the
         threshold.
@@ -268,7 +309,47 @@ def relu(x, alpha=0., max_value=None, threshold=0):
       transformed by the relu activation function.
       Tensor will be of the same shape and dtype of input `x`.
   """
-  return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
+  return backend.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
+
+
+@keras_export('keras.activations.gelu', v1=[])
+@dispatch.add_dispatch_support
+def gelu(x, approximate=False):
+  """Applies the Gaussian error linear unit (GELU) activation function.
+
+  Gaussian error linear unit (GELU) computes
+  `x * P(X <= x)`, where `P(X) ~ N(0, 1)`.
+  The (GELU) nonlinearity weights inputs by their value, rather than gates
+  inputs by their sign as in ReLU.
+
+  For example:
+
+  >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
+  >>> y = tf.keras.activations.gelu(x)
+  >>> y.numpy()
+  array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
+      dtype=float32)
+  >>> y = tf.keras.activations.gelu(x, approximate=True)
+  >>> y.numpy()
+  array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
+      dtype=float32)
+
+  Args:
+      x: Input tensor.
+      approximate: A `bool`, whether to enable approximation.
+
+  Returns:
+      The gaussian error linear activation:
+      `0.5 * x * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))`
+      if `approximate` is `True` or
+      `x * P(X <= x) = 0.5 * x * (1 + erf(x / sqrt(2)))`,
+      where `P(X) ~ N(0, 1)`,
+      if `approximate` is `False`.
+
+  Reference:
+    - [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415)
+  """
+  return nn.gelu(x, approximate)
 
 
 @keras_export('keras.activations.tanh')
@@ -283,7 +364,7 @@ def tanh(x):
   >>> b.numpy()
   array([-0.9950547, -0.7615942,  0.,  0.7615942,  0.9950547], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -314,13 +395,16 @@ def sigmoid(x):
   array([2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01,
            1.0000000e+00], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
       Tensor with the sigmoid activation: `1 / (1 + exp(-x))`.
   """
-  return nn.sigmoid(x)
+  output = nn.sigmoid(x)
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.exponential')
@@ -335,7 +419,7 @@ def exponential(x):
   >>> b.numpy()
   array([0.04978707,  0.36787945,  1.,  2.7182817 , 20.085537], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -349,7 +433,9 @@ def exponential(x):
 def hard_sigmoid(x):
   """Hard sigmoid activation function.
 
-  A faster approximation of the sigmoid activation.
+  A faster approximation of the sigmoid activation. 
+  Piecewise linear approximation of the sigmoid function.
+  Ref: 'https://en.wikipedia.org/wiki/Hard_sigmoid'
 
   For example:
 
@@ -358,7 +444,7 @@ def hard_sigmoid(x):
   >>> b.numpy()
   array([0. , 0.3, 0.5, 0.7, 1. ], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -368,7 +454,7 @@ def hard_sigmoid(x):
       - `if x > 2.5: return 1`
       - `if -2.5 <= x <= 2.5: return 0.2 * x + 0.5`
   """
-  return K.hard_sigmoid(x)
+  return backend.hard_sigmoid(x)
 
 
 @keras_export('keras.activations.linear')
@@ -383,7 +469,7 @@ def linear(x):
   >>> b.numpy()
   array([-3., -1.,  0.,  1.,  3.], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -397,7 +483,7 @@ def linear(x):
 def serialize(activation):
   """Returns the string identifier of an activation function.
 
-  Arguments:
+  Args:
       activation : Function object.
 
   Returns:
@@ -423,13 +509,23 @@ def serialize(activation):
   return serialize_keras_object(activation)
 
 
+# Add additional globals so that deserialize can find these common activation
+# functions
+leaky_relu = nn.leaky_relu
+log_softmax = nn.log_softmax
+relu6 = nn.relu6
+silu = nn.swish
+
+
 @keras_export('keras.activations.deserialize')
 @dispatch.add_dispatch_support
 def deserialize(name, custom_objects=None):
   """Returns activation function given a string identifier.
 
-  Arguments:
-      x : String identifier.
+  Args:
+    name: The name of the activation function.
+    custom_objects: Optional `{function_name: function_obj}`
+      dictionary listing user-provided activation functions.
 
   Returns:
       Corresponding activation function.
@@ -445,18 +541,21 @@ def deserialize(name, custom_objects=None):
   ...
   ValueError: Unknown activation function:abcd
 
-  Args:
-    name: The name of the activation function.
-    custom_objects: Optional `{function_name: function_obj}`
-      dictionary listing user-provided activation functions.
-
   Raises:
       ValueError: `Unknown activation function` if the input string does not
       denote any defined Tensorflow activation function.
   """
+  globs = globals()
+
+  # only replace missing activations
+  advanced_activations_globs = advanced_activations.get_globals()
+  for key, val in advanced_activations_globs.items():
+    if key not in globs:
+      globs[key] = val
+
   return deserialize_keras_object(
       name,
-      module_objects=globals(),
+      module_objects=globs,
       custom_objects=custom_objects,
       printable_module_name='activation function')
 
@@ -466,7 +565,7 @@ def deserialize(name, custom_objects=None):
 def get(identifier):
   """Returns function.
 
-  Arguments:
+  Args:
       identifier: Function or string
 
   Returns:
@@ -493,7 +592,7 @@ def get(identifier):
   """
   if identifier is None:
     return linear
-  if isinstance(identifier, six.string_types):
+  if isinstance(identifier, str):
     identifier = str(identifier)
     return deserialize(identifier)
   elif isinstance(identifier, dict):

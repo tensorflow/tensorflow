@@ -10,11 +10,15 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feature_config\', \'batch_size\', \'optimizer\', \'pipeline_execution_with_tensor_core\', \'initialize_tpu_embedding\'], varargs=None, keywords=None, defaults=[\'False\', \'True\'], "
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "apply_gradients"
     argspec: "args=[\'self\', \'gradients\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\', \'per_replica_batch_size\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dequeue"
@@ -22,6 +26,6 @@ tf_class {
   }
   member_method {
     name: "enqueue"
-    argspec: "args=[\'self\', \'features\', \'weights\', \'training\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'features\', \'weights\', \'training\', \'name\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
   }
 }

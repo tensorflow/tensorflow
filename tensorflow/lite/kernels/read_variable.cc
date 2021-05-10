@@ -13,17 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
 #include <string.h>
 
-#include <memory>
-
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -37,12 +34,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
   TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumElements(input_resource_id_tensor), 1);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputValue);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputValue, &output));
   SetTensorToDynamic(output);
 
   return kTfLiteOk;
@@ -51,17 +51,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
   int resource_id = input_resource_id_tensor->data.i32[0];
   auto& resources = subgraph->resources();
   auto* variable = resource::GetResourceVariable(&resources, resource_id);
   TF_LITE_ENSURE(context, variable != nullptr);
 
   TfLiteTensor* variable_tensor = variable->GetTensor();
-  TfLiteTensor* output = GetOutput(context, node, kOutputValue);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputValue, &output));
 
-  TF_LITE_ENSURE_EQ(context, variable_tensor->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, variable_tensor->type, output->type);
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(
                    context, output, TfLiteIntArrayCopy(variable_tensor->dims)));

@@ -250,7 +250,7 @@ def spence(x, name=None):
     return gen_special_math_ops.spence(x)
 
 
-@tf_export('math.bessel_i0')
+@tf_export('math.bessel_i0', 'math.special.bessel_i0')
 @dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
@@ -258,6 +258,9 @@ def bessel_i0(x, name=None):
   Modified Bessel function of order 0.
 
   It is preferable to use the numerically stabler function `i0e(x)` instead.
+
+  >>> tf.math.special.bessel_i0([-1., -0.5, 0.5, 1.]).numpy()
+  array([1.26606588, 1.06348337, 1.06348337, 1.26606588], dtype=float32)
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
@@ -272,10 +275,36 @@ def bessel_i0(x, name=None):
   @end_compatibility
   """
   with ops.name_scope(name, 'bessel_i0', [x]):
-    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i0e(x)
+    return gen_special_math_ops.bessel_i0(x)
 
 
-@tf_export('math.bessel_i1')
+@tf_export('math.bessel_i0e', 'math.special.bessel_i0e')
+@dispatch.add_dispatch_support
+def bessel_i0e(x, name=None):
+  """Computes the Bessel i0e function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_i0e([-1., -0.5, 0.5, 1.]).numpy()
+  array([0.46575961, 0.64503527, 0.64503527, 0.46575961], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i0e', [x]):
+    return gen_special_math_ops.bessel_i0e(x)
+
+
+@tf_export('math.bessel_i1', 'math.special.bessel_i1')
 @dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
@@ -283,6 +312,9 @@ def bessel_i1(x, name=None):
   Modified Bessel function of order 1.
 
   It is preferable to use the numerically stabler function `i1e(x)` instead.
+
+  >>> tf.math.special.bessel_i1([-1., -0.5, 0.5, 1.]).numpy()
+  array([-0.5651591 , -0.25789431,  0.25789431,  0.5651591 ], dtype=float32)
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
@@ -297,7 +329,245 @@ def bessel_i1(x, name=None):
   @end_compatibility
   """
   with ops.name_scope(name, 'bessel_i1', [x]):
-    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
+    return gen_special_math_ops.bessel_i1(x)
+
+
+@tf_export('math.bessel_i1e', 'math.special.bessel_i1e')
+@dispatch.add_dispatch_support
+def bessel_i1e(x, name=None):
+  """Computes the Bessel i1e function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_i1e([-1., -0.5, 0.5, 1.]).numpy()
+  array([-0.20791042, -0.15642083,  0.15642083,  0.20791042], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i1e', [x]):
+    return gen_special_math_ops.bessel_i1e(x)
+
+
+@tf_export('math.special.bessel_k0')
+@dispatch.add_dispatch_support
+def bessel_k0(x, name=None):
+  """Computes the Bessel k0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  It is preferable to use the numerically stabler function `k0e(x)` instead.
+
+  >>> tf.math.special.bessel_k0([0.5, 1., 2., 4.]).numpy()
+  array([0.92441907, 0.42102444, 0.11389387, 0.01115968], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k0', [x]):
+    return gen_special_math_ops.bessel_k0(x)
+
+
+@tf_export('math.special.bessel_k0e')
+@dispatch.add_dispatch_support
+def bessel_k0e(x, name=None):
+  """Computes the Bessel k0e function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_k0e([0.5, 1., 2., 4.]).numpy()
+  array([1.52410939, 1.14446308, 0.84156822, 0.60929767], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k0e', [x]):
+    return gen_special_math_ops.bessel_k0e(x)
+
+
+@tf_export('math.special.bessel_k1')
+@dispatch.add_dispatch_support
+def bessel_k1(x, name=None):
+  """Computes the Bessel k1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  It is preferable to use the numerically stabler function `k1e(x)` instead.
+
+  >>> tf.math.special.bessel_k1([0.5, 1., 2., 4.]).numpy()
+  array([1.65644112, 0.60190723, 0.13986588, 0.0124835 ], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k1', [x]):
+    return gen_special_math_ops.bessel_k1(x)
+
+
+@tf_export('math.special.bessel_k1e')
+@dispatch.add_dispatch_support
+def bessel_k1e(x, name=None):
+  """Computes the Bessel k1e function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_k1e([0.5, 1., 2., 4.]).numpy()
+  array([2.73100971, 1.63615349, 1.03347685, 0.68157595], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k1e', [x]):
+    return gen_special_math_ops.bessel_k1e(x)
+
+
+@tf_export('math.special.bessel_j0')
+@dispatch.add_dispatch_support
+def bessel_j0(x, name=None):
+  """Computes the Bessel j0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_j0([0.5, 1., 2., 4.]).numpy()
+  array([ 0.93846981,  0.76519769,  0.22389078, -0.39714981], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.j0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_j0', [x]):
+    return gen_special_math_ops.bessel_j0(x)
+
+
+@tf_export('math.special.bessel_j1')
+@dispatch.add_dispatch_support
+def bessel_j1(x, name=None):
+  """Computes the Bessel j1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_j1([0.5, 1., 2., 4.]).numpy()
+  array([ 0.24226846,  0.44005059,  0.57672481, -0.06604333], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.j1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_j1', [x]):
+    return gen_special_math_ops.bessel_j1(x)
+
+
+@tf_export('math.special.bessel_y0')
+@dispatch.add_dispatch_support
+def bessel_y0(x, name=None):
+  """Computes the Bessel y0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_y0([0.5, 1., 2., 4.]).numpy()
+  array([-0.44451873,  0.08825696,  0.51037567, -0.01694074], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.y0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_y0', [x]):
+    return gen_special_math_ops.bessel_y0(x)
+
+
+@tf_export('math.special.bessel_y1')
+@dispatch.add_dispatch_support
+def bessel_y1(x, name=None):
+  """Computes the Bessel y1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_y1([0.5, 1., 2., 4.]).numpy()
+  array([-1.47147239, -0.78121282, -0.10703243,  0.39792571], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.y1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_y1', [x]):
+    return gen_special_math_ops.bessel_y1(x)
 
 
 @ops.RegisterGradient('XlaEinsum')
@@ -336,21 +606,25 @@ def _enclosing_tpu_context():
 @tf_export('einsum', 'linalg.einsum')
 @dispatch.add_dispatch_support
 def einsum(equation, *inputs, **kwargs):
-  """Tensor contraction over specified indices and outer product.
+  r"""Tensor contraction over specified indices and outer product.
 
   Einsum allows defining Tensors by defining their element-wise computation.
   This computation is defined by `equation`, a shorthand form based on Einstein
   summation. As an example, consider multiplying two matrices A and B to form a
   matrix C.  The elements of C are given by:
 
-  ```
-    C[i,k] = sum_j A[i,j] * B[j,k]
-  ```
+  $$ C_{i,k} = \sum_j A_{i,j} B_{j,k} $$
 
-  The corresponding `equation` is:
+  or
 
   ```
-    ij,jk->ik
+  C[i,k] = sum_j A[i,j] * B[j,k]
+  ```
+
+  The corresponding einsum `equation` is:
+
+  ```
+  ij,jk->ik
   ```
 
   In general, to convert the element-wise equation into the `equation` string,
@@ -362,35 +636,98 @@ def einsum(equation, *inputs, **kwargs):
   3. drop summation signs, and (`ik = ij, jk`)
   4. move the output to the right, while replacing "=" with "->". (`ij,jk->ik`)
 
+  Note: If the output indices are not specified repeated indices are summed.
+  So `ij,jk->ik` can be simplified to `ij,jk`.
+
   Many common operations can be expressed in this way.  For example:
 
-  ```python
-  # Matrix multiplication
-  einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+  **Matrix multiplication**
 
-  # Dot product
-  einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+  >>> m0 = tf.random.normal(shape=[2, 3])
+  >>> m1 = tf.random.normal(shape=[3, 5])
+  >>> e = tf.einsum('ij,jk->ik', m0, m1)
+  >>> # output[i,k] = sum_j m0[i,j] * m1[j, k]
+  >>> print(e.shape)
+  (2, 5)
 
-  # Outer product
-  einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+  Repeated indices are summed if the output indices are not specified.
 
-  # Transpose
-  einsum('ij->ji', m)  # output[j,i] = m[i,j]
+  >>> e = tf.einsum('ij,jk', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+  >>> print(e.shape)
+  (2, 5)
 
-  # Trace
-  einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
 
-  # Batch matrix multiplication
-  einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
-  ```
+  **Dot product**
 
-  To enable and control broadcasting, use an ellipsis.  For example, to perform
-  batch matrix multiplication with NumPy-style broadcasting across the batch
-  dimensions, use:
+  >>> u = tf.random.normal(shape=[5])
+  >>> v = tf.random.normal(shape=[5])
+  >>> e = tf.einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+  >>> print(e.shape)
+  ()
 
-  ```python
-  einsum('...ij,...jk->...ik', u, v)
-  ```
+  **Outer product**
+
+  >>> u = tf.random.normal(shape=[3])
+  >>> v = tf.random.normal(shape=[5])
+  >>> e = tf.einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+  >>> print(e.shape)
+  (3, 5)
+
+  **Transpose**
+
+  >>> m = tf.ones(2,3)
+  >>> e = tf.einsum('ij->ji', m0)  # output[j,i] = m0[i,j]
+  >>> print(e.shape)
+  (3, 2)
+
+  **Diag**
+
+  >>> m = tf.reshape(tf.range(9), [3,3])
+  >>> diag = tf.einsum('ii->i', m)
+  >>> print(diag.shape)
+  (3,)
+
+  **Trace**
+
+  >>> # Repeated indices are summed.
+  >>> trace = tf.einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
+  >>> assert trace == sum(diag)
+  >>> print(trace.shape)
+  ()
+
+  **Batch matrix multiplication**
+
+  >>> s = tf.random.normal(shape=[7,5,3])
+  >>> t = tf.random.normal(shape=[7,3,2])
+  >>> e = tf.einsum('bij,bjk->bik', s, t)
+  >>> # output[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+  >>> print(e.shape)
+  (7, 5, 2)
+
+  This method does not support broadcasting on named-axes. All axes with
+  matching labels should have the same length. If you have length-1 axes,
+  use `tf.squeseze` or `tf.reshape` to eliminate them.
+
+  To write code that is agnostic to the number of indices in the input
+  use an ellipsis. The ellipsis is a placeholder for "whatever other indices
+  fit here".
+
+  For example, to perform a NumPy-style broadcasting-batch-matrix multiplication
+  where the matrix multiply acts on the last two axes of the input, use:
+
+  >>> s = tf.random.normal(shape=[11, 7, 5, 3])
+  >>> t = tf.random.normal(shape=[11, 7, 3, 2])
+  >>> e =  tf.einsum('...ij,...jk->...ik', s, t)
+  >>> print(e.shape)
+  (11, 7, 5, 2)
+
+  Einsum **will** broadcast over axes covered by the ellipsis.
+
+  >>> s = tf.random.normal(shape=[11, 1, 5, 3])
+  >>> t = tf.random.normal(shape=[1, 7, 3, 2])
+  >>> e =  tf.einsum('...ij,...jk->...ik', s, t)
+  >>> print(e.shape)
+  (11, 7, 5, 2)
 
   Args:
     equation: a `str` describing the contraction, in the same format as

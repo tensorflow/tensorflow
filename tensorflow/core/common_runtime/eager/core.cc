@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace {
 
-bool IsCPU(tensorflow::VariantDevice variant) {
-  if (VariantDeviceIsCustom(variant)) {
-    return false;
-  }
-  tensorflow::Device* d = absl::get<tensorflow::Device*>(variant);
+bool IsCPU(tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
@@ -36,18 +35,10 @@ namespace tensorflow {
 // TODO(b/152902651): This should not depend on EagerContext. This can be
 // resolved by storing ctx->HostCPU() in the TensorHandle class.
 AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
-  if (VariantDeviceIsCustom(device())) {
-    auto* custom_device = absl::get<CustomDevice*>(device());
-    TensorHandle* copy;
-    *status = custom_device->CopyTensorFromDevice(
-        this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
-    if (status->ok()) {
-      return copy->Resolve(status);
-    } else {
-      return nullptr;
-    }
+  *status = WaitUnknownDevice();
+  if (!status->ok()) {
+    return nullptr;
   }
-
   if (Type() == REMOTE) {
     const tensorflow::Tensor* t = nullptr;
     TensorHandle* h_cpu = nullptr;
@@ -112,42 +103,22 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
   }
 }
 
-AbstractTensorHandleInterface* EagerContext::CopyTensorHandleToDevice(
-    AbstractTensorHandleInterface* handle, const char* device_name,
+ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
+    ImmediateExecutionTensorHandle* handle, const char* device_name,
     Status* status) {
-  TensorHandle* input = TensorHandleFromInterface(handle);
-  TensorHandle* result = nullptr;
+  ImmediateExecutionTensorHandle* result = nullptr;
   Device* device;
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
-    tensorflow::CustomDevice* dev;
-    *status = this->FindCustomDeviceFromName(device_name, &dev);
-    if (status->ok()) {
-      *status = dev->CopyTensorToDevice(input, &result);
-      if (status->ok()) {
-        return result;
-      }
-    }
-    return nullptr;
-  }
-  // Handle tensor handles currently in custom devices
-  const char* handle_device_name = input->DeviceName(status);
-  if (!status->ok()) {
-    return nullptr;
-  }
-  tensorflow::CustomDevice* dev;
-  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
-  if (status->ok()) {
-    *status = dev->CopyTensorFromDevice(input, device_name, &result);
-    if (status->ok()) {
-      return result;
-    }
+    *status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     return nullptr;
   }
 
-  // Handle regular case.
+  TensorHandle* input = TensorHandleFromInterface(handle);
   *status =
-      EagerCopyToDevice(input, this, &this->Executor(), device, false, &result);
+      EagerCopyToDevice(input, this, &this->Executor(), device, false,
+                        reinterpret_cast<tensorflow::TensorHandle**>(&result));
   if (status->ok()) {
     return result;
   }
@@ -158,27 +129,79 @@ AbstractTensorHandleInterface* EagerContext::CopyTensorHandleToDevice(
 // here to a circular BUILD dep issue. If we move this to context.cc, then we
 // will have the circular dependency of:
 //   context -> tensor_handle -> remote_tensor_handle_data -> context
-AbstractTensorHandleInterface* EagerContext::CreateLocalHandle(
+ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandle(
     AbstractTensorInterface* t) {
   Tensor tensor = TensorFromInterface(t);
   return TensorHandle::CreateLocalHandle(std::move(tensor), /*d=*/HostCPU(),
                                          /*op_device=*/nullptr, this);
 }
 
+ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
+    tensorflow::Tensor& t, const char* d_name) {
+  // If device name is not specified, create the TensorHandle on host cpu.
+  if (d_name == nullptr)
+    return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/HostCPU(),
+                                           /*op_device=*/nullptr, this);
+  Device* d = nullptr;
+  auto status = FindDeviceFromName(d_name, &d);
+  if (!status.ok()) return nullptr;
+  return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/d,
+                                         /*op_device=*/nullptr, this);
+}
+
+ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
+    ImmediateExecutionTensorHandle* handle) {
+  return handle;
+}
+
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.
-AbstractOperationInterface* EagerContext::CreateOperation() {
+ImmediateExecutionOperation* EagerContext::CreateOperation() {
   return new EagerOperation(this);
+}
+
+Status EagerContext::RegisterFunction(AbstractFunction* f) {
+  FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
+  if (!fdef) {
+    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
+  }
+  return AddFunctionDef(*fdef);
 }
 
 // TODO(b/152902651): Once we move many execute.cc functions into
 // eager_operation.cc we can avoid a circular dependency between them.
-Status EagerOperation::Execute(
-    absl::Span<AbstractTensorHandleInterface*> retvals, int* num_retvals) {
-  return EagerExecute(
-      this, reinterpret_cast<tensorflow::TensorHandle**>(retvals.data()),
-      num_retvals);
+Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
+                               int* num_retvals) {
+  for (ImmediateExecutionTensorHandle* handle : inputs_) {
+    if (TensorHandle::classof(handle)) {
+      TF_RETURN_IF_ERROR(down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
+    }
+  }
+
+  // Run eager placement logic.
+  class Device* device = absl::get<class Device*>(Device());
+  if (device == nullptr) {
+    TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
+  }
+  if (device == nullptr && ctx_.PinSmallOpsToCPU()) {
+    bool pin_to_cpu;
+    TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
+        &pin_to_cpu, Name(), GetInputs(), ctx_.HostCPU()->name()));
+    if (pin_to_cpu) {
+      device = ctx_.HostCPU();
+    }
+  }
+
+  if (device != nullptr) {
+    SetDevice(device);
+  }
+  // At this point all inputs and outputs are TensorHandles associated with
+  // physical devices.
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
+  return EagerExecute(this, retval_array, num_retvals);
 }
 
 }  //  namespace tensorflow

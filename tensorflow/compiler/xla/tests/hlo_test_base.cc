@@ -47,19 +47,6 @@ using absl::string_view;
 
 constexpr char kInterpreter[] = "interpreter";
 
-// Helper functions to get test and reference platforms.
-se::Platform* GetReferencePlatform() {
-  auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
-  return result.ValueOrDie();
-}
-
-se::Platform* GetTestPlatform() {
-  auto result = PlatformUtil::GetDefaultPlatform();
-  TF_CHECK_OK(result.status()) << "could not get test platform";
-  return result.ValueOrDie();
-}
-
 bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
   if (lhs.parameters_size() != rhs.parameters_size()) {
     return false;
@@ -111,6 +98,18 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       instruction_can_change_layout_func);
 }
 
+/*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
+  auto result = PlatformUtil::GetPlatform(kInterpreter);
+  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  return result.ValueOrDie();
+}
+
+/*static*/ se::Platform* HloTestBase::GetTestPlatform() {
+  auto result = PlatformUtil::GetDefaultPlatform();
+  TF_CHECK_OK(result.status()) << "could not get test platform";
+  return result.ValueOrDie();
+}
+
 std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
     const string& name) {
   return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
@@ -126,9 +125,10 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                                          int64 replica_count) {
-  return ParseAndReturnVerifiedModule(hlo_text,
-                                      GetModuleConfigForTest(replica_count));
+                                          int64 replica_count,
+                                          int64_t num_partitions) {
+  return ParseAndReturnVerifiedModule(
+      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -228,6 +228,19 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
   }
   return test_runner_.ExecuteReplicated(std::move(module), options,
                                         device_assignment);
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::function<Executable*(int64)> executable_provider,
+    std::function<int64(int64)> argument_count_provider,
+    std::function<const Literal*(int64, int64)> argument_provider,
+    int64 num_replicas, bool run_hlo_passes) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = true;
+  return test_runner_.ExecuteReplicated(
+      executable_provider, argument_count_provider, argument_provider, options);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
@@ -401,6 +414,47 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
              : ::testing::AssertionFailure() << output.status().error_message();
 }
 
+::testing::AssertionResult HloTestBase::RunReplicated(string_view hlo_string,
+                                                      bool run_hlo_passes,
+                                                      int64 num_replicas,
+                                                      string backend_config) {
+  auto module_or_status =
+      ParseAndReturnVerifiedModule(hlo_string, num_replicas);
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+
+  std::unique_ptr<HloModule> module = std::move(module_or_status.ValueOrDie());
+  const auto& fake_arguments =
+      MakeFakeArguments(module.get()).ConsumeValueOrDie();
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  if (!backend_config.empty()) {
+    // Set backend configuration if it is given.
+    HloInstruction* instruction =
+        module->entry_computation()->root_instruction();
+    instruction->set_raw_backend_config_string(backend_config);
+  }
+
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = true;
+  for (auto argument : fake_argument_ptrs) {
+    options.arguments.push_back(argument);
+  }
+  auto output = test_runner_.ExecuteReplicated(std::move(module), options);
+
+  return output.ok()
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure() << output.status().error_message();
+}
+
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
     std::vector<ExecutionProfile>* profiles, string backend_config,
@@ -421,9 +475,6 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
         std::move(module_or_status.ValueOrDie());
 
     fake_arguments[i] = MakeFakeArguments(module.get()).ConsumeValueOrDie();
-    absl::c_transform(
-        fake_arguments[i], std::back_inserter(fake_argument_ptrs[i]),
-        [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
     if (profiles != nullptr) {
       // We have to enable HLO profiling since otherwise currently the
@@ -456,9 +507,9 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
   absl::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
-    StatusOr<Literal> output =
-        test_runner_.Execute(std::move(executables[i]), fake_argument_ptrs[i],
-                             /*profile=*/&((*profiles)[i]));
+    StatusOr<Literal> output = test_runner_.ExecuteWithExecutable(
+        std::move(executables[i]), fake_arguments[i],
+        /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().error_message();
     }

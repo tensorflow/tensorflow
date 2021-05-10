@@ -55,7 +55,7 @@ END
     name: "noise"
     description: <<END
 indicates if the noise should `uniform`, `gaussian`, or
-`zero`. The default is `uniform` which means the the noise type
+`zero`. The default is `uniform` which means the noise type
 will be decided by `uniform_noise`.
 END
   }

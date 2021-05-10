@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
@@ -6,15 +8,13 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
     name = "xsmm",
+    define_values = {"tensorflow_xsmm": "1"},
     licenses = ["notice"],
-    values = {
-        "define": "tensorflow_xsmm=1",
-    },
 )
 
 tf_cuda_library(
@@ -143,10 +143,11 @@ cc_library(
 tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     tags = [
         "no_cuda_on_cpu_tap",
         "no_gpu",
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
     ],
     deps = [
         ":single_machine",

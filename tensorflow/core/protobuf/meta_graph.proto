@@ -15,7 +15,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // NOTE: This protocol buffer is evolving, and will go through revisions in the
 // coming months.
@@ -261,7 +261,7 @@ message TensorInfo {
 // graph.
 //
 // For example, a model with two loss computations, sharing a single input,
-// might have the following signature_def map.
+// might have the following signature_def map, in a MetaGraphDef message.
 //
 // Note that across the two SignatureDefs "loss_A" and "loss_B", the input key,
 // output key, and method_name are identical, and will be used by system(s) that
@@ -287,9 +287,9 @@ message TensorInfo {
 //         tensor_shape: ...
 //       }
 //     }
+//     method_name: "some/package/compute_loss"
 //   }
 //   ...
-//   method_name: "some/package/compute_loss"
 // }
 // signature_def {
 //   key: "loss_B"
@@ -310,9 +310,9 @@ message TensorInfo {
 //         tensor_shape: ...
 //       }
 //     }
+//     method_name: "some/package/compute_loss"
 //   }
 //   ...
-//   method_name: "some/package/compute_loss"
 // }
 message SignatureDef {
   // Named input parameters.

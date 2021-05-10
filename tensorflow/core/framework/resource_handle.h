@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -39,14 +40,8 @@ class ResourceHandle {
 
   // Unique name for the device containing the resource.
   const std::string& device() const { return device_; }
-  // Names of the devices containing the resource.
-  const std::vector<string>& allowed_devices() const {
-    return allowed_devices_;
-  }
+
   void set_device(const std::string& device) { device_ = device; }
-  void set_allowed_devices(const std::vector<string>& devices) {
-    allowed_devices_ = devices;
-  }
 
   // Container in which this resource is placed.
   const std::string& container() const { return container_; }
@@ -77,6 +72,15 @@ class ResourceHandle {
     dtypes_and_shapes_ = dtypes_and_shapes;
   }
 
+  void set_definition_stack_trace(
+      const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+    definition_stack_trace_ = definition_stack_trace;
+  }
+
+  const absl::optional<ManagedStackTrace>& definition_stack_trace() const {
+    return definition_stack_trace_;
+  }
+
   // Conversion to and from ResourceHandleProto
   void AsProto(ResourceHandleProto* proto) const;
   void FromProto(const ResourceHandleProto& proto);
@@ -93,17 +97,13 @@ class ResourceHandle {
       "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
 
  public:
-  // The default device containing the resource, where the ResourceHandle is
-  // initially created.
   std::string device_;
-  // A set of devices containing the resource. If empty, the resource only
-  // exists on device_. Can be represented in wildcard patterns.
-  std::vector<string> allowed_devices_;
   std::string container_;
   std::string name_;
   uint64 hash_code_ = 0;
   std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
+  absl::optional<ManagedStackTrace> definition_stack_trace_;
 };
 
 // For backwards compatibility for when this was a proto

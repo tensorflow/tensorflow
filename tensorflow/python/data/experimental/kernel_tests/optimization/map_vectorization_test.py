@@ -44,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 
 
@@ -90,8 +91,9 @@ def _unary_real_test_combinations():
       ("Asinh", math_ops.asinh),
       ("Atan", math_ops.atan),
       ("Atanh", math_ops.atanh),
-      ("BesselI0e", math_ops.bessel_i0e),
-      ("BesselI1e", math_ops.bessel_i1e),
+      # TODO(b/157272291): Add testing for more special functions.
+      ("BesselI0e", special_math_ops.bessel_i0e),
+      ("BesselI1e", special_math_ops.bessel_i1e),
       ("Ceil", math_ops.ceil),
       ("Cos", math_ops.cos),
       ("Cosh", math_ops.cosh),
@@ -221,7 +223,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     """
     map_node_name = "Map"
     if num_parallel_calls is not None:
-      map_node_name = "ParallelMapV2"
+      map_node_name = "ParallelMap"
 
     def _make_dataset(node_names):
       dataset = base_dataset.apply(testing.assert_next(node_names))
@@ -233,11 +235,11 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
       return dataset
 
-    unoptimized = _make_dataset([map_node_name, "BatchV2"])
+    unoptimized = _make_dataset([map_node_name, "Batch"])
     # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
     # to verify the optimization result.
-    optimized = _make_dataset(["ChooseFastestBranch"] if expect_optimized else
-                              [map_node_name, "BatchV2"])
+    optimized = _make_dataset(["ChooseFastestBranch"]
+                              if expect_optimized else [map_node_name, "Batch"])
     optimized = self._enable_map_vectorization(optimized)
     return unoptimized, optimized
 
@@ -464,8 +466,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r"indices = 10 is not in \[0, 5\)"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"indices = 10 is not in \[0, 5\)"):
       base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
           5, drop_remainder=True)
       _, optimized = self._get_test_datasets(base_dataset, map_fn)
@@ -562,22 +564,19 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Tests that vectorization maintains the determinism setting.
     expect_determinism = local_determinism or (local_determinism is None and
                                                global_determinism)
-    elements = list(range(1000))
-
+    num_elements = 1000
     def dataset_fn(delay_ms):
 
       def sleep(x):
-        time.sleep(delay_ms / 1000)
+        # Inject random delay in the interval [0, delay_ms / 1000).
+        time.sleep(delay_ms * (np.random.randint(x + 1) / (x + 1)) / 1000)
         return x
 
       def map_function(x):
-        if math_ops.equal(x, 0):
-          return check_ops.ensure_shape(
-              script_ops.py_func(sleep, [x], x.dtype, stateful=False), ())
-        else:
-          return x
+        return check_ops.ensure_shape(
+            script_ops.py_func(sleep, [x], x.dtype, stateful=False), ())
 
-      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset_ops.Dataset.range(num_elements)
       dataset = dataset.map(
           map_function, num_parallel_calls=10, deterministic=local_determinism)
       dataset = dataset.batch(1)
@@ -593,7 +592,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.checkDeterminism(
         dataset_fn,
         expect_determinism,
-        expected_elements=[[element] for element in elements])
+        expected_elements=[[element] for element in range(num_elements)])
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationIgnoreStateful(self):

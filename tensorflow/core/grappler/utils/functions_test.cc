@@ -523,6 +523,14 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
 
+  // Add an attribute to _Arg 0;
+  const uint32 arg_index = 0;
+  const std::pair<string, string> arg_attr_key_and_value = {"_arg_attr", "abc"};
+  FunctionDef::ArgAttrs arg_attr;
+  (*arg_attr.mutable_attr())[arg_attr_key_and_value.first].set_s(
+      arg_attr_key_and_value.second);
+  (*func.mutable_arg_attr())[arg_index] = arg_attr;
+
   protobuf::Map<string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
@@ -540,6 +548,15 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
   EXPECT_EQ(DT_FLOAT, specialized.signature().input_arg(0).type());
   EXPECT_EQ("y", specialized.signature().output_arg(0).name());
   EXPECT_EQ(DT_FLOAT, specialized.signature().output_arg(0).type());
+
+  EXPECT_EQ(specialized.arg_attr().size(), 1);
+  EXPECT_EQ(specialized.arg_attr().at(arg_index).attr().size(), 1);
+  EXPECT_EQ(specialized.arg_attr()
+                .at(arg_index)
+                .attr()
+                .at(arg_attr_key_and_value.first)
+                .s(),
+            arg_attr_key_and_value.second);
 
   // Function body specialized for instantiation types.
   int count = 0;

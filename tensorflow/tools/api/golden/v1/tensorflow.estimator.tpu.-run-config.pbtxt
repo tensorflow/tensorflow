@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.run_config.RunConfig\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "checkpoint_save_graph_def"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "cluster"
     mtype: "<type \'property\'>"
   }

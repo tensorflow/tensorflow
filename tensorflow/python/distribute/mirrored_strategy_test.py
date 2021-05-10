@@ -22,7 +22,6 @@ import json
 import sys
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
@@ -31,12 +30,16 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -44,21 +47,18 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.engine import training as keras_training
-from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import server_lib
 
 
@@ -70,6 +70,7 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
         ],
         mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
@@ -93,6 +94,8 @@ class MirroredTwoDeviceDistributionTest(
     self._test_call_and_merge_exceptions(distribution)
 
   def testRunRegroupError(self, distribution):
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     def run_fn():
       replica_id = int(self.evaluate(_replica_id()))
       # Generates a list with different lengths on different devices.
@@ -103,11 +106,31 @@ class MirroredTwoDeviceDistributionTest(
       distribution.extended.call_for_each_replica(run_fn)
 
   def testReduceToCpu(self, distribution):
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
+
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(_replica_id)
       reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
+
+  def testReduceToCpuNested(self, distribution):
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
+
+    with distribution.scope():
+      def replica_fn(input_tensor):
+        return input_tensor + constant_op.constant(
+            1.0), input_tensor - constant_op.constant(1.0)
+
+      input_tensor = constant_op.constant(3.0)
+      run_result = distribution.run(replica_fn, args=(input_tensor,))
+      reduced_result = distribution.reduce("SUM", run_result, axis=None)
+      expected_result = (4 * distribution.num_replicas_in_sync,
+                         2 * distribution.num_replicas_in_sync)
+
+      self.assertEqual(expected_result, self.evaluate(reduced_result))
 
   def reduce_axis_helper(self, distribution, replica_squared_fn):
     with distribution.scope():
@@ -124,6 +147,8 @@ class MirroredTwoDeviceDistributionTest(
       self.assertNear(expected, self.evaluate(reduced), 0.00001)
 
   def testReduceAxisToCpu(self, distribution):
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     for dtype in (dtypes.float32, dtypes.int32):
       def replica_squared_fn(dtype=dtype):
         # Lists with different lengths on different replicas.
@@ -140,6 +165,8 @@ class MirroredTwoDeviceDistributionTest(
       tensor_shape.disable_v2_tensorshape()
 
   def testReduceAxisToCpuUnknownShape(self, distribution):
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     original_v2 = tensor_shape._TENSORSHAPE_V2_OVERRIDE  # pylint: disable=protected-access
     try:
       for v2 in (False, True):
@@ -233,6 +260,47 @@ class MirroredTwoDeviceDistributionTest(
 
   def testTrainableVariables(self, distribution):
     self._test_trainable_variable(distribution)
+
+  def test_prefetch_to_device_dataset(self, distribution):
+    input_options = distribute_lib.InputOptions(
+        experimental_fetch_to_device=True)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if context.executing_eagerly():
+      item = next(iter(dataset))
+    else:
+      if isinstance(dataset, input_lib.DistributedDatasetV1):
+        item = dataset.make_initializable_iterator().get_next()
+      else:
+        self.skipTest("unsupported test combination")
+    device_types = [
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values]
+    expected_device_types = [
+        tf_device.DeviceSpec.from_string(device).device_type for
+        device in distribution.extended.worker_devices]
+    self.assertAllEqual(device_types, expected_device_types)
+
+  def test_prefetch_to_host_dataset(self, distribution):
+    input_options = distribute_lib.InputOptions(
+        experimental_fetch_to_device=False)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if context.executing_eagerly():
+      item = next(iter(dataset))
+    else:
+      if isinstance(dataset, input_lib.DistributedDatasetV1):
+        item = dataset.make_initializable_iterator().get_next()
+      else:
+        self.skipTest("unsupported test combination")
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ["CPU"])
 
 
 def one_device_combinations():
@@ -398,7 +466,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -417,7 +485,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return model_fn_nested()
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -618,7 +686,7 @@ class MirroredThreeDeviceDistributionTest(
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(result, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(result))
       self.assertEqual("foo:0", result.name)
 
 
@@ -634,25 +702,21 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContextWithoutAggregationType(self,
                                                                 distribution):
-    # Test that we always have an aggregation type set on the mirrored variable
-    # if we assign to it in replica mode.
     def var_fn():
       v = variable_scope.variable(1.0, name="foo")
       return v
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
 
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
-          ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context. You can do so by"):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn)))
+      self.assertEqual(5.0, self.evaluate(mirrored_var))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
     # Test that we don't reduce a non-per-replica value with the "sum"
@@ -664,17 +728,23 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
 
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
-          ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
-          "with the given reduce op ReduceOp.SUM."):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      if distribution.extended._use_merge_call():
+        with self.assertRaisesRegex(
+            ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
+            "with the given reduce op ReduceOp.SUM."):
+          self.evaluate(distribution.experimental_local_results(
+              distribution.extended.call_for_each_replica(model_fn)))
+      else:
+        result = self.evaluate(
+            distribution.experimental_local_results(
+                distribution.extended.call_for_each_replica(model_fn)))
+        self.assertAllEqual(result[0], 5.0)
 
   def testAssignMirroredVarCrossDeviceContext(self, distribution):
     def var_fn():
@@ -682,7 +752,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign(6.0))
@@ -695,7 +765,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -716,7 +786,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -733,7 +803,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -776,7 +846,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -797,7 +867,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -814,7 +884,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
@@ -839,7 +909,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -860,7 +930,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -890,7 +960,7 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
 
       with distribution.scope():
         mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-        self.assertIsInstance(mirrored_var, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
         self.assertFalse(self.evaluate(mirrored_var.is_initialized()))
         self.evaluate(mirrored_var.initializer)
         self.assertTrue(self.evaluate(mirrored_var.is_initialized()))
@@ -904,13 +974,13 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
             1.0,
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             aggregation=variable_scope.VariableAggregation.SUM)
-        self.assertIsInstance(v_sum, values.SyncOnReadVariable)
+        self.assertTrue(distribute_utils.is_sync_on_read(v_sum))
         return v_sum
 
       with distribution.scope():
         sync_on_read_var = distribution.extended.call_for_each_replica(
             model_fn)
-        self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+        self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
         self.assertFalse(self.evaluate(sync_on_read_var.is_initialized()))
         self.evaluate(sync_on_read_var.initializer)
         self.assertTrue(self.evaluate(sync_on_read_var.is_initialized()))
@@ -934,7 +1004,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
     with distribution.scope():
       sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the SUM of each of
@@ -961,7 +1031,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
     with distribution.scope():
       sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the MEAN of values
@@ -991,22 +1061,6 @@ class MockModel(object):
     return x
 
 
-class MiniModel(keras_training.Model):
-  """Minimal model for mnist.
-
-  Useful for testing and debugging on slow TPU simulators.
-  """
-
-  def __init__(self):
-    super(MiniModel, self).__init__(name="")
-    self.fc = keras_core.Dense(1, name="fc", kernel_initializer="ones",
-                               bias_initializer="ones")
-
-  def call(self, inputs, training=True):
-    inputs = array_ops.ones([1, 10])
-    return self.fc(inputs)
-
-
 @combinations.generate(
     combinations.combine(
         distribution=[
@@ -1028,8 +1082,9 @@ class MirroredStrategyDefunTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
       for r in range(len(devices)):
-        device_result = values.select_replica(r, result)
-        device_expected_result = values.select_replica(r, expected_result)
+        device_result = distribute_utils.select_replica(r, result)
+        device_expected_result = distribute_utils.select_replica(
+            r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 
@@ -1118,32 +1173,6 @@ class MirroredStrategyDefunTest(test.TestCase):
     expected_result = values.PerReplica((5.0 * 1.25, 3.0 * 1.25))
     self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
 
-  def testTrain(self, distribution):
-    with distribution.scope():
-      mock_model = MiniModel()
-      mock_model.call = function.defun(mock_model.call)
-
-      def loss_fn(ctx):
-        del ctx
-        return mock_model(array_ops.ones([1, 10]))
-
-      gradients_fn = backprop.implicit_grad(loss_fn)
-      gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
-      grads_and_vars = distribution.extended.call_for_each_replica(
-          gradients_fn, args=(None,))
-
-      optimizer = gradient_descent.GradientDescentOptimizer(0.25)
-      update_ops = optimizer._distributed_apply(distribution, grads_and_vars)  # pylint: disable=protected-access
-
-      if not context.executing_eagerly():
-        self.evaluate(variables.global_variables_initializer())
-        self.evaluate(update_ops)
-
-      updated_var_values = self.evaluate(mock_model.variables)
-      # All variables start at 1.0 and get two updates of 0.25.
-      self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
-      self.assertAllEqual([0.5], updated_var_values[1])
-
 
 @combinations.generate(
     combinations.combine(
@@ -1153,9 +1182,9 @@ class MirroredStrategyDefunTest(test.TestCase):
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
                     devices=mirrored_strategy.all_local_devices(),
-                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
-                        "/job:worker/task:0", "/job:worker/task:1"
-                    ], context.num_gpus())),
+                    cross_device_ops=cross_device_ops_lib.ReductionToOneDevice(
+                    ),
+                ),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1293,9 +1322,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def _make_cross_device_ops(self):
-    return cross_device_ops_lib.MultiWorkerAllReduce(
-        ["/job:chief/task:0", "/job:worker/task:0", "/job:worker/task:1"],
-        context.num_gpus())
+    return cross_device_ops_lib.ReductionToOneDevice()
 
   def testMinimizeLossGraph(self):
     with context.graph_mode():
@@ -1320,10 +1347,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
       with test.mock.patch.dict("os.environ",
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
-        if context.num_gpus() > 0:
-          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                                cross_device_ops_lib.NcclAllReduce)
-        else:
+        if context.num_gpus() == 0:
           self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                                 cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
@@ -1444,4 +1468,5 @@ def _replica_id_as_int():
 
 
 if __name__ == "__main__":
-  test.main()
+  # TODO(b/172304955)
+  test_util.main(config_logical_devices=False)

@@ -30,14 +30,15 @@ struct PassConfig {
   explicit PassConfig(QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
         lower_tensor_list_ops(false),
-        trim_functions_whitelist({}),
+        trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
-        skip_control_dialect(false),
         form_clusters(false),
         unfold_batch_matmul(true),
         legalize_tf_while(true),
         shape_inference(true),
-        runtime_verification(true) {}
+        runtime_verification(true),
+        enable_tflite_variables(false),
+        disable_variable_freezing(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -45,17 +46,12 @@ struct PassConfig {
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
   bool lower_tensor_list_ops;
-  // The whitelist of functions that would be preserved after trimming.
-  llvm::ArrayRef<std::string> trim_functions_whitelist;
+  // The allowlist of functions that would be preserved after trimming.
+  llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
   QuantizationSpecs quant_specs;
-  // If `skip_control_dialect` is true, TF executor dialect is not converted to
-  // TF control dialect prior to legalization to TF Lite.
-  // TODO(b/142911013): Remove flag once control dialect is removed.
-  bool skip_control_dialect;
-  // If `form_clusters` is true (and `skip_control_dialect` is true), clusters
-  // are formed by grouping consecutive ops of the same device, under a
-  // `tf_device.launch` op.
+  // If `form_clusters` is true , clusters are formed by grouping consecutive
+  // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
@@ -68,6 +64,13 @@ struct PassConfig {
   bool shape_inference;
   // Whether to do TFLite runtime verification.
   bool runtime_verification;
+  // Whether to enable TFLite variables or not, this will allow
+  // mutable variables and produce ReadVariable/AssignVariable ops in TFLite.
+  bool enable_tflite_variables;
+  // Whether to disable the variable freezing pass or not.
+  // By default we freeze all variables and disallow mutable variables. When
+  // 'enable_tflite_variables' is true then we allow mutable variable only.
+  bool disable_variable_freezing;
 };
 
 }  // namespace TFL

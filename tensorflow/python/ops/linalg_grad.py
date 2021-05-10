@@ -487,21 +487,18 @@ def _CholeskyGrad(op, grad):
 @ops.RegisterGradient("Qr")
 def _QrGrad(op, dq, dr):
   """Gradient for Qr."""
+
+  # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
+  # QR and LQ Decomposition Matrix Backpropagation Algorithms for
+  # Square, Wide, and Deep, Real and Complex, Matrices and Their Software Implementation
   q, r = op.outputs
-  if q.dtype.is_complex:
-    raise NotImplementedError("QrGrad not implemented for dtype: %s" % q.dtype)
   if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
       r.shape.as_list()[-1] is None):
     raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
-  if r.shape.dims[-2].value != r.shape.dims[-1].value:
-    raise NotImplementedError("QrGrad not implemented when ncols > nrows "
-                              "or full_matrices is true and ncols != nrows.")
-
-  qdq = math_ops.matmul(q, dq, adjoint_a=True)
-  qdq_ = qdq - _linalg.adjoint(qdq)
-  rdr = math_ops.matmul(r, dr, adjoint_b=True)
-  rdr_ = rdr - _linalg.adjoint(rdr)
-  tril = array_ops.matrix_band_part(qdq_ + rdr_, -1, 0)
+  if (r.shape.dims[-2].value > r.shape.dims[-1].value and
+      q.shape.dims[-2].value == q.shape.dims[-1].value):
+    raise NotImplementedError("QrGrad not implemented when nrows > ncols "
+                              "and full_matrices is true.")
 
   def _TriangularSolve(x, r):
     """Equiv to matmul(x, adjoint(matrix_inverse(r))) if r is upper-tri."""
@@ -509,9 +506,46 @@ def _QrGrad(op, dq, dr):
         linalg_ops.matrix_triangular_solve(
             r, _linalg.adjoint(x), lower=False, adjoint=False))
 
-  grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
-  grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
-  return grad_a + grad_b
+  def _QrGradSquareAndDeepMatrices(q, r, dq, dr):
+    """Gradient for matrix orders num_rows >= num_cols
+    and full_matrices is false.
+    """
+    qdq = math_ops.matmul(q, dq, adjoint_a=True)
+    qdq_ = qdq - _linalg.adjoint(qdq)
+    rdr = math_ops.matmul(r, dr, adjoint_b=True)
+    rdr_ = rdr - _linalg.adjoint(rdr)
+    tril = array_ops.matrix_band_part(qdq_ + rdr_, -1, 0)
+
+    grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
+    grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
+    ret = grad_a + grad_b
+
+    if q.dtype.is_complex:
+      # need to add a correction to the gradient formula for complex case
+      m = rdr - _linalg.adjoint(qdq)
+      eyem = _linalg.set_diag(array_ops.zeros_like(m), _linalg.diag_part(m))
+      correction = eyem - math_ops.cast(math_ops.real(eyem), q.dtype)
+      ret = ret + _TriangularSolve(
+          math_ops.matmul(q, _linalg.adjoint(correction)), r)
+
+    return ret
+
+  num_rows, num_cols = q.shape.dims[-2].value, r.shape.dims[-1]
+
+  if num_rows >= num_cols:
+    return _QrGradSquareAndDeepMatrices(q, r, dq, dr)
+
+  # Partition a = [x, y], r = [u, v] and reduce to the square case
+  a = op.inputs[0]
+  y = a[..., :, num_rows:]
+  u = r[..., :, :num_rows]
+  dv = dr[..., :, num_rows:]
+  du = dr[..., :, :num_rows]
+  dy = math_ops.matmul(q, dv)
+  dx = _QrGradSquareAndDeepMatrices(q, u,
+                                    dq + math_ops.matmul(y, dv, adjoint_b=True),
+                                    du)
+  return array_ops.concat([dx, dy], axis=-1)
 
 
 @ops.RegisterGradient("MatrixSolve")
@@ -605,6 +639,39 @@ def _MatrixSolveLsGrad(op, grad):
     return control_flow_ops.cond(matrix_shape[-2] >= matrix_shape[-1],
                                  lambda: _Overdetermined(op, grad),
                                  lambda: _Underdetermined(op, grad))
+
+
+@ops.RegisterGradient("BandedTriangularSolve")
+def _BandedTriangularSolveGrad(op, grad):
+  """Gradient for BandedTriangularSolve."""
+  a = op.inputs[0]
+  b = op.inputs[1]
+  num_bands = array_ops.shape(a)[-2]
+  adjoint_a = op.get_attr("adjoint")
+  lower_a = op.get_attr("lower")
+  c = op.outputs[0]
+  grad_b = linalg_ops.banded_triangular_solve(
+      a, grad, lower=lower_a, adjoint=not adjoint_a)
+  if adjoint_a:
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
+  else:
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
+  if lower_a:
+    grad_a = array_ops.matrix_diag_part(
+        grad_a, k=(-(num_bands - 1), 0), align="LEFT_RIGHT")
+  else:
+    grad_a = array_ops.matrix_diag_part(
+        grad_a, k=(0, num_bands - 1), align="LEFT_RIGHT")
+  # If the static batch shapes are equal, we don't need to unbroadcast.
+  if (a.shape.is_fully_defined() and b.shape.is_fully_defined() and
+      a.shape[:-2] == b.shape[:-2]):
+    return grad_a, grad_b
+  a_shape = array_ops.shape(a)
+  b_shape = array_ops.shape(b)
+  ra, rb = array_ops.broadcast_gradient_args(a_shape[:-2], b_shape[:-2])
+  grad_a = array_ops.reshape(math_ops.reduce_sum(grad_a, axis=ra), a_shape)
+  grad_b = array_ops.reshape(math_ops.reduce_sum(grad_b, axis=rb), b_shape)
+  return grad_a, grad_b
 
 
 @ops.RegisterGradient("MatrixTriangularSolve")

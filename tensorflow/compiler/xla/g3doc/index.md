@@ -4,9 +4,10 @@ XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that can accelerate TensorFlow models with potentially no source code
 changes.
 
-The results are improvements in speed and memory usage: most internal benchmarks
-run ~1.15x faster after XLA is enabled. The dataset below is evaluated on a
-single NVidia V100 GPU:
+The results are improvements in speed and memory usage: e.g. in BERT
+[MLPerf](https://blog.tensorflow.org/2020/07/tensorflow-2-mlperf-submissions.html)
+submission using 8 Volta V100 GPUs using XLA has achieved a ~7x performance
+improvement and ~5x batch size improvement:
 
 <div style="width:90%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:90%" src="./images/tf_xla_performance.png">
@@ -42,43 +43,14 @@ removing memory operations is one of the best ways to improve performance.
 
 ## Enable XLA for TensorFlow models
 
-### Auto-clustering
+### Explicit compilation with `tf.function(jit_compile=True)`
 
-A simplest way to start using XLA in TensorFlow models is to enable
-_auto-clustering_, which automatically finds _clusters_ (connected subgraphs)
-within the TensorFlow graph which can be compiled and executed using XLA.
-Auto-clustering on GPU can be enabled by setting the `TF_XLA_FLAGS` environment
-variable:
+Explicit compilation API offers a fine-grained control for choosing which
+functions should be compiled. For example, the following TensorFlow function
+which performs the MNIST training is compiled with XLA:
 
 ```
-$ TF_XLA_FLAGS=--tf_xla_auto_jit=2 path/to/your/tf/program
-```
-
-Auto-clustering is currently optimized for GPU workloads, but it can also be
-enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
-
-```
-$ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
-```
-
-Note: Auto-clustering support on CPU and on multi-GPU environments is
-experimental.
-
-For a detailed usage example see the [auto-clustering tutorial
-colab](./tutorials/autoclustering_xla.ipynb).
-
-### Explicit compilation with tf.function
-
-Auto-clustering is a great tool for making the model faster without any changes
-to the code, but it may be hard to understand what changes have been performed.
-
-Explicit compilation API offers a more fine-grained control for choosing which
-functions should be compiled.
-For example, the following TensorFlow function which performs the MNIST training
-is compiled with XLA:
-
-```
-@tf.function(experimental_compile=True)
+@tf.function(jit_compile=True)
 def train_mnist(images, labels):
     images, labels = cast(images, labels)
 
@@ -92,7 +64,7 @@ def train_mnist(images, labels):
     optimizer.apply_gradients(zip(grads, layer_variables))
 ```
 
-The `experimental_compile` API has _must-compile_ semantics: either the entire
+The `jit_compile` API has _must-compile_ semantics: either the entire
 function is compiled with XLA, or an `errors.InvalidArgumentError` exception is
 thrown. XLA can not currently compile functions where dimensions are not
 _inferrable_: that is, if it's not possible to infer the dimensions of all
@@ -108,7 +80,7 @@ def not_compilable(x):
 Shapes can vary across the runs though:
 
 ```
-@tf.function(experimental_compile=True)
+@tf.function(jit_compile=True)
 def recompiled_on_launch(a, b):
   return a + b
 
@@ -116,13 +88,43 @@ recompiled_on_launch(tf.ones([1, 10]), tf.ones([1, 10]))
 recompiled_on_launch(tf.ones([1, 100]), tf.ones([1, 100]))
 ```
 
-See the [tutorial colab](./tutorials/compile.ipynb) for a more detailed usage
-example.
+Note: Nesting behavior: the function will be compiled if at least one function
+in its call stack has `jit_compile=True`.
+
+See the [tutorial colab](./tutorials/jit_compile.ipynb) for a more detailed
+usage example.
+
+### Auto-clustering
+
+A simple way to start using XLA in TensorFlow models without any changes is to
+enable _auto-clustering_, which automatically finds _clusters_ (connected
+subgraphs) within the TensorFlow functions which can be compiled and executed
+using XLA. Auto-clustering on GPU can be enabled by setting the `TF_XLA_FLAGS`
+environment variable:
+
+Note: In TF2, only the code inside `tf.function` will be clustered.
+
+```
+$ TF_XLA_FLAGS=--tf_xla_auto_jit=2 path/to/your/tf/program
+```
+
+Auto-clustering is currently optimized for GPU workloads, but it can also be
+enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
+
+```
+$ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
+```
+
+Note: Auto-clustering support on CPU and on multi-GPU environments is
+experimental.
+
+For a detailed usage example see the
+[auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
-You can also use a standalone [`tfcompile`](./tfcompile) tool,
-which converts TensorFlow graph into executable code (for x86-64 CPU only).
+You can also use a standalone [`tfcompile`](./tfcompile.md) tool, which converts
+TensorFlow graph into executable code (for x86-64 CPU only).
 
 ## Inspect compiled programs
 
@@ -177,29 +179,15 @@ a bug to a single XLA program by using the
 [`replay_computation`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/tools/run_hlo_module_main.cc)
 and iteratively running it on generated programs.
 
-## Known Issues
+## Further reading
 
-Compilation with XLA can greatly improve the performance of your programs, but
-the TensorFlow interop has a number of known sharp corners.
-
-### TensorArray TF/XLA Interconversion
-
-The problem manifests itself as an error message
-`Support for TensorList crossing the XLA/TF boundary is not implemented`.
-
-XLA supports `tf.TensorArray`. However, the _interconversion_ between TF and
-XLA representations is not implemented yet.
-This error often arises when the `TensorArray` is used inside the compiled
-block, but the derivative is taken outside.
-
-Workaround: compile the outermost scope which is taking the derivative.
-
-### Random Number Generation
-
-XLA currently ignores TF seeds to random operations. This affects stateful TF
-random operations, such as `tf.random.normal`, or `tf.nn.dropout`.  XLA will
-behave as if the compilation was seeded with a new unique seed at each run. This
-limitation does not apply to stateless random ops.
+-   [Known Issues](./known_issues.md) List of known issues with XLA
+-   [XLA Architecture](./architecture.md): Overview of the XLA architecture
+-   [XLA - TensorFlow, Compiled](https://developers.googleblog.com/2017/03/xla-tensorflow-compiled.html):
+    Read on Google Developers Blog
+-   Check out the
+    [XLA source](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla)
+    on Github!
 
 ## XLA Frontends
 
@@ -210,17 +198,10 @@ Apart from TensorFlow, XLA programs can be generated by:
 -   [Julia](https://github.com/JuliaTPU/XLA.jl): The Julia language for
     scientific computing
 -   [PyTorch](https://github.com/pytorch/xla): PyTorch framework
+-   [Nx](https://github.com/elixir-nx/nx): Numerical computing library for the
+    Elixir programming language
 
-## Further reading
-
--   [XLA Architecture](./architecture.md): Overview of the XLA architecture
--   [XLA - TensorFlow, Compiled](https://developers.googleblog.com/2017/03/xla-tensorflow-compiled.html):
-    Read on Google Developers Blog
--   Check out the
-    [XLA source](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla)
-    on Github!
-
-<iframe frameborder="0" allowfullscreen="1" allow="accelerometer; autoplay;
-encrypted-media; gyroscope; picture-in-picture" width="640" height="360"
+<iframe frameborder="0" allow="accelerometer; autoplay;
+encrypted-media; gyroscope; picture-in-picture; fullscreen" width="640" height="360"
 src="https://www.youtube.com/embed/kAOanJczHA0?origin=https%3A%2F%2Fwww.tensorflow.org&amp;autohide=1&amp;showinfo=0&amp;video-id=kAOanJczHA0&amp;enablejsapi=1&amp;widgetid=1"
 id="widget2" data-title="YouTube video player"></iframe>

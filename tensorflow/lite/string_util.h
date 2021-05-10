@@ -16,8 +16,9 @@ limitations under the License.
 // Util methods to read and write String tensors.
 // String tensors are considered to be char tensor with protocol.
 //   [0, 3] 4 bytes: N, num of strings in the tensor in little endian.
-//   [(i+1)*4, (i+1)*4+3] 4 bytes: offset of i-th string in little endian.
-//   [(N+2)*4, (N+2)*4+3] 4 bytes: length of the whole char buffer.
+//   [(i+1)*4, (i+1)*4+3] 4 bytes: offset of i-th string in little endian,
+//                                 for i from 0 to N-1.
+//   [(N+1)*4, (N+1)*4+3] 4 bytes: length of the whole char buffer.
 //   [offset(i), offset(i+1) - 1] : content of i-th string.
 // Example of a string tensor:
 // [
@@ -39,6 +40,9 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_STRING_UTIL_H_
 #define TENSORFLOW_LITE_STRING_UTIL_H_
+
+#include <stddef.h>
+#include <stdint.h>
 
 #include <vector>
 
@@ -69,14 +73,13 @@ class DynamicBuffer {
   // Join a list of string with separator, and add as a single string to the
   // buffer.
   void AddJoinedString(const std::vector<StringRef>& strings, char separator);
+  void AddJoinedString(const std::vector<StringRef>& strings,
+                       StringRef separator);
 
   // Fill content into a buffer and returns the number of bytes stored.
   // The function allocates space for the buffer but does NOT take ownership.
   int WriteToBuffer(char** buffer);
 
-  // String tensors are not generally supported on platforms w/ static memory.
-  // TODO(b/156130024): Remove this guard after removing header from TFLM deps.
-#ifndef TF_LITE_STATIC_MEMORY
   // Fill content into a string tensor, with the given new_shape. The new shape
   // must match the number of strings in this object. Caller relinquishes
   // ownership of new_shape. If 'new_shape' is nullptr, keep the tensor's
@@ -85,7 +88,6 @@ class DynamicBuffer {
 
   // Fill content into a string tensor. Set shape to {num_strings}.
   void WriteToTensorAsVector(TfLiteTensor* tensor);
-#endif  // TF_LITE_STATIC_MEMORY
 
  private:
   // Data buffer to store contents of strings, not including headers.

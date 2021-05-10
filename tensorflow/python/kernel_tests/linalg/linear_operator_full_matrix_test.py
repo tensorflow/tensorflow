@@ -249,7 +249,7 @@ class NonSquareLinearOperatorFullMatrixTest(
     self.assertFalse(operator.is_square)
 
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
-    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorFullMatrix([1.])
 
   def test_tape_safe(self):

@@ -61,7 +61,7 @@ class ArgMaxTest(test.TestCase):
       self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
-    x = np.arange(200, dtype=np.float32).astype(np.bool_).astype(dtype)
+    x = np.arange(200, dtype=np.float32).astype(dtype)
     np.random.shuffle(x)
 
     # Check that argmin and argmax match numpy along the primary axis
@@ -75,6 +75,12 @@ class ArgMaxTest(test.TestCase):
     # breaking ties.
     self._testBothArg(math_ops.argmax, x, 0, x.argmax())
     self._testBothArg(math_ops.argmin, x, 0, x.argmin())
+
+    # Check that argmin and argmax match numpy along axis=1 for
+    # breaking ties.
+    x = np.array([[0, 0, 1, 1], [1, 1, 0, 0], [0, 1, 0, 1]], dtype=dtype)
+    self._testBothArg(math_ops.argmax, x, 1, x.argmax(axis=1))
+    self._testBothArg(math_ops.argmin, x, 1, x.argmin(axis=1))
 
   def _testDim(self, dtype):
     shape = (3, 2, 4, 5, 6, 3, 7)
@@ -97,7 +103,7 @@ class ArgMaxTest(test.TestCase):
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
     expected_values = x.argmax()
-    with self.session(use_gpu=True):
+    with self.session():
       ans = math_ops.argmax(x, axis=0, output_type=dtypes.int32)
       tf_ans = self.evaluate(ans)
       self.assertEqual(np.int32, tf_ans.dtype)
@@ -105,7 +111,7 @@ class ArgMaxTest(test.TestCase):
       # the values don't have a range that exceeds 32-bit integers.
       self.assertAllEqual(tf_ans, expected_values)
     expected_values = x.argmin()
-    with self.session(use_gpu=True):
+    with self.session():
       ans = math_ops.argmin(x, axis=0, output_type=dtypes.int32)
       tf_ans = self.evaluate(ans)
       self.assertEqual(np.int32, tf_ans.dtype)

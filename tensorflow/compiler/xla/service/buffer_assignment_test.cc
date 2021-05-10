@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
@@ -492,8 +493,7 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
-      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   auto buffers = RunBufferAssignment(module.get());
 
@@ -1926,8 +1926,10 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* parameter =
       m->entry_computation()->GetInstructionWithName("get-tuple-element.4");
-  HloInstruction* dus =
+  HloInstruction* dus1 =
       m->entry_computation()->GetInstructionWithName("dynamic-update-slice.5");
+  HloInstruction* dus2 =
+      m->entry_computation()->GetInstructionWithName("dynamic-update-slice.9");
 
   auto buffers = RunBufferAssignment(m.get());
 
@@ -1935,8 +1937,10 @@ ENTRY main {
     const BufferAllocation& parameter_alloc =
         GetTopLevelAllocation(*buffers, parameter);
 
-    const BufferAllocation& dus_alloc = GetTopLevelAllocation(*buffers, dus);
-    EXPECT_NE(parameter_alloc, dus_alloc);
+    const BufferAllocation& dus1_alloc = GetTopLevelAllocation(*buffers, dus1);
+    EXPECT_EQ(parameter_alloc, dus1_alloc);
+    const BufferAllocation& dus2_alloc = GetTopLevelAllocation(*buffers, dus2);
+    EXPECT_EQ(parameter_alloc, dus2_alloc);
   }
 }
 
@@ -2513,6 +2517,41 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 0}));
   EXPECT_EQ(GetAllocation(*buffers, custom_call, {1}),
             GetAllocation(*buffers, param0, {1, 1}));
+}
+
+TEST_F(BufferAssignmentTest, BufferInfoStringTest) {
+  absl::string_view module_str = R"(
+HloModule test_module
+
+ENTRY %test_module {
+  %param.0 = s32[1024]{0} parameter(0)
+  %param.1 = s32[1024]{0} parameter(1)
+  %mul = s32[1024]{0} multiply(%param.0, %param.1)
+  %add = s32[1024]{0} add(%mul, %param.0)
+  ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[1024] %add), dimensions={0}
+})";
+
+  absl::string_view reference_str =
+      R"(buffer_id,buffer_name,offset,size,definition_time,end_time,num_uses,use_times,use_names
+0,"<0 param.0 @0>",0,4096,0,5,2,"2;3","mul, operand 0;add, operand 1"
+1,"<1 param.1 @0>",0,4096,1,5,1,"2","mul, operand 1"
+2,"<2 mul @0>",0,4096,2,3,1,"3","add, operand 0"
+3,"<3 add @0>",0,4096,3,4,1,"4","bcast, operand 0"
+4,"<4 bcast @0>",0,4194304,4,5,0,"",""
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  HloInstruction* const param0 = FindInstruction(m.get(), "param.0");
+  HloInstruction* const param1 = FindInstruction(m.get(), "param.1");
+  HloInstruction* const mul = FindInstruction(m.get(), "mul");
+  HloInstruction* const add = FindInstruction(m.get(), "add");
+  HloInstruction* const bcast = FindInstruction(m.get(), "bcast");
+  // Run buffer assignment.
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      m.get(), {param0, param1, mul, add, bcast});
+  const std::string buffer_info_str = assignment->BufferInfoString();
+
+  EXPECT_EQ(buffer_info_str, reference_str);
 }
 
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {

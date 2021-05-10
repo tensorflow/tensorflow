@@ -25,36 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
-// Returns a set containing the device ids contained in visible_device_list or
-// nullopt if it is empty. It returns error in case of malformed configuration
-// string.
-static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
-    const string& visible_device_list) {
-  std::set<int> gpu_ids;
-  if (visible_device_list.empty()) {
-    return {{absl::nullopt}};
-  }
-  const std::vector<string> visible_devices =
-      absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_gpu_id_str : visible_devices) {
-    int32 platform_gpu_id;
-    if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
-      return errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_gpu_id_str,
-          "'. visible_device_list = ", visible_device_list);
-    }
-    gpu_ids.insert(platform_gpu_id);
-  }
-  return {{gpu_ids}};
-}
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
@@ -66,7 +43,7 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 
@@ -96,7 +73,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 

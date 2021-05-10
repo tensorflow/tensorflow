@@ -16,7 +16,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 namespace tflite {
 
 TEST(OpVersionTest, CompareRuntimeVersion) {
@@ -29,6 +30,26 @@ TEST(OpVersionTest, CompareRuntimeVersion) {
   EXPECT_FALSE(CompareRuntimeVersion("2.1.0", "1.2.0"));
   EXPECT_TRUE(CompareRuntimeVersion("", "1.13"));
   EXPECT_FALSE(CompareRuntimeVersion("", ""));
+}
+
+// This test will fail if an op version is added to a builtin op, but not
+// registered to runtime version.
+TEST(OpVersionTest, OpversionMissing) {
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+
+  for (int id = BuiltinOperator_MIN; id <= BuiltinOperator_MAX; ++id) {
+    for (int version = 1;; ++version) {
+      auto op_code = static_cast<tflite::BuiltinOperator>(id);
+      if (resolver.FindOp(op_code, version) == nullptr) break;
+      // Throw error if the version is not registered in runtime version.
+      std::string runtime_version =
+          FindMinimumRuntimeVersionForOp(op_code, version);
+      EXPECT_NE(runtime_version, "")
+          << "Please add the version " << version << " of "
+          << tflite::EnumNamesBuiltinOperator()[op_code]
+          << " to runtime_version.cc";
+    }
+  }
 }
 
 }  // namespace tflite

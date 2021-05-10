@@ -20,25 +20,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 
-namespace tensorflow {
+#if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
 
-bool CanUseCudnn() {
-  static bool is_enabled = [] {
-    bool is_enabled = true;
-    // TODO(b/155239286): Remove TF_USE_CUDNN after TF 2.3 is released.
-    Status status =
-        ReadBoolFromEnvVar("TF_USE_CUDNN", /*default_val=*/true, &is_enabled);
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
-    if (!is_enabled) {
-      LOG(WARNING) << "The environmental variable TF_USE_CUDNN is deprecated "
-                      "and will be ignored in the future";
-    }
-    return is_enabled;
-  }();
-  return is_enabled;
-}
+namespace tensorflow {
 
 #define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
   bool func_name() {                                                       \
@@ -49,6 +35,19 @@ bool CanUseCudnn() {
     }                                                                      \
     return value;                                                          \
   }
+
+bool CudnnUseFrontend() {
+#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
+  bool value = false;
+  Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return value;
+#else
+  return false;
+#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
+}
 
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 // Whether to auto-tuning Cudnn RNN forward and backward pass to pick
@@ -87,25 +86,6 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 // cudnnRNNAlgo_t.
 ADD_INT64_CUDNN_FLAG(DebugCudnnRnnAlgo, TF_DEBUG_CUDNN_RNN_ALGO, -1);
 #undef ADD_INT64_CUDNN_FLAG
-
-FP16ConvMode CudnnConvComputeMode() {
-  string value;
-  Status status = ReadStringFromEnvVar("TF_FP16_CONV_MODE", "accurate", &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-  string lowercase_value = absl::AsciiStrToLower(value);
-  if (lowercase_value == "accurate") {
-    return FP16ConvMode::kAccurate;
-  } else if (lowercase_value == "fast") {
-    return FP16ConvMode::kFast;
-  } else {
-    LOG(ERROR) << "FP16ConvMode only supports two modes, ACCURATE and FAST. "
-                  "Got unknown mode: "
-               << value;
-  }
-  return FP16ConvMode::kAccurate;
-}
 
 bool IsCudnnSupportedFilterSize(const int32 filter_rows,
                                 const int32 filter_cols, const int32 in_depth,

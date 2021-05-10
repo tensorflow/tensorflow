@@ -60,7 +60,8 @@ absl::Status ProgramCache::GetOrCreateCLKernel(
     const std::string& code, const std::string& function_name,
     const std::vector<CompilerOptions>& compiler_options,
     const CLContext& context, const CLDevice& device, CLKernel* result) {
-  const std::string options = CompilerOptionsToString(device, compiler_options);
+  const std::string options =
+      CompilerOptionsToString(device.GetInfo(), compiler_options);
   ProgramDescriptor desc{code, options, use_fingerprints_};
   auto it = programs_.find(desc);
   if (it != programs_.end()) {

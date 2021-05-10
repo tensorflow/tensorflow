@@ -11,14 +11,17 @@ Note: This delegate is in experimental (beta) phase.
 
 **Supported devices:**
 
-Currently most
-[Qualcomm SoCs](https://en.wikipedia.org/wiki/List_of_Qualcomm_Snapdragon_systems-on-chip)
-are supported, including:
+Currently the following Hexagon architecture are supported, including but not
+limited to:
 
-*   Snapdragon 835 (682 DSP)
-*   Snapdragon 660/820/821 (680 DSP)
-*   Snapdragon 710/845 (685 DSP)
-*   Snapdragon 8150/855 (690 DSP)
+*   Hexagon 680
+    *   SoC examples: Snapdragon 821, 820, 660
+*   Hexagon 682
+    *   SoC examples: Snapdragon 835
+*   Hexagon 685
+    *   SoC examples: Snapdragon 845, Snapdragon 710, QCS605, QCS603
+*   Hexagon 690
+    *   SoC examples: Snapdragon 855, QCS610, QCS410, RB5
 
 **Supported models:**
 
@@ -62,8 +65,8 @@ public class HexagonDelegate implements Delegate, Closeable {
 ```
 dependencies {
   ...
-  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly'
+  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly-SNAPSHOT'
 }
 ```
 
@@ -75,10 +78,12 @@ dependencies {
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
     *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
+    *   [v1.21](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.1.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 04/28/2020 you should use v1.17.
+Note: As of 02/23/2021 you should use v1.21.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -97,7 +102,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 #### Step 3. Create a delegate and initialize a TensorFlow Lite Interpreter
 
 ```java
-import org.tensorflow.lite.experimental.HexagonDelegate;
+import org.tensorflow.lite.HexagonDelegate;
 
 // Create the Delegate instance.
 try {
@@ -168,8 +173,8 @@ Void TfLiteHexagonTearDown();
 ```
 dependencies {
   ...
-  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly'
+  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly-SNAPSHOT'
 }
 ```
 
@@ -180,10 +185,13 @@ dependencies {
     “libhexagon_nn_skel_v66.so”
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
+    *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
+    *   [v1.21](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.1.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 03/03/2020 you should use v1.14.
+Note: As of 02/23/2021 you should use v1.21.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -202,7 +210,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 #### Step 3. Include the C header
 
 *   The header file "hexagon_delegate.h" can be downloaded from
-    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h)
+    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/hexagon_delegate.h)
     or extracted from the Hexagon delegate AAR.
 
 #### Step 4. Create a delegate and initialize a TensorFlow Lite Interpreter
@@ -214,7 +222,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 *   Create a delegate, example:
 
 ```c
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 
 // Assuming shared libraries are under "/data/local/tmp/"
 // If files are packaged with native lib in android App then it
@@ -260,7 +268,7 @@ ro.board.platform`).
 
 *   Which ops are supported by the delegate?
     *   See the current list of
-        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
+        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/README.md)
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   Two log messages will be printed when you enable the delegate - one to
         indicate if the delegate was created and another to indicate how many
@@ -272,7 +280,7 @@ ro.board.platform`).
         ops. Any unsupported ops will run on the CPU.
 *   How can I build the Hexagon delegate AAR from source?
     *   Use `bazel build -c opt --config=android_arm64
-        tensorflow/lite/experimental/delegates/hexagon/java:tensorflow-lite-hexagon`.
+        tensorflow/lite/delegates/hexagon/java:tensorflow-lite-hexagon`.
 *   Why does Hexagon delegate fail to initialize although my Android device has
     a supported SoC?
     *   Verify if your device indeed has a supported SoC. Run `adb shell cat
@@ -284,3 +292,6 @@ ro.board.platform`).
     *   Some phone manufactures intentionally restrict the use of Hexagon DSP
         from non-system Android apps, making the Hexagon delegate unable to
         work.
+*   My phone has locked DSP access. I rooted the phone and still can't run the
+    delegate, what to do ?
+    *   Make sure to disable SELinux enforce by running `adb shell setenforce 0`

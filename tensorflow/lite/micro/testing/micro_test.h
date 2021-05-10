@@ -54,178 +54,187 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/system_setup.h"
 
 namespace micro_test {
 extern int tests_passed;
 extern int tests_failed;
 extern bool is_test_complete;
 extern bool did_test_fail;
-extern tflite::ErrorReporter* reporter;
 }  // namespace micro_test
 
-#define TF_LITE_MICRO_TESTS_BEGIN              \
-  namespace micro_test {                       \
-  int tests_passed;                            \
-  int tests_failed;                            \
-  bool is_test_complete;                       \
-  bool did_test_fail;                          \
-  tflite::ErrorReporter* reporter;             \
-  }                                            \
-                                               \
-  int main(int argc, char** argv) {            \
-    micro_test::tests_passed = 0;              \
-    micro_test::tests_failed = 0;              \
-    tflite::MicroErrorReporter error_reporter; \
-    micro_test::reporter = &error_reporter;
+namespace tflite {
 
-#define TF_LITE_MICRO_TESTS_END                                \
-  micro_test::reporter->Report(                                \
-      "%d/%d tests passed", micro_test::tests_passed,          \
-      (micro_test::tests_failed + micro_test::tests_passed));  \
-  if (micro_test::tests_failed == 0) {                         \
-    micro_test::reporter->Report("~~~ALL TESTS PASSED~~~\n");  \
-  } else {                                                     \
-    micro_test::reporter->Report("~~~SOME TESTS FAILED~~~\n"); \
-  }                                                            \
+// This additional helper function is used (instead of directly calling
+// tflite::InitializeTarget from the TF_LITE_MICRO_TESTS_BEGIN macro) to avoid
+// adding a dependency from every bazel test target to micro:system_setp (which
+// is the target that implements InitializeTarget().
+//
+// The underlying issue here is that the use of the macros results in
+// dependencies that can be containted within the micro/testing:micro_test
+// target bleeding on to all the tests.
+inline void InitializeTest() { InitializeTarget(); }
+}  // namespace tflite
+
+#define TF_LITE_MICRO_TESTS_BEGIN   \
+  namespace micro_test {            \
+  int tests_passed;                 \
+  int tests_failed;                 \
+  bool is_test_complete;            \
+  bool did_test_fail;               \
+  }                                 \
+                                    \
+  int main(int argc, char** argv) { \
+    micro_test::tests_passed = 0;   \
+    micro_test::tests_failed = 0;   \
+    tflite::InitializeTest();
+
+#define TF_LITE_MICRO_TESTS_END                                       \
+  MicroPrintf("%d/%d tests passed", micro_test::tests_passed,         \
+              (micro_test::tests_failed + micro_test::tests_passed)); \
+  if (micro_test::tests_failed == 0) {                                \
+    MicroPrintf("~~~ALL TESTS PASSED~~~\n");                          \
+    return kTfLiteOk;                                                 \
+  } else {                                                            \
+    MicroPrintf("~~~SOME TESTS FAILED~~~\n");                         \
+    return kTfLiteError;                                              \
+  }                                                                   \
   }
 
 // TODO(petewarden): I'm going to hell for what I'm doing to this poor for loop.
 #define TF_LITE_MICRO_TEST(name)                                           \
-  micro_test::reporter->Report("Testing " #name);                          \
+  MicroPrintf("Testing " #name);                                           \
   for (micro_test::is_test_complete = false,                               \
       micro_test::did_test_fail = false;                                   \
        !micro_test::is_test_complete; micro_test::is_test_complete = true, \
       micro_test::tests_passed += (micro_test::did_test_fail) ? 0 : 1,     \
       micro_test::tests_failed += (micro_test::did_test_fail) ? 1 : 0)
 
-#define TF_LITE_MICRO_EXPECT(x)                                                \
-  do {                                                                         \
-    if (!(x)) {                                                                \
-      micro_test::reporter->Report(#x " failed at %s:%d", __FILE__, __LINE__); \
-      micro_test::did_test_fail = true;                                        \
-    }                                                                          \
+#define TF_LITE_MICRO_EXPECT(x)                               \
+  do {                                                        \
+    if (!(x)) {                                               \
+      MicroPrintf(#x " failed at %s:%d", __FILE__, __LINE__); \
+      micro_test::did_test_fail = true;                       \
+    }                                                         \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_EQ(x, y)                                          \
-  do {                                                                         \
-    auto vx = x;                                                               \
-    auto vy = y;                                                               \
-    if ((vx) != (vy)) {                                                        \
-      micro_test::reporter->Report(#x " == " #y " failed at %s:%d (%d vs %d)", \
-                                   __FILE__, __LINE__, (vx), (vy));            \
-      micro_test::did_test_fail = true;                                        \
-    }                                                                          \
+// TODO(b/139142772): this macro is used with types other than ints even though
+// the printf specifier is %d.
+#define TF_LITE_MICRO_EXPECT_EQ(x, y)                                    \
+  do {                                                                   \
+    auto vx = x;                                                         \
+    auto vy = y;                                                         \
+    if ((vx) != (vy)) {                                                  \
+      MicroPrintf(#x " == " #y " failed at %s:%d (%d vs %d)", __FILE__,  \
+                  __LINE__, static_cast<int>(vx), static_cast<int>(vy)); \
+      micro_test::did_test_fail = true;                                  \
+    }                                                                    \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NE(x, y)                                         \
-  do {                                                                        \
-    if ((x) == (y)) {                                                         \
-      micro_test::reporter->Report(#x " != " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                 \
-      micro_test::did_test_fail = true;                                       \
-    }                                                                         \
-  } while (false)
-
-// TODO(wangtz): Making it more generic once needed.
-#define TF_LITE_MICRO_ARRAY_ELEMENT_EXPECT_NEAR(arr1, idx1, arr2, idx2, \
-                                                epsilon)                \
+#define TF_LITE_MICRO_EXPECT_NE(x, y)                                   \
   do {                                                                  \
-    auto delta = ((arr1)[(idx1)] > (arr2)[(idx2)])                      \
-                     ? ((arr1)[(idx1)] - (arr2)[(idx2)])                \
-                     : ((arr2)[(idx2)] - (arr1)[(idx1)]);               \
-    if (delta > epsilon) {                                              \
-      micro_test::reporter->Report(                                     \
-          #arr1 "[%d] (%f) near " #arr2 "[%d] (%f) failed at %s:%d",    \
-          static_cast<int>(idx1), static_cast<float>((arr1)[(idx1)]),   \
-          static_cast<int>(idx2), static_cast<float>((arr2)[(idx2)]),   \
-          __FILE__, __LINE__);                                          \
+    if ((x) == (y)) {                                                   \
+      MicroPrintf(#x " != " #y " failed at %s:%d", __FILE__, __LINE__); \
       micro_test::did_test_fail = true;                                 \
     }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                               \
-  do {                                                                         \
-    auto vx = (x);                                                             \
-    auto vy = (y);                                                             \
-    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));                \
-    if (delta > epsilon) {                                                     \
-      micro_test::reporter->Report(                                            \
-          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(vx), \
-          static_cast<float>(vy), __FILE__, __LINE__);                         \
-      micro_test::did_test_fail = true;                                        \
-    }                                                                          \
-  } while (false)
-
-#define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \
-  do {                                                                       \
-    if ((x) <= (y)) {                                                        \
-      micro_test::reporter->Report(#x " > " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                \
-      micro_test::did_test_fail = true;                                      \
-    }                                                                        \
-  } while (false)
-
-#define TF_LITE_MICRO_EXPECT_LT(x, y)                                        \
-  do {                                                                       \
-    if ((x) >= (y)) {                                                        \
-      micro_test::reporter->Report(#x " < " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                \
-      micro_test::did_test_fail = true;                                      \
-    }                                                                        \
-  } while (false)
-
-#define TF_LITE_MICRO_EXPECT_GE(x, y)                                         \
+// TODO(wangtz): Making it more generic once needed.
+#define TF_LITE_MICRO_ARRAY_ELEMENT_EXPECT_NEAR(arr1, idx1, arr2, idx2,       \
+                                                epsilon)                      \
   do {                                                                        \
-    if ((x) < (y)) {                                                          \
-      micro_test::reporter->Report(#x " >= " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                 \
+    auto delta = ((arr1)[(idx1)] > (arr2)[(idx2)])                            \
+                     ? ((arr1)[(idx1)] - (arr2)[(idx2)])                      \
+                     : ((arr2)[(idx2)] - (arr1)[(idx1)]);                     \
+    if (delta > epsilon) {                                                    \
+      MicroPrintf(#arr1 "[%d] (%f) near " #arr2 "[%d] (%f) failed at %s:%d",  \
+                  static_cast<int>(idx1), static_cast<float>((arr1)[(idx1)]), \
+                  static_cast<int>(idx2), static_cast<float>((arr2)[(idx2)]), \
+                  __FILE__, __LINE__);                                        \
       micro_test::did_test_fail = true;                                       \
     }                                                                         \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_LE(x, y)                                         \
+// The check vx != vy is needed to properly handle the case where both
+// x and y evaluate to infinity. See #46960 for more details.
+#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
   do {                                                                        \
-    if ((x) > (y)) {                                                          \
-      micro_test::reporter->Report(#x " <= " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                 \
+    auto vx = (x);                                                            \
+    auto vy = (y);                                                            \
+    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));               \
+    if (vx != vy && delta > epsilon) {                                        \
+      MicroPrintf(#x " (%f) near " #y " (%f) failed at %s:%d",                \
+                  static_cast<double>(vx), static_cast<double>(vy), __FILE__, \
+                  __LINE__);                                                  \
       micro_test::did_test_fail = true;                                       \
     }                                                                         \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_TRUE(x)                                   \
+#define TF_LITE_MICRO_EXPECT_GT(x, y)                                  \
   do {                                                                 \
-    if (!(x)) {                                                        \
-      micro_test::reporter->Report(#x " was not true failed at %s:%d", \
-                                   __FILE__, __LINE__);                \
+    if ((x) <= (y)) {                                                  \
+      MicroPrintf(#x " > " #y " failed at %s:%d", __FILE__, __LINE__); \
       micro_test::did_test_fail = true;                                \
     }                                                                  \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_FALSE(x)                                   \
+#define TF_LITE_MICRO_EXPECT_LT(x, y)                                  \
+  do {                                                                 \
+    if ((x) >= (y)) {                                                  \
+      MicroPrintf(#x " < " #y " failed at %s:%d", __FILE__, __LINE__); \
+      micro_test::did_test_fail = true;                                \
+    }                                                                  \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_GE(x, y)                                   \
   do {                                                                  \
-    if (x) {                                                            \
-      micro_test::reporter->Report(#x " was not false failed at %s:%d", \
-                                   __FILE__, __LINE__);                 \
+    if ((x) < (y)) {                                                    \
+      MicroPrintf(#x " >= " #y " failed at %s:%d", __FILE__, __LINE__); \
       micro_test::did_test_fail = true;                                 \
     }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_FAIL(msg)                                        \
-  do {                                                                 \
-    micro_test::reporter->Report("FAIL: %s", msg, __FILE__, __LINE__); \
-    micro_test::did_test_fail = true;                                  \
+#define TF_LITE_MICRO_EXPECT_LE(x, y)                                   \
+  do {                                                                  \
+    if ((x) > (y)) {                                                    \
+      MicroPrintf(#x " <= " #y " failed at %s:%d", __FILE__, __LINE__); \
+      micro_test::did_test_fail = true;                                 \
+    }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                   \
+#define TF_LITE_MICRO_EXPECT_TRUE(x)                                       \
   do {                                                                     \
-    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {       \
-      if (string1[i] != string2[i]) {                                      \
-        micro_test::reporter->Report("FAIL: %s did not match %s", string1, \
-                                     string2, __FILE__, __LINE__);         \
-        micro_test::did_test_fail = true;                                  \
-      }                                                                    \
+    if (!(x)) {                                                            \
+      MicroPrintf(#x " was not true failed at %s:%d", __FILE__, __LINE__); \
+      micro_test::did_test_fail = true;                                    \
     }                                                                      \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_FALSE(x)                                       \
+  do {                                                                      \
+    if (x) {                                                                \
+      MicroPrintf(#x " was not false failed at %s:%d", __FILE__, __LINE__); \
+      micro_test::did_test_fail = true;                                     \
+    }                                                                       \
+  } while (false)
+
+#define TF_LITE_MICRO_FAIL(msg)                       \
+  do {                                                \
+    MicroPrintf("FAIL: %s", msg, __FILE__, __LINE__); \
+    micro_test::did_test_fail = true;                 \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                     \
+  do {                                                                       \
+    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {         \
+      if (string1[i] != string2[i]) {                                        \
+        MicroPrintf("FAIL: %s did not match %s", string1, string2, __FILE__, \
+                    __LINE__);                                               \
+        micro_test::did_test_fail = true;                                    \
+      }                                                                      \
+    }                                                                        \
   } while (false)
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

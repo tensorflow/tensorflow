@@ -1,0 +1,84 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_1:.*]] = getelementptr inbounds i8, i8* %[[VAL_2:.*]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_1]] to [100 x [200 x [300 x float]]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_5:.*]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_4]] to [200 x [100 x [300 x float]]]*
+// CHECK:         store i32 0, i32* %[[VAL_0]], align 4
+// CHECK:         br label %[[VAL_7:.*]]
+// CHECK:       loop.loop_header:                                 ; preds = %[[VAL_8:.*]], %[[VAL_9:.*]]
+// CHECK:         %[[VAL_10:.*]] = load i32, i32* %[[VAL_0]], align 4
+// CHECK:         %[[VAL_11:.*]] = icmp uge i32 %[[VAL_10]], 6000000
+// CHECK:         br i1 %[[VAL_11]], label %[[VAL_12:.*]], label %[[VAL_13:.*]]
+// CHECK:       loop.loop_body:                                   ; preds = %[[VAL_7]]
+// CHECK:         %[[VAL_14:.*]] = add nuw nsw i32 %[[VAL_10]], 655360
+// CHECK:         store i32 %[[VAL_14]], i32* %[[VAL_0]], align 4
+// CHECK:         %[[VAL_15:.*]] = icmp eq i32 %[[VAL_10]], 0
+// CHECK:         %[[VAL_16:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_17:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_18:.*]] = mul nuw nsw i32 %[[VAL_16]], 128
+// CHECK:         %[[VAL_19:.*]] = add nuw nsw i32 %[[VAL_18]], %[[VAL_17]]
+// CHECK:         %[[VAL_20:.*]] = icmp ult i32 %[[VAL_19]], 163840
+// CHECK:         call void @llvm.assume(i1 %[[VAL_20]])
+// CHECK:         %[[VAL_21:.*]] = mul nuw nsw i32 %[[VAL_19]], 4
+// CHECK:         %[[VAL_22:.*]] = add nuw nsw i32 %[[VAL_21]], %[[VAL_10]]
+// CHECK:         %[[VAL_23:.*]] = udiv i32 %[[VAL_22]], 1
+// CHECK:         %[[VAL_24:.*]] = urem i32 %[[VAL_23]], 300
+// CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_22]], 300
+// CHECK:         %[[VAL_26:.*]] = urem i32 %[[VAL_25]], 100
+// CHECK:         %[[VAL_27:.*]] = udiv i32 %[[VAL_22]], 30000
+// CHECK:         %[[VAL_28:.*]] = add nuw nsw i32 %[[VAL_22]], 1
+// CHECK:         %[[VAL_29:.*]] = udiv i32 %[[VAL_28]], 1
+// CHECK:         %[[VAL_30:.*]] = urem i32 %[[VAL_29]], 300
+// CHECK:         %[[VAL_31:.*]] = udiv i32 %[[VAL_28]], 300
+// CHECK:         %[[VAL_32:.*]] = urem i32 %[[VAL_31]], 100
+// CHECK:         %[[VAL_33:.*]] = udiv i32 %[[VAL_28]], 30000
+// CHECK:         %[[VAL_34:.*]] = add nuw nsw i32 %[[VAL_22]], 2
+// CHECK:         %[[VAL_35:.*]] = udiv i32 %[[VAL_34]], 1
+// CHECK:         %[[VAL_36:.*]] = urem i32 %[[VAL_35]], 300
+// CHECK:         %[[VAL_37:.*]] = udiv i32 %[[VAL_34]], 300
+// CHECK:         %[[VAL_38:.*]] = urem i32 %[[VAL_37]], 100
+// CHECK:         %[[VAL_39:.*]] = udiv i32 %[[VAL_34]], 30000
+// CHECK:         %[[VAL_40:.*]] = add nuw nsw i32 %[[VAL_22]], 3
+// CHECK:         %[[VAL_41:.*]] = udiv i32 %[[VAL_40]], 1
+// CHECK:         %[[VAL_42:.*]] = urem i32 %[[VAL_41]], 300
+// CHECK:         %[[VAL_43:.*]] = udiv i32 %[[VAL_40]], 300
+// CHECK:         %[[VAL_44:.*]] = urem i32 %[[VAL_43]], 100
+// CHECK:         %[[VAL_45:.*]] = udiv i32 %[[VAL_40]], 30000
+// CHECK:         %[[VAL_46:.*]] = icmp ult i32 %[[VAL_22]], 6000000
+// CHECK:         br i1 %[[VAL_46]], label %[[VAL_47:.*]], label %[[VAL_8]]
+// CHECK:       b.in_bounds-after:                                ; preds = %[[VAL_47]], %[[VAL_13]]
+// CHECK:         br label %[[VAL_7]], !llvm.loop !4
+// CHECK:       loop.loop_exit:                                   ; preds = %[[VAL_7]]
+// CHECK:         ret void
+// CHECK:       b.in_bounds-true:                                 ; preds = %[[VAL_13]]
+// CHECK:         %[[VAL_48:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_26]], i32 %[[VAL_27]], i32 %[[VAL_24]]
+// CHECK:         %[[VAL_49:.*]] = load float, float* %[[VAL_48]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_50:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_51:.*]] = getelementptr inbounds float, float* %[[VAL_50]], i32 %[[VAL_22]]
+// CHECK:         store float %[[VAL_49]], float* %[[VAL_51]], align 4
+// CHECK:         %[[VAL_52:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_32]], i32 %[[VAL_33]], i32 %[[VAL_30]]
+// CHECK:         %[[VAL_53:.*]] = load float, float* %[[VAL_52]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_54:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_55:.*]] = getelementptr inbounds float, float* %[[VAL_54]], i32 %[[VAL_28]]
+// CHECK:         store float %[[VAL_53]], float* %[[VAL_55]], align 4
+// CHECK:         %[[VAL_56:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_38]], i32 %[[VAL_39]], i32 %[[VAL_36]]
+// CHECK:         %[[VAL_57:.*]] = load float, float* %[[VAL_56]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_58:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_59:.*]] = getelementptr inbounds float, float* %[[VAL_58]], i32 %[[VAL_34]]
+// CHECK:         store float %[[VAL_57]], float* %[[VAL_59]], align 4
+// CHECK:         %[[VAL_60:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_44]], i32 %[[VAL_45]], i32 %[[VAL_42]]
+// CHECK:         %[[VAL_61:.*]] = load float, float* %[[VAL_60]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_62:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_63:.*]] = getelementptr inbounds float, float* %[[VAL_62]], i32 %[[VAL_40]]
+// CHECK:         store float %[[VAL_61]], float* %[[VAL_63]], align 4
+// CHECK:         br label %[[VAL_8]]
+
+HloModule Test
+
+ENTRY main {
+  a = f32[100, 200, 300]{2,1,0} parameter(0)
+  ROOT b = f32[100, 200, 300]{2,0,1} copy(a)
+}

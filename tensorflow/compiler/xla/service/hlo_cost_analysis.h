@@ -113,6 +113,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleDynamicReshape(const HloInstruction* reshape) override;
   Status HandleAddDependency(const HloInstruction* add_dependency) override;
   Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
@@ -182,6 +183,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     return GetProperty(key, per_second_rates_);
   }
 
+  // Return the key that is used to index into Properties for the specified
+  // input/output at the shape index.
+  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+                                                ShapeIndex index = {});
+  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
+
  protected:
   typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
 
@@ -227,12 +234,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Set bytes accessed by the output at the shape index.
   void SetOutputBytesAccessed(float value);
   void SetOutputBytesAccessed(ShapeIndex index, float value);
-
-  // Return the key that is used to index into Properties for the specified
-  // input/output at the shape index.
-  static std::string GetOperandBytesAccessedKey(int64 operand_num,
-                                                ShapeIndex index = {});
-  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

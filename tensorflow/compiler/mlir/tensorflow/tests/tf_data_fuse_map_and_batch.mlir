@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-standard-pipeline -tf-data-optimization %s -o %t && FileCheck %s --dump-input-on-failure < %t
+// RUN: tf-opt -tf-standard-pipeline -tf-data-optimization %s -o %t && FileCheck %s < %t
 
 module {
 // CHECK-LABEL: fuse_map_and_batch

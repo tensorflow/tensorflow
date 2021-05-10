@@ -20,11 +20,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -35,6 +36,36 @@ namespace cl {
 #define ASSERT_OK(x) ASSERT_TRUE(x.ok());
 #endif
 
+class ClExecutionEnvironment : public TestExecutionEnvironment {
+ public:
+  ClExecutionEnvironment() = default;
+  ~ClExecutionEnvironment() override = default;
+
+  absl::Status Init();
+
+  std::vector<CalculationsPrecision> GetSupportedPrecisions() const override;
+  std::vector<TensorStorageType> GetSupportedStorages() const override;
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const override;
+
+  const GpuInfo& GetGpuInfo() const override;
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWC>& dst_sizes,
+      const std::vector<TensorFloat32*>& dst_cpu) override;
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<Tensor5DFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWDC>& dst_sizes,
+      const std::vector<Tensor5DFloat32*>& dst_cpu) override;
+
+ private:
+  Environment env_;
+};
+
 class OpenCLOperationTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -44,26 +75,30 @@ class OpenCLOperationTest : public ::testing::Test {
     creation_context_.context = &env_.context();
     creation_context_.queue = env_.queue();
     creation_context_.cache = env_.program_cache();
+
+    ASSERT_OK(exec_env_.Init());
   }
 
  protected:
   Environment env_;
   CreationContext creation_context_;
+
+  ClExecutionEnvironment exec_env_;
 };
 
 absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation, const BHWC& dst_size,
-                                 TensorFloat32* result);
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result);
 
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation, const BHWC& dst_size,
-                                 TensorFloat32* result);
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result);
 
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation,
+                                 std::unique_ptr<GPUOperation>&& operation,
                                  const std::vector<BHWC>& dst_sizes,
                                  const std::vector<TensorFloat32*>& dst_cpu);
 }  // namespace cl

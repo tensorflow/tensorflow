@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-device-cluster-outlining | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -tf-device-cluster-outlining | FileCheck %s
 
 // Tests simple case of a single `tf_device.cluster`.
 
@@ -24,9 +24,8 @@ func @single_cluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   return %0 : tensor<?xi32>
 }
 
-// CHECK: func @[[CLUSTER]]
+// CHECK: func private @[[CLUSTER]]
 // CHECK-SAME: (%[[CLUSTER_ARG_0:[a-z0-9]*]]: tensor<?xi32>) -> tensor<?xi32>
-// CHECK-SAME: sym_visibility = "private"
 // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[CLUSTER_ARG_0]])
 // CHECK: return %[[B_OUTPUT]]
 
@@ -67,12 +66,12 @@ func @multiple_clusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   return %0 : tensor<?xi32>
 }
 
-// CHECK: func @[[CLUSTER_0]]
+// CHECK: func private @[[CLUSTER_0]]
 // CHECK-SAME: (%[[CLUSTER_0_ARG_0:[a-z0-9]*]]: tensor<?xi32>) -> tensor<?xi32>
 // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[CLUSTER_0_ARG_0]])
 // CHECK: return %[[B_OUTPUT]]
 
-// CHECK: func @[[CLUSTER_1]]
+// CHECK: func private @[[CLUSTER_1]]
 // CHECK-SAME: (%[[CLUSTER_1_ARG_0:[a-z0-9]*]]: tensor<?xi32>, %[[CLUSTER_1_ARG_1:[a-z0-9]*]]: tensor<?xi32>) -> tensor<?xi32>
 // CHECK: %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[CLUSTER_1_ARG_0]])
 // CHECK: %[[F_OUTPUT:[0-9]*]] = "tf.F"(%[[CLUSTER_1_ARG_1]], %[[E_OUTPUT]])
@@ -98,7 +97,7 @@ func @cluster_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   return %0 : tensor<?xi32>
 }
 
-// CHECK: func @[[CLUSTER]]
+// CHECK: func private @[[CLUSTER]]
 // CHECK-SAME: () -> tensor<?xi32>
 // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"()
 // CHECK: return %[[A_OUTPUT]]

@@ -37,6 +37,7 @@ using tensorflow::DT_INT64;
 using tensorflow::DT_INVALID;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
+using tensorflow::DT_UINT32;
 using tensorflow::NodeDef;
 using tensorflow::Status;
 using ::testing::ElementsAre;
@@ -127,6 +128,11 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
         t.add_int_val(i % std::numeric_limits<int>::max() + 1);
       }
       break;
+    case DT_UINT32:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_int_val(i % std::numeric_limits<uint32_t>::max() + 1);
+      }
+      break;
     case DT_QUINT8:
       for (int64_t i = 0; i < num_elements; ++i) {
         t.add_int_val(i % std::numeric_limits<uint8_t>::max() + 1);
@@ -163,7 +169,7 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
 TEST(FlexImportTest, ConditionalConst) {
   Model model;
   auto build_and_import_node =
-      [&model](const string& name, std::initializer_list<int64_t> shape,
+      [&model](const std::string& name, std::initializer_list<int64_t> shape,
                tensorflow::DataType dtype, int64_t num_elements) {
         NodeDef node;
         BuildConstNode(shape, dtype, num_elements, &node);
@@ -486,8 +492,8 @@ class TensorContentTest : public ::testing::Test {
         break;
     }
     t.set_tensor_content(
-        string(reinterpret_cast<const char*>(allocated_content.get()),
-               num_elements * sizeof(T)));
+        std::string(reinterpret_cast<const char*>(allocated_content.get()),
+                    num_elements * sizeof(T)));
 
     AttrValue value_attr;
     SetAttrValue(t, &value_attr);

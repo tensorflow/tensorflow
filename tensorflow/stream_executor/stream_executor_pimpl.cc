@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
@@ -230,23 +231,6 @@ port::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor *other) {
   return implementation_->EnablePeerAccessTo(other->implementation_.get());
 }
 
-SharedMemoryConfig StreamExecutor::GetDeviceSharedMemoryConfig() {
-  return implementation_->GetDeviceSharedMemoryConfig();
-}
-
-port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
-    SharedMemoryConfig config) {
-  if (config != SharedMemoryConfig::kDefault &&
-      config != SharedMemoryConfig::kFourByte &&
-      config != SharedMemoryConfig::kEightByte) {
-    std::string error_msg = absl::StrFormat(
-        "Invalid shared memory config specified: %d", static_cast<int>(config));
-    LOG(ERROR) << error_msg;
-    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
-  }
-  return implementation_->SetDeviceSharedMemoryConfig(config);
-}
-
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);
   if (device_description_ != nullptr) {
@@ -288,6 +272,44 @@ bool StreamExecutor::GetConvolveAlgorithms(
   GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
   return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
                                             cc_minor, out_algorithms);
+}
+
+bool StreamExecutor::GetConvolveExecutionPlans(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetConvolveExecutionPlans(
+      kind, element_type, stream, input_descriptor, filter_descriptor,
+      output_descriptor, convolution_descriptor, out_exec_plans);
+}
+
+port::Status StreamExecutor::GetFusedConvolveExecutionPlans(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &bias_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (dnn_support) {
+#if GOOGLE_CUDA
+    gpu::CudnnSupport *cudnn_dnn =
+        dynamic_cast<gpu::CudnnSupport *>(dnn_support);
+    return cudnn_dnn->GetFusedConvolveExecutionPlans(
+        kind, element_type, stream, input_descriptor, filter_descriptor,
+        bias_descriptor, output_descriptor, convolution_descriptor,
+        out_exec_plans);
+#endif  // GOOGLE_CUDA
+  }
+  return port::UnimplementedError("DNN library is not found.");
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
@@ -351,6 +373,30 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
     return false;
   }
   return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+}
+
+port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+StreamExecutor::CreateBlasLtMatmulPlan(
+    const blas::BlasLtMatmulPlanParams &params) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
+  }
+  return blas_support->CreateBlasLtMatmulPlan(params);
+}
+
+port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                                          size_t max_workspace_size,
+                                          int max_algorithm_count) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
+  }
+  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
+                                                 max_algorithm_count);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -478,7 +524,7 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
 
 DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
@@ -858,7 +904,7 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 }
 
 template <typename TraceCallT, typename... ArgsT>
-void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
+void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.

@@ -20,11 +20,18 @@ limitations under the License.
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 using QuantizedType = mlir::quant::QuantizedType;
 using UniformQuantizedType = mlir::quant::UniformQuantizedType;
 
 namespace mlir {
+namespace quant {
+// Verify that the op satisfies the same operands and results scales
+// constraints. Note that this constraint can only be applied on some
+// storage types of the op.
+LogicalResult VerifySameScales(Operation* op);
+}  // namespace quant
 
 // This includes the interface class definition. It couldn't be in a namespace
 // because the table gen doesn't emit the namespace when it is used.
@@ -39,17 +46,6 @@ struct QuantizationSpecTraitBase : public TraitBase<ConcreteType, TraitType> {
   static bool IsBias(int index) { return false; }
   static bool IsQuantizable() { return true; }
 };
-
-// This class provides the API for TFL ops that requires same input and output
-// scale as the quantization results. This is used as a trait like this:
-//
-//   class TransposeOp
-//       : public Op<TransposeOp, OpTrait::TFL::SameOperandsAndResultsScale> {
-//
-template <typename ConcreteType>
-class SameOperandsAndResultsScale
-    : public QuantizationSpecTraitBase<ConcreteType,
-                                       SameOperandsAndResultsScale> {};
 
 // This class provides the API for TFL ops that has a fixed output value range.
 // This is used as a trait like this:

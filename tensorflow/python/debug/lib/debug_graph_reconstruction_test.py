@@ -39,8 +39,7 @@ from tensorflow.python.training import gradient_descent
 
 class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
 
-  _OP_TYPE_BLACKLIST = (
-      "_Send", "_Recv", "_HostSend", "_HostRecv", "_Retval")
+  _OP_TYPE_DENYLIST = ("_Send", "_Recv", "_HostSend", "_HostRecv", "_Retval")
 
   def _no_rewrite_session_config(self):
     rewriter_config = rewriter_config_pb2.RewriterConfig(
@@ -60,10 +59,10 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
     file_io.delete_recursively(self._dump_dir)
     super(ReconstructNonDebugGraphTest, self).tearDown()
 
-  def _graphDefWithoutBlacklistedNodes(self, graph_def):
+  def _graphDefWithoutDenylistedNodes(self, graph_def):
     output_graph_def = graph_pb2.GraphDef()
     for node in graph_def.node:
-      if node.op not in self._OP_TYPE_BLACKLIST:
+      if node.op not in self._OP_TYPE_DENYLIST:
         new_node = output_graph_def.node.add()
         new_node.CopyFrom(node)
 
@@ -73,9 +72,9 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
           for attr_key in new_node.attr:
             if attr_key == "parallel_iterations":
               new_node.attr[attr_key].i = 1
-        elif new_node.op == "Switch":
-          # We don't check the inputs to Switch ops as their inputs may be
-          # Send/Recv nodes.
+        elif new_node.op == "Switch" or new_node.op == "Identity":
+          # We don't check the inputs to Switch or Identity ops as their inputs
+          # may be Send/Recv nodes.
           del new_node.input[:]
 
     return output_graph_def
@@ -110,16 +109,16 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
     for i, non_debug_graph_def in enumerate(non_debug_graph_defs):
       device_name = debug_graphs._infer_device_name(non_debug_graph_def)
       test_util.assert_equal_graph_def(
-          self._graphDefWithoutBlacklistedNodes(reconstructed[device_name]),
-          self._graphDefWithoutBlacklistedNodes(non_debug_graph_def))
+          self._graphDefWithoutDenylistedNodes(reconstructed[device_name]),
+          self._graphDefWithoutDenylistedNodes(non_debug_graph_def))
 
       # Test debug_graphs.reconstruct_non_debug_graph_def.
       reconstructed_again = (
           debug_graphs.reconstruct_non_debug_graph_def(
               run_metadata.partition_graphs[i]))
       test_util.assert_equal_graph_def(
-          self._graphDefWithoutBlacklistedNodes(reconstructed_again),
-          self._graphDefWithoutBlacklistedNodes(non_debug_graph_def))
+          self._graphDefWithoutDenylistedNodes(reconstructed_again),
+          self._graphDefWithoutDenylistedNodes(non_debug_graph_def))
 
   def testReconstructSimpleGraph(self):
     with session.Session() as sess:

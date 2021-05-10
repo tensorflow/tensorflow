@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import weakref
 
 from tensorflow.python.distribute import distribute_lib
@@ -42,6 +43,36 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
     # to trigger that code path in regroup().
     v._aggregating_container = weakref.ref(self)  # pylint: disable=protected-access
     self._aggregation = aggregation
+
+  def __deepcopy__(self, memo):
+    """Perform a deepcopy of the `AggregatingVariable`.
+
+    Unlike the deepcopy of a regular tf.Variable, this keeps the original
+    strategy and devices of the `AggregatingVariable`.  To avoid confusion
+    with the behavior of deepcopy on a regular `Variable` (which does
+    copy into new devices), we only allow a deepcopy of a `AggregatingVariable`
+    within its originating strategy scope.
+
+    Args:
+      memo: The memoization object for `deepcopy`.
+
+    Returns:
+      A deep copy of the current `AggregatingVariable`.
+
+    Raises:
+      RuntimeError: If trying to deepcopy into a different strategy.
+    """
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      v = copy.deepcopy(self._v, memo)
+
+    copied_variable = type(self)(
+        strategy=self._distribute_strategy,
+        v=v,
+        aggregation=self._aggregation)
+
+    memo[id(self)] = copied_variable
+
+    return copied_variable
 
   def get(self):
     return self._v
@@ -124,6 +155,9 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
   def op(self):
     return self._v.op
 
+  def value(self):
+    return self._v.value()
+
   def read_value(self):
     return self._v.read_value()
 
@@ -165,6 +199,14 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
   # TODO(josh11b): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
     return {trackable.VARIABLE_VALUE_KEY: self._v}
+
+  def _map_resources(self, save_options):
+    """For implementing `Trackable`."""
+    # By delegating this method to the wrapped variable, SavedModel with
+    # AggregatingVariable are identical to SavedModel with normal variables.
+    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
+    obj_map[self] = obj_map[self._v]
+    return obj_map, resource_map
 
   # pylint: disable=multiple-statements
   def __add__(self, o):

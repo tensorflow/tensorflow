@@ -57,9 +57,9 @@ The binary takes the following parameters:
 
 and the following optional parameters:
 
-*   `blacklist_file_path`: `string` \
-    Path to blacklist file. This file contains the indices of images that are
-    blacklisted for evaluation. 1762 images are blacklisted in ILSVRC dataset.
+*   `denylist_file_path`: `string` \
+    Path to denylist file. This file contains the indices of images that are
+    denylisted for evaluation. 1762 images are denylisted in ILSVRC dataset.
     For details please refer to readme.txt of ILSVRC2014 devkit.
 
 *   `num_images`: `int` (default=0) \
@@ -97,6 +97,9 @@ If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
+
 ## Downloading ILSVRC
 
 In order to use this tool to run evaluation on the full 50K ImageNet dataset,
@@ -115,7 +118,7 @@ the following steps:
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python third_party/tensorflow/lite/tools/accuracy/ilsvrc/generate_validation_labels.py \
+python third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```

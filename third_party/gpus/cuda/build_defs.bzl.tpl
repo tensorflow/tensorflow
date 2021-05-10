@@ -7,8 +7,7 @@ def if_cuda(if_true, if_false = []):
 
     """
     return select({
-        "@local_config_cuda//cuda:using_nvcc": if_true,
-        "@local_config_cuda//cuda:using_clang": if_true,
+        "@local_config_cuda//:is_cuda_enabled": if_true,
         "//conditions:default": if_false,
     })
 
@@ -40,16 +39,15 @@ def if_cuda_clang_opt(if_true, if_false = []):
 
 def cuda_default_copts():
     """Default options for all CUDA compilations."""
-    return if_cuda(
-        ["-x", "cuda", "-DGOOGLE_CUDA=1"]
-    ) + if_cuda_clang_opt(
+    return if_cuda([
+        "-x", "cuda",
+        "-DGOOGLE_CUDA=1",
+        "-Xcuda-fatbinary=--compress-all",
+        "--no-cuda-include-ptx=all"
+    ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
-    ) + %{cuda_extra_copts}
-
-def cuda_is_configured():
-    """Returns true if CUDA was enabled during the configure process."""
-    return %{cuda_is_configured}
+    )
 
 def cuda_gpu_architectures():
     """Returns a list of supported GPU architectures."""
@@ -61,7 +59,7 @@ def if_cuda_is_configured(x):
     Unlike if_cuda(), this does not require that we are building with
     --config=cuda. Used to allow non-CUDA code to depend on CUDA libraries.
     """
-    if cuda_is_configured():
+    if %{cuda_is_configured}:
       return select({"//conditions:default": x})
     return select({"//conditions:default": []})
 
@@ -97,3 +95,22 @@ def cuda_header_library(
 def cuda_library(copts = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
+
+EnableCudaInfo = provider()
+
+def _enable_cuda_flag_impl(ctx):
+    value = ctx.build_setting_value
+    if ctx.attr.enable_override:
+        print(
+            "\n\033[1;33mWarning:\033[0m '--define=using_cuda_nvcc' will be " +
+            "unsupported soon. Use '--@local_config_cuda//:enable_cuda' " +
+            "instead."
+        )
+        value = True
+    return EnableCudaInfo(value = value)
+
+enable_cuda_flag = rule(
+    implementation = _enable_cuda_flag_impl,
+    build_setting = config.bool(flag = True),
+    attrs = {"enable_override": attr.bool()},
+)

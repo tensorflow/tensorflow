@@ -19,11 +19,20 @@ cc_library(
         ":windows": [],
         "//conditions:default": ["-Wno-unused-result"],
     }),
+    defines = select({
+        # When linkstatic=False, we need default visibility
+        ":macos_x86_64": ["CLOG_VISIBILITY="],
+        "//conditions:default": [],
+    }),
     linkopts = select({
         ":android": ["-llog"],
         "//conditions:default": [],
     }),
-    linkstatic = True,
+    linkstatic = select({
+        # https://github.com/bazelbuild/bazel/issues/11552
+        ":macos_x86_64": False,
+        "//conditions:default": True,
+    }),
     strip_include_prefix = "deps/clog/include",
 )
 
@@ -35,4 +44,12 @@ config_setting(
 config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
+)
+
+config_setting(
+    name = "macos_x86_64",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
 )

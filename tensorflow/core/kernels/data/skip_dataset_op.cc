@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -73,6 +73,11 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       return n;
     }
     return count_ < 0 ? 0 : std::max(int64{0}, n - count_);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -140,21 +145,16 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      // Keep calling GetNext().  TODO(vrv): Figure out a way to
-      // skip records without reading, perhaps by adding an
-      // interface to iterator.
-      while (i_ < dataset()->count_) {
-        // Fetch and throw away Tensors.
-        std::vector<Tensor> dummy_out_tensors;
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &dummy_out_tensors, end_of_sequence));
+      if (i_ < dataset()->count_) {
+        int num_skipped;
+        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx, dataset()->count_ - i_,
+                                             end_of_sequence, &num_skipped));
+        i_ += num_skipped;
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
           return Status::OK();
         }
-
-        ++i_;
       }
 
       // Return GetNext() on the underlying iterator.

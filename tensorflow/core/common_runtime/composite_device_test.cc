@@ -53,21 +53,6 @@ TEST(CompositeDeviceTest, Basic) {
   {
     Status status;
     underlying_devices.push_back(
-        "/job:localhost/replica:0/task:0/device:CPU:0");
-    std::unique_ptr<CompositeDevice> composite_device =
-        CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,
-                                    parsed_host_name, &status);
-    EXPECT_EQ(composite_device, nullptr);
-    EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
-    EXPECT_TRUE(
-        absl::StrContains(status.error_message(), "Got a duplicated device"))
-        << status.ToString();
-    underlying_devices.pop_back();
-  }
-
-  {
-    Status status;
-    underlying_devices.push_back(
         "/job:localhost/replica:0/task:0/device:GPU:0");
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,
@@ -78,6 +63,22 @@ TEST(CompositeDeviceTest, Basic) {
                                   "Expect device type CPU; but got type GPU"))
         << status.ToString();
   }
+}
+
+TEST(CompositeDeviceTest, DeviceName) {
+  const string composite_device_name =
+      "/job:localhost/replica:0/task:0/device:CPU:10";
+  std::vector<string> underlying_devices;
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:0");
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:1");
+  Status status;
+  std::unique_ptr<CompositeDevice> composite_device =
+      CompositeDevice::MakeDevice(underlying_devices, composite_device_name,
+                                  &status);
+  TF_ASSERT_OK(status);
+  EXPECT_EQ(composite_device->name(), composite_device_name);
+  EXPECT_EQ(composite_device->device_type(), kCompositeDeviceType);
+  EXPECT_EQ(underlying_devices, *composite_device->underlying_devices());
 }
 
 }  // namespace tensorflow

@@ -8,6 +8,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "EventProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/util/event_go_proto";
 
 // Protocol buffer representing an event that happened during
 // the execution of a Brain model.
@@ -28,9 +29,10 @@ message Event {
     bytes graph_def = 4;
     // A summary was generated.
     Summary summary = 5;
-    // The user output a log message. Not all messages are logged, only ones
-    // generated via the Python tensorboard_logging module.
-    LogMessage log_message = 6;
+    // The user output a log message. This was theoretically used by the defunct
+    // tensorboard_logging module, which has since been removed; this field is
+    // now deprecated and should not be used.
+    LogMessage log_message = 6 [deprecated = true];
     // The state of the session which can be used for restarting after crashes.
     SessionLog session_log = 7;
     // The metadata returned by running a session.run() call.
@@ -41,8 +43,13 @@ message Event {
 }
 
 // Protocol buffer used for logging messages to the events file.
+//
+// This was theoretically used by the defunct tensorboard_logging module, which
+// has been removed; this message is now deprecated and should not be used.
 message LogMessage {
+  option deprecated = true;
   enum Level {
+    option deprecated = true;
     UNKNOWN = 0;
     // Note: The logging level 10 cannot be named DEBUG. Some software
     // projects compile their C/C++ code with -DDEBUG in debug builds. So the

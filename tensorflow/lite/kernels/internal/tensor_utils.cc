@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
-#if defined(__SSSE3__)
+#if defined(__SSSE3__) && !defined(TF_LITE_STATIC_MEMORY)
 #include "tensorflow/lite/kernels/internal/optimized/sse_tensor_utils.h"
-#elif defined(USE_NEON)
+#elif defined(USE_NEON) && !defined(TF_LITE_STATIC_MEMORY)
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils.h"
 #else
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils.h"

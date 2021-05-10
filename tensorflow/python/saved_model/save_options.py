@@ -18,10 +18,77 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
 import six
 
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export("saved_model.experimental.VariablePolicy")
+class VariablePolicy(enum.Enum):
+  """Enum defining options for variable handling when saving.
+
+  NONE
+    No policy applied: Distributed variables are saved as one variable, with no
+    device attached.
+
+  SAVE_VARIABLE_DEVICES
+    When saving variables, also save their device assignment.
+    This is useful if one wants to hardcode devices in saved models, but it also
+    makes them non-portable if soft device placement is disabled (more details
+    in `tf.config.set_soft_device_placement`). This is currently not
+    fully supported by `saved_model.load`, and is mainly intended to be used
+    when one will be reading the saved model at a lower API level. In the
+    example below, the graph saved by the call to `saved_model.save` will have
+    the variable devices correctly specified:
+    ```python
+    exported = tf.train.Checkpoint()
+    with tf.device('/GPU:0'):
+      exported.x_gpu = tf.Variable(1.0)
+    with tf.device('/CPU:0'):
+      exported.x_cpu = tf.Variable(1.0)
+    tf.saved_model.save(exported, export_dir,
+        options = tf.saved_model.SaveOptions(
+            experimental_variable_policy=
+              tf.saved_model.experimental.VariablePolicy.SAVE_VARIABLE_DEVICES))
+    ```
+    Distributed variables are still saved as one variable under this policy.
+
+  EXPAND_DISTRIBUTED_VARIABLES
+    Distributed variables will be saved with information about their components,
+    allowing for their restoration on load. Also, the saved graph will contain
+    references to those variables. This is useful when one wants to use the
+    model for training in environments where the original distribution strategy
+    is not available.
+  """
+
+  NONE = None
+
+  SAVE_VARIABLE_DEVICES = "save_variable_devices"
+
+  EXPAND_DISTRIBUTED_VARIABLES = "expand_distributed_variables"
+
+  def _save_variable_devices(self):
+    """Checks whether variable devices should be saved."""
+    return self != VariablePolicy.NONE
+
+  def _expand_distributed_variables(self):
+    """Checks whether distributed variables should be expanded."""
+    return self == VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+
+  @staticmethod
+  def from_obj(obj):
+    """Tries to convert `obj` to a VariablePolicy instance."""
+    if obj is None:
+      return VariablePolicy.NONE
+    if isinstance(obj, VariablePolicy):
+      return obj
+    key = str(obj).lower()
+    for policy in VariablePolicy:
+      if key == policy.value:
+        return policy
+    raise ValueError('Invalid VariablePolicy value "%s".' % obj)
 
 
 @tf_export("saved_model.SaveOptions")
@@ -34,13 +101,14 @@ class SaveOptions(object):
 
   # Define object attributes in __slots__ for improved memory and performance.
   __slots__ = ("namespace_whitelist", "save_debug_info", "function_aliases",
-               "experimental_io_device")
+               "experimental_io_device", "experimental_variable_policy")
 
   def __init__(self,
                namespace_whitelist=None,
                save_debug_info=False,
                function_aliases=None,
-               experimental_io_device=None):
+               experimental_io_device=None,
+               experimental_variable_policy=None):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
@@ -58,26 +126,22 @@ class SaveOptions(object):
         by a single tf.function you can use the `function_aliases` argument to
         store a map from the alias name to all concrete function names.
         E.g.
-        ```python
-        class MyModel:
-        @tf.function
-        def func():
-          ...
 
-        @tf.function
-        def serve():
-          ...
-          func()
+        >>> class Adder(tf.Module):
+        ...   @tf.function
+        ...   def double(self, x):
+        ...     return x + x
 
-        model = MyModel()
-        signatures = {
-            'serving_default': model.serve.get_concrete_function(),
-        }
-        options = tf.saved_model.SaveOptions(function_aliases={
-            'my_func': func,
-        })
-        tf.saved_model.save(model, export_dir, signatures, options)
-        ```
+        >>> model = Adder()
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.float32, name="float_input"))
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.string, name="string_input"))
+
+        >>> options = tf.saved_model.SaveOptions(
+        ...   function_aliases={'double': model.double})
+        >>> tf.saved_model.save(model, '/tmp/adder', options=options)
+
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device
@@ -87,12 +151,19 @@ class SaveOptions(object):
         This is for example useful if you want to save to a local directory,
         such as "/tmp" when running in a distributed setting. In that case pass
         a device for the host where the "/tmp" directory is accessible.
+      experimental_variable_policy: The policy to apply to variables when
+        saving. This is either a `saved_model.experimental.VariablePolicy` enum
+        instance or one of its value strings (case is not important). See that
+        enum documentation for details. A value of `None` corresponds to the
+        default policy.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist)
     self.save_debug_info = save_debug_info
     self.function_aliases = function_aliases if function_aliases else dict()
     self.experimental_io_device = experimental_io_device
+    self.experimental_variable_policy = (
+        VariablePolicy.from_obj(experimental_variable_policy))
 
 
 def _validate_namespace_whitelist(namespace_whitelist):

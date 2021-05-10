@@ -126,7 +126,6 @@ struct BincountFunctor<GPUDevice, Tidx, T, true> {
     return GpuLaunchKernel(BincountReduceKernel<Tidx, T>, config.block_count,
                            config.thread_per_block, 0, d.stream(), arr.data(),
                            output.data(), nthreads, num_bins);
-    return Status::OK();
   }
 };
 
@@ -215,14 +214,11 @@ struct BincountReduceFunctor<GPUDevice, Tidx, T, binary_count> {
           config.block_count, config.thread_per_block, smem_usage, d.stream(),
           in.data(), weights.data(), weights.size(), out.data(), num_rows,
           num_cols, num_bins);
-    } else {
-      return GpuLaunchKernel(
-          BincountColReduceKernel<Tidx, T, binary_count>, config.block_count,
-          config.thread_per_block, 0, d.stream(), in.data(), weights.data(),
-          weights.size(), out.data(), num_rows, num_cols, num_bins);
     }
-
-    return Status::OK();
+    return GpuLaunchKernel(
+        BincountColReduceKernel<Tidx, T, binary_count>, config.block_count,
+        config.thread_per_block, 0, d.stream(), in.data(), weights.data(),
+        weights.size(), out.data(), num_rows, num_cols, num_bins);
   }
 };
 

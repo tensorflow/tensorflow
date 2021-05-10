@@ -39,10 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif  // TENSORFLOW_USE_SYCL
-
 namespace tensorflow {
 
 namespace {
@@ -97,6 +93,7 @@ void ConstantOp::Compute(OpKernelContext* ctx) {
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_TPU_SYSTEM), ConstantOp);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -126,33 +123,20 @@ REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(D, TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
+#define REGISTER_DEFAULT_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Const").Device(DEVICE_DEFAULT).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
-REGISTER_SYCL_KERNEL(SYCL, float);
-REGISTER_SYCL_KERNEL(SYCL, double);
-REGISTER_SYCL_KERNEL(SYCL, uint8);
-REGISTER_SYCL_KERNEL(SYCL, int8);
-REGISTER_SYCL_KERNEL(SYCL, qint8);
-REGISTER_SYCL_KERNEL(SYCL, uint16);
-REGISTER_SYCL_KERNEL(SYCL, int16);
-REGISTER_SYCL_KERNEL(SYCL, qint16);
-REGISTER_SYCL_KERNEL(SYCL, quint16);
-REGISTER_SYCL_KERNEL(SYCL, uint32);
-REGISTER_SYCL_KERNEL(SYCL, qint32);
-REGISTER_SYCL_KERNEL(SYCL, int64);
-REGISTER_SYCL_KERNEL(SYCL, uint64);
-REGISTER_SYCL_KERNEL(SYCL, bool);
-#undef REGISTER_SYCL_KERNEL
-#endif
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_qint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_quint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {
@@ -211,28 +195,10 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
-REGISTER_KERNEL(CPU, uint32);
+REGISTER_KERNEL(CPU, qint8);
+REGISTER_KERNEL(CPU, qint16);
+REGISTER_KERNEL(CPU, qint32);
 #undef REGISTER_CPU_KERNEL
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(SYCL, float);
-REGISTER_KERNEL(SYCL, double);
-REGISTER_KERNEL(SYCL, uint8);
-REGISTER_KERNEL(SYCL, int8);
-REGISTER_KERNEL(SYCL, uint16);
-REGISTER_KERNEL(SYCL, int16);
-REGISTER_KERNEL(SYCL, int64);
-
-REGISTER_KERNEL_BUILDER(Name("Fill")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
-                            .HostMemory("dims")
-                            .HostMemory("value")
-                            .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
-#undef REGISTER_KERNEL_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -307,18 +273,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(bool, SYCL);
-REGISTER_KERNEL(float, SYCL);
-REGISTER_KERNEL(double, SYCL);
-REGISTER_KERNEL(int64, SYCL);
-REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("y"),
-                        ZerosLikeOp<CPUDevice, int32>);
-#endif  // TENSORFLOW_USE_SYCL
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL(bool, GPU);
@@ -362,16 +316,6 @@ class OnesLikeOp : public OpKernel {
 #define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
 TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(float, SYCL);
-REGISTER_KERNEL(bool, SYCL);
-REGISTER_KERNEL_BUILDER(Name("OnesLike")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("y"),
-                        OnesLikeOp<CPUDevice, int32>);
-#endif  // TENSORFLOW_USE_SYCL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)

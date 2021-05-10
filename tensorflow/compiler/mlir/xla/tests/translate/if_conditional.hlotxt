@@ -20,34 +20,34 @@ HloModule tfcompile.20
 ENTRY %tfcompile.20 {
   %arg0.1 = f32[] parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
 
-  // CHECK: [[C0:%.+]] = constant
+  // CHECK: [[C0:%.+]] = mhlo.constant
   %constant.3 = f32[] constant(10), metadata={op_type="Less" op_name="Less"}
 
-  // CHECK: [[R1:%.+]] = "xla_hlo.compare"([[A0]], [[C0]])
+  // CHECK: [[R1:%.+]] = "mhlo.compare"([[A0]], [[C0]])
   %compare.4 = pred[] compare(%arg0.1, %constant.3), direction=LT, metadata={op_type="Less" op_name="Less"}
 
-  // CHECK: [[R2:%.+]] = "xla_hlo.tuple"([[A0]])
+  // CHECK: [[R2:%.+]] = "mhlo.tuple"([[A0]])
   %tuple.5 = (f32[]) tuple(%arg0.1), metadata={op_type="If" op_name="cond/Merge_if"}
 
-  // CHECK: [[R3:%.+]] = "xla_hlo.if"([[R1]], [[R2]], [[R2]]) ( {
+  // CHECK: [[R3:%.+]] = "mhlo.if"([[R1]], [[R2]], [[R2]]) ( {
   // CHECK: ^bb0([[A1:%.+]]: tuple<tensor<f32>>):
-  // CHECK:   [[R7:%.+]] = "xla_hlo.get_tuple_element"([[A1]])
-  // CHECK:   [[R8:%.+]] = "xla_hlo.log"([[R7]])
-  // CHECK:   [[R9:%.+]] = "xla_hlo.tuple"([[R8]])
-  // CHECK:   "xla_hlo.return"([[R9]])
+  // CHECK:   [[R7:%.+]] = "mhlo.get_tuple_element"([[A1]])
+  // CHECK:   [[R8:%.+]] = "mhlo.log"([[R7]])
+  // CHECK:   [[R9:%.+]] = "mhlo.tuple"([[R8]])
+  // CHECK:   "mhlo.return"([[R9]])
   // CHECK: },  {
   // CHECK: ^bb0([[A1:%.+]]: tuple<tensor<f32>>):
-  // CHECK:   [[R7:%.+]] = "xla_hlo.get_tuple_element"([[A1]])
-  // CHECK:   [[R8:%.+]] = "xla_hlo.exponential"([[R7]])
-  // CHECK:   [[R9:%.+]] = "xla_hlo.tuple"([[R8]])
-  // CHECK:   "xla_hlo.return"([[R9]])
+  // CHECK:   [[R7:%.+]] = "mhlo.get_tuple_element"([[A1]])
+  // CHECK:   [[R8:%.+]] = "mhlo.exponential"([[R7]])
+  // CHECK:   [[R9:%.+]] = "mhlo.tuple"([[R8]])
+  // CHECK:   "mhlo.return"([[R9]])
   // CHECK: })
   %conditional.16 = (f32[]) conditional(%compare.4, %tuple.5, %tuple.5), true_computation=%then_branch, false_computation=%else_branch, metadata={op_type="If" op_name="cond/Merge_if"}
 
-  // CHECK: [[R4:%.+]] = "xla_hlo.get_tuple_element"([[R3]])
+  // CHECK: [[R4:%.+]] = "mhlo.get_tuple_element"([[R3]])
   %get-tuple-element.17 = f32[] get-tuple-element(%conditional.16), index=0, metadata={op_type="If" op_name="cond/Merge_if"}
 
-  // CHECK: [[R5:%.+]] = "xla_hlo.tuple"([[R4]])
+  // CHECK: [[R5:%.+]] = "mhlo.tuple"([[R4]])
   // CHECK:   return [[R5]]
   ROOT %tuple.19 = (f32[]) tuple(%get-tuple-element.17), metadata={op_name="XLA_Retvals"}
 }

@@ -33,7 +33,11 @@ TEST(ToolParams, SetTest) {
 
   params.Set(others);
   EXPECT_EQ(19, params.Get<int>("some-int1"));
+  EXPECT_TRUE(params.HasValueSet<int>("some-int1"));
+
   EXPECT_EQ(17, params.Get<int>("some-int2"));
+  EXPECT_FALSE(params.HasValueSet<int>("some-int2"));
+
   EXPECT_FALSE(params.HasParam("some-bool"));
 }
 

@@ -143,3 +143,42 @@ def to_sparse(rt_input, name=None):
 
 def from_sparse(st_input, name=None):
   return ragged_tensor.RaggedTensor.from_sparse(st_input, name)
+
+
+@ops.RegisterGradient("RaggedTensorFromVariant")
+def _ragged_tensor_from_variant_grad(op, *grads):
+  """Gradient for RaggedTensorFromVariant op."""
+
+  variant_rank = op.inputs[0].shape.rank
+  if variant_rank == 0:
+    batched_input = False
+  elif variant_rank == 1:
+    batched_input = True
+  elif variant_rank is None:
+    batched_input = (op.get_attr("output_ragged_rank") > 0)
+  else:
+    # TODO(edloper): Add a batch_dims argument to RaggedTensorToVariant, so
+    # we can support this.
+    raise ValueError("Unable to compute gradient: RaggedTensorToVariant "
+                     "can currently only generate 0D or 1D output.")
+  return [
+      gen_ragged_conversion_ops.ragged_tensor_to_variant(
+          rt_nested_splits=op.outputs[:-1],
+          rt_dense_values=grads[-1],
+          batched_input=batched_input)
+  ]
+
+
+@ops.RegisterGradient("RaggedTensorToVariant")
+def _ragged_tensor_to_variant_grad(op, encoded_ragged_grad):
+  """Gradient for RaggedTensorToVariant op."""
+  dense_values = op.inputs[-1]
+  ragged_rank = len(op.inputs) - 1
+  row_splits = 0 if ragged_rank == 0 else op.inputs[0]
+  values_grad = gen_ragged_conversion_ops.ragged_tensor_to_variant_gradient(
+      encoded_ragged_grad=encoded_ragged_grad,
+      row_splits=row_splits,
+      dense_values_shape=array_ops.shape(dense_values),
+      Tvalues=op.inputs[-1].dtype)
+  result = [None] * ragged_rank + [values_grad]
+  return result

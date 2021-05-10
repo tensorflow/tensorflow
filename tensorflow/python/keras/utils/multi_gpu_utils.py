@@ -13,22 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for multi-gpu training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Lambda
 from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.ops import array_ops
-from tensorflow.python.util import deprecation
-from tensorflow.python.util.tf_export import keras_export
 
 
 def _get_available_devices():
-  return [x.name for x in K.get_session().list_devices()]
+  return [x.name for x in backend.get_session().list_devices()]
 
 
 def _normalize_device_name(name):
@@ -36,9 +31,6 @@ def _normalize_device_name(name):
   return name
 
 
-@keras_export('keras.utils.multi_gpu_model')
-@deprecation.deprecated(
-    '2020-04-01', 'Use `tf.distribute.MirroredStrategy` instead.')
 def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   """Replicates a model on different GPUs.
 
@@ -60,7 +52,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   This function is only available with the TensorFlow backend
   for the time being.
 
-  Arguments:
+  Args:
       model: A Keras model instance. To avoid OOM errors,
           this model could have been built on CPU, for instance
           (see usage example below).
@@ -185,7 +177,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   def get_slice(data, i, parts):
     """Slice an array into `parts` slices and return slice `i`.
 
-    Arguments:
+    Args:
       data: array to slice.
       i: index of slice to return.
       parts: number of slices to make.
@@ -218,7 +210,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   # each getting a slice of the inputs.
   for i, gpu_id in enumerate(target_gpu_ids):
     with ops.device('/gpu:%d' % gpu_id):
-      with K.name_scope('replica_%d' % gpu_id):
+      with backend.name_scope('replica_%d' % gpu_id):
         inputs = []
         # Retrieve a slice of the input.
         for x in model.inputs:

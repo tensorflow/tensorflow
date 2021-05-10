@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -33,6 +34,34 @@ namespace mlir {
 namespace TF {
 
 namespace {
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
+
+// Helper method that returns an op from 'transpose_ops' that match criteria
+// for an 'operand' and 'permutation'
+TransposeOp ReuseExistingTranspose(const OpOperand* operand,
+                                   const SmallVector<int64_t, 4>& permutation,
+                                   Operation* op, ConstOp permutation_op,
+                                   SmallVector<TransposeOp, 2>* transpose_ops) {
+  for (auto it = transpose_ops->begin(); it != transpose_ops->end(); ++it) {
+    auto tranpose_op = *it;
+    for (auto tranpose_operand : tranpose_op.getOperands()) {
+      auto ranked_tranpose_type =
+          tranpose_operand.getType().dyn_cast_or_null<RankedTensorType>();
+      if (!ranked_tranpose_type) continue;
+      if (ranked_tranpose_type.getRank() == permutation.size() &&
+          operand->get().getType() ==
+              ShuffleRankedTensorType(ranked_tranpose_type, permutation)) {
+        TransposeOp transpose = tranpose_op;
+        transpose.getOperation()->moveBefore(op);
+        transpose.setOperand(0, operand->get());
+        transpose.setOperand(1, permutation_op);
+        transpose_ops->erase(it);
+        return transpose;
+      }
+    }
+  }
+  return nullptr;
+}
 
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
@@ -64,12 +93,21 @@ class MoveTransposesPass
   enum class Direction { kBegin, kEnd };
 
   MoveTransposesPass() = default;
-  explicit MoveTransposesPass(Direction direction) { direction_ = direction; }
+  explicit MoveTransposesPass(Direction direction, bool fold_transpose_in_ops) {
+    direction_ = direction;
+    fold_transpose_in_ops_ = fold_transpose_in_ops;
+  }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
 
   void runOnFunction() final;
 
  private:
+  Option<bool> fold_transpose_in_ops_{
+      *this, "fold-transpose-in-ops",
+      llvm::cl::desc(
+          "Whether to fold transposes in ops which can support folding."),
+      llvm::cl::init(true)};
+
   Option<Direction> direction_{
       *this, "direction",
       llvm::cl::desc("Move transposes to the beginning or the end of the block "
@@ -79,25 +117,14 @@ class MoveTransposesPass
           clEnumValN(Direction::kEnd, "end", "end of the block"))};
 };
 
-using Permutation = SmallVector<int32_t, 4>;
-
-Permutation GetDataFormatPermutation(StringRef from_data_format,
-                                     StringRef to_data_format) {
-  if (from_data_format == "NHWC" && to_data_format == "NCHW") {
-    return {0, 3, 1, 2};
-  } else if (from_data_format == "NCHW" && to_data_format == "NHWC") {
-    return {0, 2, 3, 1};
-  } else {
-    llvm_unreachable("Unknown data format combination");
-  }
-}
+using Permutation = SmallVector<int64_t, 4>;
 
 void LayoutAssignmentPass::runOnFunction() {
   FuncOp func = getFunction();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+  if (failed(::tensorflow::GetDevicesFromOp(func->getParentOfType<ModuleOp>(),
                                             &devices)))
     return signalPassFailure();
 
@@ -131,7 +158,7 @@ void LayoutAssignmentPass::runOnFunction() {
     OpBuilder builder = OpBuilder::atBlockEnd(op->getBlock());
 
     auto perm_attr = [&](Permutation permutation) -> DenseIntElementsAttr {
-      auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(32));
+      auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(64));
       return DenseIntElementsAttr::get(perm_ty, permutation);
     };
 
@@ -202,6 +229,27 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 
   // Nothing to do here.
   if (!permutation_op || transpose_ops.empty()) return;
+  SmallVector<int64_t, 4> permutation;
+  auto perm_attr = permutation_op.value().cast<DenseElementsAttr>();
+  for (const auto& value : perm_attr.getIntValues())
+    permutation.push_back(value.getSExtValue());
+
+  // We want to make sure the shape of the operand equals the transposed shape.
+  // mismatch can happen if 'op' supports broadcasting and the operands have
+  // different ranks.
+  if (op->hasTrait<OpTrait::ResultsBroadcastableShape>()) {
+    auto transpose_op = *transpose_ops.begin();
+    auto result_type =
+        transpose_op.getResult().getType().dyn_cast_or_null<ShapedType>();
+    auto is_valid_move =
+        llvm::all_of(op->getOperands(), [result_type](Value operand) -> bool {
+          auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
+          return result_type && operand_type && result_type.hasRank() &&
+                 operand_type.hasRank() &&
+                 result_type.getRank() == operand_type.getRank();
+        });
+    if (!is_valid_move) return;
+  }
 
   // At this point we checked that we can safely move Transpose node before
   // `op`, and bypass all result transposes.
@@ -228,16 +276,12 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
       work_list->push_back(operand_op);
 
     // Try to reuse result transposes.
-    TransposeOp transpose;
-    if (!transpose_ops.empty()) {
-      transpose = transpose_ops.pop_back_val();
-      transpose.getOperation()->moveBefore(op);
-      transpose.setOperand(0, operand.get());
-      transpose.setOperand(1, permutation_op);
-    } else {
+    TransposeOp transpose = ReuseExistingTranspose(
+        &operand, permutation, op, permutation_op, &transpose_ops);
+    // If no transpose available for using, create new one.
+    if (!transpose)
       transpose =
           builder.create<TransposeOp>(loc, operand.get(), permutation_op);
-    }
 
     operand.set(transpose);
   }
@@ -250,7 +294,8 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 }
 
 // Move Transpose operations that permute `op` operands after the `op`.
-void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
+void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
+                        bool fold_transpose_in_ops) {
   // Indices of operands and results that depend on data layout.
   SmallVector<unsigned, 4> layout_dependent_operands;
   SmallVector<unsigned, 4> layout_dependent_results;
@@ -258,7 +303,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   auto fold_operands = dyn_cast<FoldOperandsTransposeInterface>(op);
   bool layout_agnostic = op->hasTrait<OpTrait::TF::LayoutAgnostic>();
 
-  if (fold_operands) {
+  if (fold_operands && fold_transpose_in_ops) {
     layout_dependent_operands = fold_operands.GetLayoutDependentArgs();
     layout_dependent_results = fold_operands.GetLayoutDependentResults();
 
@@ -314,7 +359,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
     original_type[idx] = op->getResult(idx).getType();
 
   // Check if we can fold transpose into the operation.
-  if (fold_operands) {
+  if (fold_operands && fold_transpose_in_ops) {
     SmallVector<int64_t, 8> permutation;
 
     auto attr = permutation_op.value().cast<DenseElementsAttr>();
@@ -342,7 +387,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Maybe add Transpose nodes for layout dependent results
   // (or reuse existing transposes).
   OpBuilder builder(op);
-  builder.setInsertionPoint(op);
+  builder.setInsertionPointAfter(op);
 
   for (unsigned idx : layout_dependent_results) {
     OpResult result = op->getResult(idx);
@@ -402,7 +447,7 @@ void MoveTransposesPass::runOnFunction() {
     if (direction_ == Direction::kBegin) {
       MoveTransposeBefore(op, &work_list);
     } else if (direction_ == Direction::kEnd) {
-      MoveTransposeAfter(op, &work_list);
+      MoveTransposeAfter(op, &work_list, fold_transpose_in_ops_);
     }
   }
 
@@ -427,10 +472,12 @@ void CreateLayoutOptimizationPipeline(
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
 
   // Move transposes to the beginning of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kBegin));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kBegin, !options.skip_fold_transpose_in_ops));
 
   // Move transposes to the end of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
 static PassRegistration<LayoutAssignmentPass> layout_assignment(

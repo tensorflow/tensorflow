@@ -65,17 +65,11 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
       a_buffer->device_memory()[0], b_buffer->device_memory()[0],
       c_buffer->device_memory()[0]};
   ShapedBuffer shaped_a = a_buffer->AsShapedBuffer(
-      a_shape,
-      client->backend().transfer_manager()->HostShapeToDeviceShape(a_shape),
-      client->platform());
+      client->backend().transfer_manager()->HostShapeToDeviceShape(a_shape));
   ShapedBuffer shaped_b = b_buffer->AsShapedBuffer(
-      b_shape,
-      client->backend().transfer_manager()->HostShapeToDeviceShape(b_shape),
-      client->platform());
+      client->backend().transfer_manager()->HostShapeToDeviceShape(b_shape));
   ShapedBuffer shaped_c = c_buffer->AsShapedBuffer(
-      c_shape,
-      client->backend().transfer_manager()->HostShapeToDeviceShape(c_shape),
-      client->platform());
+      client->backend().transfer_manager()->HostShapeToDeviceShape(c_shape));
   auto expected_it = expected_buffer_sequence.begin();
   for (auto it = shaped_a.buffers().begin(); it != shaped_a.buffers().end();
        ++it) {

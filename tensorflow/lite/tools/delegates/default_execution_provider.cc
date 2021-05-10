@@ -25,7 +25,8 @@ namespace tools {
 class DefaultExecutionProvider : public DelegateProvider {
  public:
   DefaultExecutionProvider() {
-    default_params_.AddParam("num_threads", ToolParam::Create<int32_t>(1));
+    default_params_.AddParam("help", ToolParam::Create<bool>(false));
+    default_params_.AddParam("num_threads", ToolParam::Create<int32_t>(-1));
     default_params_.AddParam("max_delegated_partitions",
                              ToolParam::Create<int32_t>(0));
     default_params_.AddParam("min_nodes_per_partition",
@@ -33,7 +34,7 @@ class DefaultExecutionProvider : public DelegateProvider {
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
   std::string GetName() const final { return "Default-NoDelegate"; }
 };
@@ -42,6 +43,8 @@ REGISTER_DELEGATE_PROVIDER(DefaultExecutionProvider);
 std::vector<Flag> DefaultExecutionProvider::CreateFlags(
     ToolParams* params) const {
   std::vector<Flag> flags = {
+      CreateFlag<bool>("help", params,
+                       "Print out all supported flags if true."),
       CreateFlag<int32_t>("num_threads", params,
                           "number of threads used for inference on CPU."),
       CreateFlag<int32_t>("max_delegated_partitions", params,
@@ -54,13 +57,16 @@ std::vector<Flag> DefaultExecutionProvider::CreateFlags(
   return flags;
 }
 
-void DefaultExecutionProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "#threads used for CPU inference: ["
-                   << params.Get<int32_t>("num_threads") << "]";
-  TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
-                   << params.Get<int32_t>("max_delegated_partitions") << "]";
-  TFLITE_LOG(INFO) << "Min nodes per partition : ["
-                   << params.Get<int32_t>("min_nodes_per_partition") << "]";
+void DefaultExecutionProvider::LogParams(const ToolParams& params,
+                                         bool verbose) const {
+  LOG_TOOL_PARAM(params, bool, "help", "print out all supported flags",
+                 verbose);
+  LOG_TOOL_PARAM(params, int32_t, "num_threads",
+                 "#threads used for CPU inference", verbose);
+  LOG_TOOL_PARAM(params, int32_t, "max_delegated_partitions",
+                 "Max number of delegated partitions", verbose);
+  LOG_TOOL_PARAM(params, int32_t, "min_nodes_per_partition",
+                 "Min nodes per partition", verbose);
 }
 
 TfLiteDelegatePtr DefaultExecutionProvider::CreateTfLiteDelegate(

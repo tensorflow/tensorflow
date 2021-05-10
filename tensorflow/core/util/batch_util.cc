@@ -182,8 +182,6 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
   switch (element.dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-    TF_CALL_uint32(HANDLE_TYPE);
-    TF_CALL_uint64(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
@@ -207,8 +205,6 @@ Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
   switch (parent.dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-    TF_CALL_uint32(HANDLE_TYPE);
-    TF_CALL_uint64(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
@@ -280,8 +276,6 @@ Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
   switch (src.dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-    TF_CALL_uint32(HANDLE_TYPE);
-    TF_CALL_uint64(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented("CopyContiguousSlices unhandled data type: ",
@@ -308,8 +302,6 @@ Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index) {
   switch (parent->dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-    TF_CALL_uint32(HANDLE_TYPE);
-    TF_CALL_uint64(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented(

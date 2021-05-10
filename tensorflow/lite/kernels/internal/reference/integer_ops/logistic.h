@@ -58,30 +58,50 @@ inline void Logistic(int32_t input_zero_point, int32_t input_range_radius,
   }
 }
 
-inline void Logistic(int32_t input_multiplier, int32_t input_size,
-                     const int16_t* ptr_input_data, int16_t* ptr_output_data) {
+inline void Logistic(int32_t input_multiplier, int32_t input_left_shift,
+                     int32_t input_size, const int16_t* ptr_input_data,
+                     int16_t* ptr_output_data) {
   // We use the LUT for sigmoid and take into account, that
   // tanh(x) = 2*sigmoid(2*x) - 1
 
-  int32_t input_data_mul = (input_multiplier > 0) ? input_multiplier : 1;
+  // We scale by 3/4 to expand range [-8,8]->[-10.7,10.7].
+  // In case of general parameter scale, multiplier 3 is taken into account
+  // in TanhPrepare function and it is included in
+  // input_multiplier already.
+
+  TFLITE_DCHECK_GE(input_left_shift, 0);
+  if (input_multiplier == 0) {  // power of two case
+    input_multiplier = 3 << input_left_shift;
+    input_left_shift = 0;
+  }
+
+  int32_t round = (input_left_shift > 0) ? 1 << (input_left_shift - 1) : 0;
 
   for (int i = 0; i < input_size; ++i, ptr_input_data++, ptr_output_data++) {
-    int32_t input_data = (*ptr_input_data) * input_data_mul;
+    int32_t input_data =
+        ((*ptr_input_data) * input_multiplier + round) >> input_left_shift;
 
-    // Scale by 3/4 to expand range [-8,8]->[-10.7,10.7] and
-    // we do interpolation on unsigned values.
-    uint32_t abs_input_data = 3 * abs(input_data);
+    // We do interpolation on unsigned values.
+    uint32_t abs_input_data = abs(input_data);
 
     // We divide by 2 power of 9, because
     // we need to divide by 2 in power of 7 for
     // the input conversion + 1/4 from the scale above.
-    uint8_t uh = abs_input_data >> 9;
-    uint32_t ua = sigmoid_table_uint16[uh];
-    uint32_t ub = sigmoid_table_uint16[uh + 1];
-    uint32_t ut = abs_input_data & 0x1ff;
 
-    // Interpolation is done using the fractional bit.
-    uint32_t result = (ua << 9) + ut * (ub - ua);
+    // Define uh as uint32_t type not to make this function overflow.
+    uint32_t uh = abs_input_data >> 9;
+    uint32_t result;
+
+    if (uh >= 255) {
+      // Saturate to maximum.
+      result = 0x7FFF << 10;
+    } else {
+      uint32_t ua = sigmoid_table_uint16[uh];
+      uint32_t ub = sigmoid_table_uint16[uh + 1];
+      uint32_t ut = abs_input_data & 0x1ff;
+      // Interpolation is done using the fractional bit.
+      result = (ua << 9) + ut * (ub - ua);
+    }
 
     result = (input_data >= 0) ? (result + (1 << 9))
                                : ((1 << (16 + 9)) - result + (1 << 9) - 1);

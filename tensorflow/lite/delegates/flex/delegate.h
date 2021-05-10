@@ -77,6 +77,11 @@ class FlexDelegate : public SimpleDelegateInterface {
 
   TfLiteStatus Initialize(TfLiteContext* context) override;
 
+  SimpleDelegateInterface::Options DelegateOptions() const override {
+    // Use default options.
+    return SimpleDelegateInterface::Options();
+  }
+
   std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
       override;
 

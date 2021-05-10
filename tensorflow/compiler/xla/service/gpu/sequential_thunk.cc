@@ -24,14 +24,13 @@ namespace gpu {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
-SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
-                                 const HloInstruction* hlo)
-    : Thunk(Kind::kSequential, hlo), thunks_(std::move(thunks)) {}
+SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
+    : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
 
-void SequentialThunk::ComputeAnnotations() {
-  for (const auto& thunk : thunks_) {
-    thunk->ComputeAnnotations();
-  }
+std::string SequentialThunk::ToStringExtra(int indent) const {
+  std::string result = "\n";
+  absl::StrAppend(&result, thunks().ToString(indent + 1, nullptr));
+  return result;
 }
 
 Status SequentialThunk::Initialize(const GpuExecutable& executable,
@@ -44,7 +43,7 @@ Status SequentialThunk::Initialize(const GpuExecutable& executable,
 
 Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   for (const auto& thunk : thunks_) {
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));

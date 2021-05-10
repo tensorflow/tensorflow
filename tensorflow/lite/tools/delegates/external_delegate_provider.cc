@@ -12,45 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
-
-#if defined(_WIN32)
-#include <Windows.h>
-#else
-#include <dlfcn.h>
-#endif
 
 #include <string>
-#include <type_traits>
 #include <vector>
+
+#include "tensorflow/lite/delegates/external/external_delegate.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 namespace tflite {
 namespace tools {
-namespace {
-// Library Support construct to handle dynamic library operations
-#if defined(_WIN32)
-struct LibSupport {
-  static void* Load(const char* lib) { return LoadLibrary(lib); }
-
-  static void* GetSymbol(void* handle, const char* symbol) {
-    return (void*)GetProcAddress((HMODULE)handle, symbol);
-  }
-
-  static int UnLoad(void* handle) { return FreeLibrary((HMODULE)handle); }
-};
-#else
-struct LibSupport {
-  static void* Load(const char* lib) {
-    return dlopen(lib, RTLD_LAZY | RTLD_LOCAL);
-  }
-
-  static void* GetSymbol(void* handle, const char* symbol) {
-    return dlsym(handle, symbol);
-  }
-
-  static int UnLoad(void* handle) { return dlclose(handle); }
-};
-#endif
 
 // Split a given string to a vector of string using a delimiter character
 std::vector<std::string> SplitString(const std::string& str, char delimiter) {
@@ -62,33 +32,6 @@ std::vector<std::string> SplitString(const std::string& str, char delimiter) {
   }
   return tokens;
 }
-
-// External delegate library construct
-struct ExternalLib {
-  using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(
-      const char**, const char**, size_t,
-      void (*report_error)(const char*))>::type;
-  using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
-
-  // Open a given delegate library and load the create/destroy symbols
-  bool load(const std::string library) {
-    void* handle = LibSupport::Load(library.c_str());
-    if (handle == nullptr) {
-      TFLITE_LOG(INFO) << "Unable to load external delegate from : " << library;
-    } else {
-      create = reinterpret_cast<decltype(create)>(
-          LibSupport::GetSymbol(handle, "tflite_plugin_create_delegate"));
-      destroy = reinterpret_cast<decltype(destroy)>(
-          LibSupport::GetSymbol(handle, "tflite_plugin_destroy_delegate"));
-      return create && destroy;
-    }
-    return false;
-  }
-
-  CreateDelegatePtr create{nullptr};
-  DestroyDelegatePtr destroy{nullptr};
-};
-}  // namespace
 
 // External delegate provider used to dynamically load delegate libraries
 // Note: Assumes the lifetime of the provider exceeds the usage scope of
@@ -104,7 +47,7 @@ class ExternalDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -119,16 +62,18 @@ std::vector<Flag> ExternalDelegateProvider::CreateFlags(
                               "The library path for the underlying external."),
       CreateFlag<std::string>(
           "external_delegate_options", params,
-          "Comma-separated options to be passed to the external delegate")};
+          "A list of comma-separated options to be passed to the external "
+          "delegate. Each option is a colon-separated key-value pair, e.g. "
+          "option_name:option_value.")};
   return flags;
 }
 
-void ExternalDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "External delegate path : ["
-                   << params.Get<std::string>("external_delegate_path") << "]";
-  TFLITE_LOG(INFO) << "External delegate options : ["
-                   << params.Get<std::string>("external_delegate_options")
-                   << "]";
+void ExternalDelegateProvider::LogParams(const ToolParams& params,
+                                         bool verbose) const {
+  LOG_TOOL_PARAM(params, std::string, "external_delegate_path",
+                 "External delegate path", verbose);
+  LOG_TOOL_PARAM(params, std::string, "external_delegate_options",
+                 "External delegate options", verbose);
 }
 
 TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
@@ -136,35 +81,40 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   std::string lib_path = params.Get<std::string>("external_delegate_path");
   if (!lib_path.empty()) {
-    ExternalLib delegate_lib;
-    if (delegate_lib.load(lib_path)) {
-      // Parse delegate options
-      const std::vector<std::string> options = SplitString(
-          params.Get<std::string>("external_delegate_options"), ';');
-      std::vector<std::string> keys, values;
-      for (const auto& option : options) {
-        auto key_value = SplitString(option, ':');
-        if (key_value.size() == 2) {
-          values.push_back(std::move(key_value[1]));
-          keys.push_back(std::move(key_value[0]));
-        }
-      }
+    auto delegate_options =
+        TfLiteExternalDelegateOptionsDefault(lib_path.c_str());
 
-      const size_t num_options = keys.size();
-      std::vector<const char*> ckeys, cvalues;
-      for (int i = 0; i < num_options; ++i) {
-        ckeys.push_back(keys[i].c_str());
-        cvalues.push_back(values[i].c_str());
+    // Parse delegate options
+    const std::vector<std::string> options =
+        SplitString(params.Get<std::string>("external_delegate_options"), ';');
+    std::vector<std::string> keys, values;
+    // We reserve the memory here to avoid memory pointer change during
+    // insertion to vectors above.
+    keys.reserve(options.size());
+    values.reserve(options.size());
+    for (const auto& option : options) {
+      auto key_value = SplitString(option, ':');
+      if (key_value.size() == 2) {
+        // The inserted (key,value) pair has to outlive the
+        // TfLiteExternalDelegateCreate call, therefore, we use two vectors
+        // 'keys' and 'values' to achieve this.
+        // Also, we will insert the memory pointer of key and value to
+        // delegate_options later, we have to ensure the pointer won't change by
+        // reserving the memory earlier.
+        keys.emplace_back(key_value[0]);
+        values.emplace_back(key_value[1]);
+        delegate_options.insert(&delegate_options, keys.back().c_str(),
+                                values.back().c_str());
       }
-
-      // Create delegate
-      delegate =
-          TfLiteDelegatePtr(delegate_lib.create(ckeys.data(), cvalues.data(),
-                                                num_options, nullptr),
-                            delegate_lib.destroy);
     }
+
+    auto external_delegate = TfLiteExternalDelegateCreate(&delegate_options);
+    return TfLiteDelegatePtr(external_delegate, [](TfLiteDelegate* delegate) {
+      TfLiteExternalDelegateDelete(delegate);
+    });
   }
   return delegate;
 }
+
 }  // namespace tools
 }  // namespace tflite

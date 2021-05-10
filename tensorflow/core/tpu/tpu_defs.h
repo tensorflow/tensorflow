@@ -32,7 +32,7 @@ extern const char* const DEVICE_TPU_NODE;  // "TPU";
 // TPUReplicate computation.
 extern const char* const DEVICE_TPU_REPLICATED_CORE;
 
-extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM";
+// DEVICE_TPU_SYSTEM is now defined in tensorflow/core/framework/types.h/.cc
 
 // Name of the XLA_TPU_JIT compilation device, which is an internal device to
 // compile graphs for TPU. Not registered as a device; no operators can be
@@ -47,10 +47,14 @@ extern const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR;
 // variable.
 extern const char* const TPU_FAST_MEM_ATTR;  // "_TPU_FAST_MEM"
 
+extern const char* const kTPUReplicateAttr;
+extern const char* const kOutsideCompilationAttr;
+
 // Supported types for TPUs.
-static constexpr std::array<DataType, 11> kTpuAllTypes = {
-    {DT_INT32, DT_UINT32, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
-     DT_COMPLEX64, DT_INT64, DT_UINT64, DT_QINT8, DT_QUINT8}};
+static constexpr std::array<DataType, 16> kTpuAllTypes = {
+    {DT_INT32, DT_UINT32, DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
+     DT_COMPLEX64, DT_INT64, DT_UINT64, DT_QINT8, DT_QUINT8, DT_INT8, DT_UINT8,
+     DT_INT16, DT_UINT16}};
 
 }  // namespace tensorflow
 

@@ -199,5 +199,216 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
   EXPECT_EQ(module->Hash(), ref->Hash());
 }
 
+TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
+  // Tests propagating the memory space to nested fusions on the input side.
+  absl::string_view hlo_string = R"(
+  HloModule NestedFusion
+
+  %bitcast_fusion {
+    %bf_param = s32[3,2]{0,1:T(128)} parameter(0)
+    ROOT %bitcast = s32[6]{0:T(128)} bitcast(%bf_param)
+  }
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[3,2]{0,1:T(128)} parameter(0)
+    %fusion.1 = s32[6]{0:T(128)} fusion(%param_0.1), kind=kLoop, calls=bitcast_fusion
+    ROOT %add.0 = s32[6]{0:T(128)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %fusion.1)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[3,2]{0,1:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[3,2]{0,1:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[6]{0:T(128)} copy(%fusion)
+  }
+  )";
+  absl::string_view expected_hlo_string = R"(
+  HloModule NestedFusion
+
+  %bitcast_fusion {
+    %bf_param = s32[3,2]{0,1:T(128)S(1)} parameter(0)
+    ROOT %bitcast = s32[6]{0:T(128)} bitcast(%bf_param)
+  }
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[3,2]{0,1:T(128)S(1)} parameter(0)
+    %fusion.1 = s32[6]{0:T(128)} fusion(%param_0.1), kind=kLoop, calls=bitcast_fusion
+    ROOT %add.0 = s32[6]{0:T(128)S(1)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %fusion.1)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[3,2]{0,1:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[3,2]{0,1:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[6]{0:T(128)} copy(%fusion)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  TF_EXPECT_OK(Verify(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(module->Hash(), ref->Hash());
+}
+
+TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
+  // Tests propagating the memory space to nested fusions on the output side.
+  absl::string_view hlo_string = R"(
+  HloModule NestedFusion
+
+  %bitcast_fusion {
+    %bf_param = s32[6]{0:T(128)} parameter(0)
+    ROOT %bitcast = s32[3,2]{0,1:T(128)} bitcast(%bf_param)
+  }
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[6]{0:T(128)} parameter(0)
+    %add.0 = s32[6]{0:T(128)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
+    ROOT %fusion.1 = s32[3,2]{0,1:T(128)} fusion(%add.0), kind=kLoop, calls=bitcast_fusion
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    %fusion = s32[3,2]{0,1:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[3,2]{0,1:T(128)} copy(%fusion)
+  }
+  )";
+  absl::string_view expected_hlo_string = R"(
+  HloModule NestedFusion
+
+  %bitcast_fusion {
+    %bf_param = s32[6]{0:T(128)} parameter(0)
+    ROOT %bitcast = s32[3,2]{0,1:T(128)S(1)} bitcast(%bf_param)
+  }
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
+    %add.0 = s32[6]{0:T(128)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)S(1)} %param_0.1)
+    ROOT %fusion.1 = s32[3,2]{0,1:T(128)S(1)} fusion(%add.0), kind=kLoop, calls=bitcast_fusion
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    %fusion = s32[3,2]{0,1:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[3,2]{0,1:T(128)} copy(%fusion)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  TF_EXPECT_OK(Verify(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(module->Hash(), ref->Hash());
+}
+
+TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
+  absl::string_view hlo_string = R"(
+  HloModule TupleOutput
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[6]{0:T(128)} parameter(0)
+    %bitcast.0 = s32[6]{0:T(128)} bitcast(s32[6]{0:T(128)} %param_0.1)
+    %multiply.0 = s32[6]{0:T(128)} multiply(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
+    ROOT %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%bitcast.0, %multiply.0)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+  }
+  )";
+  absl::string_view expected_hlo_string = R"(
+  HloModule TupleOutput
+
+  %fused_computation {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)S(1)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
+    %bitcast.0 = s32[6]{0:T(128)} bitcast(s32[6]{0:T(128)S(1)} %param_0.1)
+    %multiply.0 = s32[6]{0:T(128)} multiply(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)S(1)} %param_0.1)
+    ROOT %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%bitcast.0, %multiply.0)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %param1 = s32[1]{0:T(128)} parameter(1)
+    %param2 = s32[5]{0:T(128)} parameter(2)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg1 = s32[1]{0:T(128)} copy(%param1)
+    %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
+    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  TF_EXPECT_OK(Verify(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(module->Hash(), ref->Hash());
+}
+
 }  // namespace
 }  // namespace xla

@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "llvm/Linker/Linker.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
 namespace xla {
@@ -32,14 +32,24 @@ namespace cpu {
 namespace {
 
 // Lower an MLIR module to an LLVM module.
-std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module) {
-  mlir::PassManager manager(module->getContext());
+std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
+                                             llvm::LLVMContext *context) {
+  // When set, the LLVM backend will be allowed to reassociate floating-point
+  // reductions, which enables much more efficient "horizontal" SIMD
+  // implementations.
+  // TODO(kramerb): link this to the right option, command line flag, etc.
+  constexpr bool kReassociateFPReductions = true;
+
+  mlir::PassManager manager(module->getContext(),
+                            mlir::OpPassManager::Nesting::Implicit);
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
-  manager.addPass(mlir::createConvertLinalgToLLVMPass());
-  manager.addPass(mlir::createConvertVectorToLLVMPass());
-  manager.addPass(mlir::createLowerToLLVMPass());
+  manager.addPass(mlir::createLowerAffinePass());
+  manager.addPass(mlir::createLowerToCFGPass());
+  manager.addPass(mlir::createConvertVectorToLLVMPass(
+      mlir::LowerVectorToLLVMOptions().setReassociateFPReductions(
+          kReassociateFPReductions)));
   CHECK(succeeded(manager.run(*module)));
-  return mlir::translateModuleToLLVMIR(*module);
+  return mlir::translateModuleToLLVMIR(*module, *context);
 }
 
 // Get arguments to pass a memref to an mlir function.
@@ -98,7 +108,7 @@ Status EmitMlirFuncAndCall(
   // Create the function an call the emission callback.
   mlir::Location loc = mlir::UnknownLoc::get(context);
   auto function = mlir::FuncOp::create(
-      loc, func_name, mlir::FunctionType::get(operand_types, {}, context));
+      loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
   mlir::OwningModuleRef mlir_module = mlir::ModuleOp::create(loc);
   mlir_module->push_back(function);
@@ -106,7 +116,8 @@ Status EmitMlirFuncAndCall(
   emitter(&op_builder, function);
 
   // Now link it all into the main LLVM module.
-  auto mlir_llvm_module = MakeLLVMModule(std::move(mlir_module));
+  auto mlir_llvm_module =
+      MakeLLVMModule(std::move(mlir_module), &b->getContext());
   mlir_llvm_module->setDataLayout(llvm_module->getDataLayout());
   llvm::Linker::linkModules(
       *llvm_module, std::move(mlir_llvm_module), llvm::Linker::None,

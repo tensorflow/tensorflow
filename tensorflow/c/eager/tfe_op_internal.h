@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_TFE_OP_INTERNAL_H_
 
 #include "tensorflow/c/conversion_macros.h"
-#include "tensorflow/c/eager/operation_interface.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 
 // Wraps a pointer to an operation implementation.
 //
@@ -28,8 +28,8 @@ typedef struct TFE_Op TFE_Op;
 
 namespace tensorflow {
 
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractOperationInterface, TFE_Op);
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractOperationInterface*, TFE_Op*);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::ImmediateExecutionOperation, TFE_Op);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::ImmediateExecutionOperation*, TFE_Op*);
 
 }  // namespace tensorflow
 

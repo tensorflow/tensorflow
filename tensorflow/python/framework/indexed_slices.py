@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.types import internal
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -79,6 +80,18 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
   (e.g. `tf.gather`).
+
+  >>> v = tf.Variable([[0.,1, 2], [2, 3, 4], [4, 5, 6], [6, 7, 8]])
+  >>> with tf.GradientTape() as tape:
+  ...   r = tf.gather(v, [1,3])
+  >>> index_slices = tape.gradient(r,v)
+  >>> index_slices
+  <...IndexedSlices object ...>
+  >>> index_slices.indices.numpy()
+  array([1, 3], dtype=int32)
+  >>> index_slices.values.numpy()
+  array([[1., 1., 1.],
+         [1., 1., 1.]], dtype=float32)
 
   Contrast this representation with
   `tf.sparse.SparseTensor`,
@@ -147,7 +160,7 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
         (", dense_shape=%s" %
-         self._dense_shape) if self._dense_shape is not None else "")
+         (self._dense_shape,)) if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -344,7 +357,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Iterable):
+  if not isinstance(values, collections_abc.Iterable):
     raise TypeError("values must be iterable.")
   ret = []
   for i, value in enumerate(values):
@@ -428,9 +441,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "elements. This may consume a large amount of memory." %
             num_elements)
     else:
-      warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-          "This may consume a large amount of memory.")
+      if value.dense_shape.op.type != "VariableShape":
+        # VariableShape may hide static shapes behind a resource handle
+        # producing a warning that isn't that useful to users.
+        warnings.warn(
+            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
+            "shape. This may consume a large amount of memory." % value)
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 

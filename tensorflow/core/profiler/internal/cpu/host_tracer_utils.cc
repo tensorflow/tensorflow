@@ -16,76 +16,57 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/parse_annotation.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/parse_annotation.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
 
-void MakeCompleteEvents(TraceMeRecorder::Events* events) {
-  // Track events created by ActivityStart and copy their data to events created
-  // by ActivityEnd. TraceMe records events in its destructor, so this results
-  // in complete events sorted by their end_time in the thread they ended.
-  // Within the same thread, the record created by ActivityStart must appear
-  // before the record created by ActivityEnd. Cross-thread events must be
-  // processed in a separate pass. A single map can be used because the
-  // activity_id is globally unique.
-  absl::flat_hash_map<uint64, TraceMeRecorder::Event*> start_events;
-  std::vector<TraceMeRecorder::Event*> end_events;
-  for (auto& thread : *events) {
-    for (auto& event : thread.events) {
-      if (IsStartEvent(event)) {
-        start_events.emplace(event.activity_id, &event);
-      } else if (IsEndEvent(event)) {
-        auto iter = start_events.find(event.activity_id);
-        if (iter != start_events.end()) {  // same thread
-          auto* start_event = iter->second;
-          event.name = std::move(start_event->name);
-          event.start_time = start_event->start_time;
-          start_events.erase(iter);
-        } else {  // cross-thread
-          end_events.push_back(&event);
-        }
-      }
-    }
-  }
-  for (auto* event : end_events) {  // cross-thread
-    auto iter = start_events.find(event->activity_id);
-    if (iter != start_events.end()) {
-      auto* start_event = iter->second;
-      event->name = std::move(start_event->name);
-      event->start_time = start_event->start_time;
-      start_events.erase(iter);
-    }
+void MayAddDisplayName(XEventMetadata* xevent_metadata) {
+  if (!xevent_metadata->display_name().empty()) return;
+  std::string tf_op_event_name = TfOpEventName(xevent_metadata->name());
+  if (tf_op_event_name != xevent_metadata->name()) {
+    xevent_metadata->set_display_name(std::move(tf_op_event_name));
   }
 }
 
+}  // namespace
+
 void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
-                                   const TraceMeRecorder::Events& events,
+                                   TraceMeRecorder::Events&& events,
                                    XPlane* raw_plane) {
   XPlaneBuilder xplane(raw_plane);
-  for (const auto& thread : events) {
+  for (auto& thread : events) {
     XLineBuilder xline = xplane.GetOrCreateLine(thread.thread.tid);
     xline.SetName(thread.thread.name);
     xline.SetTimestampNs(start_timestamp_ns);
     xline.ReserveEvents(thread.events.size());
-    for (const auto& event : thread.events) {
-      if (!IsCompleteEvent(event)) continue;
+    while (!thread.events.empty()) {
+      auto event = std::move(thread.events.front());
+      thread.events.pop_front();
+      if (!event.IsComplete()) continue;
+      if (event.start_time < start_timestamp_ns) continue;
+      if (!HasMetadata(event.name)) {
+        XEventMetadata* xevent_metadata =
+            xplane.GetOrCreateEventMetadata(std::move(event.name));
+        MayAddDisplayName(xevent_metadata);
+        XEventBuilder xevent = xline.AddEvent(*xevent_metadata);
+        xevent.SetTimestampNs(event.start_time);
+        xevent.SetEndTimestampNs(event.end_time);
+        continue;
+      }
       Annotation annotation = ParseAnnotation(event.name);
       XEventMetadata* xevent_metadata =
           xplane.GetOrCreateEventMetadata(annotation.name);
-      std::string tf_op_event_name = TfOpEventName(annotation.name);
-      if (tf_op_event_name != annotation.name) {
-        xevent_metadata->set_display_name(std::move(tf_op_event_name));
-      }
+      MayAddDisplayName(xevent_metadata);
       XEventBuilder xevent = xline.AddEvent(*xevent_metadata);
       xevent.SetTimestampNs(event.start_time);
       xevent.SetEndTimestampNs(event.end_time);
@@ -97,6 +78,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
       }
     }
   }
+  SortXLinesBy(raw_plane, XLinesComparatorByName());
 }
 
 }  // namespace profiler

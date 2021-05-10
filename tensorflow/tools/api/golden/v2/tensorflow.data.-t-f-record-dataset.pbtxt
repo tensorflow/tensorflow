@@ -2,9 +2,7 @@ path: "tensorflow.data.TFRecordDataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV2\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
-  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'collections.abc.Iterable\'>"
   member {
     name: "element_spec"
     mtype: "<type \'property\'>"
@@ -23,7 +21,11 @@ tf_class {
   }
   member_method {
     name: "batch"
-    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'self\', \'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "cache"
@@ -51,7 +53,7 @@ tf_class {
   }
   member_method {
     name: "from_generator"
-    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\', \'output_signature\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_tensor_slices"
@@ -60,6 +62,14 @@ tf_class {
   member_method {
     name: "from_tensors"
     argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_single_element"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "group_by_window"
+    argspec: "args=[\'self\', \'key_func\', \'reduce_func\', \'window_size\', \'window_size_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "interleave"
@@ -84,6 +94,10 @@ tf_class {
   member_method {
     name: "prefetch"
     argspec: "args=[\'self\', \'buffer_size\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "random"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "range"

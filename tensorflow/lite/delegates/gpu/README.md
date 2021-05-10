@@ -51,6 +51,10 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 
 ## Basic Usage
 
+**Note:** Following section describes the example usage for Android GPU delegate
+with C++. For other languages and platforms, please see
+[the documentation](https://www.tensorflow.org/lite/performance/gpu).
+
 Using TFLite on GPU is as simple as getting the GPU delegate via
 `TfLiteGpuDelegateV2Create()` and then passing it to
 `Interpreter::ModifyGraphWithDelegate()` instead of calling
@@ -99,13 +103,13 @@ Metal shaders are used for iOS, which were introduced with iOS 8.  Thus,
 compilation flags should look like:
 
 ```sh
-bazel build --config ios_arm64 //path/to/your:project
+bazel build --config ios_fat //path/to/your:project
 ```
 
 ## Advanced Usage: Delegate Options
 
 There are GPU options that can be set and passed on to
-`TfLiteGpuDelegateCreate()`. When option is set to `nullptr` as shown in the
+`TfLiteGpuDelegateV2Create()`. When option is set to `nullptr` as shown in the
 Basic Usage, it translates to:
 
 ```c++
@@ -113,12 +117,13 @@ const TfLiteGpuDelegateOptionsV2 kDefaultOptions =
     TfLiteGpuDelegateOptionsV2Default();
 ```
 
-Similar for `NewTfLiteMetalDelegate()`:
+Similar for `TFLGpuDelegateCreate()`:
 
 ```c++
-const TfLiteMetalDelegateOptions kDefaultOptions = {
-  .precision_loss_allowed = 0,  // false
-  .wait_type = TFLITE_METAL_WAIT_TYPE_SLEEP,
+const TFLGpuDelegateOptions kDefaultOptions = {
+  .allow_precision_loss = false,
+  .wait_type = TFLGpuDelegateWaitTypePassive,
+  .enable_quantization = false,
 };
 ```
 
@@ -126,9 +131,10 @@ While it is convenient to just supply `nullptr`, it is recommended to explicitly
 set the options to avoid any unexpected artifacts in case default values are
 changed.
 
-*IMPORTANT:* Note that the default option does not allow precision loss, and
-thus may not be the fastest.  For faster execution, you may want to set
-`precision_loss_allowed` to `1` for FP16 execution.
+*IMPORTANT:* Note that the default option may not be the fastest. For faster
+execution, you may want to set `allow_precision_loss` to `true` so that the GPU
+performs FP16 calculation internally, and set `wait_type` to
+`TFLGpuDelegateWaitTypeAggressive` to avoid GPU sleep mode.
 
 ## Tips and Tricks
 

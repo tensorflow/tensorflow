@@ -29,7 +29,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -65,7 +64,8 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
       with self.test_scope():
         x = linalg_ops.matrix_triangular_solve(
             placeholder_a, placeholder_b, lower=lower, adjoint=adjoint)
-      verification = math_ops.matmul(placeholder_ca, x, adjoint_a=adjoint)
+      verification = test_util.matmul_without_tf32(
+          placeholder_ca, x, adjoint_a=adjoint)
       self._VerifyTriangularSolveBase(sess, placeholder_a, placeholder_ca,
                                       placeholder_b, a, clean_a, b,
                                       verification, atol)
@@ -135,18 +135,18 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     self._VerifyTriangularSolve(
         a.astype(np.float32), b.astype(np.float32), True, False, 1e-4)
 
-  @test_util.run_deprecated_v1
-  def testNonSquareCoefficientMatrixV1(self):
+  @test_util.disable_mlir_bridge("Error handling")
+  def testNonSquareCoefficientMatrix(self):
     rng = np.random.RandomState(0)
     for dtype in self.float_types:
       a = rng.randn(3, 4).astype(dtype)
       b = rng.randn(4, 4).astype(dtype)
-      with self.assertRaises(ValueError):
-        linalg_ops.matrix_triangular_solve(a, b)
-      with self.assertRaises(ValueError):
-        linalg_ops.matrix_triangular_solve(a, b)
+      with self.test_scope():
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          linalg_ops.matrix_triangular_solve(a, b)
 
-  @test_util.run_v2_only
+  @test_util.run_v2_only  # Different error types
+  @test_util.disable_mlir_bridge("Error handling")
   def testWrongDimensionsV2(self):
     randn = np.random.RandomState(0).randn
     for dtype in self.float_types:
@@ -158,6 +158,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
         linalg_ops.matrix_triangular_solve(lhs, rhs)
 
   @test_util.run_v1_only("Different error types")
+  @test_util.disable_mlir_bridge("Error handling")
   def testWrongDimensionsV1(self):
     randn = np.random.RandomState(0).randn
     for dtype in self.float_types:

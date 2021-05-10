@@ -86,11 +86,7 @@ TEST_P(CPPSavedModelAPITest, LoadsSavedModel) {
   std::unique_ptr<SavedModelAPI> model =
       SavedModelAPI::Load(model_dir, *runtime, &status);
 
-  // TODO(bmzhao): Change this to expect TF_OK when loading is implemented.
-  // That unblocks writing other tests that require a TF_SavedModel*,
-  // like loading a ConcreteFunction. This test at least checks that the
-  // C API builds and can be minimally run.
-  EXPECT_EQ(status.code(), TF_UNIMPLEMENTED);
+  EXPECT_EQ(status.code(), TF_OK) << status.message();
 }
 
 INSTANTIATE_TEST_SUITE_P(RuntimeAgnosticCPPSavedModelTests,

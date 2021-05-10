@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <unordered_map>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -76,26 +82,56 @@ std::string ToString(enum OperationType op) {
       return "batch_normalization";
     case OperationType::BATCH_TO_SPACE:
       return "batch_to_space";
+    case OperationType::BATCHED_MATMUL:
+      return "batched_matmul";
     case OperationType::CONCAT:
       return "concat";
-    case OperationType::CONST:
+    case OperationType::CONSTANT:
       return "const";
     case OperationType::CONVOLUTION_2D:
       return "convolution_2d";
     case OperationType::CONVOLUTION_TRANSPOSED:
       return "convolution_transposed";
+    case OperationType::COPY:
+      return "copy";
     case OperationType::COS:
       return "cos";
+    case OperationType::DENSIFY:
+      return "densify";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
+    case OperationType::DEPTH_TO_SPACE:
+      return "depth_to_space";
     case OperationType::DIV:
       return "div";
+    case OperationType::ELU:
+      return "elu";
+    case OperationType::EQUAL:
+      return "equal";
     case OperationType::EXP:
       return "exp";
+    case OperationType::FLOOR:
+      return "floor";
+    case OperationType::FLOOR_DIV:
+      return "floor_div";
+    case OperationType::FLOOR_MOD:
+      return "floor_mod";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
+    case OperationType::FULLY_CONNECTED_INT8:
+      return "fully_connected_int8";
+    case OperationType::GATHER:
+      return "gather";
+    case OperationType::GREATER:
+      return "greater";
+    case OperationType::GREATER_EQUAL:
+      return "greater_equal";
     case OperationType::HARD_SWISH:
       return "hard_swish";
+    case OperationType::LESS:
+      return "less";
+    case OperationType::LESS_EQUAL:
+      return "less_equal";
     case OperationType::LOG:
       return "log";
     case OperationType::LSTM:
@@ -106,10 +142,16 @@ std::string ToString(enum OperationType op) {
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+      return "mean_stddev_normalization";
     case OperationType::MINIMUM:
       return "minimum";
     case OperationType::MUL:
       return "mul";
+    case OperationType::NEG:
+      return "neg";
+    case OperationType::NOT_EQUAL:
+      return "not_equal";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -120,8 +162,18 @@ std::string ToString(enum OperationType op) {
       return "prelu";
     case OperationType::QUANTIZE_AND_DEQUANTIZE:
       return "quantize_and_dequantize";
+    case OperationType::REDUCE_MAXIMUM:
+      return "reduce_maximum";
+    case OperationType::REDUCE_MINIMUM:
+      return "reduce_minimum";
+    case OperationType::REDUCE_PRODUCT:
+      return "reduce_product";
+    case OperationType::REDUCE_SUM:
+      return "reduce_sum";
     case OperationType::RELU:
       return "relu";
+    case OperationType::RESAMPLER:
+      return "resampler";
     case OperationType::RESHAPE:
       return "reshape";
     case OperationType::RESIZE:
@@ -140,6 +192,8 @@ std::string ToString(enum OperationType op) {
       return "space_to_batch";
     case OperationType::SPACE_TO_DEPTH:
       return "space_to_depth";
+    case OperationType::SPLIT:
+      return "split";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -150,43 +204,68 @@ std::string ToString(enum OperationType op) {
       return "subtract";
     case OperationType::TANH:
       return "tanh";
+    case OperationType::TILE:
+      return "tile";
     case OperationType::TRANSPOSE:
       return "transpose";
-    default:
-      break;
+    case OperationType::UNKNOWN:
+      return "unknown_operation";
   }
-  return "unknown_operation";
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
   static const auto operations =
-      new std::unordered_map<std::string, OperationType>({
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
+          {"batched_matmul", OperationType::BATCHED_MATMUL},
           {"concat", OperationType::CONCAT},
-          {"const", OperationType::CONST},
+          {"const", OperationType::CONSTANT},
           {"convolution_2d", OperationType::CONVOLUTION_2D},
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
+          {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
+          {"densify", OperationType::DENSIFY},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
+          {"depth_to_space", OperationType::DEPTH_TO_SPACE},
           {"div", OperationType::DIV},
+          {"elu", OperationType::ELU},
+          {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
+          {"floor", OperationType::FLOOR},
+          {"floor_div", OperationType::FLOOR_DIV},
+          {"floor_mod", OperationType::FLOOR_MOD},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
+          {"gather", OperationType::GATHER},
+          {"greater", OperationType::GREATER},
+          {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
+          {"less", OperationType::LESS},
+          {"less_equal", OperationType::LESS_EQUAL},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"mean_stddev_normalization",
+           OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
+          {"neg", OperationType::NEG},
+          {"not_equal", OperationType::NOT_EQUAL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
           {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
+          {"reduce_maximum", OperationType::REDUCE_MAXIMUM},
+          {"reduce_minimum", OperationType::REDUCE_MINIMUM},
+          {"reduce_product", OperationType::REDUCE_PRODUCT},
+          {"reduce_sum", OperationType::REDUCE_SUM},
           {"relu", OperationType::RELU},
+          {"resampler", OperationType::RESAMPLER},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},
@@ -195,11 +274,13 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},
           {"space_to_depth", OperationType::SPACE_TO_DEPTH},
+          {"split", OperationType::SPLIT},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
+          {"tile", OperationType::TILE},
           {"transpose", OperationType::TRANSPOSE},
       });
   auto op = operations->find(name);
@@ -535,6 +616,15 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   return BHWC(b, h, w, c);
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int d = attr.dims.find(Axis::DEPTH) == attr.dims.end() ? input.d : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWDC(b, h, w, d, c);
+}
+
 absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
                                   const ConcatAttributes& attr,
                                   BHWC* output_shape) {
@@ -747,6 +837,23 @@ BHWDC CalculateOutputShape(const BHWDC& input,
   return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
                input.get(attr.perm.w), input.get(attr.perm.d),
                input.get(attr.perm.c));
+}
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr) {
+  FullyConnectedAttributes dequant_attr;
+  dequant_attr.weights.id = attr.weights.id;
+  dequant_attr.weights.shape = attr.weights.shape;
+  dequant_attr.weights.data.resize(
+      dequant_attr.weights.shape.DimensionsProduct());
+  dequant_attr.bias = attr.bias;
+
+  // weights dequantization to float32
+  for (int i = 0; i < attr.weights.data.size(); i++) {
+    const int32_t val = attr.weights.data[i];
+    dequant_attr.weights.data[i] = attr.scale * (val - attr.zero_point);
+  }
+  return dequant_attr;
 }
 
 }  // namespace gpu

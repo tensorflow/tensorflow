@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/delegates/gpu/gl/api.h"
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler.h"
@@ -138,8 +138,8 @@ class Delegate {
     // Apply general transformations on the graph.
     NullTransformationReporter reporter;
     ModelTransformer transformer(&graph, &reporter);
-    if (!ApplyGeneralTransformations(&transformer)) {
-      return absl::InternalError("Graph general transformations failed");
+    if (!ApplyModelTransformations(&transformer)) {
+      return absl::InternalError("Graph transformations failed");
     }
 
     if (!env_) RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env_));
@@ -160,7 +160,7 @@ class Delegate {
       tensors_[value->id] = {value->tensor.shape, 0};
     }
 
-    std::unordered_set<int> tflite_graph_io;
+    std::unordered_set<int> tflite_graph_io;  // NOLINT
 
     // Prepare graph inputs.
     //
@@ -389,8 +389,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // for whatever reason forbids that.
         const auto status = gpu_delegate->Prepare(context, params);
         if (status.ok()) return gpu_delegate;
-        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
-                             std::string(status.message()).c_str());
+        TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Prepare: %s",
+                           std::string(status.message()).c_str());
         return nullptr;
       },
       // .free
@@ -403,8 +403,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetGpuDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
-        context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                             std::string(status.message()).c_str());
+        TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Invoke: %s",
+                           std::string(status.message()).c_str());
         return kTfLiteError;
       },
       nullptr,              // .profiling_string
@@ -427,8 +427,8 @@ TfLiteStatus DelegateCopyFromBufferHandle(TfLiteContext* context,
   if (!gpu_delegate) return kTfLiteError;
   const auto status = gpu_delegate->CopyFromBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
-  context->ReportError(context, "TfLiteGpuDelegate CopyFromBufferHandle: %s",
-                       std::string(status.message()).c_str());
+  TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate CopyFromBufferHandle: %s",
+                     std::string(status.message()).c_str());
   return kTfLiteError;
 }
 
@@ -440,8 +440,8 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
   if (!gpu_delegate) return kTfLiteError;
   const auto status = gpu_delegate->CopyToBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
-  context->ReportError(context, "TfLiteGpuDelegate CopyToBufferHandle: %s",
-                       std::string(status.message()).c_str());
+  TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate CopyToBufferHandle: %s",
+                     std::string(status.message()).c_str());
   return kTfLiteError;
 }
 

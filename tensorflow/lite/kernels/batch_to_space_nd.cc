@@ -12,17 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
+#include <stdint.h>
 
-#include <vector>
-
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -80,6 +78,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   int output_batch_size = input_size->data[0];
   for (int dim = 0; dim < spatial_dims_num; ++dim) {
     // Number of batch must be multiple of (block_shape[dim]).
+    TF_LITE_ENSURE(context, block_shape[dim] != 0);
     TF_LITE_ENSURE_EQ(context, output_batch_size % block_shape[dim], 0);
     output_batch_size = output_batch_size / block_shape[dim];
     output_size->data[dim + 1] = input_size->data[dim + 1] * block_shape[dim] -

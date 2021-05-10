@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
@@ -93,8 +93,8 @@ class ProgramCache {
   // There is a low probability of a hash collision when cache is deserialized
   // because only fingerprints are serialized instead of full source code.
   bool use_fingerprints_ = false;
-  std::unordered_map<ProgramDescriptor, CLProgram, ProgramDescriptorHasher,
-                     ProgramDescriptorEqual>
+  absl::flat_hash_map<ProgramDescriptor, CLProgram, ProgramDescriptorHasher,
+                      ProgramDescriptorEqual>
       programs_;
 };
 

@@ -106,7 +106,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Tensor.op is not available in TF 2.x")
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
@@ -126,10 +126,16 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
         source_utils.guess_is_tensorflow_py_library(os.path.normpath(
             "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
 
-  def testNonPythonFileRaisesException(self):
-    with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
-      source_utils.guess_is_tensorflow_py_library(
-          os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
+  def testReturnsFalseForNonPythonFile(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(
+            os.path.join(os.path.dirname(self.curr_file_path), "foo.cc")))
+
+  def testReturnsFalseForStdin(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library("<stdin>"))
+
+  def testReturnsFalseForEmptyFileName(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library(""))
 
 
 class SourceHelperTest(test_util.TensorFlowTestCase):
@@ -281,8 +287,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testLoadNonexistentNonParPathFailsWithIOError(self):
     bad_path = os.path.join(self.get_temp_dir(), "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(bad_path)
 
   def testLoadingPythonSourceFileInParFileSucceeds(self):
@@ -309,12 +315,12 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
 
     source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(source_path)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def createAndRunGraphWithWhileLoop(self):
@@ -400,7 +406,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def testGenerateSourceListWithNodeNameFilter(self):
     source_list = source_utils.list_source_files_against_dump(
-        self.dump, node_name_regex_whitelist=r"while/Add.*")
+        self.dump, node_name_regex_allowlist=r"while/Add.*")
 
     # Assert that the file paths are sorted.
     file_paths = [item[0] for item in source_list]
@@ -427,8 +433,8 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     curr_file_basename = os.path.basename(self.curr_file_path)
     source_list = source_utils.list_source_files_against_dump(
         self.dump,
-        path_regex_whitelist=(
-            ".*" + curr_file_basename.replace(".", "\\.") + "$"))
+        path_regex_allowlist=(".*" + curr_file_basename.replace(".", "\\.") +
+                              "$"))
 
     self.assertEqual(1, len(source_list))
     (file_path, is_tf_py_library, num_nodes, num_tensors, num_dumps,

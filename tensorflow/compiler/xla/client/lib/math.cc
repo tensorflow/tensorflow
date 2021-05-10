@@ -203,7 +203,7 @@ static XlaOp ErfcImpl32(XlaOp x) {
 // Precondition: abs(x) <= 1.  Otherwise, use ErfcImpl.
 //
 // This follows Cephes's f32 implementation of erf.
-static XlaOp ErfImpl32(XlaOp x) {
+static XlaOp ErfImpl32Cephes(XlaOp x) {
   // Coefficients for by erf(f32), from Cephes.
   //
   // erf(x) = x P(x^2), 0 < x < 1
@@ -291,9 +291,29 @@ XlaOp Erfc(XlaOp x) {
     // (not surprising!), so upcast to f32 in this case.
     return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
       return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
-                    ScalarLike(x, 1) - ErfImpl32(x));
+                    ScalarLike(x, 1) - ErfImpl32Cephes(x));
     });
   });
+}
+
+// Compute a polynomial approximation of the error function.
+// This is the same approximation used by Eigen.
+static XlaOp ErfImpl32(XlaOp x) {
+  static const std::array<float, 7> kAlpha{
+      -2.72614225801306e-10f, 2.77068142495902e-08f,  -2.10102402082508e-06f,
+      -5.69250639462346e-05f, -7.34990630326855e-04f, -2.95459980854025e-03f,
+      -1.60960333262415e-02f,
+  };
+
+  static const std::array<float, 5> kBeta{
+      -1.45660718464996e-05f, -2.13374055278905e-04f, -1.68282697438203e-03f,
+      -7.37332916720468e-03f, -1.42647390514189e-02f,
+  };
+
+  x = Clamp(ScalarLike(x, -4.f), x, ScalarLike(x, 4.f));
+  auto x2 = x * x;
+  return x * EvaluatePolynomial<float>(x2, kAlpha) /
+         EvaluatePolynomial<float>(x2, kBeta);
 }
 
 XlaOp Erf(XlaOp x) {
@@ -310,10 +330,8 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
-      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl32(x),
-                    ScalarLike(x, 1) - ErfcImpl32(x));
-    });
+    return DoWithUpcastToF32(x, {BF16, F16},
+                             [](XlaOp x) { return ErfImpl32(x); });
   });
 }
 
@@ -511,7 +529,7 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp z = Select(need_to_reflect, -input, input - one);
 
     XlaOp x = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       x = x + lanczos_coefficient / (z + index + one);
@@ -647,7 +665,7 @@ XlaOp Digamma(XlaOp input) {
 
     XlaOp num = zero;
     XlaOp denom = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
@@ -935,14 +953,16 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }
@@ -1070,14 +1090,16 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igammac", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }
@@ -1111,11 +1133,28 @@ XlaOp RoundToEven(XlaOp x) {
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
 //           pi                                if x == -1
+// For complex:
+// acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 XlaOp Acos(XlaOp x) {
-  return Select(Ne(x, FullLike(x, -1)),
-                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
-                                           ScalarLike(x, 1.0) + x),
-                FullLike(x, M_PI));
+  XlaBuilder* b = x.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      auto one = ScalarLike(x, 1);
+      auto imag_one = Complex(
+          Zero(b, primitive_util::ComplexComponentType(shape.element_type())),
+          One(b, primitive_util::ComplexComponentType(shape.element_type())));
+
+      auto result =
+          Neg(imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
+      return result;
+    }
+    return Select(Ne(x, FullLike(x, -1)),
+                  ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                             ScalarLike(x, 1.0) + x),
+                  FullLike(x, M_PI));
+  });
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
@@ -1391,11 +1430,6 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
     // Cast back to the original type.
     return BitcastConvertType(result, shape.element_type());
   });
-}
-
-XlaOp Logistic(XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  return half + half * xla::Tanh(half * x);
 }
 
 // Computes an approximation to the modified Bessel function of the first kind,
@@ -1817,6 +1851,151 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     return shape.element_type() == element_type
                ? out
                : ConvertElementType(out, shape.element_type());
+  });
+}
+
+XlaOp Polygamma(XlaOp n, XlaOp x) {
+  auto& builder = *x.builder();
+  auto doit = [](XlaOp n, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp n_plus_one = n + ScalarLike(n, 1.);
+    XlaOp sign =
+        (ScalarLike(n, 2.) * Rem(n, ScalarLike(n, 2.)) - ScalarLike(n, 1.));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    XlaOp output = Select(Eq(n, ScalarLike(n, 0.)), Digamma(x),
+                          sign * Exp(Lgamma(n_plus_one)) * Zeta(n_plus_one, x));
+    // Check that n is a natural number.
+    output = Select(Or(Ne(n, Floor(n)), Lt(n, ScalarLike(n, 0.))),
+                    ScalarLike(n, nan), output);
+    return output;
+  };
+  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto n_shape, builder.GetShape(n));
+    TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
+    if (n_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Polygamma must have equal shapes and types; "
+          "got %s and %s",
+          n_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Zeta", x));
+    bool needs_upcast =
+        n_shape.element_type() == F16 || x_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      n = ConvertElementType(n, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(n, x, n_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, n_shape.element_type());
+    }
+    return result;
+  });
+}
+
+XlaOp Zeta(XlaOp x, XlaOp q) {
+  auto& builder = *x.builder();
+  auto doit = [&builder](XlaOp x, XlaOp q, PrimitiveType type) -> XlaOp {
+    // (2k) ! / B_{2k}, where B_{2k} are the Bernoulli numbers.
+    // These are ordered in reverse.
+    static const std::array<double, 12> kZetaCoeffs{
+        -7.1661652561756670113e18,
+        1.8152105401943546773e17,
+        -4.5979787224074726105e15,
+        1.1646782814350067249e14,
+        -2.950130727918164224e12,
+        7.47242496e10,
+        -1.8924375803183791606e9,
+        47900160.0,
+        -1209600.0,
+        30240.0,
+        -720.0,
+        12.0,
+    };
+
+    // For speed we'll always use 9 iterations for the initial series estimate,
+    // and a 12 term expansion for the Euler-Maclaurin formula.
+
+    XlaOp a = q;
+    XlaOp neg_power = ScalarLike(a, 0.);
+    XlaOp initial_sum = Pow(q, Neg(x));
+    for (int i = 0; i < 9; ++i) {
+      a = a + ScalarLike(a, 1.);
+      neg_power = Pow(a, Neg(x));
+      initial_sum = initial_sum + neg_power;
+    }
+    a = a + ScalarLike(a, 1.);
+    neg_power = Pow(a, Neg(x));
+    XlaOp s = initial_sum + neg_power * a / (x - ScalarLike(a, 1.));
+    XlaOp a_inverse_square = Reciprocal(Square(a));
+    XlaOp horner_sum = ScalarLike(a, 0.);
+    XlaOp factor = ScalarLike(a, 1.);
+    // Use Horner's rule for this.
+    // Note this differs from Cephes which does a 'naive' polynomial evaluation.
+    // Using Horner's rule allows to avoid some NaN's and Infs from happening,
+    // resulting in more numerically stable code.
+    for (int i = 0; i < 11; ++i) {
+      factor =
+          (x - ScalarLike(x, 22 - 2 * i)) * (x - ScalarLike(x, 21 - 2 * i));
+      horner_sum = factor * a_inverse_square *
+                   (horner_sum + ScalarLike(a, 1. / kZetaCoeffs[i]));
+    }
+    s = s + neg_power *
+                (ScalarLike(neg_power, 0.5) +
+                 x / a * (ScalarLike(a, 1. / kZetaCoeffs[11]) + horner_sum));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    // Use the initial zeta sum without the correction term coming
+    // from Euler-Maclaurin if it is accurate enough.
+    XlaOp output =
+        Select(Lt(Abs(neg_power), Abs(initial_sum) * Epsilon(&builder, type)),
+               initial_sum, s);
+
+    // This is the harmonic series.
+    output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);
+
+    // Function is not defined for x < 1.
+    output = Select(Lt(x, ScalarLike(x, 1.)), ScalarLike(x, nan), output);
+
+    // For q <= 0, x must be an integer.
+    XlaOp x_domain_error = And(Le(q, ScalarLike(x, 0.)), Ne(x, Floor(x)));
+    output = Select(x_domain_error, ScalarLike(x, nan), output);
+
+    // For all integer q <= 0, zeta has a pole. The limit is only defined as
+    // +inf if x is and even integer.
+    XlaOp at_pole = And(Le(q, ScalarLike(x, 0.)), Eq(q, Floor(q)));
+    XlaOp x_is_even_int =
+        And(Eq(Rem(x, ScalarLike(x, 2.)), ScalarLike(x, 0.)), Eq(x, Floor(x)));
+    output = Select(
+        at_pole, Select(x_is_even_int, ScalarLike(x, inf), ScalarLike(x, nan)),
+        output);
+
+    return output;
+  };
+  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
+    TF_ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
+    if (x_shape != q_shape) {
+      return InvalidArgument(
+          "Arguments to Zeta must have equal shapes and types; got %s and %s",
+          x_shape.ToString(), q_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Zeta", x));
+    bool needs_upcast =
+        x_shape.element_type() == F16 || x_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      x = ConvertElementType(x, F32);
+      q = ConvertElementType(q, F32);
+    }
+    XlaOp result = doit(x, q, x_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, x_shape.element_type());
+    }
+    return result;
   });
 }
 

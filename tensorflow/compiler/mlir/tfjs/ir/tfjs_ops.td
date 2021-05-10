@@ -39,7 +39,7 @@ def TFJSDialect : Dialect {
     TF graphs to be deployed on TFJS.
   }];
 
-  let cppNamespace = "tfjs";
+  let cppNamespace = "::mlir::tfjs";
 }
 
 //===----------------------------------------------------------------------===//

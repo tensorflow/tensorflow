@@ -357,8 +357,8 @@ class TransferDeviceToHostBenchmark : public TransferManagerTest {
   using TransferManagerTest::TransferManagerTest;
   ~TransferDeviceToHostBenchmark() override {}
 
-  void Run(int iters, int num_tuple_elements, int array_size) {
-    tensorflow::testing::StopTiming();
+  void Run(::testing::benchmark::State& state, int num_tuple_elements,
+           int array_size) {
     SetUp();
 
     std::vector<Literal> tuple_elements;
@@ -370,13 +370,11 @@ class TransferDeviceToHostBenchmark : public TransferManagerTest {
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
     TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                            device_buffer));
-    tensorflow::testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+    for (auto s : state) {
       TF_ASSERT_OK_AND_ASSIGN(
           Literal result,
           transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
     }
-    tensorflow::testing::StopTiming();
     TearDown();
   }
 
@@ -388,7 +386,8 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
   using TransferManagerTest::TransferManagerTest;
   ~TransferHostToDeviceBenchmark() override {}
 
-  void Run(int iters, int num_tuple_elements, int array_size) {
+  void Run(::testing::benchmark::State& state, int num_tuple_elements,
+           int array_size) {
     tensorflow::testing::StopTiming();
     SetUp();
 
@@ -400,7 +399,7 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     Literal literal = LiteralUtil::MakeTupleOwned(std::move(tuple_elements));
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
     tensorflow::testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+    for (auto s : state) {
       TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                              device_buffer));
     }
@@ -411,16 +410,20 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
   void TestBody() override {}
 };
 
-void BM_TransferDeviceToHost(int iters, int num_tuple_elements,
-                             int array_size) {
+void BM_TransferDeviceToHost(::testing::benchmark::State& state) {
+  const int num_tuple_elements = state.range(0);
+  const int array_size = state.range(1);
+
   TransferDeviceToHostBenchmark bm;
-  bm.Run(iters, num_tuple_elements, array_size);
+  bm.Run(state, num_tuple_elements, array_size);
 }
 
-void BM_TransferHostToDevice(int iters, int num_tuple_elements,
-                             int array_size) {
+void BM_TransferHostToDevice(::testing::benchmark::State& state) {
+  const int num_tuple_elements = state.range(0);
+  const int array_size = state.range(1);
+
   TransferHostToDeviceBenchmark bm;
-  bm.Run(iters, num_tuple_elements, array_size);
+  bm.Run(state, num_tuple_elements, array_size);
 }
 
 BENCHMARK(BM_TransferHostToDevice)

@@ -89,7 +89,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: The minimum value to clip to. A scalar `Tensor` or one that
       is broadcastable to the shape of `t`.
-    clip_value_max: The minimum value to clip to. A scalar `Tensor` or one that
+    clip_value_max: The maximum value to clip to. A scalar `Tensor` or one that
       is broadcastable to the shape of `t`.
     name: A name for the operation (optional).
 
@@ -111,10 +111,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     t_min = math_ops.minimum(values, clip_value_max)
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
-    _ = values.shape.merge_with(t_min.shape)
+    values.shape.assert_is_compatible_with(t_min.shape)
 
     t_max = math_ops.maximum(t_min, clip_value_min, name=name)
-    _ = values.shape.merge_with(t_max.shape)
+    values.shape.assert_is_compatible_with(t_max.shape)
 
     if isinstance(t, ops.IndexedSlices):
       t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
@@ -225,7 +225,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     intermediate = values * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
-    _ = values.shape.merge_with(intermediate.shape)
+    values.shape.assert_is_compatible_with(intermediate.shape)
     values_clip = array_ops.identity(
         intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
 

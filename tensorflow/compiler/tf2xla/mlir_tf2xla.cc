@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -60,13 +60,17 @@ Status ConvertInputInfo(
     GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   std::vector<std::string> data_types;
-  std::vector<std::vector<int>> shapes;
+  std::vector<llvm::Optional<std::vector<int>>> shapes;
   for (const tf2xla::Feed& feed : config.feed()) {
     std::string place_holder_name =
         feed_name_remap.at(TensorIdToString(feed.id()));
     array_names.push_back(place_holder_name);
     data_types.push_back(
         feed.type() == DT_INVALID ? "" : DataType_Name(feed.type()));
+    if (feed.shape().unknown_rank()) {
+      shapes.push_back(llvm::None);
+      continue;
+    }
     std::vector<int> dims;
     dims.reserve(feed.shape().dim_size());
     absl::c_for_each(feed.shape().dim(), [&](const TensorShapeProto::Dim d) {
@@ -88,18 +92,6 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
   }
 
   return ParseOutputArrayInfo(array_names, &specs->outputs);
-}
-
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
-    mlir::registerDialect<mlir::shape::ShapeDialect>();
-    return true;
-  }();
-  (void)init_once;
 }
 
 }  // namespace
@@ -142,7 +134,7 @@ Status ConvertGraphDefToXlaViaMlir(
         std::string* file_name = debug_info.mutable_files(i);
         size_t location =
             file_name->rfind(std::string(debug_info_path_begin_marker));
-        if (location != -1) {
+        if (location != std::string::npos) {
           *file_name = file_name->substr(location +
                                          debug_info_path_begin_marker.length());
         }
@@ -150,7 +142,6 @@ Status ConvertGraphDefToXlaViaMlir(
     }
   }
 
-  RegisterDialects();
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
@@ -165,11 +156,6 @@ Status ConvertGraphDefToXlaViaMlir(
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
 
-  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
-          *module))) {
-    return errors::Internal("Problem with mark function visibility");
-  }
-
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));
 
@@ -179,7 +165,7 @@ Status ConvertGraphDefToXlaViaMlir(
   return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
                                      computation,
                                      /*use_tuple_args=*/false,
-                                     /*always_return_tuple=*/true);
+                                     /*return_tuple=*/true);
 }
 
 }  // namespace tensorflow

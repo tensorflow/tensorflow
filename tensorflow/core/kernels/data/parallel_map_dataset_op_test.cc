@@ -11,8 +11,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -329,17 +329,17 @@ TEST_F(ParallelMapDatasetOpTest, DatasetOutputShapes) {
 std::vector<CardinalityTestCase<ParallelMapDatasetParams>>
 CardinalityTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
-           /*expected_cardinality=*/4},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*expected_cardinality=*/4},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
-           /*expected_cardinality=*/4},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
-           /*expected_cardinality=*/4},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*expected_cardinality=*/4},
           {/*dataset_params=*/ParallelMapDatasetParams6(),
-           /*expected_cardinality=*/4}};
+           /*expected_cardinality=*/kUnknownCardinality}};
 }
 
 DATASET_CARDINALITY_TEST_P(ParallelMapDatasetOpTest, ParallelMapDatasetParams,

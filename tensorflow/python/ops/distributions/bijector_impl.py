@@ -584,7 +584,7 @@ class Bijector(object):
       self._name = camel_to_snake(type(self).__name__.lstrip("_"))
 
     for i, t in enumerate(self._graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
+      if t is None or not tensor_util.is_tf_type(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
 
   @property
@@ -1071,7 +1071,7 @@ class Bijector(object):
       return math_ops.range(-reduce_ndims, 0)
 
   def _check_valid_event_ndims(self, min_event_ndims, event_ndims):
-    """Check whether event_ndims is atleast min_event_ndims."""
+    """Check whether event_ndims is at least min_event_ndims."""
     event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
     event_ndims_ = tensor_util.constant_value(event_ndims)
     assertions = []

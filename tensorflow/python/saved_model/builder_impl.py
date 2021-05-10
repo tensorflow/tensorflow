@@ -43,10 +43,11 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Base class for the SavedModelBuilder that is only used by Tensorflow
 # internally. Please use tf.compat.v1.saved_model.SavedModelBuilder instead.
+@tf_export("__internal__.saved_model.SavedModelBuilder", v1=[])
 class _SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 
-  The `SavedModelBuilder` class provides the functionality to build a 
+  The `SavedModelBuilder` class provides the functionality to build a
   `SavedModel` protocol buffer. Specifically, this allows multiple meta
   graphs to be saved as part of a single language-neutral `SavedModel`,
   while sharing variables and assets.
@@ -534,7 +535,7 @@ class SavedModelBuilder(_SavedModelBuilder):
 
     # legacy_init_op is deprecated, and going away in TF 2.0.
     # Re-mapping to main_op, as treatment is identical regardless.
-    main_op = main_op or legacy_init_op
+    main_op = main_op if main_op is not None else legacy_init_op
 
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)

@@ -17,10 +17,6 @@
 See also: lstm_test.py, gru_test.py, simplernn_test.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from absl.testing import parameterized
@@ -33,17 +29,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_impl
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -670,10 +665,41 @@ class RNNTest(keras_parameterized.TestCase):
               np.random.random((num_samples, timesteps, embedding_dim))]
     model.predict(inputs)
 
-  def test_builtin_rnn_cell_serialization(self):
+  def test_builtin_and_custom_rnn_cell_serialization(self):
+
+    @keras.utils.generic_utils.register_keras_serializable(package='TestOnly')
+    class CustomRNNCell(keras.layers.Layer):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        self.state_size = units
+        super(CustomRNNCell, self).__init__(**kwargs)
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = keras.backend.dot(inputs, self.kernel)
+        output = h + keras.backend.dot(prev_output, self.recurrent_kernel)
+        return output, [output]
+
+      def get_config(self):
+        config = {'units': self.units}
+        base_config = super(CustomRNNCell, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
     for cell_class in [keras.layers.SimpleRNNCell,
                        keras.layers.GRUCell,
-                       keras.layers.LSTMCell]:
+                       keras.layers.LSTMCell,
+                       CustomRNNCell]:
       # Test basic case.
       x = keras.Input((None, 5))
       cell = cell_class(32)
@@ -722,7 +748,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
                  rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
@@ -743,7 +769,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.train_on_batch(x_np, y_np)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           cell=[keras.layers.SimpleRNNCell, keras.layers.GRUCell,
                 keras.layers.LSTMCell],
           unroll=[True, False]))
@@ -1021,8 +1047,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_get_initial_state(self):
     cell = keras.layers.SimpleRNNCell(5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'batch_size and dtype cannot be None'):
+    with self.assertRaisesRegex(ValueError,
+                                'batch_size and dtype cannot be None'):
       cell.get_initial_state(None, None, None)
 
     if not context.executing_eagerly():
@@ -1265,7 +1291,7 @@ class RNNTest(keras_parameterized.TestCase):
         recurrent_activation='sigmoid',
         implementation=2)
     tf_lstm_cell_output = _run_cell(
-        rnn_cell.LSTMCell,
+        rnn_cell_impl.LSTMCell,
         use_peepholes=True,
         initializer=init_ops.ones_initializer)
     self.assertNotAllClose(first_implementation_output, no_peephole_output)
@@ -1359,7 +1385,7 @@ class RNNTest(keras_parameterized.TestCase):
     cell = keras.layers.SimpleRNNCell(5)
     x = keras.Input((None, 5))
     layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
-    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+    with self.assertRaisesRegex(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
 
   def test_full_input_spec(self):
@@ -1385,11 +1411,11 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
       simple_rnn.reset_states()
 
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       cell = Minimal2DRNNCell(1, 2)
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
@@ -1487,6 +1513,27 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(predict_1, predict_6)
     self.assertAllClose(predict_6, predict_7)
 
+  def test_stateful_rnn_with_customized_get_initial_state(self):
+
+    class TestCell(keras.layers.AbstractRNNCell):
+
+      state_size = 1
+      output_size = 2
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return np.ones((batch_size, 1), dtype=dtype)
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    layer = keras.layers.RNN(TestCell(), stateful=True, return_state=True)
+    inputs = keras.Input(shape=(10, 2), batch_size=4)
+    model = keras.Model(inputs, layer(inputs))
+    x = np.ones((4, 10, 2), dtype=np.float32)
+    output, state = model.predict(x)
+    self.assertAllClose(output, np.ones((4, 2)))
+    self.assertAllClose(state, np.ones((4, 1)))
+
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))
@@ -1530,7 +1577,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.predict(np.ones((batch, timesteps, input_dim)))
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(layer=[
+      *testing_utils.generate_combinations_with_testcase_name(layer=[
           rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM
       ]))
   def test_rnn_with_ragged_input(self, layer):
@@ -1608,8 +1655,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Must raise error when unroll is set to True
     unroll_rnn_layer = layer(3, unroll=True)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The input received contains RaggedTensors *'):
+    with self.assertRaisesRegex(ValueError,
+                                'The input received contains RaggedTensors *'):
       unroll_rnn_layer(inputs)
 
     # Check if return sequences outputs are correct
@@ -1633,6 +1680,40 @@ class RNNTest(keras_parameterized.TestCase):
     output_dense = ragged_tensor.RaggedTensor.from_tensor(
         output_dense, lengths=row_lengths)
     self.assertAllClose(output_ragged, output_dense)
+
+    # Check if return sequences and go_backwards outputs are correct
+    np.random.seed(100)
+    returning_rnn_layer = layer(4, go_backwards=True, return_sequences=True)
+
+    x_ragged = keras.Input(shape=(None, 5), ragged=True)
+    y_ragged = returning_rnn_layer(x_ragged)
+    model = keras.models.Model(x_ragged, y_ragged)
+    output_ragged = model.predict(ragged_data, steps=1)
+    self.assertAllClose(output_ragged.ragged_rank, ragged_data.ragged_rank)
+    self.assertAllClose(output_ragged.row_splits, ragged_data.row_splits)
+
+    x_dense = keras.Input(shape=(3, 5))
+    masking = keras.layers.Masking()(x_dense)
+    y_dense = returning_rnn_layer(masking)
+    model_2 = keras.models.Model(x_dense, y_dense)
+    dense_data = ragged_data.to_tensor()
+    output_dense = model_2.predict(dense_data, steps=1)
+
+    # Note that the raw output for dense and ragged input when go_backward=True
+    # will be different. Consider following input
+    # [[a, b, 0], [c, 0, 0], [d, e, f]] where 0s are masked value.
+    # The dense output will be [[0, b, a], [0, 0, c], [f, e, d]] since it will
+    # process the whole sequence from the end.
+    # While ragged output will be [[b, a], [c], [f, e, d]] since it just ignore
+    # the 0s. And if we densify the ragged output, it will by default inserting
+    # 0s to the end (rather than from the beginning), which make the output to
+    # be [[b, a, 0], [c, 0, 0], [f, e, d]]. With this, we need to verify that
+    # reverse(ragged_output.to_tensor()) == reverse(dense_output)
+    output_dense = keras.backend.reverse(output_dense, [1])
+    output_dense = ragged_tensor.RaggedTensor.from_tensor(
+        output_dense, lengths=row_lengths)
+
+    self.assertAllClose(keras.backend.reverse(output_ragged, [1]), output_dense)
 
   def test_stateless_rnn_cell(self):
 
@@ -1745,8 +1826,8 @@ class Minimal2DRNNCell(keras.layers.Layer):
   def __init__(self, unit_a, unit_b, **kwargs):
     self.unit_a = unit_a
     self.unit_b = unit_b
-    self.state_size = tensor_shape.as_shape([unit_a, unit_b])
-    self.output_size = tensor_shape.as_shape([unit_a, unit_b])
+    self.state_size = tensor_shape.TensorShape([unit_a, unit_b])
+    self.output_size = tensor_shape.TensorShape([unit_a, unit_b])
     super(Minimal2DRNNCell, self).__init__(**kwargs)
 
   def build(self, input_shape):

@@ -14,16 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/densify.h"
 
-#include <string.h>
+#include <stddef.h>
 
 #include <cstdint>
-#include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -83,14 +80,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              GetTensorShape(op_context.input),
                              GetTensorData<float>(op_context.input),
                              GetTensorShape(op_context.output),
-                             GetTensorData<float>(op_context.output));
+                             GetTensorData<float>(op_context.output), context);
+      break;
+    case kTfLiteFloat16:
+      reference_ops::Densify(
+          op_context.input->sparsity, GetTensorShape(op_context.input),
+          GetTensorData<Eigen::half>(op_context.input),
+          GetTensorShape(op_context.output),
+          GetTensorData<Eigen::half>(op_context.output), context);
       break;
     case kTfLiteInt8:
       reference_ops::Densify(op_context.input->sparsity,
                              GetTensorShape(op_context.input),
                              GetTensorData<int8_t>(op_context.input),
                              GetTensorShape(op_context.output),
-                             GetTensorData<int8_t>(op_context.output));
+                             GetTensorData<int8_t>(op_context.output), context);
       break;
 
     default:

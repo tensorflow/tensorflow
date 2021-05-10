@@ -26,9 +26,11 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.client import device_lib
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -153,63 +155,53 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           [0xa4093822, 0x299f31d0],
           [0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1])
 
-  def testNewStateThreeFry(self):
-    """Tests that the new state is correct (for ThreeFry).
-    """
-    with ops.device(xla_device_name()):
-      counter = 57
-      key = 0x1234
-      size = 46
-      state = [counter, key]
-      gen = random.Generator(state=state, alg=random.RNG_ALG_THREEFRY)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
-      self.assertAllEqual([counter+(size+1)//2, key], gen.state.read_value())
-      gen.reset(state)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
-      self.assertAllEqual([counter+size, key], gen.state.read_value())
-
-  def testNewStatePhilox(self):
-    """Tests that the new state is correct (for Philox).
-    """
-    with ops.device(xla_device_name()):
-      counter_low = 57
-      counter_high = 283
-      key = 0x1234
-      size = 47
-      state = [counter_low, counter_high, key]
-      gen = random.Generator(state=state, alg=random.RNG_ALG_PHILOX)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
-      self.assertAllEqual([counter_low+(size+3)//4, counter_high, key],
-                          gen.state.read_value())
-      gen.reset(state)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
-      self.assertAllEqual([counter_low+(size+1)//2, counter_high, key],
-                          gen.state.read_value())
-      # Tests that large counter_low will correctly overflows to counter_high
-      counter_low = -1  # same as 0xffffffffffffffff
-      counter_high = 283
-      size = 47
-      state = [counter_low, counter_high, key]
-      gen = random.Generator(state=state, alg=random.RNG_ALG_PHILOX)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
-      self.assertAllEqual([(size+3)//4-1, counter_high+1, key],
-                          gen.state.read_value())
-      gen.reset(state)
-      gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
-      self.assertAllEqual([(size+1)//2-1, counter_high+1, key],
-                          gen.state.read_value())
-
   @parameterized.parameters(INTS)
   def testXLAEqualsCPU(self, dtype):
     """Tests that XLA and CPU kernels generate the same integers."""
     seed = 1234
     shape = [315, 49]
     with ops.device("/device:CPU:0"):
-      cpu = (random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
-             .uniform_full_int(shape=shape, dtype=dtype))
+      cpu_gen = random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
     with ops.device(xla_device_name()):
-      xla = (random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
-             .uniform_full_int(shape=shape, dtype=dtype))
+      xla_gen = random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
+    # Repeat multiple times to make sure that the state after
+    # number-generation are the same between CPU and XLA.
+    for _ in range(5):
+      with ops.device("/device:CPU:0"):
+        # Test both number-generation and skip
+        cpu = cpu_gen.uniform_full_int(shape=shape, dtype=dtype)
+        cpu_gen.skip(100)
+      with ops.device(xla_device_name()):
+        xla = xla_gen.uniform_full_int(shape=shape, dtype=dtype)
+        xla_gen.skip(100)
+      self.assertAllEqual(cpu, xla)
+      self.assertAllEqual(cpu_gen.state, xla_gen.state)
+
+  def testXLAEqualsCPUAroundCounterOverflow(self):
+    """Tests XLA and CPU kernels generate the same integers in overflow case.
+
+       Specifically this tests the case where the counter is incremented past
+       what can fit within 64 bits of the 128 bit Philox counter.
+    """
+    dtype = dtypes.uint64
+    seed = 2**64 - 10
+    shape = [315, 49]
+    with ops.device("/device:CPU:0"):
+      cpu_gen = random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
+    with ops.device(xla_device_name()):
+      xla_gen = random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
+    # Repeat multiple times to make sure that the state after
+    # number-generation are the same between CPU and XLA.
+    for _ in range(5):
+      with ops.device("/device:CPU:0"):
+        # Test both number-generation and skip
+        cpu = cpu_gen.uniform_full_int(shape=shape, dtype=dtype)
+        cpu_gen.skip(100)
+      with ops.device(xla_device_name()):
+        xla = xla_gen.uniform_full_int(shape=shape, dtype=dtype)
+        xla_gen.skip(100)
+      self.assertAllEqual(cpu, xla)
+      self.assertAllEqual(cpu_gen.state, xla_gen.state)
     self.assertAllEqual(cpu, xla)
 
   def _testRngIsNotConstant(self, rng, dtype):
@@ -316,6 +308,8 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           mean_atol=2e-3, median_atol=4e-3,
           variance_rtol=1e-2 if dtype == dtypes.bfloat16 else 5e-3)
 
+  @test_util.disable_mlir_bridge(
+      "b/180412086: MLIR bridge gives wrong error messages.")
   def testErrors(self):
     """Tests that proper errors are raised.
     """
@@ -364,4 +358,5 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
+  config.set_soft_device_placement(False)
   test.main()

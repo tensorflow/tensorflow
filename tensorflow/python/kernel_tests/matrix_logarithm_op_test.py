@@ -177,7 +177,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         logm = gen_linalg_ops.matrix_logarithm(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(logm),

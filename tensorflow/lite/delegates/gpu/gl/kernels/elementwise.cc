@@ -41,8 +41,22 @@ class ElementwiseOneArgument : public NodeShader {
       case OperationType::COS:
         source = "value_0 = cos(value_0);";
         break;
+      case OperationType::COPY:
+        source = "value_0 = value_0;";
+        break;
+      case OperationType::ELU:
+        source = R"(
+            value_0.x = value_0.x < 0.0 ? exp(value_0.x) - 1.0 : value_0.x;
+            value_0.y = value_0.y < 0.0 ? exp(value_0.y) - 1.0 : value_0.y;
+            value_0.z = value_0.z < 0.0 ? exp(value_0.z) - 1.0 : value_0.z;
+            value_0.w = value_0.w < 0.0 ? exp(value_0.w) - 1.0 : value_0.w;
+        )";
+        break;
       case OperationType::EXP:
         source = "value_0 = exp(value_0);";
+        break;
+      case tflite::gpu::OperationType::FLOOR:
+        source = "value_0 = floor(value_0);";
         break;
       case OperationType::HARD_SWISH:
         source =
@@ -57,6 +71,9 @@ class ElementwiseOneArgument : public NodeShader {
             value_0.z = value_0.z > 0.0 ? log(value_0.z) : nan;
             value_0.w = value_0.w > 0.0 ? log(value_0.w) : nan;
         )";
+        break;
+      case OperationType::NEG:
+        source = "value_0 = -(value_0);";
         break;
       case OperationType::RSQRT:
         source = R"(
@@ -163,6 +180,12 @@ class ElementwiseTwoArguments : public NodeShader {
         source = "value_0 = $0/$1;";
         break;
       }
+      case tflite::gpu::OperationType::FLOOR_DIV:
+        source = "value_0 = floor($0 / $1);";
+        break;
+      case tflite::gpu::OperationType::FLOOR_MOD:
+        source = "value_0 = $0 - floor($0 / $1) * $1;";
+        break;
       case OperationType::MAXIMUM: {
         source = "value_0 = max($0, $1);";
         break;
@@ -212,9 +235,13 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
   switch (operation_type) {
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::COPY:
+    case OperationType::ELU:
     case OperationType::EXP:
-    case OperationType::LOG:
+    case OperationType::FLOOR:
     case OperationType::HARD_SWISH:
+    case OperationType::LOG:
+    case OperationType::NEG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
     case OperationType::SIN:
@@ -223,6 +250,8 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     case OperationType::TANH:
       return absl::make_unique<ElementwiseOneArgument>(operation_type);
     case OperationType::DIV:
+    case OperationType::FLOOR_DIV:
+    case OperationType::FLOOR_MOD:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
     case OperationType::POW:

@@ -33,6 +33,7 @@ import sysconfig
 
 from distutils.command.build_ext import build_ext
 import numpy
+import pybind11
 
 from setuptools import Extension
 from setuptools import find_packages
@@ -180,8 +181,9 @@ ext = Extension(
                      'pip_package'),
         numpy.get_include(),
         os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
-        os.path.join(DOWNLOADS_DIR, 'absl')
-    ] + get_pybind_include(),
+        os.path.join(DOWNLOADS_DIR, 'absl'),
+        pybind11.get_include()
+    ],
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
@@ -207,6 +209,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
@@ -218,7 +221,6 @@ setup(
     ext_modules=[ext],
     install_requires=[
         'numpy >= 1.16.0',
-        'pybind11 >= 2.4.3',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,

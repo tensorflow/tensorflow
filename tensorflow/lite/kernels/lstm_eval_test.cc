@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/lstm_eval.h"
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cmath>
+#include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
 namespace {
@@ -113,10 +113,10 @@ class BaseLstmParam {
     TfLiteIntArrayFree(layer_norm_forget_tensor_.dims);
     TfLiteIntArrayFree(layer_norm_cell_tensor_.dims);
     TfLiteIntArrayFree(layer_norm_output_tensor_.dims);
-    TfLiteIntArrayFree(input_bias_tensor_.dims);
-    TfLiteIntArrayFree(forget_bias_tensor_.dims);
-    TfLiteIntArrayFree(cell_bias_tensor_.dims);
-    TfLiteIntArrayFree(output_bias_tensor_.dims);
+    TfLiteIntArrayFree(input_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(forget_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(cell_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(output_gate_bias_tensor_.dims);
     TfLiteIntArrayFree(projection_tensor_.dims);
     TfLiteIntArrayFree(projection_bias_tensor_.dims);
     TfLiteIntArrayFree(activation_tensor_.dims);
@@ -275,17 +275,17 @@ class BaseLstmParam {
   std::vector<int32_t> layer_norm_output_size_ = {n_cell_};
   TfLiteTensor layer_norm_output_tensor_;
 
-  std::vector<int32_t> input_bias_size_ = {n_cell_};
-  TfLiteTensor input_bias_tensor_;
+  std::vector<int32_t> input_gate_bias_size_ = {n_cell_};
+  TfLiteTensor input_gate_bias_tensor_;
 
-  std::vector<int32_t> forget_bias_size_ = {n_cell_};
-  TfLiteTensor forget_bias_tensor_;
+  std::vector<int32_t> forget_gate_bias_size_ = {n_cell_};
+  TfLiteTensor forget_gate_bias_tensor_;
 
-  std::vector<int32_t> cell_bias_size_ = {n_cell_};
-  TfLiteTensor cell_bias_tensor_;
+  std::vector<int32_t> cell_gate_bias_size_ = {n_cell_};
+  TfLiteTensor cell_gate_bias_tensor_;
 
-  std::vector<int32_t> output_bias_size_ = {n_cell_};
-  TfLiteTensor output_bias_tensor_;
+  std::vector<int32_t> output_gate_bias_size_ = {n_cell_};
+  TfLiteTensor output_gate_bias_tensor_;
 
   // projection_weights.
   std::vector<int8_t> projection_ = {
@@ -350,24 +350,28 @@ class QuantizedLstmParam : public BaseLstmParam {
     return &layer_norm_output_tensor_;
   }
   TfLiteTensor* GetInputBias() {
-    PackWeightToTensor(&input_bias_tensor_, input_bias_, input_bias_size_);
-    input_bias_tensor_.data.i32 = input_bias_.data();
-    return &input_bias_tensor_;
+    PackWeightToTensor(&input_gate_bias_tensor_, input_gate_bias_,
+                       input_gate_bias_size_);
+    input_gate_bias_tensor_.data.i32 = input_gate_bias_.data();
+    return &input_gate_bias_tensor_;
   }
   TfLiteTensor* GetForgetBias() {
-    PackWeightToTensor(&forget_bias_tensor_, forget_bias_, forget_bias_size_);
-    forget_bias_tensor_.data.i32 = forget_bias_.data();
-    return &forget_bias_tensor_;
+    PackWeightToTensor(&forget_gate_bias_tensor_, forget_gate_bias_,
+                       forget_gate_bias_size_);
+    forget_gate_bias_tensor_.data.i32 = forget_gate_bias_.data();
+    return &forget_gate_bias_tensor_;
   }
   TfLiteTensor* GetCellBias() {
-    PackWeightToTensor(&cell_bias_tensor_, cell_bias_, cell_bias_size_);
-    cell_bias_tensor_.data.i32 = cell_bias_.data();
-    return &cell_bias_tensor_;
+    PackWeightToTensor(&cell_gate_bias_tensor_, cell_gate_bias_,
+                       cell_gate_bias_size_);
+    cell_gate_bias_tensor_.data.i32 = cell_gate_bias_.data();
+    return &cell_gate_bias_tensor_;
   }
   TfLiteTensor* GetOutputBias() {
-    PackWeightToTensor(&output_bias_tensor_, output_bias_, output_bias_size_);
-    output_bias_tensor_.data.i32 = output_bias_.data();
-    return &output_bias_tensor_;
+    PackWeightToTensor(&output_gate_bias_tensor_, output_gate_bias_,
+                       output_gate_bias_size_);
+    output_gate_bias_tensor_.data.i32 = output_gate_bias_.data();
+    return &output_gate_bias_tensor_;
   }
   TfLiteTensor* GetProjectionBias() {
     PackWeightToTensor(&projection_bias_tensor_, projection_bias_,
@@ -539,22 +543,22 @@ class QuantizedLstmParam : public BaseLstmParam {
   };
 
   // input_gate_bias.
-  std::vector<int32_t> input_bias_ = {
+  std::vector<int32_t> input_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
   // forget_gate_bias.
-  std::vector<int32_t> forget_bias_ = {
+  std::vector<int32_t> forget_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
-  // cell_bias.
-  std::vector<int32_t> cell_bias_ = {
+  // cell_gate_bias.
+  std::vector<int32_t> cell_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
   // output_gate_bias.
-  std::vector<int32_t> output_bias_ = {
+  std::vector<int32_t> output_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
@@ -613,8 +617,9 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetOutputLayerNorm(), one_parameter.GetInputBias(),
       one_parameter.GetForgetBias(), one_parameter.GetCellBias(),
       one_parameter.GetOutputBias(), one_parameter.GetProjection(),
-      one_parameter.GetProjectionBias(), nullptr, param, activation, cell,
-      output, one_parameter.GetScratch0(), one_parameter.GetScratch1(),
+      one_parameter.GetProjectionBias(), nullptr, /*forward_sequence=*/true,
+      /*time_major=*/true, param, activation, cell, output,
+      one_parameter.GetScratch0(), one_parameter.GetScratch1(),
       one_parameter.GetScratch2(), one_parameter.GetScratch3(),
       one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 
@@ -650,15 +655,27 @@ class HybridLstmParam : public BaseLstmParam {
     scratch_buffer_tensor_.data.f = scratch_buffer_.data();
     return &scratch_buffer_tensor_;
   }
-  TfLiteTensor* GetScalingFactors() {
-    PackWeightToTensor(&scaling_factors_tensor_, scaling_factors_,
-                       scaling_factors_size_);
-    scaling_factors_tensor_.data.f = scaling_factors_.data();
-    return &scaling_factors_tensor_;
+  TfLiteTensor* GetInputScalingFactors() {
+    PackWeightToTensor(&input_sf_tensor_, input_sf_,
+                       quantization_extra_scratch_buffer_sizes_);
+    input_sf_tensor_.data.f = input_sf_.data();
+    return &input_sf_tensor_;
+  }
+  TfLiteTensor* GetAuxInputScalingFactors() {
+    PackWeightToTensor(&aux_input_sf_tensor_, aux_input_sf_,
+                       quantization_extra_scratch_buffer_sizes_);
+    aux_input_sf_tensor_.data.f = aux_input_sf_.data();
+    return &aux_input_sf_tensor_;
+  }
+  TfLiteTensor* GetOutputStateScalingFactors() {
+    PackWeightToTensor(&output_state_sf_tensor_, output_state_sf_,
+                       quantization_extra_scratch_buffer_sizes_);
+    output_state_sf_tensor_.data.f = output_state_sf_.data();
+    return &output_state_sf_tensor_;
   }
   TfLiteTensor* GetProdScalingFactors() {
     PackWeightToTensor(&prod_scaling_factors_tensor_, prod_scaling_factors_,
-                       prod_scaling_factors_size_);
+                       quantization_extra_scratch_buffer_sizes_);
     prod_scaling_factors_tensor_.data.f = prod_scaling_factors_.data();
     return &prod_scaling_factors_tensor_;
   }
@@ -678,10 +695,23 @@ class HybridLstmParam : public BaseLstmParam {
     cell_quantized_tensor_.data.int8 = cell_quantized_.data();
     return &cell_quantized_tensor_;
   }
-  TfLiteTensor* GetZeroPoints() {
-    PackWeightToTensor(&zero_points_tensor_, zero_points_, zero_points_size_);
-    zero_points_tensor_.data.i32 = zero_points_.data();
-    return &zero_points_tensor_;
+  TfLiteTensor* GetInputZeroPoints() {
+    PackWeightToTensor(&input_zp_tensor_, input_zp_,
+                       quantization_extra_scratch_buffer_sizes_);
+    input_zp_tensor_.data.i32 = input_zp_.data();
+    return &input_zp_tensor_;
+  }
+  TfLiteTensor* GetAuxInputZeroPoints() {
+    PackWeightToTensor(&aux_input_zp_tensor_, aux_input_zp_,
+                       quantization_extra_scratch_buffer_sizes_);
+    aux_input_zp_tensor_.data.i32 = aux_input_zp_.data();
+    return &aux_input_zp_tensor_;
+  }
+  TfLiteTensor* GetOutputStateZeroPoints() {
+    PackWeightToTensor(&output_state_zp_tensor_, output_state_zp_,
+                       quantization_extra_scratch_buffer_sizes_);
+    output_state_zp_tensor_.data.i32 = output_state_zp_.data();
+    return &output_state_zp_tensor_;
   }
   TfLiteTensor* GetRowSums() {
     PackWeightToTensor(&row_sums_tensor_, row_sums_, row_sums_size_);
@@ -711,27 +741,28 @@ class HybridLstmParam : public BaseLstmParam {
     return &accum_scratch_tensor_;
   }
   TfLiteTensor* GetInputBias() {
-    PackWeightToTensor(&input_bias_tensor_, input_float_bias_,
-                       input_bias_size_);
-    input_bias_tensor_.data.f = input_float_bias_.data();
-    return &input_bias_tensor_;
+    PackWeightToTensor(&input_gate_bias_tensor_, input_float_bias_,
+                       input_gate_bias_size_);
+    input_gate_bias_tensor_.data.f = input_float_bias_.data();
+    return &input_gate_bias_tensor_;
   }
   TfLiteTensor* GetForgetBias() {
-    PackWeightToTensor(&forget_bias_tensor_, forget_float_bias_,
-                       forget_bias_size_);
-    forget_bias_tensor_.data.f = forget_float_bias_.data();
-    return &forget_bias_tensor_;
+    PackWeightToTensor(&forget_gate_bias_tensor_, forget_float_bias_,
+                       forget_gate_bias_size_);
+    forget_gate_bias_tensor_.data.f = forget_float_bias_.data();
+    return &forget_gate_bias_tensor_;
   }
   TfLiteTensor* GetCellBias() {
-    PackWeightToTensor(&cell_bias_tensor_, cell_float_bias_, cell_bias_size_);
-    cell_bias_tensor_.data.f = cell_float_bias_.data();
-    return &cell_bias_tensor_;
+    PackWeightToTensor(&cell_gate_bias_tensor_, cell_float_bias_,
+                       cell_gate_bias_size_);
+    cell_gate_bias_tensor_.data.f = cell_float_bias_.data();
+    return &cell_gate_bias_tensor_;
   }
   TfLiteTensor* GetOutputBias() {
-    PackWeightToTensor(&output_bias_tensor_, output_float_bias_,
-                       output_bias_size_);
-    output_bias_tensor_.data.f = output_float_bias_.data();
-    return &output_bias_tensor_;
+    PackWeightToTensor(&output_gate_bias_tensor_, output_float_bias_,
+                       output_gate_bias_size_);
+    output_gate_bias_tensor_.data.f = output_float_bias_.data();
+    return &output_gate_bias_tensor_;
   }
   TfLiteTensor* GetProjectionBias() {
     PackWeightToTensor(&projection_bias_tensor_, projection_float_bias_,
@@ -771,12 +802,16 @@ class HybridLstmParam : public BaseLstmParam {
   ~HybridLstmParam() {
     TfLiteIntArrayFree(scratch_buffer_tensor_.dims);
     TfLiteIntArrayFree(accum_scratch_tensor_.dims);
-    TfLiteIntArrayFree(scaling_factors_tensor_.dims);
+    TfLiteIntArrayFree(input_sf_tensor_.dims);
+    TfLiteIntArrayFree(aux_input_sf_tensor_.dims);
+    TfLiteIntArrayFree(output_state_sf_tensor_.dims);
     TfLiteIntArrayFree(prod_scaling_factors_tensor_.dims);
     TfLiteIntArrayFree(input_quantized_tensor_.dims);
     TfLiteIntArrayFree(activation_quantized_tensor_.dims);
     TfLiteIntArrayFree(cell_quantized_tensor_.dims);
-    TfLiteIntArrayFree(zero_points_tensor_.dims);
+    TfLiteIntArrayFree(input_zp_tensor_.dims);
+    TfLiteIntArrayFree(aux_input_zp_tensor_.dims);
+    TfLiteIntArrayFree(output_state_zp_tensor_.dims);
     TfLiteIntArrayFree(row_sums_tensor_.dims);
   }
 
@@ -787,13 +822,23 @@ class HybridLstmParam : public BaseLstmParam {
   std::vector<int32_t> scratch_buffer_size_ = {n_batch_, n_cell_ * 4};
   TfLiteTensor scratch_buffer_tensor_;
 
-  std::vector<float> scaling_factors_;
-  std::vector<int32_t> scaling_factors_size_ = {n_batch_};
-  TfLiteTensor scaling_factors_tensor_;
+  std::vector<int32_t> quantization_extra_scratch_buffer_sizes_ = {n_batch_};
+  std::vector<float> input_sf_;
+  TfLiteTensor input_sf_tensor_;
+  std::vector<float> aux_input_sf_;
+  TfLiteTensor aux_input_sf_tensor_;
+  std::vector<float> output_state_sf_;
+  TfLiteTensor output_state_sf_tensor_;
 
   std::vector<float> prod_scaling_factors_;
-  std::vector<int32_t> prod_scaling_factors_size_ = {n_batch_};
   TfLiteTensor prod_scaling_factors_tensor_;
+
+  std::vector<int32_t> input_zp_;
+  TfLiteTensor input_zp_tensor_;
+  std::vector<int32_t> aux_input_zp_;
+  TfLiteTensor aux_input_zp_tensor_;
+  std::vector<int32_t> output_state_zp_;
+  TfLiteTensor output_state_zp_tensor_;
 
   std::vector<int8_t> input_quantized_;
   TfLiteTensor input_quantized_tensor_;
@@ -807,10 +852,6 @@ class HybridLstmParam : public BaseLstmParam {
   std::vector<float> cell_state_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6, 1, 14, 5, 6, 1, 1, 3, 4, -5, 6,
   };
-
-  std::vector<int32_t> zero_points_;
-  std::vector<int32_t> zero_points_size_ = {n_batch_};
-  TfLiteTensor zero_points_tensor_;
 
   std::vector<int32_t> row_sums_;
   std::vector<int32_t> row_sums_size_ = {n_row_sums_, n_cell_};
@@ -866,14 +907,14 @@ void TestOneHybridAsymmLSTM() {
   constexpr float kDefaultScale = 18.0;
   ops::builtin::lstm_eval::EvalHybrid(
       one_parameter.GetFloatInput(),
-      HybridLstmParam::addScale(one_parameter.Geti2i(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Geti2f(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Geti2c(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Geti2o(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Getr2i(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Getr2f(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Getr2c(), kDefaultScale),
-      HybridLstmParam::addScale(one_parameter.Getr2o(), kDefaultScale),
+      HybridLstmParam::addScale(one_parameter.Geti2i(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Geti2f(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Geti2c(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Geti2o(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Getr2i(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Getr2f(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Getr2c(), kDefaultScale), nullptr,
+      HybridLstmParam::addScale(one_parameter.Getr2o(), kDefaultScale), nullptr,
       /*cell_to_input_weights=*/nullptr,
       /*cell_to_forget_weights=*/nullptr,
       /*cell_to_output_weights=*/nullptr, one_parameter.GetInputLayerNorm(),
@@ -886,18 +927,22 @@ void TestOneHybridAsymmLSTM() {
       /*aux_input_to_output_weights=*/nullptr, one_parameter.GetInputBias(),
       one_parameter.GetForgetBias(), one_parameter.GetCellBias(),
       one_parameter.GetOutputBias(),
-      HybridLstmParam::addScale(one_parameter.GetProjection(), 1.0),
+      HybridLstmParam::addScale(one_parameter.GetProjection(), 1.0), nullptr,
       one_parameter.GetProjectionBias(), &param,
       /*forward_sequence=*/true,
       /*time_major=*/true,
       /*output_offset=*/0, one_parameter.GetScratchBuffer(),
-      one_parameter.GetScalingFactors(), one_parameter.GetProdScalingFactors(),
+      one_parameter.GetInputScalingFactors(),
+      one_parameter.GetAuxInputScalingFactors(),
+      one_parameter.GetOutputStateScalingFactors(),
+      one_parameter.GetProdScalingFactors(),
       /*recovered_cell_weights=*/nullptr, one_parameter.GetInputQuantized(),
       /*aux_input_quantized=*/nullptr,
       one_parameter.GetActivationStateQuantized(),
       one_parameter.GetCellStateQuantized(), activation, cell,
       one_parameter.GetAccumScratchBuffer(), output,
-      one_parameter.GetZeroPoints(), one_parameter.GetRowSums(),
+      one_parameter.GetInputZeroPoints(), one_parameter.GetAuxInputZeroPoints(),
+      one_parameter.GetOutputStateZeroPoints(), one_parameter.GetRowSums(),
       one_parameter.GetNumRowSums(), &compute_row_sums, &context);
   const std::vector<float> expected_cell = {
       7.83134,  1.96158, 2.18285, 3.28739,  0.483214,

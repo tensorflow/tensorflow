@@ -89,8 +89,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     input_names.push_back(key_string);
 
     inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back(),
-                        true /*convert_to_string*/);
+    s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back());
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;
@@ -236,18 +235,13 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
     }
   }
 
-  // Allocate a RunMetadata protobuf object to receive the metadata,
-  // if the caller is expecting any.
-  std::unique_ptr<RunMetadata> run_metadata_proto;
-  if (run_metadata != nullptr) {
-    run_metadata_proto.reset(new RunMetadata);
-  }
+  RunMetadata run_metadata_proto;
 
   // Run the callable.
   std::vector<Tensor> output_tensors;
   Py_BEGIN_ALLOW_THREADS;
   s = session->RunCallable(handle, input_tensors, &output_tensors,
-                           run_metadata_proto.get());
+                           &run_metadata_proto);
   Py_END_ALLOW_THREADS;
 
   if (!s.ok()) {
@@ -257,7 +251,7 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
 
   // If requested, serialize the RunMetadata to pass it back to the caller.
   if (run_metadata != nullptr) {
-    s = MessageToBuffer(*run_metadata_proto, run_metadata);
+    s = MessageToBuffer(run_metadata_proto, run_metadata);
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;
@@ -383,7 +377,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
   std::vector<Safe_TF_TensorPtr> input_vals_safe;
   for (PyObject* ndarray : input_ndarrays) {
     input_vals_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back(), true);
+    s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back());
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;

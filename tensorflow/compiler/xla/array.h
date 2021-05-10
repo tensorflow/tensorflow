@@ -96,8 +96,9 @@ class Array {
 
   using value_type = T;
 
-  // Creates a new array with the specified dimensions.
-  explicit Array(absl::Span<const int64> sizes) : Array(sizes, T()) {}
+  // Creates a new array with the specified dimensions and initialized elements.
+  explicit Array(absl::Span<const int64> sizes)
+      : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
@@ -289,13 +290,19 @@ class Array {
   }
 
   // Fills the array with random normal variables with the specified mean.
-  void FillRandom(const T& stddev, const double mean = 0.0,
-                  const int seed = 12345) {
+  void FillRandom(const T& stddev, double mean = 0.0, int seed = 12345) {
+    FillRandomDouble(static_cast<double>(stddev), mean, seed);
+  }
+
+  void FillRandomDouble(double stddev, double mean = 0.0, int seed = 12345) {
     std::mt19937 g(seed);
-    std::normal_distribution<double> distribution(mean,
-                                                  static_cast<double>(stddev));
+    std::normal_distribution<double> distribution(mean, stddev);
     for (int64 i = 0; i < num_elements(); ++i) {
-      values_[i] = static_cast<T>(distribution(g));
+      if (std::is_same<T, bool>()) {
+        values_[i] = static_cast<T>(distribution(g) > 0.0);
+      } else {
+        values_[i] = static_cast<T>(distribution(g));
+      }
     }
   }
 
@@ -403,7 +410,8 @@ class Array {
 
   // Returns the size of the dimension at the given index.
   int64 dim(int64 n) const {
-    CHECK(n < sizes_.size());
+    const int64 sizes_size = sizes_.size();
+    CHECK(n < sizes_size);
     return sizes_[n];
   }
 
@@ -427,7 +435,7 @@ class Array {
     if (sizes_.size() != other.sizes_.size()) {
       return false;
     }
-    for (int64 i = 0; i < sizes_.size(); ++i) {
+    for (int64 i = 0, end = sizes_.size(); i < end; ++i) {
       if (sizes_[i] != other.sizes_[i]) {
         return false;
       }
@@ -554,6 +562,7 @@ class Array {
       index *= sizes_[i];
       index += indexes[i];
     }
+    DCHECK_LT(index, this->num_elements());
     return index;
   }
 

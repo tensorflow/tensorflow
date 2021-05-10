@@ -8,9 +8,47 @@ to use the XNNPACK library as an inference engine for TensorFlow Lite.
 ## Using XNNPACK engine with TensorFlow Lite interpreter
 
 XNNPACK integrates with TensorFlow Lite interpreter through the delegation
-mechanism. There are three methods to enable XNNPACK engine in TensorFlow Lite.
+mechanism. TensorFlow Lite supports several methods to enable XNNPACK
+for floating-point inference.
 
-### Enable XNNPACK via Bazel build flags (recommended)
+### Enable XNNPACK via Java API on Android (recommended on Android)
+
+Pre-built [nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_jcenter)
+include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
+method in `Interpreter.Options` class to enable it:
+
+```java
+Interpreter.Options interpreterOptions = new Interpreter.Options();
+interpreterOptions.setUseXNNPACK(true);
+Interpreter interpreter = new Interpreter(model, interpreterOptions);
+```
+
+### Enable XNNPACK via Swift/Objective-C API on iOS (recommended on iOS)
+
+Pre-built [nightly TensorFlow Lite CocoaPods](https://www.tensorflow.org/lite/guide/ios#specifying_versions)
+include XNNPACK, but do not enable it by default. Swift developers can use
+`InterpreterOptions` object to enable XNNPACK:
+
+```swift
+var options = InterpreterOptions()
+options.isXNNPackEnabled = true
+var interpreter = try Interpreter(modelPath: "model/path", options: options)
+```
+
+Objective-C developers can enable XNNPACK via a new property in the
+`TFLInterpreterOptions` class:
+
+```objc
+TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
+options.useXNNPACK = YES;
+NSError *error;
+TFLInterpreter *interpreter =
+    [[TFLInterpreter alloc] initWithModelPath:@"model/path"
+                                      options:options
+                                        error:&error];
+```
+
+### Enable XNNPACK via Bazel build flags (recommended on desktop)
 
 When building TensorFlow Lite with Bazel, add
 `--define tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will
@@ -24,6 +62,27 @@ bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --define tflite_with_xnnpack=true \
   //tensorflow/lite/java:tensorflow-lite
 ```
+
+Note that in this case `Interpreter::SetNumThreads` invocation does not take
+effect on number of threads used by XNNPACK engine. In order to specify number
+of threads available for XNNPACK engine you should manually pass the value when
+constructing the interpreter. The snippet below illustrates this assuming you
+are using `InterpreterBuilder` to construct the interpreter:
+
+```c++
+// Load model
+tflite::Model* model;
+...
+
+// Construct the interprepter
+tflite::ops::builtin::BuiltinOpResolver resolver;
+std::unique_ptr<tflite::Interpreter> interpreter;
+
+TfLiteStatus res = tflite::InterpreterBuilder(model, resolver, num_threads);
+```
+
+**XNNPACK engine used by TensorFlow Lite interpreter uses a single thread for
+inference by default.**
 
 ### Enable XNNPACK via additional dependency
 
@@ -86,6 +145,10 @@ benefit from XNNPACK delegate.
 
 Below is the list of current operators and limitations:
 
+### `ABS`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `ADD`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -96,9 +159,13 @@ Below is the list of current operators and limitations:
 ### `AVERAGE_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* 1x1 pooling is not supported.
+* 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `CEIL`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `CONV_2D`
 
@@ -108,6 +175,11 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `DEPTH_TO_SPACE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Block size must be greater than 1.
+
 ### `DEPTHWISE_CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -116,15 +188,32 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `DIV`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `ELU`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Bias is mandatory.
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `FLOOR`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `LEAKY_RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
@@ -135,15 +224,37 @@ Below is the list of current operators and limitations:
 ### `MAX_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* 1x1 pooling is not supported.
+* 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `MAXIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `MEAN`
+
+* The first input and the output must be a 4D tensors in 32-bit
+  floating-point format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
+
+### `MINIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `NEG`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `PAD`
 
@@ -171,10 +282,82 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `RESHAPE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the new shape specification) must be either
+  static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
+  specified via `ReshapeOptions` table).
+
+### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 32-bit floating-point
+  format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
+### `ROUND`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQRT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SQUARE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SQUARED_DIFFERENCE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SUB`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+### Sparse Inference
+
+XNNPACK backend supports sparse inference for CNN models described in the
+[Fast Sparse ConvNets](https://arxiv.org/abs/1911.09723) paper. Sparse
+inference is restricted to subgraphs with the following operators:
+
+* Sparse subgraph must store its weights in sparse representation (using
+  `DENSIFY` operators in the TensorFlow Lite schema).
+* Sparse subgraph must start with a 3x3 stride-2 `CONV_2D` operator with
+  padding 1 on each side, no dilation, and 3 input channels.
+* Sparse subgraph must end with either a `MEAN` operator with reduction across
+  spatial axes, or a `DEPTH_TO_SPACE` operator.
+* Sparse subgraph may contain the following operators:
+  * `CONV_2D` with 1x1 kernel and no padding. At least 2/3rd of filter weights
+    in the 1x1 `CONV_2D` operators across the sparse subgraph must be zeroes
+    to enable sparse inference.
+  * `DEPTHWISE_CONV_2D` with 3x3 kernel, stride 1, no dilation, and padding 1
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 3x3 kernel, stride 2, no dilation, and padding 1
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 5x5 kernel, stride 1, no dilation, and padding 2
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 5x5 kernel, stride 2, no dilation, and padding 2
+    on each side.
+  * `RESIZE_BILINEAR` operator with output dimensions greater than 1.
+  * `MEAN` operator with reduction across spatial axes.
+  * `ADD` and `MUL` operators where both inputs are 4D tensors. If one of the
+    inputs to `ADD` or `MUL` is a constant tensor, it must be representable as
+    either a scalar, or a 1D vector.
+  * Unary elementwise operators `ABS`, `CEIL`, `ELU`, `FLOOR`, `HARD_SWISH`,
+    `LEAKY_RELU`, `LOGISTIC`, `NEG`, `RELU`, `RELU6`, `RELU_N1_TO_1`, `ROUND`,
+    `SIGMOID`, and `SQUARE`.
+
+Pre-trained [Fast Sparse ConvNets models](https://github.com/google-research/google-research/tree/master/fastconvnets)
+provide examples that satisfy these constrains.
 
 ### Other limitations
 

@@ -49,7 +49,8 @@ class GatherOp : public XlaOpKernel {
   bool indices_are_sorted_;
 };
 
-REGISTER_XLA_OP(Name("XlaGather"), GatherOp);
+REGISTER_XLA_OP(Name("XlaGather").CompileTimeConstantInput("slice_sizes"),
+                GatherOp);
 
 class ScatterOp : public XlaOpKernel {
  public:

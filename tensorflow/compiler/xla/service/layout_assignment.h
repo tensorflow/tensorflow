@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -183,15 +184,23 @@ class LayoutConstraints {
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
+  //
+  // If `allow_alias` is false, the function will check that all output buffers
+  // are defined by `instruction`, not aliased to an instruction elsewhere.
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction,
-                              bool mandatory = true, bool dfs = true);
+                              bool mandatory = true, bool dfs = true,
+                              bool allow_alias = false);
 
   // Returns true if any buffer in the given operand is forwarded to the output
   // of the given instruction. For example, the Tuple instruction forwards the
   // buffers of its operands and would return true for each of its operands.
-  bool OperandBufferForwarded(const HloInstruction* instruction,
-                              int64 operand_no) const;
+  bool AnyOperandBufferForwarded(const HloInstruction* instruction,
+                                 int64 operand_no) const;
+  // Similar to above, but returns true only if all buffers associated with that
+  // operand are forwarded.
+  bool AllOperandBuffersForwarded(const HloInstruction* instruction,
+                                  int64 operand_no) const;
 
   // Returns the set of logical buffers (by LogicalBuffer:Id) which do not
   // yet have a layout constraint
@@ -303,7 +312,8 @@ class LayoutAssignment : public HloModulePass {
       ComputationLayout* entry_computation_layout,
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = InstructionCanChangeLayout,
-      ChannelLayoutConstraints* channel_constraints = nullptr);
+      ChannelLayoutConstraints* channel_constraints = nullptr,
+      bool reverse_computation_order = false);
   ~LayoutAssignment() override {}
   absl::string_view name() const override { return "layout-assignment"; }
 
@@ -338,6 +348,9 @@ class LayoutAssignment : public HloModulePass {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
+  virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
+    return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+  }
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
   virtual Status Verify(const HloInstruction* instruction) {
@@ -449,6 +462,8 @@ class LayoutAssignment : public HloModulePass {
   // A copy of entry_computation_layout_ used to reset it to the initial values
   // during the multiple passes done by the layout assignment operation.
   ComputationLayout saved_entry_computation_layout_;
+  // If set true, reverse the computation traversal order when assigning layout.
+  bool reverse_computation_order_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,

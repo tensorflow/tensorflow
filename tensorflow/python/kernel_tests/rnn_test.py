@@ -135,7 +135,7 @@ class RNNTest(test.TestCase):
       inputs = [constant_op.constant(np.ones((3, 4)))]
     else:
       inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
-    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+    with self.assertRaisesRegex(ValueError, "must be a vector"):
       rnn.dynamic_rnn(
           cell,
           array_ops.stack(inputs),
@@ -157,8 +157,8 @@ class RNNTest(test.TestCase):
     ]
     for cell_cls in cells:
       with self.cached_session():
-        with self.assertRaisesRegexp(
-            ValueError, "RNN cell only supports floating"):
+        with self.assertRaisesRegex(ValueError,
+                                    "RNN cell only supports floating"):
           cell = cell_cls(2, dtype=dtypes.int32)
           rnn.dynamic_rnn(cell, inputs, dtype=dtypes.int32)
 
@@ -212,7 +212,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       if not in_eager_mode:
@@ -232,7 +232,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       if not in_eager_mode:
@@ -262,7 +262,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       state = (state[0], state[1].stack())
@@ -279,22 +279,22 @@ class RNNTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testCellGetInitialState(self):
     cell = rnn_cell_impl.BasicRNNCell(5)
-    with self.assertRaisesRegexp(
-        ValueError, "batch_size and dtype cannot be None"):
+    with self.assertRaisesRegex(ValueError,
+                                "batch_size and dtype cannot be None"):
       cell.get_initial_state(None, None, None)
 
     inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 1))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "batch size from input tensor is different from"):
       cell.get_initial_state(inputs=inputs, batch_size=50, dtype=None)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "batch size from input tensor is different from"):
       cell.get_initial_state(
           inputs=inputs, batch_size=constant_op.constant(50), dtype=None)
 
-    with self.assertRaisesRegexp(
-        ValueError, "dtype from input tensor is different from"):
+    with self.assertRaisesRegex(ValueError,
+                                "dtype from input tensor is different from"):
       cell.get_initial_state(inputs=inputs, batch_size=None, dtype=dtypes.int16)
 
     initial_state = cell.get_initial_state(

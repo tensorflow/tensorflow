@@ -99,7 +99,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           std::vector<tensorflow::NamedDevice> named_devices;
           for (const auto& s : serialized_named_devices) {
             tensorflow::NamedDevice named_device;
-            if (!named_device.ParseFromString(s)) {
+            if (!named_device.ParseFromString(std::string(s))) {
               throw std::invalid_argument(
                   "The NamedDevice could not be parsed as a valid protocol "
                   "buffer");
@@ -146,6 +146,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
     std::vector<tensorflow::OpDef> ops;
     registry->GetRegisteredOps(&ops);
     std::vector<std::string> op_names;
+    op_names.reserve(ops.size());
     for (const tensorflow::OpDef& op : ops) {
       op_names.push_back(op.name());
     }
@@ -241,7 +242,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
 
   m.def("TF_EstimatePerformance", [](const py::bytes& serialized_device) {
     tensorflow::NamedDevice device;
-    if (!device.ParseFromString(serialized_device)) {
+    if (!device.ParseFromString(std::string(serialized_device))) {
       throw std::invalid_argument(
           "The NamedDevice could not be parsed as a valid protocol buffer");
     }

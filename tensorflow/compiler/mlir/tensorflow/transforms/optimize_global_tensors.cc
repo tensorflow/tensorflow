@@ -22,10 +22,9 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -56,21 +55,20 @@ struct GlobalTensorUse {
 using GlobalTensorUsesMap =
     std::map<GlobalTensorOp, std::vector<GlobalTensorUse>>;
 
-static bool IsResourceType(Type type) {
+bool IsResourceType(Type type) {
   if (auto tensor_type = type.dyn_cast<TensorType>()) {
     return tensor_type.getElementType().isa<TF::ResourceType>();
   }
   return false;
 }
 
-static bool IsResource(Value value) { return IsResourceType(value.getType()); }
+bool IsResource(Value value) { return IsResourceType(value.getType()); }
 
 class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
-    SymbolTable symbol_table(module);
     for (auto func : module.getOps<FuncOp>()) {
-      AnalyzeFunc(func, symbol_table);
+      (void)AnalyzeRegion(func.getRegion());
     }
   }
 
@@ -84,19 +82,19 @@ class ResourceAnalyzer {
   }
 
  private:
-  // Analyze the specified func for resource mutating operations, namely
+  // Analyze the specified region for resource mutating operations, namely
   // TF::AssignVariableOp, if so, set the resource associated as "potentially
-  // written". Do this recursively across the chain of funcs via call or control
-  // flow ops.
+  // written". Do this recursively across the chain of regions via call or
+  // control flow ops.
   // TODO(ashwinm): Move to iterative traversal.
-  LogicalResult AnalyzeFunc(FuncOp func, const SymbolTable& symbol_table) {
+  LogicalResult AnalyzeRegion(Region& region) {
     // Avoid infinite recursion.
-    if (!discovered_.insert(func).second) {
+    if (!discovered_.insert(&region).second) {
       return success();
     }
 
-    func.walk([&](Operation* op) {
-      if (isa<TF::ReadVariableOp>(op) || isa<ReturnOp>(op)) {
+    region.walk([&](Operation* op) {
+      if (isa<TF::ReadVariableOp, ReturnOp>(op)) {
         return;
       }
       if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {
@@ -104,67 +102,73 @@ class ResourceAnalyzer {
         return;
       }
       if (auto call = dyn_cast<CallOpInterface>(op)) {
-        if (auto sym = op->getAttrOfType<SymbolRefAttr>("f")) {
-          PropagatePotentiallyWrittenUpFromCallee(
-              sym.cast<FlatSymbolRefAttr>().getValue(), call.getArgOperands(),
-              symbol_table);
+        if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
+          PropagatePotentiallyWrittenUpFromCallee(func.getRegion(),
+                                                  call.getArgOperands());
         }
         return;
       }
       if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-        for (auto callee : {if_op.then_branch(), if_op.else_branch()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input(),
-                                                  symbol_table);
+        for (auto callee : {if_op.then_function(), if_op.else_function()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
+                                                  if_op.input());
         }
         return;
       }
+      if (auto if_op = dyn_cast<TF::IfRegionOp>(op)) {
+        PropagatePotentiallyWrittenUpFromCallee(if_op.then_branch(),
+                                                if_op.getODSOperands(1));
+        PropagatePotentiallyWrittenUpFromCallee(if_op.else_branch(),
+                                                if_op.getODSOperands(1));
+        return;
+      }
       if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-        for (auto callee : {while_op.cond(), while_op.body()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input(),
-                                                  symbol_table);
+        for (auto callee :
+             {while_op.cond_function(), while_op.body_function()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
+                                                  while_op.input());
         }
+        return;
+      }
+      if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
+        PropagatePotentiallyWrittenUpFromCallee(while_op.cond(),
+                                                while_op.input());
+        PropagatePotentiallyWrittenUpFromCallee(while_op.body(),
+                                                while_op.input());
         return;
       }
       // For all other ops, we assume it mutates all resources it uses, so
       // this errs on the side of being conservative. We should improve
       // this by using either a property or a trait that clearly
       // identifies ops with resource mutating behavior.
-      if (PropagatePotentiallyWrittenWithinUnhandledOp(op)) {
-        return;
-      }
+      PropagatePotentiallyWrittenWithinUnhandledOp(op);
     });
     return success();
   }
 
   // If an op is not one of the handled ones, we assume all resource usages
   // within its purview are mutating in nature.
-  bool PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
+  void PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
     for (auto operand : op->getOperands()) {
       if (IsResource(operand)) {
         SetPotentiallyWritten(operand);
-        return true;
       }
     }
-    bool uses_resources = false;
     visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
       if (IsResource(operand->get())) {
         SetPotentiallyWritten(operand->get());
-        uses_resources = true;
       }
     });
-    return uses_resources;
   }
 
-  // Given a funcOp associated with the callee and operands from the
+  // Given a Region associated with the callee and operands from the
   // corresponding callOp, propagate the potentially written decision to the
-  // callOp's operands, if the corresponding func's arguments are potentially
+  // callOp's operands, if the corresponding region's arguments are potentially
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
-      StringRef callee, Operation::operand_range propagate_to,
-      const SymbolTable& symbol_table) {
-    auto func = symbol_table.lookup<FuncOp>(callee);
-    AnalyzeFunc(func, symbol_table);
-    for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
+      Region& region, Operation::operand_range propagate_to) {
+    (void)AnalyzeRegion(region);
+    for (auto t : llvm::zip(region.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;
       }
@@ -185,8 +189,8 @@ class ResourceAnalyzer {
   // Value: Information we know about that Value.
   // Note that these Value's are in general in different functions.
   DenseMap<Value, ResourceInfo> resource_infos_;
-  // The set of func's we already discovered.
-  DenseSet<FuncOp> discovered_;
+  // The set of regions we already discovered.
+  DenseSet<Region*> discovered_;
 };
 
 bool IsImmutable(GlobalTensorOp global_tensor,
@@ -212,7 +216,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
   return true;
 }
 
-static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
+GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   GlobalTensorUsesMap global_tensor_uses;
 
   SymbolTable symbol_table(module);
@@ -225,6 +229,9 @@ static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
       }
       auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
           sym.cast<FlatSymbolRefAttr>().getValue());
+      if (!global_tensor) {
+        continue;
+      }
       global_tensor_uses[global_tensor].push_back({func, i});
     }
   }
@@ -241,7 +248,7 @@ void MarkGlobalTensorsImmutable(
     auto global_tensor = kv.first;
     const auto& global_tensor_uses = kv.second;
     if (IsImmutable(global_tensor, global_tensor_uses, resource_analyzer)) {
-      global_tensor.removeAttr("is_mutable");
+      global_tensor->removeAttr("is_mutable");
     }
   }
 }
@@ -293,12 +300,12 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
 
-}  // namespace
-
 // For "opt" to pick up this pass.
-static PassRegistration<OptimizeGlobalTensorsPass> pass(
+PassRegistration<OptimizeGlobalTensorsPass> pass(
     "tf-saved-model-optimize-global-tensors",
     "Optimize tf_saved_model.global_tensor's.");
+
+}  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
   return std::make_unique<OptimizeGlobalTensorsPass>();

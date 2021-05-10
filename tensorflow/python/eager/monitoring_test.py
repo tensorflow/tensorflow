@@ -104,10 +104,10 @@ class MonitoringTest(test_util.TensorFlowTestCase):
 
   def test_context_manager(self):
     counter = monitoring.Counter('test/ctxmgr', 'test context manager', 'slot')
-    with monitoring.MonitoredTimer(counter.get_cell('short')):
-      time.sleep(0.001)
     with monitoring.MonitoredTimer(counter.get_cell('long')):
-      time.sleep(0.02)
+      time.sleep(0.01)
+      with monitoring.MonitoredTimer(counter.get_cell('short')):
+        time.sleep(0.01)
     self.assertGreater(
         counter.get_cell('long').value(),
         counter.get_cell('short').value())

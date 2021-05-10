@@ -44,7 +44,7 @@ Even if the untrusted party only supplies the serialized computation
 graph (in form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the
 set of computation primitives available to TensorFlow is powerful enough that
 you should assume that the TensorFlow process effectively executes arbitrary
-code. One common solution is to whitelist only a few safe Ops. While this is
+code. One common solution is to allow only a few safe Ops. While this is
 possible in theory, we still recommend you sandbox the execution.
 
 It depends on the computation graph whether a user provided checkpoint is safe.

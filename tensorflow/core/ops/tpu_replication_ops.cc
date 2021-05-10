@@ -31,9 +31,10 @@ REGISTER_OP("TPUReplicateMetadata")
     // Deprecated. Use num_cores_per_replica instead.
     .Attr("computation_shape: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
-    .Attr("padding_map: list(string) = []")
+    .Attr("padding_map: list(string) = []")  // Deprecated.
     .Attr("step_marker_location: string = \"STEP_MARK_AT_ENTRY\"")
     .Attr("allow_soft_placement: bool = false")
+    .Attr("use_spmd_for_xla_partitioning: bool = false")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("TPUReplicatedInput")
@@ -107,10 +108,11 @@ REGISTER_OP("_TPUReplicate")
     .Attr("NumVariables: int >= 0")
     .Attr("Tguaranteed_constants: list(type) >= 0")
     .Attr("output_types: list(type) >= 0")
-    .Attr("padding_map: list(string) = []")
+    .Attr("padding_map: list(string) = []")  // Deprecated.
     .Attr("step_marker_location: string = \"STEP_MARK_AT_ENTRY\"")
     .Attr("allow_soft_placement: bool = false")
     .Attr("num_distributed_variables: int = 0")
+    .Attr("use_spmd_for_xla_partitioning: bool = false")
     .Input("inputs: Tinputs")
     .Input("broadcast_inputs: Tbroadcast_inputs")
     .Input("variables: NumVariables * resource")

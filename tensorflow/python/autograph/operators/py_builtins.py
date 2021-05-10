@@ -89,6 +89,16 @@ def _find_originating_frame(caller_fn_scope, innermost=True):
   return result
 
 
+def locals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_locals
+
+
+def globals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_globals
+
+
 def eval_in_original_context(f, args, caller_fn_scope):
   """Executes the eval function in the context of a specified function."""
   # When control flow is rewritten using functions, eval should use the
@@ -167,7 +177,7 @@ def super_in_original_context(f, args, caller_fn_scope):
 
 
 def abs_(x):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_abs(x)
   if isinstance(x, dataset_ops.DatasetV2):
     return _tf_dataset_abs(x)
@@ -181,8 +191,10 @@ def _tf_abs(x):
 def _tf_dataset_abs(x):
   specs = nest.flatten(x.element_spec)
   if len(specs) == 1:
-    return x.map(math_ops.abs)
-  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
+    return x.map(math_ops.abs, num_parallel_calls=dataset_ops.AUTOTUNE)
+  return x.map(
+      lambda *e: nest.map_structure(math_ops.abs, e),
+      num_parallel_calls=dataset_ops.AUTOTUNE)
 
 
 def _py_abs(x):
@@ -190,7 +202,7 @@ def _py_abs(x):
 
 
 def float_(x=0):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_float(x)
   return _py_float(x)
 
@@ -207,7 +219,7 @@ def _py_float(x):
 
 
 def int_(x=0, base=UNSPECIFIED):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_int(x, base)
   return _py_int(x, base)
 
@@ -233,7 +245,7 @@ def len_(s):
     return _tf_tensor_array_len(s)
   elif tensors.is_tensor_list(s):
     return _tf_tensor_list_len(s)
-  elif tensor_util.is_tensor(s):
+  elif tensor_util.is_tf_type(s):
     return _tf_tensor_len(s)
   if isinstance(s, dataset_ops.DatasetV2):
     return _tf_dataset_len(s)
@@ -314,7 +326,7 @@ def print_(*objects, **kwargs):
     raise ValueError('invalid keyword arguments: {}'.format(unknown_kwargs))
 
   # TODO(mdan): Use next.flatten(objects) instead?
-  if any(tensor_util.is_tensor(o) for o in objects):
+  if any(tensor_util.is_tf_type(o) for o in objects):
     # TODO(mdan): use tf.print instead.
     return _tf_py_func_print(objects, kwargs)
   else:
@@ -334,7 +346,7 @@ def _tf_py_func_print(objects, kwargs):
     override_kwargs['flush'] = True
 
   def print_wrapper(*vals):
-    vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
+    vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
     if not six.PY2:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
@@ -348,7 +360,7 @@ def _tf_py_func_print(objects, kwargs):
 
 
 def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):
-  if any(tensor_util.is_tensor(s) for s in (start_or_stop, stop, step)):
+  if any(tensor_util.is_tf_type(s) for s in (start_or_stop, stop, step)):
     return _tf_range(start_or_stop, stop, step)
   return _py_range(start_or_stop, stop, step)
 
@@ -501,7 +513,7 @@ def next_tf_iterator(iterator, default=UNSPECIFIED):
     # Without a default, fall back to the "normal" behavior which raises
     # a runtime exception.
     return next(iterator)
-  opt_iterate = iterator_ops.get_next_as_optional(iterator)
+  opt_iterate = iterator.get_next_as_optional()
   _verify_structure_compatible(
       'the default argument', 'the iterate', default, iterator.element_spec)
   return control_flow_ops.cond(
@@ -584,7 +596,7 @@ def _py_all(iterable):
 
 
 def sorted_(iterable, key=UNSPECIFIED, reverse=UNSPECIFIED):
-  if tensor_util.is_tensor(iterable):
+  if tensor_util.is_tf_type(iterable):
     return _tf_sorted(iterable, key, reverse)
   return _py_sorted(iterable, key, reverse)
 

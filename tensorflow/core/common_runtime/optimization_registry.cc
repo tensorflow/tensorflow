@@ -36,15 +36,16 @@ Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
+    const uint64 start_us = Env::Default()->NowMicros();
     for (auto& phase : group->second) {
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
-        const uint64 start_us = Env::Default()->NowMicros();
+        const uint64 pass_start_us = Env::Default()->NowMicros();
         Status s = pass->Run(options);
-        const uint64 end_us = Env::Default()->NowMicros();
+        const uint64 pass_end_us = Env::Default()->NowMicros();
         metrics::UpdateGraphOptimizationPassTime(pass->name(),
-                                                 end_us - start_us);
+                                                 pass_end_us - pass_start_us);
         if (!s.ok()) return s;
         if (VLOG_IS_ON(1)) {
           if (options.graph) {
@@ -67,6 +68,8 @@ Status OptimizationPassRegistry::RunGrouping(
         }
       }
     }
+    const uint64 end_us = Env::Default()->NowMicros();
+    metrics::UpdateGraphOptimizationPassTime("*", end_us - start_us);
   }
   return Status::OK();
 }

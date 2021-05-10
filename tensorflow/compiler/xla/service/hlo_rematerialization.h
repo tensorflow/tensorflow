@@ -45,8 +45,8 @@ class HloRematerialization : public HloModulePass {
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
-    int64 before_bytes;
-    int64 after_bytes;
+    int64 before_bytes = -1;
+    int64 after_bytes = -1;
   };
 
   // Mode in which the rematerialization algorithm should be run.
@@ -83,18 +83,21 @@ class HloRematerialization : public HloModulePass {
   explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       RematerializationSizes* sizes, RematerializationPass pass_location,
-      int block_size_limit,
+      int block_size_limit, int block_rematerialization_factor,
       CompactShapeFunction compact_shape_function = nullptr,
-      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
+      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress,
+      int64 min_remat_size = 0)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
         pass_location_(pass_location),
         block_size_limit_(block_size_limit),
+        block_rematerialization_factor_(block_rematerialization_factor),
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
                                     : std::move(compact_shape_function)),
-        mode_(mode) {}
+        mode_(mode),
+        min_remat_size_(min_remat_size) {}
   ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
@@ -114,7 +117,8 @@ class HloRematerialization : public HloModulePass {
   // and inserted into 'order'.
   virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
                                                   HloSchedule* schedule,
-                                                  int64 memory_limit_bytes);
+                                                  int64 memory_limit_bytes,
+                                                  int64 min_remat_size);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
@@ -149,6 +153,11 @@ class HloRematerialization : public HloModulePass {
   // Maximum number of consecutive instructions to consider for
   // rematerialization.
   int block_size_limit_;
+
+  // Controls the amount of effort spent trying to find large blocks for
+  // rematerialization. Larger values leads to longer compilation times in
+  // return for potentially reduced memory consumption.
+  int block_rematerialization_factor_ = 1;
 
   // Converts a shape into compact form, returns the same shape if a shape is
   // already considered compact.
@@ -185,6 +194,8 @@ class HloRematerialization : public HloModulePass {
   int max_rematerialized_block_size_ = 0;
 
   RematerializationMode mode_;
+
+  int64 min_remat_size_;
 };
 
 }  // namespace xla

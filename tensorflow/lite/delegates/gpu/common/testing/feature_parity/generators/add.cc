@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/generators/add.h"
 
+#include <stdint.h>
+
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/utils.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {

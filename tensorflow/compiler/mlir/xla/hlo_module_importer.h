@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_MODULE_IMPORTER_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_MODULE_IMPORTER_H_
 
 #include <unordered_map>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -38,8 +37,8 @@ class Shape;
 // dialect. HloModuleImporter does not take ownership.
 class HloModuleImporter {
  public:
-  explicit HloModuleImporter(mlir::ModuleOp module)
-      : module_(module), builder_(module.getContext()) {}
+  explicit HloModuleImporter(mlir::ModuleOp module,
+                             bool import_all_computation = false);
 
   // Import the HloModule into the MLIR Module.
   Status Import(const xla::HloModule& module);
@@ -48,15 +47,16 @@ class HloModuleImporter {
   Status Import(const xla::HloModuleProto& module);
 
  private:
+  bool import_all_computation_;
   mlir::ModuleOp module_;
   mlir::Builder builder_;
 
   // Map for tracking which MLIR function map to which HLO Computation. This
   // tracks functions as they are imported and provides a quick lookup for
   // functions invoked by control flow related operations (e.g. while, call).
-  std::unordered_map<xla::HloComputation*, mlir::FuncOp> function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::FuncOp> function_map_;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_MODULE_IMPORTER_H_

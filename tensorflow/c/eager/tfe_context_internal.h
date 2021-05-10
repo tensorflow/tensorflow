@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_TFE_CONTEXT_INTERNAL_H_
 
 #include "tensorflow/c/conversion_macros.h"
-#include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 
 // Wraps a pointer to a context implementation.
 //
@@ -28,7 +28,7 @@ typedef struct TFE_Context TFE_Context;
 
 namespace tensorflow {
 
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractContextInterface, TFE_Context);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::ImmediateExecutionContext, TFE_Context);
 
 }  // namespace tensorflow
 

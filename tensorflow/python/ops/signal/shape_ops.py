@@ -72,19 +72,27 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
 
   For example:
 
+  >>> # A batch size 3 tensor of 9152 audio samples.
+  >>> audio = tf.random.normal([3, 9152])
+  >>> 
+  >>> # Compute overlapping frames of length 512 with a step of 180 (frames overlap
+  >>> # by 332 samples). By default, only 49 frames are generated since a frame
+  >>> # with start position j*180 for j > 48 would overhang the end.
+  >>> frames = tf.signal.frame(audio, 512, 180)
+  >>> frames.shape.assert_is_compatible_with([3, 49, 512])
+  >>> 
+  >>> # When pad_end is enabled, the final two frames are kept (padded with zeros).
+  >>> frames = tf.signal.frame(audio, 512, 180, pad_end=True)
+  >>> frames.shape.assert_is_compatible_with([3, 51, 512])
+  
+  If the dimension along `axis` is N, and `pad_end=False`, the number of frames
+  can be computed by:
+   ```python
+   num_frames = 1 + (N - frame_size) // frame_step
+   ```
+   If `pad_end=True`, the number of frames can be computed by:
   ```python
-  # A batch size 3 tensor of 9152 audio samples.
-  audio = tf.random.normal([3, 9152])
-
-  # Compute overlapping frames of length 512 with a step of 180 (frames overlap
-  # by 332 samples). By default, only 50 frames are generated since the last
-  # 152 samples do not form a full frame.
-  frames = tf.signal.frame(audio, 512, 180)
-  frames.shape.assert_is_compatible_with([3, 50, 512])
-
-  # When pad_end is enabled, the final frame is kept (padded with zeros).
-  frames = tf.signal.frame(audio, 512, 180, pad_end=True)
-  frames.shape.assert_is_compatible_with([3, 51, 512])
+  num_frames = -(-N // frame_step) # ceiling division
   ```
 
   Args:
@@ -100,7 +108,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     name: An optional name for the operation.
 
   Returns:
-    A `Tensor` of frames with shape `[..., frames, frame_length, ...]`.
+    A `Tensor` of frames with shape `[..., num_frames, frame_length, ...]`.
 
   Raises:
     ValueError: If `frame_length`, `frame_step`, `pad_value`, or `axis` are not
@@ -159,11 +167,11 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           0, frame_length + frame_step * (num_frames - 1) - length_samples)
 
       # Pad the inner dimension of signal by pad_samples.
-      paddings = array_ops.concat(
-          [array_ops.zeros([num_outer_dimensions, 2], dtype=pad_samples.dtype),
-           [[0, pad_samples]],
-           array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)],
-          0)
+      paddings = array_ops.concat([
+          array_ops.zeros([num_outer_dimensions, 2], dtype=pad_samples.dtype),
+          ops.convert_to_tensor([[0, pad_samples]]),
+          array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)
+      ], 0)
       signal = array_ops.pad(signal, paddings, constant_values=pad_value)
 
       signal_shape = array_ops.shape(signal)

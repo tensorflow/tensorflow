@@ -30,12 +30,15 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
@@ -76,6 +79,8 @@ static std::string TfLiteTensorString(const TfLiteTensor& tensor) {
   switch (tensor.type) {
     case kTfLiteInt32:
       return TfLiteTypedTensorString<int32_t>(tensor);
+    case kTfLiteUInt32:
+      return TfLiteTypedTensorString<uint32_t>(tensor);
     case kTfLiteInt64:
       return TfLiteTypedTensorString<int64_t>(tensor);
     case kTfLiteFloat32:
@@ -97,7 +102,11 @@ int main(int argc, char** argv) {
   }
 
   // Load the MLIR module.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
+                  mlir::StandardOpsDialect>();
+  mlir::MLIRContext context(registry);
+
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
   mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
@@ -111,9 +120,12 @@ int main(int argc, char** argv) {
 
   // Convert to flatbuffer.
   std::string serialized_flatbuffer;
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module.get(), &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops))
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  options.emit_custom_ops = emit_custom_ops;
+  options.emit_select_tf_ops = emit_select_tf_ops;
+  if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
+                                                 &serialized_flatbuffer))
     return 1;
 
   // Create TFLite interpreter & invoke converted program.

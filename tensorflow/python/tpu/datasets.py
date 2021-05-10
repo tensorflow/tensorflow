@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Callable, Optional, Text, Union
+
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -28,13 +30,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import functional_ops
 
 
-def _TextLineDataset(filename):
+def _TextLineDataset(filename: Text) -> dataset_ops.Dataset:
   buffer_size = 8 * 1024 * 1024  # 8 MiB per file
   dataset = readers.TextLineDataset(filename, buffer_size=buffer_size)
   return dataset
 
 
-def _TFRecordDataset(filename):
+def _TFRecordDataset(filename: Text) -> dataset_ops.Dataset:
   buffer_size = 8 * 1024 * 1024  # 8 MiB per file
   dataset = readers.TFRecordDataset(filename, buffer_size=buffer_size)
   return dataset
@@ -47,15 +49,17 @@ _FILETYPE_MAP = {
 }
 
 
-def StreamingFilesDataset(files,
-                          filetype=None,
-                          file_reader_job=None,
-                          worker_job=None,
-                          num_epochs=None,
-                          filename_shuffle_buffer_size=None,
-                          num_parallel_reads=None,
-                          batch_transfer_size=None,
-                          sloppy=None):
+def StreamingFilesDataset(
+    files: Union[Text, dataset_ops.Dataset],
+    filetype: Optional[Union[Text, Callable[[Text],
+                                            dataset_ops.Dataset]]] = None,
+    file_reader_job: Optional[Text] = None,
+    worker_job: Optional[Text] = None,
+    num_epochs: Optional[int] = None,
+    filename_shuffle_buffer_size: Optional[Union[int, bool]] = None,
+    num_parallel_reads: Optional[int] = None,
+    batch_transfer_size: Optional[Union[int, bool]] = None,
+    sloppy: bool = True) -> dataset_ops.Dataset:
   """StreamingFilesDataset constructs a dataset to stream from workers (GCE VM).
 
   Because Cloud TPUs are allocated over the network, a Cloud TPU cannot read
@@ -125,9 +129,6 @@ def StreamingFilesDataset(files,
 
   if batch_transfer_size is None:
     batch_transfer_size = 256
-
-  if sloppy is None:
-    sloppy = True
 
   if file_reader_job == 'coordinator':
     file_reader_device = '/job:coordinator/task:0'

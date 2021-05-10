@@ -132,8 +132,14 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
                         const bool fewer_dims_optimization,
                         const bool return_flattened_batch_indices) {
   typedef BCastList::Vec Vec;
+
+  // Safely multiplies dimensions taking into account symbolic shapes.
+  auto mul_dims = [](int64 dim1, int64 dim2) -> int64 {
+    return dim1 != 0 && dim2 != 0 && (dim1 < 0 || dim2 < 0) ? -1 : dim1 * dim2;
+  };
+
   bool all_equal = true;
-  int largest_rank = 0;
+  size_t largest_rank = 0;
   output_batch_size_ = 1;
   for (int i = 0; i < N; ++i) {
     if (x[i] != x[0]) {
@@ -153,7 +159,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     output_.resize(rank);
     for (int i = 0; i < rank; i++) {
       const int64 dim = x[0][i];
-      elements *= dim;
+      elements = mul_dims(elements, dim);
       output_[i] = dim;
     }
     result_.push_back(elements);
@@ -218,7 +224,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
       }
     }
     output_.push_back(output_dim_set ? output_dim : 1);
-    output_batch_size_ *= output_.back();
+    output_batch_size_ = mul_dims(output_batch_size_, output_.back());
     // All dimensions are 1.
     if (!output_dim_set) {
       if (!TF_PREDICT_TRUE(fewer_dims_optimization)) {
@@ -253,10 +259,11 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
       // It is a run of the same broadcasting case as last time.
       // We can reshape the input so that fewer dimensions
       // are involved in the intermediate computation.
-      result_.back() *= output_dim;
+      result_.back() = mul_dims(result_.back(), output_dim);
       for (int i = 0; i < N; ++i) {
-        reshape_[i].back() *= copy[i][j];
-        bcast_[i].back() *= current_is_one[i] ? output_dim : 1;
+        reshape_[i].back() = mul_dims(reshape_[i].back(), copy[i][j]);
+        bcast_[i].back() =
+            mul_dims(bcast_[i].back(), current_is_one[i] ? output_dim : 1);
         if (current_is_one[i] && !none_is_one) {
           grad_reduce_idx_[i].push_back(largest_rank - 1 - j);
         }

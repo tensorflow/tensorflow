@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "RaggedTensorToVariantGradient"
+  visibility: HIDDEN
+  in_arg {
+    name: "encoded_ragged_grad"
+    description: <<END
+A `variant` Tensor containing encoded `RaggedTensor` gradients.
+END
+  }
+  in_arg {
+    name: "row_splits"
+    description: <<END
+Outermost row-splits that were used as input to the RaggedTensorToVariant op.
+END
+  }
+  in_arg {
+    name: "dense_values_shape"
+    description: <<END
+Shape of the dense_values that was used as an input to the
+RaggedTensorToVariant op.
+END
+  }
+  out_arg {
+    name: "dense_values_grad"
+    description: <<END
+Gradient for the dense_values of the RaggedTensorToVariant op.
+END
+  }
+  summary: <<END
+Helper used to compute the gradient for `RaggedTensorToVariant`.
+END
+  description: <<END
+Computes the gradient for the dense_values input to the RaggedTensorToVariant
+op, given the variant-encoded ragged gradients of the outputs, along with
+the outer row-splits and the shape of the dense-values that were provided as
+inputs to the RaggedTensorToVariant op.
+END
+}

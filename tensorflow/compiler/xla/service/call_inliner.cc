@@ -78,7 +78,6 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
-    call_->ClearCalledComputations();
     return outer_->ReplaceInstruction(call_, new_root);
   }
 

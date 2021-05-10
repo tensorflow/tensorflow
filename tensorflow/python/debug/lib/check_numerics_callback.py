@@ -38,7 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Many ops have benign NaN outputs, and running them with check_numerics
 # on will create unwanted errors
-# TODO(b/142497024): Replace this whitelist with function decorators in the ops
+# TODO(b/142497024): Replace this allowlist with function decorators in the ops
 IGNORE_OP_OUTPUTS = (
     # For FusedBatchNorm, if the input tensor is empty then batch_mean and
     # batch_variance will be NaN. reserve_space holds intermediate values
@@ -422,7 +422,7 @@ def enable_check_numerics(stack_height_limit=30,
   tf.debugging.enable_check_numerics()
 
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  strategy = tf.distribute.TPUStrategy(resolver)
   with strategy.scope():
     # ...
   ```

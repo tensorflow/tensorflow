@@ -268,3 +268,10 @@ message MetricValues {
 message MetricsReport {
   repeated MetricValues metrics = 1;
 }
+
+message MemoryInfo {
+  // The total memory on a device, in KB.
+  int64 kb_total = 1;
+  // The free memory on a device, in KB.
+  int64 kb_free = 2;
+}

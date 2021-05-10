@@ -15,6 +15,17 @@ ARG CONFIG_BFLOAT16_BUILD=""
 ARG ENABLE_SECURE_BUILD
 ARG BAZEL_VERSION=""
 ARG ENABLE_DNNL1=""
+ARG ENABLE_HOROVOD=""
+ARG ENABLE_GCC8=""
+ARG OPENMPI_VERSION=""
+ARG OPENMPI_DOWNLOAD_URL=""
+ARG HOROVOD_VERSION=""
+ARG INSTALL_HOROVOD_FROM_COMMIT=""
+ARG BUILD_SSH=""
+ARG TF_NIGHTLY_FLAG=""
+ARG RELEASE_CONTAINER=""
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Upgrade Bazel version if argument is passed
 RUN if [ "${BAZEL_VERSION}" != "" ]; then \
@@ -22,6 +33,15 @@ RUN if [ "${BAZEL_VERSION}" != "" ]; then \
         chmod +x bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
         ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
         rm -rf bazel-$BAZEL_VERSION-installer-linux-x86_64.sh; \
+    fi
+
+# Upgrade gcc-8 if argument is passed
+RUN if [ "${ENABLE_GCC8}" = "yes" ]; then \
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+        apt-get update && \
+        apt-get install gcc-8 g++-8  -y && \
+        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 --slave /usr/bin/g++ g++ /usr/bin/g++-8 --slave /usr/bin/gcov gcov /usr/bin/gcov-8 && \
+        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 70 --slave /usr/bin/g++ g++ /usr/bin/g++-7 --slave /usr/bin/gcov gcov /usr/bin/gcov-7 ;\
     fi
 
 # Download and build TensorFlow from the latest sources found in the root container
@@ -50,10 +70,25 @@ RUN ${PIP} install future>=0.17.1
 
 RUN bazel --bazelrc=/root/.bazelrc build -c opt \
     tensorflow/tools/pip_package:build_pip_package && \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
-    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${TF_NIGHTLY_FLAG}" "${WHL_DIR}" && \
+    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/*.whl && \
     rm -rf /root/.cache
     # Clean up Bazel cache when done.
+
+# Install OpenMPI/Horovod
+COPY install_openmpi_horovod.sh .
+RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
+        chmod +x install_openmpi_horovod.sh && \
+        OPENMPI_VERSION=${OPENMPI_VERSION} OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL} BUILD_SSH=${BUILD_SSH} \
+        INSTALL_HOROVOD_FROM_COMMIT=${INSTALL_HOROVOD_FROM_COMMIT} HOROVOD_VERSION=${HOROVOD_VERSION} ./install_openmpi_horovod.sh && \
+        rm -rf install_openmpi_horovod.sh; \
+    fi
+
+# Remove crypto python packages for software compliance check.
+RUN if [ "${RELEASE_CONTAINER}" = "yes" ]; then \
+    ${PIP} uninstall --yes cryptography && \
+    rm -rf /usr/lib/python3/dist-packages/pycrypto-2.6.1.egg-info; \
+    fi
 
 # TensorBoard
 EXPOSE 6006

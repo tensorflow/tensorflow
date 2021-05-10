@@ -121,7 +121,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
       auto do_work = [&resource, &bucketized_features, &cached_tree_ids,
                       &cached_node_ids, &output_partial_logits,
                       &output_node_ids, latest_tree,
-                      this](int32 start, int32 end) {
+                      this](int64 start, int64 end) {
         for (int32 i = start; i < end; ++i) {
           int32 tree_id = cached_tree_ids(i);
           int32 node_id = cached_node_ids(i);
@@ -237,7 +237,7 @@ class BoostedTreesPredictOp : public OpKernel {
 
     const int32 last_tree = resource->num_trees() - 1;
     auto do_work = [&resource, &bucketized_features, &output_logits, last_tree,
-                    this](int32 start, int32 end) {
+                    this](int64 start, int64 end) {
       for (int32 i = start; i < end; ++i) {
         std::vector<float> tree_logits(logits_dimension_, 0.0);
         int32 tree_id = 0;
@@ -340,7 +340,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     // path. Note: feature_ids has one less value than logits_path because the
     // first value of each logit path will be the bias.
     auto do_work = [&resource, &bucketized_features, &output_debug_info,
-                    last_tree](int32 start, int32 end) {
+                    last_tree](int64 start, int64 end) {
       for (int32 i = start; i < end; ++i) {
         // Proto to store debug outputs, per example.
         boosted_trees::DebugOutput example_debug_info;
@@ -361,6 +361,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
             if (tree_id == 0 || node_id > 0) {
               past_trees_logit += tree_logit;
             }
+            example_debug_info.add_leaf_node_ids(node_id);
             ++tree_id;
             node_id = 0;
           } else {  // Add to proto.

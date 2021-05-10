@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.run_config import RunConfig
@@ -28,14 +29,31 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_util
 
 
 class RamFilesystemTest(test_util.TensorFlowTestCase):
+
+  def test_create_and_delete_directory(self):
+    file_io.create_dir_v2('ram://testdirectory')
+    file_io.delete_recursively_v2('ram://testdirectory')
+
+  def test_create_and_delete_directory_tree_recursive(self):
+    file_io.create_dir_v2('ram://testdirectory')
+    file_io.create_dir_v2('ram://testdirectory/subdir1')
+    file_io.create_dir_v2('ram://testdirectory/subdir2')
+    file_io.create_dir_v2('ram://testdirectory/subdir1/subdir3')
+    with gfile.GFile('ram://testdirectory/subdir1/subdir3/a.txt', 'w') as f:
+      f.write('Hello, world.')
+    file_io.delete_recursively_v2('ram://testdirectory')
+    self.assertEqual(gfile.Glob('ram://testdirectory/*'), [])
 
   def test_write_file(self):
     with gfile.GFile('ram://a.txt', 'w') as f:
@@ -63,7 +81,7 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
       with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
         f.write('')
 
-    matches = ['ram://a/b/%d.txt' % i for i in range(10)]
+    matches = ['%d.txt' % i for i in range(10)]
     self.assertEqual(gfile.ListDirectory('ram://a/b/'), matches)
 
   def test_glob(self):
@@ -81,6 +99,17 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
 
     matches = ['ram://c/b/%d.txt' % i for i in range(10)]
     self.assertEqual(gfile.Glob('ram://c/b/*'), matches)
+
+  def test_file_exists(self):
+    with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
+      f.write('')
+    self.assertTrue(gfile.Exists('ram://exists/a'))
+    self.assertTrue(gfile.Exists('ram://exists/a/b'))
+    self.assertTrue(gfile.Exists('ram://exists/a/b/c.txt'))
+
+    self.assertFalse(gfile.Exists('ram://exists/b'))
+    self.assertFalse(gfile.Exists('ram://exists/a/c'))
+    self.assertFalse(gfile.Exists('ram://exists/a/b/k'))
 
   def test_estimator(self):
 
@@ -113,6 +142,18 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     estimator.train(input_fn=input_fn, steps=10)
     estimator.train(input_fn=input_fn, steps=10)
     estimator.train(input_fn=input_fn, steps=10)
+
+  def test_savedmodel(self):
+    class MyModule(module.Module):
+
+      @def_function.function(input_signature=[])
+      def foo(self):
+        return constant_op.constant([1])
+
+    saved_model.save(MyModule(), 'ram://my_module')
+
+    loaded = saved_model.load('ram://my_module')
+    self.assertAllEqual(loaded.foo(), [1])
 
 
 if __name__ == '__main__':

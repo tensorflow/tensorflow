@@ -37,7 +37,9 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_field.h"
 #include "google/protobuf/text_format.h"
+#include "google/protobuf/util/field_comparator.h"
 #include "google/protobuf/util/json_util.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "google/protobuf/util/type_resolver_util.h"
 
 namespace tensorflow {
@@ -78,7 +80,7 @@ inline void SetProtobufStringSwapAllowed(std::string* src, std::string* dest) {
 // in core/platform/protobuf.h, so the generation code doesn't need to determine
 // if the type is Cord or string at generation time.
 inline std::string ProtobufStringToString(const absl::Cord& s) {
-  return s.ToString();
+  return std::string(s);
 }
 inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
   dest->CopyFrom(*src);
@@ -116,7 +118,6 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
 
   tstring* target_;
 };
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_

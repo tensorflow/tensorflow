@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/ADT/Twine.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {

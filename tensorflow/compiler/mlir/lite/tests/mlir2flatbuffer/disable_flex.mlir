@@ -1,9 +1,9 @@
-// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s --dump-input-on-failure
+// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s
 
 // CHECK: error: 'tf.Div' op is neither a custom op nor a flex op
 // CHECK: error: failed while converting: 'main'
-// CHECK: Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag):
-// CHECK: tf.Div {name = "div"}
+// CHECK: Some ops are not supported by the native TFLite runtime
+// CHECK: tf.Div(tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>) : {name = "div"}
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):

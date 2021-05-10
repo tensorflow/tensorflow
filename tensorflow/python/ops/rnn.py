@@ -318,7 +318,7 @@ def _reverse_seq(input_seq, lengths):
   for sequence in zip(*flat_input_seq):
     input_shape = tensor_shape.unknown_shape(rank=sequence[0].get_shape().rank)
     for input_ in sequence:
-      input_shape.merge_with(input_.get_shape())
+      input_shape.assert_is_compatible_with(input_.get_shape())
       input_.set_shape(input_shape)
 
     # Join into (time, batch_size, depth)
@@ -1112,7 +1112,7 @@ def raw_rnn(cell,
 
     for input_shape_i in input_shape:
       # Static verification that batch sizes all match
-      static_batch_size.merge_with(
+      static_batch_size.assert_is_compatible_with(
           tensor_shape.dimension_at_index(input_shape_i, 0))
 
     batch_size = tensor_shape.dimension_value(static_batch_size)
@@ -1339,7 +1339,7 @@ def static_rnn(cell,
         input_shape = flat_input.get_shape().with_rank_at_least(2)
         batch_size, input_size = tensor_shape.dimension_at_index(
             input_shape, 0), input_shape[1:]
-        fixed_batch_size.merge_with(batch_size)
+        fixed_batch_size.assert_is_compatible_with(batch_size)
         for i, size in enumerate(input_size.dims):
           if tensor_shape.dimension_value(size) is None:
             raise ValueError(

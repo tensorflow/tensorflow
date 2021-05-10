@@ -42,6 +42,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -70,14 +72,21 @@ class WhileContext;
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
 
+// Indicates where the graph instance is originated from.
+enum class ConstructionContext {
+  kNotTracked,     // Not tracked.
+  kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
+  kEagerRuntime,   // Registered from TF2 eager runtime.
+};
+
 class Node {
  public:
-  string DebugString() const;
+  std::string DebugString() const;
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
-  const string& name() const;
-  void set_name(string name);
-  const string& type_string() const;
+  const std::string& name() const;
+  void set_name(std::string name);
+  const std::string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
   // of this Node may have changed due to placement, optimization, etc.
@@ -92,6 +101,9 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  NodeDef* mutable_def();
+
   // input and output types
   int32 num_inputs() const;
   DataType input_type(int32 i) const;
@@ -103,11 +115,11 @@ class Node {
 
   // The device requested by the user.  For the actual assigned device,
   // use assigned_device_name() below.
-  const string& requested_device() const;
+  const std::string& requested_device() const;
 
   // This changes the user requested device but not necessarily the device that
   // on which the operation will run.
-  void set_requested_device(const string& device);
+  void set_requested_device(const std::string& device);
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
@@ -115,8 +127,8 @@ class Node {
   // fully specifies a device, and satisfies def().device().
   // TODO(josh11b): Move assigned_device_name outside of Node into a
   // NodeId->DeviceName map.
-  const string& assigned_device_name() const;
-  void set_assigned_device_name(const string& device_name);
+  const std::string& assigned_device_name() const;
+  void set_assigned_device_name(const std::string& device_name);
   bool has_assigned_device_name() const {
     return assigned_device_name_index_ > 0;
   }
@@ -189,23 +201,24 @@ class Node {
 
   bool IsIfNode() const { return class_ == NC_IF; }
   bool IsWhileNode() const { return class_ == NC_WHILE; }
+  bool IsCaseNode() const { return class_ == NC_CASE; }
   // Is this node a function input
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
-  void AddAttr(const string& name, const T& val) {
+  void AddAttr(const std::string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
     UpdateProperties();
   }
 
-  void AddAttr(const string& name, std::vector<string>&& val) {
+  void AddAttr(const std::string& name, std::vector<string>&& val) {
     MoveAttrValue(std::move(val), AddAttrHelper(name));
     UpdateProperties();
   }
 
-  void ClearAttr(const string& name);
+  void ClearAttr(const std::string& name);
 
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
@@ -232,9 +245,28 @@ class Node {
 
   std::shared_ptr<NodeProperties> properties() const { return props_; }
 
+  // Sets the stack trace for the node. Assumes that getting and setting the
+  // stack trace for a given node will not race.
+  void SetStackTrace(const std::shared_ptr<AbstractStackTrace>& stack_trace) {
+    stack_trace_ = stack_trace;
+  }
+
+  // Get the stack trace for when the node was instantiated.
+  const std::shared_ptr<AbstractStackTrace>& GetStackTrace() const {
+    return stack_trace_;
+  }
+
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
  private:
   friend class Graph;
   Node();
+
+  // Stack trace for the user code for node instantiation. Can be shared across
+  // multiple nodes (e.g. when inlining).
+  std::shared_ptr<AbstractStackTrace> stack_trace_;
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -245,11 +277,7 @@ class Node {
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
 
-  // Called after an attr has changed. Decides whether we need to update some
-  // property of the node (stored in props_).
-  void UpdateProperties();
-
-  AttrValue* AddAttrHelper(const string& name);
+  AttrValue* AddAttrHelper(const std::string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
   // class_ is initialized in the Node::Initialize routine based on the
@@ -282,6 +310,7 @@ class Node {
     NC_SYMBOLIC_GRADIENT,
     NC_IF,
     NC_WHILE,
+    NC_CASE,
     NC_ARG,
     NC_RETVAL,
     NC_OTHER  // Not a special kind of node
@@ -290,7 +319,7 @@ class Node {
   void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
                   NodeClass node_class);
 
-  static NodeClass GetNodeClassForOp(const string& ts);
+  static NodeClass GetNodeClassForOp(const std::string& ts);
 
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
@@ -327,7 +356,7 @@ class Node {
 
 // Stores debug information associated with the Node.
 struct NodeDebugInfo {
-  const string name;
+  const std::string name;
   std::vector<string> original_node_names;
 
   NodeDebugInfo(const Node& n);
@@ -396,7 +425,7 @@ class Edge {
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   Edge() {}
@@ -513,6 +542,8 @@ class Graph {
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
+  void Copy(const Graph& src);
+
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);
@@ -593,7 +624,7 @@ class Graph {
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
-  string NewName(StringPiece prefix);
+  std::string NewName(StringPiece prefix);
 
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
@@ -615,9 +646,9 @@ class Graph {
   int num_edge_ids() const { return edges_.size(); }
 
   // Returns the Edge associated with an id, or nullptr if no edge
-  // with that id (the node with that id was removed and the id has
+  // with that id (the edge with that id was removed and the id has
   // not yet been re-used). *this owns the returned instance.
-  // REQUIRES: 0 <= id < num_node_ids().
+  // REQUIRES: 0 <= id < num_edge_ids().
   const Edge* FindEdgeId(int id) const { return edges_[id]; }
 
   // Access to the set of all edges.  Example usage:
@@ -632,14 +663,17 @@ class Graph {
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
+
   void CheckDeviceNameIndex(int index) {
     DCHECK_GE(index, 0);
     DCHECK_LT(index, static_cast<int>(device_names_.size()));
   }
 
-  int InternDeviceName(const string& device_name);
+  int InternDeviceName(const std::string& device_name);
 
-  const string& get_assigned_device_name(const Node& node) const {
+  const std::string& get_assigned_device_name(const Node& node) const {
     return device_names_[node.assigned_device_name_index()];
   }
 
@@ -648,7 +682,7 @@ class Graph {
     node->assigned_device_name_index_ = device_name_index;
   }
 
-  void set_assigned_device_name(Node* node, const string& device_name) {
+  void set_assigned_device_name(Node* node, const std::string& device_name) {
     node->assigned_device_name_index_ = InternDeviceName(device_name);
   }
 
@@ -680,6 +714,23 @@ class Graph {
     return const_arg_indices_cache_;
   }
 
+  // TODO(kkb): Add to the constructor when it becomes managable.
+  // Sets the graph construction context.
+  void SetConstructionContext(ConstructionContext construction_context) {
+    construction_context_ = construction_context;
+  }
+
+  // TODO(kkb): Rename to `GetConstructionContext` once we're comfortable
+  // making this stable and make it available widely.
+  // Returns the graph construction context. It's `kUnknown` if not set.
+  ConstructionContext GetConstructionContextInternal() const {
+    return construction_context_;
+  }
+
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  void NodeType(StringPiece name, FullTypeDef** result);
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -705,6 +756,29 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
+
+  // Types table.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_set<TypeRef, TypeHasher> types_;
+
+  // Experimental.
+  // Map from node node names to their outputs' FullType. Typically, the values
+  // in this map are identical to those in types_, but that is not enforced or
+  // guaranteed.
+  //
+  // The full type specification combines a Tensor's dtype, tensor_shape,
+  // variant_val, etc. into a unified representation.
+  // This definition may only contain concrete types (for example,
+  // Tensor<TypeVar<'T'>> is not a valid node type).
+  //
+  // Presently, FullType duplicates any information found in `dtype`. When set,
+  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
+  // with FullType.
+  //
+  // For example, if a TensorProto has `dtype=DT_INT32`, then
+  // `full_type=FT_TENSOR[FT_INT32]`.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
   int64 num_nodes_ = 0;
@@ -756,6 +830,9 @@ class Graph {
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.
   mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
+
+  // Indicates the context that this Graph instance is constructed.
+  ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
@@ -923,11 +1000,11 @@ inline void Node::set_assigned_device_name_index(int index) {
   assigned_device_name_index_ = index;
 }
 
-inline void Node::set_assigned_device_name(const string& device_name) {
+inline void Node::set_assigned_device_name(const std::string& device_name) {
   graph_->set_assigned_device_name(this, device_name);
 }
 
-inline const string& Node::assigned_device_name() const {
+inline const std::string& Node::assigned_device_name() const {
   return graph_->get_assigned_device_name(*this);
 }
 

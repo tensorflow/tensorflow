@@ -137,13 +137,19 @@ class ExponentialOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_impl.matrix_exponential(tensor3)
 
+  def testInfinite(self):
+    # Check that the op does not loop forever on infinite inputs. (b/158433036)
+    in_tensor = [[np.inf, 1.], [1., 1.]]
+    result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
+    self.assertTrue(np.all(np.isnan(result)))
+
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
     self._verifyExponentialReal(np.empty([2, 0, 0]))
 
   @test_util.run_deprecated_v1
   def testDynamic(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       inp = array_ops.placeholder(ops.dtypes.float32)
       expm = linalg_impl.matrix_exponential(inp)
       matrix = np.array([[1., 2.], [3., 4.]])
@@ -151,7 +157,7 @@ class ExponentialOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       expm1 = linalg_impl.matrix_exponential(matrix1)
@@ -192,7 +198,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         expm = linalg_impl.matrix_exponential(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(expm),
@@ -205,7 +211,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
             ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           expm = linalg_impl.matrix_exponential(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(expm),

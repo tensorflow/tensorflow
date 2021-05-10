@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdarg>
 #include <cstdint>
+#include <cstring>
 
 namespace {
 
@@ -125,7 +126,8 @@ char* FastFloatToBufferLeft(float f, char* buffer) {
   const int32_t exponent_shift = 23;
   const int32_t exponent_bias = 127;
   const uint32_t fraction_mask = 0x007fffff;
-  const uint32_t u = *reinterpret_cast<uint32_t*>(&f);
+  uint32_t u;
+  memcpy(&u, &f, sizeof(int32_t));
   const int32_t exponent =
       ((u & exponent_mask) >> exponent_shift) - exponent_bias;
   const uint32_t fraction = (u & fraction_mask);
@@ -163,7 +165,49 @@ char* FastFloatToBufferLeft(float f, char* buffer) {
   *current = '.';
   current += 1;
   *current = 0;
+
+  // Prepend leading zeros to fill in all 7 bytes of the fraction. Truncate
+  // zeros off the end of the fraction. Every fractional value takes 7 bytes.
+  // For example, 2500 would be written into the buffer as 0002500 since it
+  // represents .00025.
+  constexpr int kMaxFractionalDigits = 7;
+
+  // Abort early if there is not enough space in the buffer.
+  if (current_end - current <= kMaxFractionalDigits) {
+    return current;
+  }
+
+  // Pre-fill buffer with zeros to ensure zero-truncation works properly.
+  for (int i = 1; i < kMaxFractionalDigits; i++) {
+    *(current + i) = '0';
+  }
+
+  // Track how large the fraction is to add leading zeros.
+  char* previous = current;
   current = StrCatUInt32(current, (current_end - current), scaled_fraction, 10);
+  int fraction_digits = current - previous;
+  int leading_zeros = kMaxFractionalDigits - fraction_digits;
+
+  // Overwrite the null terminator from StrCatUInt32 to ensure zero-trunctaion
+  // works properly.
+  *current = '0';
+
+  // Shift fraction values and prepend zeros if necessary.
+  if (leading_zeros != 0) {
+    for (int i = 0; i < fraction_digits; i++) {
+      current--;
+      *(current + leading_zeros) = *current;
+      *current = '0';
+    }
+    current += kMaxFractionalDigits;
+  }
+
+  // Truncate trailing zeros for cleaner logs. Ensure we leave at least one
+  // fractional character for the case when scaled_fraction is 0.
+  while (*(current - 1) == '0' && (current - 1) > previous) {
+    current--;
+  }
+  *current = 0;
   current = StrCatStr(current, (current_end - current), "*2^");
   current = StrCatInt32(current, (current_end - current), exponent);
   return current;

@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -130,7 +130,7 @@ Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
   std::vector<bool> squash_src_outputs(graph.num_node_ids(), false);
 
   // Build one _Arg node for each Enter node.
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
 
     TF_ASSIGN_OR_RETURN(Node * arg_node,
@@ -162,7 +162,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   *body_output = absl::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
 
-  // Map from nodes in the original graph to the condition graph.
+  // Map from nodes in the original graph to the body graph.
   std::vector<Node*> node_map(graph.num_node_ids(), nullptr);
   std::vector<bool> squash_src_outputs(graph.num_node_ids(), false);
 
@@ -170,7 +170,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   std::vector<Node*> next_iterations;
   next_iterations.reserve(frame->args.size());
   arg_types->reserve(frame->args.size());
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
 
     DataType dtype = arg.enter->input_type(0);
@@ -212,7 +212,14 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
 }
 
 Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
-                         FunctionLibraryDefinition* library) {
+                         FunctionLibraryDefinition* library,
+                         const NodeFilter& node_filter) {
+  if (node_filter && !frame->should_be_functionalized) {
+    VLOG(2) << "Skipping functionalization for frame " << frame->name
+            << " because it has control flow nodes that are filtered out by "
+               "the specified node filter.";
+    return Status::OK();
+  }
   VLOG(2) << "Frame " << frame->name << " before: "
           << DumpGraphToFile("functionalize_before", *graph, library);
 
@@ -228,7 +235,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
     } else {
       std::vector<const Edge*> edges(arg.enter->out_edges().begin(),
                                      arg.enter->out_edges().end());
-      for (int i = 0; i < edges.size(); ++i) {
+      for (int i = 0, end = edges.size(); i < end; ++i) {
         if (edges[i]->IsControlEdge() && edges[i]->dst()->IsSink()) {
           continue;
         }
@@ -349,10 +356,6 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
         return errors::InvalidArgument("Missing Switch successor to ",
                                        FormatNodeForError(*arg.merge));
       }
-
-      // Update the device on the Identity outputs of the switch to match their
-      // target. These Identity outputs do not
-
       // Loop over the switch node's output to:
       // - Find the Exit successor.
       // - Set the sharding on all Identity outputs of the switch. These
@@ -402,12 +405,12 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   std::unique_ptr<Graph> cond_graph;
   TF_RETURN_IF_ERROR(BuildLoopCondition(*graph, frame, &cond_graph));
   FixupSourceAndSinkEdges(cond_graph.get());
-  TF_RETURN_IF_ERROR(FunctionalizeCond(cond_graph.get(), library));
+  TF_RETURN_IF_ERROR(FunctionalizeCond(cond_graph.get(), library, node_filter));
   DataTypeVector arg_types;
   std::unique_ptr<Graph> body_graph;
   TF_RETURN_IF_ERROR(BuildLoopBody(*graph, frame, &arg_types, &body_graph));
   FixupSourceAndSinkEdges(body_graph.get());
-  TF_RETURN_IF_ERROR(FunctionalizeCond(body_graph.get(), library));
+  TF_RETURN_IF_ERROR(FunctionalizeCond(body_graph.get(), library, node_filter));
 
   VLOG(2) << "Frame " << frame->name << " condition: "
           << DumpGraphToFile("loop_condition", *cond_graph, library)
@@ -433,20 +436,18 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
-  string outside_compilation;
-  string frontend_attributes;
-  if (GetNodeAttr(frame->loop_cond->def(), kXlaFrontendAttributesAttrName,
-                  &frontend_attributes)
-          .ok()) {
-    builder.Attr(kXlaFrontendAttributesAttrName, frontend_attributes);
-  }
-  if (GetNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName,
-                  &outside_compilation)
-          .ok()) {
-    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  // Add some internal attributes which need to be propagated.
+  // TODO(b/160275126): attributes shouldn't be hard-coded here
+  for (const char* attr_name :
+       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
+        kTpuReplicateAttrName}) {
+    string attr_val;
+    if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
+      builder.Attr(attr_name, attr_val);
+    }
   }
   std::vector<NodeDefBuilder::NodeOut> inputs;
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
     const Edge* in_edge;
     TF_RETURN_IF_ERROR(arg.enter->input_edge(0, &in_edge));
@@ -462,7 +463,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   TF_ASSIGN_OR_RETURN(Node * while_node, AddNodeDefToGraph(while_def, graph));
 
   // Copies edges to the Enter nodes and from the Exit nodes onto the While.
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
     const Edge* in_edge;
     TF_RETURN_IF_ERROR(arg.enter->input_edge(0, &in_edge));
@@ -495,6 +496,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   // Remove the old nodes from the graph, and add the while node to the parent
   // frame.
   for (Node* node : frame->nodes) {
+    VLOG(2) << "Removing obsolete node " << node->name();
     graph->RemoveNode(node);
   }
   frame->nodes.clear();
@@ -507,8 +509,8 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
 }
 }  // namespace
 
-Status FunctionalizeWhileLoop(Graph* graph,
-                              FunctionLibraryDefinition* library) {
+Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
+                              const NodeFilter& node_filter) {
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
@@ -523,7 +525,8 @@ Status FunctionalizeWhileLoop(Graph* graph,
 
   // Builds Frames, indexed by name.
   std::unordered_map<string, WhileLoopFrame> frames;
-  TF_RETURN_IF_ERROR(ExtractWhileLoopFrames(cf_info, graph, &frames));
+  TF_RETURN_IF_ERROR(
+      ExtractWhileLoopFrames(cf_info, graph, &frames, node_filter));
 
   // Adds frames with no children (i.e., the innermost frames) to a worklist.
   std::deque<WhileLoopFrame*> worklist;
@@ -533,7 +536,9 @@ Status FunctionalizeWhileLoop(Graph* graph,
     }
   }
 
-  // Eliminate loops from innermost to outermost.
+  // Eliminate loops from innermost to outermost. Note that the precondition for
+  // `node_filter` in `FunctionalizeControlFlow` makes sure that this approach
+  // works.
   while (!worklist.empty()) {
     WhileLoopFrame* frame = worklist.front();
     worklist.pop_front();
@@ -542,7 +547,7 @@ Status FunctionalizeWhileLoop(Graph* graph,
       continue;
     }
 
-    TF_RETURN_IF_ERROR(FunctionalizeLoop(graph, frame, library));
+    TF_RETURN_IF_ERROR(FunctionalizeLoop(graph, frame, library, node_filter));
 
     // If the parent has no remaining children, add it to the worklist.
     --frame->parent->num_children;
@@ -551,14 +556,16 @@ Status FunctionalizeWhileLoop(Graph* graph,
     }
   }
 
-  // There should be no cycle at this point, since while loops have been removed
-  // from graph.
-  // Check that the newly added While nodes don't feed into themselves.
-  for (const Node* node : graph->op_nodes()) {
-    if (node->def().op() == "While") {
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          CheckNodeNotInCycle(node, graph->num_node_ids()),
-          "Functionalizing loop failed.");
+  if (!node_filter) {
+    // There should be no cycle at this point, since while loops have been
+    // removed from graph. Check that the newly added While nodes don't feed
+    // into themselves.
+    for (const Node* node : graph->op_nodes()) {
+      if (node->def().op() == "While") {
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            CheckNodeNotInCycle(node, graph->num_node_ids()),
+            "Functionalizing loop failed.");
+      }
     }
   }
 

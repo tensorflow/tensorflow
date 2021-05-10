@@ -23,9 +23,12 @@ import atexit
 import collections
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
+import gzip
 import inspect
 import os
 from typing import List, Sequence, Tuple, Union
+
+from . import xla_extension as _xla
 
 from absl import logging
 import numpy as np
@@ -34,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -47,6 +48,9 @@ from tensorflow.compiler.xla.python import xla_extension as _xla
 ops = _xla.ops
 profiler = _xla.profiler
 
+# Just an internal arbitrary increasing number to help with backward-compatible
+# changes.
+_version = 21
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -58,8 +62,13 @@ def _interpreter_backend_factory():
   return _xla.get_interpreter_client()
 
 
+# Deprecated.
 def _cpu_backend_factory():
   return _xla.get_cpu_client(asynchronous=True)
+
+
+def _tfrt_cpu_backend_factory():
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def _gpu_backend_factory(distributed_client=None, node_id=0):
@@ -67,10 +76,10 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
-  if allocator not in ('default', 'platform', 'bfc'):
+  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
     raise ValueError(
-        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
-        '"bfc", got "%s"' % allocator)
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
+        '"bfc", or "cuda_async", got "%s"' % allocator)
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -78,15 +87,21 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
+  if allocator == 'cuda_async':
+    config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  return _xla.get_nvidia_gpu_client(
+  return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id)
+
+
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(max_inflight_computations=32)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -94,6 +109,7 @@ _local_backend_factories = collections.OrderedDict([
     ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 
@@ -112,16 +128,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
-    logging.vlog(2, "Initializing backend '%s'" % name)
+    logging.vlog(1, "Initializing backend '%s'" % name)
     try:
       backend = factory()
-    except RuntimeError:
+    except RuntimeError as err:
       if name == 'cpu':
         # We always expect CPU to initialize successfully.
         raise
       else:
         # If the backend isn't built into the binary, or if it has no devices,
         # we expect a RuntimeError.
+        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
         continue
     _local_backends[name] = backend
   return _local_backends
@@ -143,7 +160,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -190,8 +208,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -268,6 +286,28 @@ class ProgramShape(object):
 """
 
 
+ShapeIndex = _xla.ShapeIndex
+ShapeIndex.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class ShapeIndex(object):
+  '''Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.
+  '''
+
+  def __init__(self, List[int]) -> ShapeIndex:
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+"""
+
+
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
@@ -303,6 +343,7 @@ def computation_count():
 Device = _xla.Device
 CompileOptions = _xla.CompileOptions
 
+HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
@@ -313,17 +354,18 @@ CompileOptions = _xla.CompileOptions
 #   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_sharded_on_local_devices(self, arguments: [[Buffer]])
+#       -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
-#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th local device.
+#       arguments: A sequence of sequences of Buffers. The i'th element of each
+#         sequence comprises the arguments for execution on the i'th local
+#         device.
 #
 #     Returns:
-#       A list of the computation's outputs for each local device, as a Buffer.
-#       If a shallow sequence of arguments was passed in for `arguments`, then
-#       the sole, zero'th device's output is returned instead, as a Buffer.
+#       A list of the computation's outputs as a list of Buffers for each
+#       device.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -343,7 +385,7 @@ def execute_with_python_values(executable, arguments, backend):
 def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
-  Arguments:
+  Args:
     executable: the program to run.
     arguments: a list of lists of Python values indexed by `[replica][arg_num]`
       to pass as inputs.
@@ -354,19 +396,12 @@ def execute_with_python_values_replicated(executable, arguments, backend):
   """
   devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, devices[replica])
-               for replica, replica_args in enumerate(arguments)
-               for arg in replica_args]
-  flat_arg_buffers = [
-      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
-  ]
-  arg_buffers = []
-  for replica_args in arguments:
-    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [[x.to_py()
-           for x in xs]
-          for xs in executable.execute_on_local_devices(arg_buffers)]
+  def copy_to_devices(pyvals):
+    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
+
+  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
+  outputs = executable.execute_sharded_on_local_devices(inputs)
+  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -407,9 +442,11 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
+XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 
@@ -421,7 +458,10 @@ def register_custom_call_target(name, fn, platform='cpu'):
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
   """
-  _xla.register_custom_call_target(name, fn, xla_platform_names[platform])
+  # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
+  # Since that is hardcoded to CUDA, we are using the following as workaround.
+  _xla.register_custom_call_target(name, fn,
+                                   xla_platform_names.get(platform, platform))
 
 
 # Deprecated. Use register_custom_call_target instead.
@@ -598,7 +638,7 @@ def make_convolution_dimension_numbers(
 class OpSharding(object):
   """Python representation of a xla.OpSharding protobuf."""
   __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
+               'tuple_shardings', 'replicate_on_last_tile_dim')
 
   Type = _xla.OpSharding_Type
 
@@ -607,6 +647,7 @@ class OpSharding(object):
     self.tile_assignment_dimensions = []
     self.tile_assignment_devices = []
     self.tuple_shardings = []
+    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):
@@ -669,6 +710,7 @@ def make_replica_groups(replica_groups):
 
 
 Traceback = _xla.Traceback
+Frame = _xla.Frame
 
 
 @contextlib.contextmanager
@@ -680,6 +722,11 @@ def tracebacks(enabled=True):
     yield
   finally:
     Traceback.enabled = saved
+
+
+def heap_profile(client: Client) -> str:
+  """Returns a gzipped pprof protocol buffer containing a heap profile."""
+  return gzip.compress(client.heap_profile())
 
 
 # Perform one last garbage collection of deferred Python references. This is

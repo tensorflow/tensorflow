@@ -118,6 +118,11 @@ class NnApiHandler {
            const ANeuralNetworksOperandType* type) { return Value; };
   }
 
+  void StubAddOperandWith(int(stub)(ANeuralNetworksModel* model,
+                                    const ANeuralNetworksOperandType* type)) {
+    nnapi_->ANeuralNetworksModel_addOperand = stub;
+  }
+
   template <int Value>
   void SetOperandValueReturns() {
     nnapi_->ANeuralNetworksModel_setOperandValue =
@@ -266,6 +271,23 @@ class NnApiHandler {
     nnapi_->ANeuralNetworksEvent_wait = [](ANeuralNetworksEvent* event) {
       return Value;
     };
+  }
+
+  template <int Value>
+  void SetPriorityReturns() {
+    nnapi_->ANeuralNetworksCompilation_setPriority =
+        [](ANeuralNetworksCompilation* compilation, int priority) -> int {
+      return Value;
+    };
+  }
+
+  template <int Value>
+  void SetOperandSymmPerChannelQuantParamsReturns() {
+    nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams =
+        [](ANeuralNetworksModel* model, int32_t index,
+           const ANeuralNetworksSymmPerChannelQuantParams* channelQuant) {
+          return Value;
+        };
   }
 
   /*

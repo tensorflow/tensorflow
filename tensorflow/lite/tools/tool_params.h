@@ -52,11 +52,16 @@ class ToolParam {
   }
 
   virtual ~ToolParam() {}
-  explicit ToolParam(ParamType type) : type_(type) {}
+  explicit ToolParam(ParamType type) : has_value_set_(false), type_(type) {}
+
+  bool HasValueSet() const { return has_value_set_; }
 
   virtual void Set(const ToolParam&) {}
 
   virtual std::unique_ptr<ToolParam> Clone() const = 0;
+
+ protected:
+  bool has_value_set_;
 
  private:
   static void AssertHasSameType(ParamType a, ParamType b);
@@ -70,7 +75,10 @@ class TypedToolParam : public ToolParam {
   explicit TypedToolParam(const T& value)
       : ToolParam(GetValueType<T>()), value_(value) {}
 
-  void Set(const T& value) { value_ = value; }
+  void Set(const T& value) {
+    value_ = value;
+    has_value_set_ = true;
+  }
 
   T Get() const { return value_; }
 
@@ -112,9 +120,15 @@ class ToolParams {
   }
 
   template <typename T>
+  bool HasValueSet(const std::string& name) const {
+    AssertParamExists(name);
+    return params_.at(name)->AsConstTyped<T>()->HasValueSet();
+  }
+
+  template <typename T>
   T Get(const std::string& name) const {
     AssertParamExists(name);
-    return params_.at(name)->AsTyped<T>()->Get();
+    return params_.at(name)->AsConstTyped<T>()->Get();
   }
 
   // Set the value of all same parameters from 'other'.
@@ -128,6 +142,12 @@ class ToolParams {
   void AssertParamExists(const std::string& name) const;
   std::unordered_map<std::string, std::unique_ptr<ToolParam>> params_;
 };
+
+#define LOG_TOOL_PARAM(params, type, name, description, verbose)      \
+  do {                                                                \
+    TFLITE_MAY_LOG(INFO, (verbose) || params.HasValueSet<type>(name)) \
+        << description << ": [" << params.Get<type>(name) << "]";     \
+  } while (0)
 
 }  // namespace tools
 }  // namespace tflite

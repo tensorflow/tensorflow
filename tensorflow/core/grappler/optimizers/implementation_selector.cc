@@ -41,6 +41,7 @@ namespace grappler {
 
 constexpr char kConstOp[] = "Const";
 constexpr char kCaseOp[] = "Case";
+constexpr char kStatelessCaseOp[] = "StatelessCase";
 constexpr char kDeviceIndexOp[] = "DeviceIndex";
 
 // TODO(b/157615690): clean up function implementation swap code.
@@ -130,7 +131,7 @@ string FindForwardNode(utils::MutableNodeView* backward_node) {
 void UpdateForwardIdentityNodeDtype(utils::MutableNodeView* forward_node,
                                     const DataTypeVector& dtypes) {
   const auto& fanouts_vector = forward_node->GetRegularFanouts();
-  for (int pos = 0; pos < fanouts_vector.size(); ++pos) {
+  for (int pos = 0, pos_limit = fanouts_vector.size(); pos < pos_limit; ++pos) {
     const auto& fanouts_at_pos = fanouts_vector[pos];
     for (const auto& fanout : fanouts_at_pos) {
       if ("Identity" == fanout.node_view()->GetOp()) {
@@ -327,7 +328,7 @@ void RewriteDeviceIndexOp(utils::MutableNodeView* device_index_node,
   // Modifies the DeviceIndex node to be an Const op with correct device index.
   auto node = device_index_node->node();
   node->set_op(kConstOp);
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["dtype"].set_type(DT_INT32);
   auto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
   tensor->set_dtype(DT_INT32);
@@ -353,7 +354,9 @@ Status ImplementationSelector::SelectDeviceIndex(GraphDef* graph) const {
     // case node.
     for (const auto& fanouts : node_view->GetRegularFanouts()) {
       for (const auto& fanout : fanouts) {
-        if (fanout.node_view()->GetOp() != kCaseOp) continue;
+        if (fanout.node_view()->GetOp() != kCaseOp &&
+            fanout.node_view()->GetOp() != kStatelessCaseOp)
+          continue;
         int index;
         // If any error is thrown out during device parsing, we simply skip
         // and do not modify the DeviceIndexNode.

@@ -28,7 +28,7 @@ class XnnpackDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -43,9 +43,9 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
   return flags;
 }
 
-void XnnpackDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "Use xnnpack : [" << params.Get<bool>("use_xnnpack")
-                   << "]";
+void XnnpackDelegateProvider::LogParams(const ToolParams& params,
+                                        bool verbose) const {
+  LOG_TOOL_PARAM(params, bool, "use_xnnpack", "Use xnnpack", verbose);
 }
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(

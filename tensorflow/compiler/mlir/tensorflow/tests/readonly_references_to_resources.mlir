@@ -1,4 +1,4 @@
-// RUN: tf-opt -verify-diagnostics -readonly-references-to-resources -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -verify-diagnostics -tf-readonly-references-to-resources -split-input-file %s | FileCheck %s
 
 // Test case: Basic converting.
 
@@ -7,6 +7,18 @@ func @f() {
   // CHECK: "tf.ReadVariableOp"
   %val0 = "tf.VariableV2"() {_class = ["loc:@v"], container = "", device = "", shape = #tf.shape<96>, shared_name = ""} : () -> tensor<96x!tf.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf.f32ref>) -> tensor<96xf32>
+  return
+}
+
+// -----
+
+// Test case: Basic converting. '_class' attribute is at IdentityOp.
+
+func @f() {
+  // CHECK: "tf.VarHandleOp"
+  // CHECK: "tf.ReadVariableOp"
+  %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<96>, shared_name = ""} : () -> tensor<96x!tf.f32ref>
+  %val1 = "tf.Identity"(%val0) {_class = ["loc:@v"]} : (tensor<96x!tf.f32ref>) -> tensor<96xf32>
   return
 }
 
@@ -53,10 +65,22 @@ func @f() {
 
 // -----
 
-// Test case: No class attribute on VariableV2 op.
+// Test case: Get variable name from the shared_name attribute from VariableV2 op.
 
 func @f() {
-  // expected-error @+1 {{'tf.VariableV2' op has no '_class' attribute}}
+  // CHECK: "tf.VarHandleOp"
+  // CHECK: "tf.ReadVariableOp"
+  %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<96>, shared_name = "test"} : () -> tensor<96x!tf.f32ref>
+  %val1 = "tf.Identity"(%val0) : (tensor<96x!tf.f32ref>) -> tensor<96xf32>
+  return
+}
+
+// -----
+
+// Test case: No class and shared_name attributes on VariableV2 op.
+
+func @f() {
+  // expected-error @+1 {{'tf.VariableV2' op has no '_class' and 'shared_name' attributes}}
   %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<96>, shared_name = ""} : () -> tensor<96x!tf.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf.f32ref>) -> tensor<96xf32>
   return

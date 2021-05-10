@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TENSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TENSOR_H_
 
-#include <string>
+#include <stdint.h>
+
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -38,6 +39,31 @@ struct StorageType<DataType::FLOAT32> {
 template <>
 struct StorageType<DataType::INT32> {
   using value = std::vector<int32_t>;
+};
+
+template <>
+struct StorageType<DataType::INT16> {
+  using value = std::vector<int16_t>;
+};
+
+template <>
+struct StorageType<DataType::INT8> {
+  using value = std::vector<int8_t>;
+};
+
+template <>
+struct StorageType<DataType::UINT32> {
+  using value = std::vector<uint32_t>;
+};
+
+template <>
+struct StorageType<DataType::UINT16> {
+  using value = std::vector<uint16_t>;
+};
+
+template <>
+struct StorageType<DataType::UINT8> {
+  using value = std::vector<uint8_t>;
 };
 
 }  // namespace internal_tensor
@@ -71,6 +97,10 @@ struct TensorRef {
   // Opaque reference to a tensor. Upstream component is responsible for
   // resolving this reference into an actual tensor.
   int64_t ref = -1;
+
+  // Specifies if the tensor should be a variable input tensor that must be an
+  // output as well as an input to the graph.
+  bool is_variable_input = false;
 };
 
 template <typename ShapeT, DataType Type>

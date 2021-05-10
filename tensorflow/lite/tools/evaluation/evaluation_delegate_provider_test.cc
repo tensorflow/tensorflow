@@ -43,11 +43,7 @@ TEST(EvaluationDelegateProviderTest, CreateTfLiteDelegate) {
 TEST(EvaluationDelegateProviderTest, DelegateProvidersParams) {
   DelegateProviders providers;
   const auto& params = providers.GetAllParams();
-#if defined(__ANDROID__)
   EXPECT_TRUE(params.HasParam("use_nnapi"));
-#else
-  EXPECT_FALSE(params.HasParam("use_nnapi"));
-#endif
   EXPECT_TRUE(params.HasParam("use_gpu"));
 
   int argc = 3;

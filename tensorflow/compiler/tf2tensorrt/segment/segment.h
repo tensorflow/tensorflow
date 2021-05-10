@@ -19,31 +19,54 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
-// Vector of segments, each entry contains a set of node pointers.
-using SegmentNodesVector = std::vector<std::set<const Node*>>;
+constexpr char kTftrtOpMaxBatchSizeAttr[] = "_tftrt_op_max_batch_size";
 
 struct SegmentOptions {
+  // This struct holds per graph segmenting parameters.
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
   bool use_implicit_batch = true;
+  // The maximum batch size used to build the engines in the graph, when
+  // use_implicit_batch is true.
+  absl::optional<int> maximum_batch_size = absl::nullopt;
   // When use_implicit_batch is false or when we are building dynamic engines,
   // we allow dynamic non-batch dimensions.
   bool allow_dynamic_non_batch_dim = false;
+  // The name of the device to put the segment on.
   std::set<string> exclude_node_list;
 };
+
+struct NodePtrCompare {
+  bool operator()(const Node* lhs, const Node* rhs) const {
+    return lhs->name() < rhs->name();
+  }
+};
+
+struct Segment {
+  Segment() {}
+  Segment(const ClusterProperty& property,
+          const std::set<const Node*, NodePtrCompare>& nodes)
+      : property(property), nodes(nodes) {}
+  ClusterProperty property;
+  std::set<const Node*, NodePtrCompare> nodes;
+};
+
+// Vector of segments, each entry contains a set of node pointers.
+using SegmentVector = std::vector<Segment>;
 
 // Get the subgraphs of a graph that can be handled by TensorRT.
 //
@@ -60,14 +83,12 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
-                    const SegmentOptions& options,
-                    SegmentNodesVector* segments);
+                    const SegmentOptions& options, SegmentVector* segments);
 
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_SEGMENT_H_

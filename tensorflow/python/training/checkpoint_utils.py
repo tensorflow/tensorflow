@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import abc
 import time
 
 import six
@@ -87,13 +88,27 @@ def load_variable(ckpt_dir_or_file, name):
 
 @tf_export("train.list_variables")
 def list_variables(ckpt_dir_or_file):
-  """Returns list of all variables in the checkpoint.
+  """Lists the checkpoint keys and shapes of variables in a checkpoint.
+
+  Checkpoint keys are paths in a checkpoint graph.
+
+  Example usage:
+
+    ```python
+  import tensorflow as tf
+  import os
+  ckpt_directory = "/tmp/training_checkpoints/ckpt"
+  ckpt = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  manager = tf.train.CheckpointManager(ckpt, ckpt_directory, max_to_keep=3)
+  train_and_checkpoint(model, manager)
+  tf.train.list_variables(manager.latest_checkpoint)
+  ```
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
 
   Returns:
-    List of tuples `(name, shape)`.
+    List of tuples `(key, shape)`.
   """
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
@@ -229,6 +244,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   Supports loading into partitioned variables, which are represented as
   `'<variable>/part_<part #>'`.
 
+  Assignment map can be a dict, or a list of pairs.  The latter is
+  necessary to initialize multiple variables in the current graph from
+  the same variable in the checkpoint.
+
   Example:
 
   ```python
@@ -275,13 +294,14 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
-    assignment_map: Dict, where keys are names of the variables in the
-      checkpoint and values are current variables or names of current variables
-      (in default graph).
+    assignment_map: Dict, or a list of key-value pairs, where keys are names
+      of the variables in the checkpoint and values are current variables or
+      names of current variables (in default graph).
 
   Raises:
     ValueError: If missing variables in current graph, or if missing
       checkpoints or tensors in checkpoints.
+
   """
   init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
       ckpt_dir_or_file, assignment_map)
@@ -297,8 +317,14 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
+  if isinstance(assignment_map, abc.Mapping):
+    assignment_map = six.iteritems(assignment_map)
+
+  # We only want to sort by tensor names.
+  sort_key = lambda pair: pair[0]
+
   for tensor_name_in_ckpt, current_var_or_name in sorted(
-      six.iteritems(assignment_map)):
+      assignment_map, key=sort_key):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).

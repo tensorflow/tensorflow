@@ -1,8 +1,8 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -12,11 +12,16 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/training/tracking:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow_models/official/vision/beta/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 # A separate build for layers without serialization to avoid circular deps
 # with feature column.
@@ -26,7 +31,7 @@ py_library(
         "__init__.py",
         "serialization.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":advanced_activations",
         ":convolutional",
@@ -39,15 +44,17 @@ py_library(
         ":kernelized",
         ":local",
         ":merge",
+        ":multi_head_attention",
         ":noise",
-        ":normalization",
-        ":normalization_v2",
         ":pooling",
         ":recurrent",
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
+        "//tensorflow/python/keras/feature_column",
+        "//tensorflow/python/keras/layers/normalization",
         "//tensorflow/python/keras/layers/preprocessing",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -55,7 +62,7 @@ py_library(
 py_library(
     name = "advanced_activations",
     srcs = ["advanced_activations.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
@@ -72,7 +79,7 @@ py_library(
 py_library(
     name = "convolutional",
     srcs = ["convolutional.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",
@@ -96,7 +103,7 @@ py_library(
 py_library(
     name = "convolutional_recurrent",
     srcs = ["convolutional_recurrent.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":recurrent",
         "//tensorflow/python:array_ops",
@@ -118,7 +125,7 @@ py_library(
 py_library(
     name = "core",
     srcs = ["core.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -143,7 +150,6 @@ py_library(
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/engine:keras_tensor",
-        "//tensorflow/python/keras/layers/ops:core",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -155,7 +161,7 @@ py_library(
 py_library(
     name = "cudnn_recurrent",
     srcs = ["cudnn_recurrent.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":recurrent",
         ":recurrent_v2",
@@ -175,7 +181,7 @@ py_library(
 py_library(
     name = "dense_attention",
     srcs = ["dense_attention.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -194,8 +200,25 @@ py_library(
 py_library(
     name = "einsum_dense",
     srcs = ["einsum_dense.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:activations",
+        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras:constraints",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:regularizers",
+    ],
+)
+
+py_library(
+    name = "multi_head_attention",
+    srcs = ["multi_head_attention.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:platform",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
@@ -210,13 +233,12 @@ py_library(
 py_library(
     name = "embeddings",
     srcs = ["embeddings.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
@@ -230,7 +252,7 @@ py_library(
 py_library(
     name = "kernelized",
     srcs = ["kernelized.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -242,14 +264,13 @@ py_library(
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
 py_library(
     name = "local",
     srcs = ["local.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:activations",
@@ -268,7 +289,7 @@ py_library(
 py_library(
     name = "merge",
     srcs = ["merge.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -283,7 +304,7 @@ py_library(
 py_library(
     name = "noise",
     srcs = ["noise.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -296,48 +317,9 @@ py_library(
 )
 
 py_library(
-    name = "normalization",
-    srcs = ["normalization.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/engine:base_layer_utils",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/utils:tf_utils",
-    ],
-)
-
-py_library(
-    name = "normalization_v2",
-    srcs = ["normalization_v2.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":normalization",
-        "//tensorflow/python:util",
-    ],
-)
-
-py_library(
     name = "pooling",
     srcs = ["pooling.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -354,11 +336,10 @@ py_library(
 py_library(
     name = "recurrent",
     srcs = ["recurrent.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -386,7 +367,7 @@ py_library(
 py_library(
     name = "recurrent_v2",
     srcs = ["recurrent_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":recurrent",
         "//tensorflow/python:array_ops",
@@ -399,7 +380,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
-        "//tensorflow/python:platform_build_info",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
@@ -414,18 +394,18 @@ py_library(
 py_library(
     name = "rnn_cell_wrapper_v2",
     srcs = ["rnn_cell_wrapper_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":recurrent",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
 
 py_library(
     name = "wrappers",
     srcs = ["wrappers.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":recurrent",
         "//tensorflow/python:array_ops",
@@ -491,6 +471,9 @@ cuda_py_test(
     srcs = ["convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -504,6 +487,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["convolutional_transpose_test.py"],
     python_version = "PY3",
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -520,6 +506,9 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows_gpu",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -539,6 +528,7 @@ tf_py_test(
     # TODO(b/127881287): Re-enable.
     tags = [
         "no_windows_gpu",
+        "notsan",  # TODO(b/183962355)
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -586,6 +576,18 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "multi_head_attention_test",
+    srcs = ["multi_head_attention_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_head_attention",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -642,6 +644,7 @@ tf_py_test(
     size = "medium",
     srcs = ["merge_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -653,31 +656,12 @@ tf_py_test(
 
 tf_py_test(
     name = "noise_test",
-    size = "small",
+    size = "medium",
     srcs = ["noise_test.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "normalization_test",
-    size = "medium",
-    srcs = ["normalization_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_rocm",
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -705,7 +689,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "notsan",  # http://b/62136390
     ],
     deps = [
@@ -724,7 +707,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "noasan",  # times out b/63678675
         "notsan",  # http://b/62189182
     ],
@@ -742,7 +724,10 @@ tf_py_test(
     srcs = ["recurrent_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # TODO(b/170870794)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -784,6 +769,13 @@ cuda_py_test(
     srcs = ["lstm_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "no_oss",
+        "notsan",  # TODO(b/170954246)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -798,6 +790,7 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -882,7 +875,21 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layers_test",
+    size = "small",
+    srcs = ["layers_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
     ],
 )

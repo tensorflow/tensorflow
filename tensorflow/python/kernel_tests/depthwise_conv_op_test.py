@@ -425,7 +425,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # GitHub issue 22110.
     if not test.is_gpu_available():
       return
-    with self.session(use_gpu=True):
+    with self.session():
       x = array_ops.placeholder(dtypes.float32)
       f = np.ones([1, 1, 1, 1], np.float32)
       v = nn_impl.depthwise_conv2d(
@@ -832,7 +832,7 @@ class DepthwiseConv2DTest(test.TestCase):
       # double datatype is currently not supported for convolution ops
       # on the ROCm platform
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
-      for data_type in ([dtypes.float32] + optional_float64):
+      for data_type in ([dtypes.float16, dtypes.float32] + optional_float64):
         self._ConstructAndTestGradient(
             input_size,
             filter_size,

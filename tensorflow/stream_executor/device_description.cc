@@ -51,6 +51,7 @@ DeviceDescription::DeviceDescription()
       cuda_compute_capability_major_(-1),
       cuda_compute_capability_minor_(-1),
       rocm_amdgpu_isa_version_(-1),
+      rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -95,6 +96,8 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
   result["CUDA Compute Capability"] = absl::StrCat(
       cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
 
+  result["AMDGPU GCN Arch Name"] = rocm_amdgpu_gcn_arch_name_;
+
   result["NUMA Node"] = absl::StrCat(numa_node());
   result["Core Count"] = absl::StrCat(core_count());
   result["ECC Enabled"] = absl::StrCat(ecc_enabled());
@@ -125,8 +128,9 @@ bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
 
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
-  auto total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
-  auto threads_per_block_limit = device_description.threads_per_block_limit();
+  const int64 total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
+  const int64 threads_per_block_limit =
+      device_description.threads_per_block_limit();
   if (total_threads > threads_per_block_limit) {
     VLOG(2) << "exceeded total-thread-per-block limit: " << total_threads
             << " vs limit " << threads_per_block_limit;

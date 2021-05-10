@@ -71,7 +71,15 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
     if (*out != nullptr) return Status::OK();
   }
+
   mutex_lock l(g_op_name_to_attr_type_map_lock);
+
+  // Check the existence of AttrTypeMap for op_name again because another thread
+  // may insert this map after the tf_shared_lock is released but before the
+  // mutex_lock is acquired.
+  *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
+  if (*out != nullptr) return Status::OK();
+
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
   if (errors::IsNotFound(s)) {
@@ -121,7 +129,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     gtl::InsertIfNotPresent(m.get(), attr.name(), t);
   }
   *out = m.get();
-  (*OpNameToAttrTypeMap())[op_name] = m.release();
+  auto r = OpNameToAttrTypeMap()->emplace(op_name, m.release());
+  DCHECK(r.second) << "AttrTypeMap already exists for " << op_name;
+
   return Status::OK();
 }
 
@@ -224,6 +234,11 @@ const NodeDef& AttrBuilder::BuildNodeDef() {
   return node_def_;
 }
 
+void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
+  encoded_attrs_.insert(other.encoded_attrs_.begin(),
+                        other.encoded_attrs_.end());
+}
+
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list) {
   auto* t = gtl::FindOrNull(m, attr_name);
@@ -291,6 +306,31 @@ void AttrBuilder::InitializeNodeDef() {
   node_def_.set_name(op_name_);
   node_def_.set_op(op_name_);
   node_def_initialized_ = true;
+}
+
+void AttrBuilder::GetNameAttrList(
+    tensorflow::NameAttrList* name_and_attrs) const {
+  FillAttrValueMap(name_and_attrs->mutable_attr());
+  name_and_attrs->set_name(op_name());
+}
+
+bool AttrBuilder::GetInt(absl::string_view attr_name, int64_t* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetFloat(absl::string_view attr_name, float* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetBool(absl::string_view attr_name, bool* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+
+bool AttrBuilder::GetType(absl::string_view attr_name,
+                          tensorflow::DataType* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
 }
 
 }  // namespace tensorflow

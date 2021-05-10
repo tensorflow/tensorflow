@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import config
@@ -29,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_hook
@@ -126,13 +128,17 @@ class SaverTest(test.TestCase):
     second_saver.restore(save_path)
     self.assertEqual(2., self.evaluate(v2))
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_checkpoint_is_sharded_by_device(self):
-    with ops.device("cpu:0"):
+  @test_util.disable_tfrt("b/171765113: server is not supported in TFRT yet.")
+  def test_checkpoint_is_sharded_by_task(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
+    with ops.device("/job:worker/task:0/cpu:0"):
       v0 = resource_variable_ops.ResourceVariable(0.)
-    with ops.device("cpu:1"):
+    with ops.device("/job:worker/task:1/cpu:0"):
       v1 = resource_variable_ops.ResourceVariable(1.)
-    with ops.device("cpu:2"):
+    with ops.device("/job:worker/task:2/cpu:0"):
       v2 = resource_variable_ops.ResourceVariable(2.)
 
     self.evaluate([v0.initializer, v1.initializer, v2.initializer])
@@ -167,7 +173,7 @@ class SaverTest(test.TestCase):
         list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
-    self.assertEqual(4, len(gfile.Glob(prefix + "*")))
+    self.assertEqual(2, len(gfile.Glob(prefix + "*")))
     self.evaluate(v0.assign(-1.))
     self.evaluate(v1.assign(-1.))
     self.evaluate(v2.assign(-1.))

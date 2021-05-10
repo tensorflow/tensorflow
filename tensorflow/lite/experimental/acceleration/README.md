@@ -1,4 +1,4 @@
-# Accelerator whitelisting
+# Accelerator allowlisting
 
 Experimental library and tools for determining whether an accelerator engine
 works well on a given device, and for a given model.
@@ -6,7 +6,7 @@ works well on a given device, and for a given model.
 ## Platform-agnostic, Android-first
 
 Android-focused, since the much smaller set of configurations on iOS means there
-is much less need for whitelisting on iOS.
+is much less need for allowlisting on iOS.
 
 ## Not just for TfLite
 

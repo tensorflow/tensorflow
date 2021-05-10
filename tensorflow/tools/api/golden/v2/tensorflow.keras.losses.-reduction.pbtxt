@@ -1,6 +1,6 @@
 path: "tensorflow.keras.losses.Reduction"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.losses.loss_reduction.ReductionV2\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.losses_utils.ReductionV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "AUTO"

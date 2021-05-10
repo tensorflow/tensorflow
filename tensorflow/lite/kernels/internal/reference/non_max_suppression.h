@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <numeric>
+#include <deque>
 #include <queue>
 
 namespace tflite {

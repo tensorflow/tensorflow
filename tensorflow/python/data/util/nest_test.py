@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-
 import numpy as np
+from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -31,8 +33,9 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-class NestTest(test.TestCase):
+class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenAndPack(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))
     flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -58,15 +61,16 @@ class NestTest(test.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegexp(ValueError, "Structure is a scalar"):
+    with self.assertRaisesRegex(ValueError, "Structure is a scalar"):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, "flat_sequence"):
+    with self.assertRaisesRegex(TypeError, "flat_sequence"):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
       nest.pack_sequence_as([5, 6, [7, 8]], ["a", "b", "c"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenDictOrder(self):
     """`flatten` orders dicts by key, including OrderedDicts."""
     ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
@@ -76,6 +80,7 @@ class NestTest(test.TestCase):
     self.assertEqual([0, 1, 2, 3], ordered_flat)
     self.assertEqual([0, 1, 2, 3], plain_flat)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPackDictOrder(self):
     """Packing orders dicts by key, including OrderedDicts."""
     ordered = collections.OrderedDict([("d", 0), ("b", 0), ("a", 0), ("c", 0)])
@@ -88,6 +93,7 @@ class NestTest(test.TestCase):
         ordered_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenAndPackWithDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
     named_tuple = collections.namedtuple("A", ("b", "c"))
@@ -134,6 +140,7 @@ class NestTest(test.TestCase):
     self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
     self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenSparseValue(self):
     st = sparse_tensor.SparseTensorValue([[0]], [0], [1])
     single_value = st
@@ -145,6 +152,7 @@ class NestTest(test.TestCase):
     self.assertEqual([st, st, st], nest.flatten(nest_of_values))
     self.assertEqual([st, st, st], nest.flatten(dict_of_values))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenRaggedValue(self):
     rt = ragged_factory_ops.constant_value([[[0]], [[1]]])
     single_value = rt
@@ -156,6 +164,7 @@ class NestTest(test.TestCase):
     self.assertEqual([rt, rt, rt], nest.flatten(nest_of_values))
     self.assertEqual([rt, rt, rt], nest.flatten(dict_of_values))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))
@@ -172,6 +181,7 @@ class NestTest(test.TestCase):
     self.assertFalse(
         nest.is_sequence(ragged_factory_ops.constant_value([[[0]], [[1]]])))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
@@ -191,20 +201,20 @@ class NestTest(test.TestCase):
     nest.assert_same_structure("abc", np.array([0, 1]))
     nest.assert_same_structure("abc", constant_op.constant([0, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure((0, 1), np.array([0, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure(0, (0, 1))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure(structure1, structure_different_nesting)
 
     named_type_0 = collections.namedtuple("named_0", ("a", "b"))
@@ -217,24 +227,23 @@ class NestTest(test.TestCase):
     self.assertRaises(TypeError, nest.assert_same_structure,
                       named_type_0(3, 4), named_type_1(3, 4))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure(named_type_0(3, 4), named_type_0((3,), 4))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegex(ValueError,
+                                "don't have the same nested structure"):
       nest.assert_same_structure(((3,), 4), (3, (4,)))
 
     structure1_list = {"a": ((1, 2), 3), "b": 4, "c": (5, 6)}
     structure2_list = {"a": ((1, 2), 3), "b": 4, "d": (5, 6)}
-    with self.assertRaisesRegexp(TypeError,
-                                 "don't have the same sequence type"):
+    with self.assertRaisesRegex(TypeError, "don't have the same sequence type"):
       nest.assert_same_structure(structure1, structure1_list)
     nest.assert_same_structure(structure1, structure2, check_types=False)
     nest.assert_same_structure(structure1, structure1_list, check_types=False)
-    with self.assertRaisesRegexp(ValueError, "don't have the same set of keys"):
+    with self.assertRaisesRegex(ValueError, "don't have the same set of keys"):
       nest.assert_same_structure(structure1_list, structure2_list)
-    with self.assertRaisesRegexp(ValueError, "don't have the same set of keys"):
+    with self.assertRaisesRegex(ValueError, "don't have the same set of keys"):
       nest.assert_same_structure(structure_dictionary,
                                  structure_dictionary_diff_nested)
     nest.assert_same_structure(
@@ -244,6 +253,7 @@ class NestTest(test.TestCase):
     nest.assert_same_structure(
         structure1_list, structure2_list, check_types=False)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
@@ -262,35 +272,36 @@ class NestTest(test.TestCase):
 
     self.assertEqual(7, nest.map_structure(lambda x, y: x + y, 3, 4))
 
-    with self.assertRaisesRegexp(TypeError, "callable"):
+    with self.assertRaisesRegex(TypeError, "callable"):
       nest.map_structure("bad", structure1_plus1)
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, 3, (3,))
 
-    with self.assertRaisesRegexp(TypeError, "same sequence type"):
+    with self.assertRaisesRegex(TypeError, "same sequence type"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), {"a": (3, 4), "b": 5})
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)))
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
                          check_types=False)
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegex(ValueError, "Only valid keyword argument"):
       nest.map_structure(lambda x: None, structure1, foo="a")
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegex(ValueError, "Only valid keyword argument"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAssertShallowStructure(self):
     inp_ab = ("a", "b")
     inp_abc = ("a", "b", "c")
     expected_message = (
         "The two structures don't have the same sequence length. Input "
         "structure has length 2, while shallow structure has length 3.")
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesRegex(ValueError, expected_message):
       nest.assert_shallow_structure(inp_abc, inp_ab)
 
     inp_ab1 = ((1, 1), (2, 2))
@@ -299,7 +310,7 @@ class NestTest(test.TestCase):
         "The two structures don't have the same sequence type. Input structure "
         "has type <(type|class) 'tuple'>, while shallow structure has type "
         "<(type|class) 'dict'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
@@ -309,13 +320,14 @@ class NestTest(test.TestCase):
         r"The two structures don't have the same keys. Input "
         r"structure has keys \['c'\], while shallow structure has "
         r"keys \['d'\].")
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesRegex(ValueError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
     inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
     inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
     nest.assert_shallow_structure(inp_ab, inp_ba)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlattenUpTo(self):
     input_tree = (((2, 2), (3, 3)), ((4, 9), (5, 5)))
     shallow_tree = ((True, True), (False, True))
@@ -387,14 +399,14 @@ class NestTest(test.TestCase):
     shallow_tree = ("shallow_tree",)
     expected_message = ("If shallow structure is a sequence, input must also "
                         "be a sequence. Input has type: <(type|class) 'str'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, list(shallow_tree))
 
     input_tree = "input_tree"
     shallow_tree = ("shallow_tree_9", "shallow_tree_8")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, list(shallow_tree))
@@ -404,14 +416,14 @@ class NestTest(test.TestCase):
     shallow_tree = (9,)
     expected_message = ("If shallow structure is a sequence, input must also "
                         "be a sequence. Input has type: <(type|class) 'int'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, list(shallow_tree))
 
     input_tree = 0
     shallow_tree = (9, 8)
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, list(shallow_tree))
@@ -424,6 +436,7 @@ class NestTest(test.TestCase):
     self.assertEqual(flattened_input_tree, [(2, 2), (3, 3), (4, 9), (5, 5)])
     self.assertEqual(flattened_shallow_tree, [True, True, False, True])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapStructureUpTo(self):
     ab_tuple = collections.namedtuple("ab_tuple", "a, b")
     op_tuple = collections.namedtuple("op_tuple", "add, mul")

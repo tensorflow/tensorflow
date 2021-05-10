@@ -1300,7 +1300,7 @@ def lecun_normal(seed=None):
   `stddev = sqrt(1 / fan_in)` where `fan_in` is the number of
   input units in the weight tensor.
 
-  Arguments:
+  Args:
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -1327,7 +1327,7 @@ def lecun_uniform(seed=None):
   where `limit` is `sqrt(3 / fan_in)`
   where `fan_in` is the number of input units in the weight tensor.
 
-  Arguments:
+  Args:
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -1355,7 +1355,7 @@ def he_normal(seed=None):
   `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
   input units in the weight tensor.
 
-  Arguments:
+  Args:
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -1379,7 +1379,7 @@ def he_uniform(seed=None):
   where `limit` is `sqrt(6 / fan_in)`
   where `fan_in` is the number of input units in the weight tensor.
 
-  Arguments:
+  Args:
       seed: A Python integer. Used to seed the random generator.
 
   Returns:

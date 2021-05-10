@@ -1,6 +1,6 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var2_add -o - | FileCheck %s --dump-input=fail
-# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var1_add -o - 2>&1 | FileCheck %s --check-prefix=UNIQUE --dump-input=fail
-# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var3_add -o - 2>&1 | FileCheck %s --check-prefix=MISSING --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var2_add -o - | FileCheck %s
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var1_add -o - 2>&1 | FileCheck %s --check-prefix=UNIQUE
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var3_add -o - 2>&1 | FileCheck %s --check-prefix=MISSING
 
 node {
   name: "arg0"

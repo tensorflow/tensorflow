@@ -425,7 +425,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Backprop along the in edges to the while loop (i.e. the inputs to the enter
   // nodes)
   DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
-  for (int i = 0; i < dx.size(); ++i) {
+  for (int i = 0, end = dx.size(); i < end; ++i) {
     Node* enter_node = while_ctx->enter_nodes()[i];
     for (const Edge* e : enter_node->in_edges()) {
       if (e->IsControlEdge()) continue;
@@ -489,7 +489,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // All loop-specific control flow ops should have been handled above
     DCHECK(!n->IsEnter() && !n->IsNextIteration()) << n->DebugString();
 
-    const size_t num_no_grad = no_grad_dy_indices.size();
+    const int num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.
@@ -524,7 +524,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // make this association explicit.
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      int dx_index = e->dst_input();
+      size_t dx_index = e->dst_input();
       if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());

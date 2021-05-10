@@ -24,6 +24,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -71,7 +72,7 @@ def handle_options(func, x, axis, exclusive, reverse):
 
 class CumsumTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32, np.int32]
+  valid_dtypes = [np.float32, np.int32, np.int64]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])
@@ -129,6 +130,7 @@ class CumsumTest(xla_test.XLATestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     with self.session(), self.test_scope():
@@ -207,6 +209,7 @@ class CumprodTest(xla_test.XLATestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     with self.session(), self.test_scope():

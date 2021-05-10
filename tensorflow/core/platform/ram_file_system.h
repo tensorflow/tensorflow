@@ -79,7 +79,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     return Status::OK();
   }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& cord) override {
     data_->append(cord.char_begin(), cord.char_end());
     return Status::OK();
@@ -97,38 +97,57 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RamRandomAccessFile);
-  string name_;
+  std::string name_;
   std::shared_ptr<std::string> data_;
 };
 
 class RamFileSystem : public FileSystem {
  public:
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
+      const std::string& fname_, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override {
     mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     if (fs_.find(fname) == fs_.end()) {
       return errors::NotFound("");
+    }
+    if (fs_[fname] == nullptr) {
+      return errors::InvalidArgument(fname_, " is a directory.");
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
     return Status::OK();
   }
 
-  Status NewWritableFile(const string& fname,
+  Status NewWritableFile(const std::string& fname_, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
+    }
+    if (fs_[fname] == nullptr) {
+      return errors::InvalidArgument(fname_, " is a directory.");
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
     return Status::OK();
   }
-  Status NewAppendableFile(const string& fname,
+
+  Status NewAppendableFile(const std::string& fname_, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
+    }
+    if (fs_[fname] == nullptr) {
+      return errors::InvalidArgument(fname_, " is a directory.");
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -136,47 +155,62 @@ class RamFileSystem : public FileSystem {
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return errors::Unimplemented("");
   }
 
-  Status FileExists(const string& fname) override {
+  Status FileExists(const std::string& fname_,
+                    TransactionToken* token) override {
     FileStatistics stat;
-    return Stat(fname, &stat);
+    auto fname = StripRamFsPrefix(fname_);
+
+    return Stat(fname, token, &stat);
   }
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
+  Status GetChildren(const std::string& dir_, TransactionToken* token,
+                     std::vector<std::string>* result) override {
     mutex_lock m(mu_);
+    auto dir = StripRamFsPrefix(dir_);
+
     auto it = fs_.lower_bound(dir);
-    while (it != fs_.end() && absl::StartsWith(it->first, dir)) {
-      result->push_back(it->first);
+    while (it != fs_.end() && StartsWith(it->first, dir)) {
+      auto filename = StripPrefix(StripPrefix(it->first, dir), "/");
+      // It is not either (a) the parent directory itself or (b) a subdirectory
+      if (!filename.empty() && filename.find("/") == std::string::npos) {
+        result->push_back(filename);
+      }
       ++it;
     }
 
     return Status::OK();
   }
 
-  Status GetMatchingPaths(const string& pattern,
-                          std::vector<string>* results) override {
+  Status GetMatchingPaths(const std::string& pattern_, TransactionToken* token,
+                          std::vector<std::string>* results) override {
     mutex_lock m(mu_);
+    auto pattern = StripRamFsPrefix(pattern_);
+
     Env* env = Env::Default();
     for (auto it = fs_.begin(); it != fs_.end(); ++it) {
       if (env->MatchPath(it->first, pattern)) {
-        results->push_back(it->first);
+        results->push_back("ram://" + it->first);
       }
     }
     return Status::OK();
   }
 
-  Status Stat(const string& fname, FileStatistics* stat) override {
+  Status Stat(const std::string& fname_, TransactionToken* token,
+              FileStatistics* stat) override {
     mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     auto it = fs_.lower_bound(fname);
-    if (it == fs_.end()) {
+    if (it == fs_.end() || !StartsWith(it->first, fname)) {
       return errors::NotFound("");
     }
 
-    if (it->first == fname) {
+    if (it->first == fname && it->second != nullptr) {
       stat->is_directory = false;
       stat->length = fs_[fname]->size();
       stat->mtime_nsec = 0;
@@ -189,8 +223,11 @@ class RamFileSystem : public FileSystem {
     return Status::OK();
   }
 
-  Status DeleteFile(const string& fname) override {
+  Status DeleteFile(const std::string& fname_,
+                    TransactionToken* token) override {
     mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     if (fs_.find(fname) != fs_.end()) {
       fs_.erase(fname);
       return Status::OK();
@@ -199,25 +236,75 @@ class RamFileSystem : public FileSystem {
     return errors::NotFound("");
   }
 
-  Status CreateDir(const string& dirname) override { return Status::OK(); }
+  Status CreateDir(const std::string& dirname_,
+                   TransactionToken* token) override {
+    mutex_lock m(mu_);
+    auto dirname = StripRamFsPrefix(dirname_);
 
-  Status RecursivelyCreateDir(const string& dirname) override {
+    auto it = fs_.find(dirname);
+    if (it != fs_.end() && it->second != nullptr) {
+      return errors::AlreadyExists(
+          "cannot create directory with same name as an existing file");
+    }
+
+    fs_[dirname] = nullptr;
     return Status::OK();
   }
 
-  Status DeleteDir(const string& dirname) override { return Status::OK(); }
+  Status RecursivelyCreateDir(const std::string& dirname_,
+                              TransactionToken* token) override {
+    auto dirname = StripRamFsPrefix(dirname_);
 
-  Status GetFileSize(const string& fname, uint64* file_size) override {
+    std::vector<std::string> dirs = StrSplit(dirname, "/");
+    Status last_status;
+    std::string dir = dirs[0];
+    last_status = CreateDir(dir, token);
+
+    for (int i = 1; i < dirs.size(); ++i) {
+      dir = dir + "/" + dirs[i];
+      last_status = CreateDir(dir, token);
+    }
+    return last_status;
+  }
+
+  Status DeleteDir(const std::string& dirname_,
+                   TransactionToken* token) override {
     mutex_lock m(mu_);
+    auto dirname = StripRamFsPrefix(dirname_);
+
+    auto it = fs_.find(dirname);
+    if (it == fs_.end()) {
+      return errors::NotFound("");
+    }
+    if (it->second != nullptr) {
+      return errors::InvalidArgument("Not a directory");
+    }
+    fs_.erase(dirname);
+
+    return Status::OK();
+  }
+
+  Status GetFileSize(const std::string& fname_, TransactionToken* token,
+                     uint64* file_size) override {
+    mutex_lock m(mu_);
+    auto fname = StripRamFsPrefix(fname_);
+
     if (fs_.find(fname) != fs_.end()) {
+      if (fs_[fname] == nullptr) {
+        return errors::InvalidArgument("Not a file");
+      }
       *file_size = fs_[fname]->size();
       return Status::OK();
     }
     return errors::NotFound("");
   }
 
-  Status RenameFile(const string& src, const string& target) override {
+  Status RenameFile(const std::string& src_, const std::string& target_,
+                    TransactionToken* token) override {
     mutex_lock m(mu_);
+    auto src = StripRamFsPrefix(src_);
+    auto target = StripRamFsPrefix(target_);
+
     if (fs_.find(src) != fs_.end()) {
       fs_[target] = fs_[src];
       fs_.erase(fs_.find(src));
@@ -231,7 +318,37 @@ class RamFileSystem : public FileSystem {
 
  private:
   mutex mu_;
-  std::map<string, std::shared_ptr<std::string>> fs_;
+  std::map<std::string, std::shared_ptr<std::string>> fs_;
+
+  std::vector<std::string> StrSplit(std::string s, std::string delim) {
+    std::vector<std::string> ret;
+    size_t curr_pos = 0;
+    while ((curr_pos = s.find(delim)) != std::string::npos) {
+      ret.push_back(s.substr(0, curr_pos));
+      s.erase(0, curr_pos + delim.size());
+    }
+    ret.push_back(s);
+    return ret;
+  }
+
+  bool StartsWith(std::string s, std::string prefix) {
+    return s.find(prefix) == 0;
+  }
+
+  string StripPrefix(std::string s, std::string prefix) {
+    if (s.find(prefix) == 0) {
+      return s.erase(0, prefix.size());
+    }
+    return s;
+  }
+
+  string StripRamFsPrefix(std::string name) {
+    std::string s = StripPrefix(name, "ram://");
+    if (*(s.rbegin()) == '/') {
+      s.pop_back();
+    }
+    return s;
+  }
 };
 
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -33,32 +34,33 @@ namespace gpu {
 ParallelLoopEmitter::ParallelLoopEmitter(
     BodyEmitter body_emitter, const Shape& shape,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
-    int unroll_factor)
+    LaunchDimensionsConfig launch_config)
     : LoopEmitter(body_emitter, shape, b),
       launch_dimensions_(launch_dimensions),
-      unroll_factor_(unroll_factor) {}
+      launch_config_(launch_config) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     absl::Span<const llvm_ir::IrArray> target_arrays,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
-    int unroll_factor)
+    LaunchDimensionsConfig launch_config)
     : LoopEmitter(target_element_generator, target_arrays, b),
       launch_dimensions_(launch_dimensions),
-      unroll_factor_(unroll_factor) {}
+      launch_config_(launch_config) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
-    int unroll_factor)
+    LaunchDimensionsConfig launch_config)
     : LoopEmitter(target_element_generator, target_array, b),
       launch_dimensions_(launch_dimensions),
-      unroll_factor_(unroll_factor) {}
+      launch_config_(launch_config) {}
 
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
-                                                   llvm::Type* index_type) {
+                                                   llvm::Type* index_type,
+                                                   llvm::Value* base_index) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -70,12 +72,13 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   //   "It is guaranteed that [...] 0  <=  %ctaid.x <  %nctaid.x"
   //
   // %nctaid.x is currently specified as 2147483647.
-  VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor " << unroll_factor_;
+  VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor "
+          << launch_config_.unroll_factor;
   CHECK_NE(index_type, nullptr);
   std::vector<llvm_ir::IrArray::Index> array_indices;
   llvm::Value* block_id =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_count(),
+  llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_counts().x,
                             static_cast<llvm::Instruction*>(block_id));
   block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
 
@@ -85,16 +88,17 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   // %ntid.x is currently specified as 1024.
   llvm::Value* thread_id =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, launch_dimensions_.threads_per_block(),
+  llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().x,
                             static_cast<llvm::Instruction*>(thread_id));
   thread_id = b_->CreateZExtOrTrunc(thread_id, index_type, "thread_id");
 
   llvm::Value* linear_index_base = b_->CreateAdd(
-      b_->CreateMul(block_id,
-                    llvm::ConstantInt::get(
-                        index_type, launch_dimensions_.threads_per_block()),
-                    "",
-                    /*HasNUW=*/true, /*HasNSW=*/true),
+      b_->CreateMul(
+          block_id,
+          llvm::ConstantInt::get(
+              index_type, launch_dimensions_.thread_counts_per_block().x),
+          "",
+          /*HasNUW=*/true, /*HasNSW=*/true),
       thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
 
   // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
@@ -109,25 +113,58 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       llvm::Intrinsic::assume,
       {b_->CreateICmpULT(
           linear_index_base,
-          llvm::ConstantInt::get(index_type,
-                                 launch_dimensions_.threads_per_block() *
-                                     launch_dimensions_.block_count()),
+          llvm::ConstantInt::get(
+              index_type, launch_dimensions_.thread_counts_per_block().x *
+                              launch_dimensions_.block_counts().x),
           "linear_index_in_range")},
       {}, b_);
 
-  if (unroll_factor_ > 1) {
+  if (launch_config_.unroll_factor > 1) {
     linear_index_base = b_->CreateMul(
-        linear_index_base, llvm::ConstantInt::get(index_type, unroll_factor_),
+        linear_index_base,
+        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
         "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
-  array_indices.emplace_back(linear_index_base, shape_, b_);
-  for (int i = 1; i < unroll_factor_; ++i) {
+  if (base_index != nullptr) {
+    linear_index_base =
+        b_->CreateAdd(linear_index_base, base_index, "linear_index_plus_base",
+                      /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+
+  // When enable_row_index is true, it means the inner most dimensions
+  // match the block sizes.  So we can generate a simpler indexing
+  // for that dimensions.  This helps LLVM generate vectorized codes
+  // in that cases.
+  llvm::Value* row_index = nullptr;
+  if (!launch_config_.row_vectorized) {
+    array_indices.emplace_back(linear_index_base, shape_, b_);
+  } else {
+    // Simpler index for row computation.
+    // This will allow LLVM to vectorize.
+    row_index = b_->CreateMul(
+        thread_id,
+        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
+        "row_index", /*HasNUW=*/true, /*HasNSW=*/true);
+    std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+    multidim.back() = row_index;
+    array_indices.emplace_back(linear_index_base, multidim, shape_, b_);
+  }
+
+  for (int i = 1; i < launch_config_.unroll_factor; ++i) {
     llvm::Value* linear_index =
         b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
-                      "linear_index",
+                      absl::StrCat("linear_index", i),
                       /*HasNUW=*/true, /*HasNSW=*/true);
-    array_indices.emplace_back(linear_index, shape_, b_);
+    if (!launch_config_.row_vectorized) {
+      array_indices.emplace_back(linear_index, shape_, b_);
+    } else {
+      std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+      multidim.back() = b_->CreateAdd(
+          row_index, llvm::ConstantInt::get(index_type, i),
+          absl::StrCat("row_index_plus", i), /*HasNUW=*/true, /*HasNSW=*/true);
+      array_indices.emplace_back(linear_index, multidim, shape_, b_);
+    }
   }
 
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
@@ -144,6 +181,45 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, b_);
 
   return array_indices;
+}
+
+Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
+                                     llvm::Type* index_type) {
+  if (index_type == nullptr) {
+    index_type = b_->getInt64Ty();
+  }
+  int64 total_threads = launch_dimensions_.launch_bound();
+  int64 num_elements = ShapeUtil::ElementsIn(shape_);
+  // If all the elements are handled by the current threads, no need
+  // to add a loop inside the kernel.
+  if (total_threads * launch_config_.unroll_factor >= num_elements) {
+    VLOG(1) << "ParallelLoopEmitter::EmitLoop fallback";
+    return LoopEmitter::EmitLoop(loop_name, index_type);
+  }
+
+  KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
+  auto constant = [&](int64 val) {
+    return llvm::ConstantInt::get(index_type, val);
+  };
+
+  TF_RETURN_IF_ERROR(ksl.ForWithStatus(
+      "loop", constant(0), constant(num_elements),
+      constant(total_threads * launch_config_.unroll_factor),
+      [&](llvm::Value* base_indvar) {
+        for (const llvm_ir::IrArray::Index& array_index :
+             EmitIndexAndSetExitBasicBlock(loop_name, index_type,
+                                           base_indvar)) {
+          TF_RETURN_IF_ERROR(body_emitter_(array_index));
+        }
+        return Status::OK();
+      }));
+
+  // Set the insertion point of b_ to the loop exit, so that
+  // code emitted for later instructions will be correctly placed.
+  if (exit_bb_ != nullptr) {
+    b_->SetInsertPoint(exit_bb_);
+  }
+  return Status::OK();
 }
 
 }  // namespace gpu

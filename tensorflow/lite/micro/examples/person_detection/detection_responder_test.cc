@@ -16,19 +16,17 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/detection_responder.h"
 
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestCallability) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // This will have external side-effects (like printing to the debug console
   // or lighting an LED) that are hard to observe, so the most we can do is
   // make sure the call doesn't crash.
-  RespondToDetection(error_reporter, 100, 200);
-  RespondToDetection(error_reporter, 200, 100);
+  RespondToDetection(&micro_error_reporter, -100, 100);
+  RespondToDetection(&micro_error_reporter, 100, 50);
 }
 
 TF_LITE_MICRO_TESTS_END

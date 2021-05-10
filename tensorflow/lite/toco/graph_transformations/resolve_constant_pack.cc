@@ -36,7 +36,7 @@ void Pack(Model* model, PackOperator const& op) {
   // Pack inputs into buffer
   CHECK_EQ(op.axis, 0) << "Packing only supported along first axis";
   int dst_offset = 0;
-  for (int i = 0; i < op.inputs.size(); i++) {
+  for (size_t i = 0; i < op.inputs.size(); i++) {
     // Append array data to output for each input array
     const auto& input_array = model->GetArray(op.inputs[i]);
     int input_size = RequiredBufferSizeForShape(input_array.shape());

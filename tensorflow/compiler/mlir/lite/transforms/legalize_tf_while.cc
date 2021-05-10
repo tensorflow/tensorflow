@@ -33,6 +33,10 @@ namespace {
 // cond and body regions.
 struct LegalizeWhile
     : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect>();
+  }
+
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {
@@ -42,30 +46,28 @@ struct LegalizeWhile
 
 }  // namespace
 
+// Inserts call to the given function into the 'region'.
+void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
+  OpBuilder builder(region);
+  auto block = builder.createBlock(&region);
+  SmallVector<Value, 4> new_operands;
+  for (Type t : func.getType().getInputs())
+    new_operands.push_back(block->addArgument(t));
+  auto call = builder.create<CallOp>(loc, func, new_operands);
+  builder.create<YieldOp>(loc, call.getResults());
+  // Mark old function as private so that it can be DCE'd if not called.
+  func.setPrivate();
+}
+
 void RunOnWhile(TF::WhileOp while_op) {
   Operation* op = while_op.getOperation();
   // Create new TFL While op that will be used to replace TF While op.
   auto new_op = OpBuilder(op).create<TFL::WhileOp>(
       op->getLoc(), op->getResultTypes(), op->getOperands(),
       while_op.is_stateless());
-  // Insert call to the given function into the 'region'.
-  auto create_region_with_call = [&while_op](FlatSymbolRefAttr symbol,
-                                             Region& region) {
-    OpBuilder builder(region);
-    auto block = builder.createBlock(&region);
-    SmallVector<Value, 4> new_operands;
-    auto func = while_op.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-        symbol.getValue());
-    for (Type t : func.getType().getInputs())
-      new_operands.push_back(block->addArgument(t));
-    auto call = builder.create<CallOp>(
-        while_op.getLoc(), symbol, func.getType().getResults(), new_operands);
-    builder.create<YieldOp>(while_op.getLoc(), call.getResults());
-    // Mark old function as private so that it can be DCE'd if not called.
-    func.setVisibility(SymbolTable::Visibility::Private);
-  };
-  create_region_with_call(while_op.condAttr(), new_op.cond());
-  create_region_with_call(while_op.bodyAttr(), new_op.body());
+  Location loc = while_op->getLoc();
+  CreateRegionWithCall(while_op.cond_function(), new_op.cond(), loc);
+  CreateRegionWithCall(while_op.body_function(), new_op.body(), loc);
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();

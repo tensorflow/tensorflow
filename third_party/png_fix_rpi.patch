@@ -1,6 +1,6 @@
-diff -r -u /tmp/libpng-1.6.37/scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf.h.prebuilt
---- /tmp/libpng-1.6.37/scripts/pnglibconf.h.prebuilt    2019-04-14 11:10:32.000000000 -0700
-+++ ./scripts/pnglibconf.h.prebuilt     2019-05-21 09:40:52.138528512 -0700
+diff -r -u ./scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf.h.prebuilt
+--- ./scripts/pnglibconf.h.prebuilt
++++ ./scripts/pnglibconf.h.prebuilt
 @@ -19,6 +19,12 @@
  #define PNG_ALIGNED_MEMORY_SUPPORTED
  /*#undef PNG_ARM_NEON_API_SUPPORTED*/

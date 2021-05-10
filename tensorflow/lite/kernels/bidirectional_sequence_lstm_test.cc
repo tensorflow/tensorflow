@@ -14,17 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Bidirectional LSTM op.
 
-#include <initializer_list>
-#include <iomanip>
-#include <memory>
+#include <tuple>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -94,7 +89,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       fw_input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     fw_forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    fw_cell_bias_ = AddInput(TensorType_FLOAT32);
+    fw_cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     fw_output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -149,7 +144,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     bw_forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    bw_cell_bias_ = AddInput(TensorType_FLOAT32);
+    bw_cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     bw_output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -165,20 +160,16 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 input state tensors.
-    fw_input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_fw_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    fw_input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_fw_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    fw_input_activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_fw_output_ * n_batch_}});
+    fw_input_cell_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_fw_cell_ * n_batch_}});
 
     // Adding the 2 input state tensors.
-    bw_input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_bw_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    bw_input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_bw_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    bw_input_activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_bw_output_ * n_batch_}});
+    bw_input_cell_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_bw_cell_ * n_batch_}});
 
     fw_output_ = AddOutput(TensorType_FLOAT32);
 
@@ -293,8 +284,8 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   }
 
   void SetCellBias(const std::vector<float>& f) {
-    PopulateTensor(fw_cell_bias_, f);
-    PopulateTensor(bw_cell_bias_, f);
+    PopulateTensor(fw_cell_gate_bias_, f);
+    PopulateTensor(bw_cell_gate_bias_, f);
   }
 
   void SetOutputGateBias(const std::vector<float>& f) {
@@ -369,7 +360,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
   int fw_input_gate_bias_;
   int fw_forget_gate_bias_;
-  int fw_cell_bias_;
+  int fw_cell_gate_bias_;
   int fw_output_gate_bias_;
 
   int fw_projection_weights_;
@@ -391,7 +382,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
   int bw_input_gate_bias_;
   int bw_forget_gate_bias_;
-  int bw_cell_bias_;
+  int bw_cell_gate_bias_;
   int bw_output_gate_bias_;
 
   int bw_projection_weights_;
@@ -472,7 +463,7 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -495,7 +486,7 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -638,7 +629,7 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -661,7 +652,7 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -801,7 +792,7 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -824,7 +815,7 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -961,7 +952,7 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -983,7 +974,7 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1112,7 +1103,7 @@ TEST(LSTMOpTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1134,7 +1125,7 @@ TEST(LSTMOpTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1263,7 +1254,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1285,7 +1276,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1966,7 +1957,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1988,7 +1979,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -2672,7 +2663,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2695,7 +2686,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2846,7 +2837,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2869,7 +2860,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor

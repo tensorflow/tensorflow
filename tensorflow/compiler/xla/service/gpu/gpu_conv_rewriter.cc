@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -209,7 +210,23 @@ MatchBackwardFilter(HloInstruction* conv) {
     }
     // Padding high will be checked in Step 3.
   }
-  if (input_batch_dim == output_batch_dim &&
+  // Mathematically, there is no difference between convolution forward vs
+  // backward filter. A backward filter:
+  //   [N, O, H+h-1, W+w-1] x [N, C, H, W] -> [O, C, h, w]
+  // Can be treated as a forward convolution with `N` treated as the new
+  // contracting (feature) dimension, `O` treated as the new batch dimension,
+  // and `C` treated as the new output feature dimension. The only difference is
+  // layouts and performance.
+  //
+  // Since there is no way to precisely tell whether we want a foward conv or
+  // backward filter conv, we have to rely on heuristics. Empirically forward
+  // convolutions have very small kernel dimensions, while in the backward pass
+  // "kernel dimensions" are large. If kernel dimensions are smaller than the
+  // output dimensions, return foward conv; otherwise proceed with backward
+  // filter conv.
+  if ((kernel_spatial_dims.empty() ||
+       conv->operand(1)->shape().dimensions(kernel_spatial_dims[0]) <=
+           conv->shape().dimensions(output_spatial_dims[0])) &&
       !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "
@@ -321,37 +338,10 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO: Theoretically cuDNN supports grouped convolutions also
-  // for the backward input convolution, but based on the cudnn's current state
-  // there is not much performance improvement when using the
-  // cudnn backward input API for grouped conv.
-  // This needs to be re-evaluated for future cuDNN versions.
-  // Note that we already have the necessary code down below, the only thing to
-  // enable it is to remove the following early return.
-  if (conv->feature_group_count() > 1) {
-    return no_match_result;
-  }
-
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
   ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
-
-  // Match BackwardInput for a depthwise convolution and thunk it to forward
-  // convolution Output feature dimension and input feature dimension has been
-  // swapped in the bridge. Hence to get the actual input features we need to
-  // query the output feature dimension
-  auto kernel_out_feature_dim = dnums.kernel_output_feature_dimension();
-  auto kernel_out_features =
-      reverse_filter->shape().dimensions(kernel_out_feature_dim);
-
-  // For a depthwise convolution, the input features must be equal to the
-  // feature_group_count. We can leverage this property to match a depthwise
-  // convolution and thunk it to forward conv
-  if (conv->feature_group_count() > 1 &&
-      kernel_out_features == conv->feature_group_count()) {
-    return no_match_result;
-  }
 
   // We pattern-match to a backwards input conv if:
   //
@@ -563,11 +553,12 @@ MatchBackwardInput(HloInstruction* conv) {
   // 'kernel_output_feature_dimension' by 'feature_group_count'.
   int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
   int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
+  // The following code assumes that input_feature_dimension and
+  // output_feature_dimension are adjacent.
+  if (std::abs(input_feature_dimension - output_feature_dimension) != 1) {
+    return no_match_result;
+  }
 
-  // In the backward convolution case, the spatial dimensions become the
-  // feature dimensions, and we are guaranteed that the spatial dimensions are
-  // adjacent.
-  CHECK_EQ(std::abs(input_feature_dimension - output_feature_dimension), 1LL);
   int64 input_features = rhs->shape().dimensions(input_feature_dimension);
   int64 output_features = rhs->shape().dimensions(output_feature_dimension);
 

@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
 
 // Overview result for a TensorFlow Op.
@@ -18,6 +19,11 @@ message OverviewTfOp {
   double cumulative_time_fraction = 4;
   // How many GFlops/sec that this Op achieves.
   double flop_rate = 5;
+  // Whether the Op is eligible to use TensorCores.
+  bool is_op_tensorcore_eligible = 6;
+  // Whether at least one of the kernels launched in this op is using
+  // TensorCore.
+  bool is_op_using_tensorcore = 7;
 }
 
 // Overview result for general analysis.
@@ -48,6 +54,15 @@ message OverviewPageAnalysis {
   double device_tf_op_percent = 12;
   // Host trace level.
   uint32 host_trace_level = 13;
+  // Percentage of TF-op execution time on the host (excluding the idle time)
+  // that are in eager mode.
+  double host_op_time_eager_percent = 14;
+  // Percentage of TF-op execution time on the device (excluding the idle time)
+  // that are in eager mode.
+  double device_op_time_eager_percent = 15;
+  // Percentage of TF-op execution time on the device (excluding the idle time)
+  // that are for outside compilation.
+  double device_op_time_outside_compilation_percent = 16;
 }
 
 // Overview result for a performance tip to users.
@@ -72,6 +87,12 @@ message GenericRecommendation {
   // A statement that recommends if the user should try using lower precision.
   // Shows this statement to users only if it is not empty.
   string precision_statement = 5;
+  // Indicates if device collectives are a performance bottleneck. Possible
+  // values: "no", "moderate", "high".
+  string device_collectives_bottleneck = 6;
+  // A statement that recommends if we need to further investigate
+  // device-collectives performance.
+  string device_collectives_statement = 7;
 }
 
 // Overview result for the recommendation section.
@@ -86,8 +107,15 @@ message OverviewPageRecommendation {
   // A statement for output that recommends the next steps for investigating the
   // bottleneck.
   string output_statement = 9;
+  // A statement that recommends the next steps for investigating eager-mode
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
+  string eager_statement_html = 12;
+  // A statement that recommends the next steps for investigating
+  // outside-compilation related bottleneck (it is an html so that it can link
+  // to other tools/docs.)
+  string outside_compilation_statement_html = 13;
   // A statement that recommends the next steps for investigating tf-function
-  // related bottleneck (it is a html so that it can link to other tools/docs.
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
   string tf_function_statement_html = 10;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;
@@ -168,7 +196,7 @@ message OverviewPage {
   OverviewPageAnalysis analysis = 3;
   // The recommendation made to the user.
   OverviewPageRecommendation recommendation = 4;
-  // Errors.
-  repeated string errors = 7;
-  reserved 1, 5;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 8;
+  reserved 1, 5, 7;
 }

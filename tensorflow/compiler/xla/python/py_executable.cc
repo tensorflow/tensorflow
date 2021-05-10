@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {
 
@@ -23,63 +24,112 @@ namespace py = pybind11;
 
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtExecutable> executable,
-                           std::unique_ptr<Traceback> traceback)
+                           std::shared_ptr<Traceback> traceback,
+                           absl::optional<std::string> fingerprint)
     : client_(std::move(client)),
       executable_(std::move(executable)),
-      traceback_(std::move(traceback)) {}
+      traceback_(std::move(traceback)),
+      fingerprint_(std::move(fingerprint)) {
+  CHECK(PyGILState_Check());
+  next_ = client_->executables_;
+  client_->executables_ = this;
+  prev_ = nullptr;
+  if (next_) {
+    next_->prev_ = this;
+  }
+  options_.untuple_result = true;
+  if (fingerprint_) {
+    options_.launch_id = tensorflow::Fingerprint32(*fingerprint_);
+    VLOG(1) << "Fingerprint for executable " << executable_->name() << ": "
+            << *fingerprint_;
+  }
+}
 
-std::vector<ClientAndPtr<Device>> PyExecutable::LocalDevices() const {
-  std::vector<ClientAndPtr<Device>> devices;
-  devices.reserve(executable_->local_devices().size());
-  for (Device* device : executable_->local_devices()) {
+PyExecutable::~PyExecutable() {
+  CHECK(PyGILState_Check());
+  if (client_->executables_ == this) {
+    client_->executables_ = next_;
+  }
+  if (prev_) {
+    prev_->next_ = next_;
+  }
+  if (next_) {
+    next_->prev_ = prev_;
+  }
+}
+
+std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
+  std::vector<ClientAndPtr<PjRtDevice>> devices;
+  devices.reserve(executable_->addressable_devices().size());
+  for (PjRtDevice* device : executable_->addressable_devices()) {
     devices.push_back(WrapWithClient(client_, device));
   }
   return devices;
 }
 
-StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
-    absl::Span<PyBuffer* const> args) {
+StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
+    absl::Span<PyBuffer::object const> args) {
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+  {
+    py::gil_scoped_release gil_release;
+    std::vector<PjRtBuffer*> arg_buffers(args.size());
+    absl::c_transform(
+        args, arg_buffers.begin(),
+        [](const PyBuffer::object& buf) { return buf.buf()->buffer(); });
+    TF_ASSIGN_OR_RETURN(output_buffers,
+                        executable_->Execute({arg_buffers}, options_));
+  }
   auto traceback = Traceback::Get();
-  py::gil_scoped_release gil_release;
-  ExecuteOptions options;
-  options.untuple_result = true;
-  std::vector<PjRtBuffer*> arg_buffers(args.size());
-  absl::c_transform(args, arg_buffers.begin(),
-                    [](PyBuffer* buf) { return buf->buffer(); });
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable_->Execute(arg_buffers, options));
-  std::vector<std::unique_ptr<PyBuffer>> outputs;
-  outputs.reserve(output_buffers.size());
-  for (auto& buffer : output_buffers) {
-    outputs.push_back(std::make_unique<PyBuffer>(client_, std::move(buffer),
-                                                 std::move(traceback)));
+  std::vector<PyBuffer::object> outputs;
+  outputs.reserve(output_buffers[0].size());
+  for (auto& buffer : output_buffers[0]) {
+    outputs.push_back(PyBuffer::Make(client_, std::move(buffer), traceback));
   }
   return outputs;
 }
 
-StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
-PyExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyBuffer*>> args) {
-  auto traceback = Traceback::Get();
-  py::gil_scoped_release gil_release;
-  ExecuteOptions options;
-  options.untuple_result = true;
-  std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
-  for (int computation = 0; computation < args.size(); ++computation) {
-    arg_buffers[computation].resize(args[computation].size());
-    absl::c_transform(args[computation], arg_buffers[computation].begin(),
-                      [](PyBuffer* buf) { return buf->buffer(); });
+StatusOr<std::vector<std::vector<PyBuffer::object>>>
+PyExecutable::ExecuteShardedOnLocalDevices(
+    absl::Span<const std::vector<PyBuffer::object>> args) {
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+  int num_computations = executable_->addressable_devices().size();
+  {
+    py::gil_scoped_release gil_release;
+    for (const auto& arg : args) {
+      if (arg.size() != num_computations) {
+        return xla::InvalidArgument(
+            "Expected args to execute_sharded_on_local_devices to have %d "
+            "shards, got: [%s]",
+            num_computations,
+            absl::StrJoin(
+                args, ", ",
+                [](std::string* out, const std::vector<PyBuffer::object>& arg) {
+                  out->append(std::to_string(arg.size()));
+                }));
+      }
+    }
+    std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_computations);
+    const int num_args = args.size();
+    for (int computation = 0; computation < num_computations; ++computation) {
+      arg_buffers[computation].resize(num_args);
+      absl::c_transform(args, arg_buffers[computation].begin(),
+                        [&](const std::vector<PyBuffer::object>& arg) {
+                          return arg[computation].buf()->buffer();
+                        });
+    }
+    TF_ASSIGN_OR_RETURN(output_buffers,
+                        executable_->Execute(arg_buffers, options_));
   }
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
-      executable_->ExecuteOnLocalDevices(arg_buffers, options));
-  std::vector<std::vector<std::unique_ptr<PyBuffer>>> outputs;
-  outputs.resize(output_buffers.size());
-  for (int computation = 0; computation < output_buffers.size();
-       ++computation) {
-    for (auto& buffer : output_buffers[computation]) {
-      outputs[computation].push_back(std::make_unique<PyBuffer>(
-          client_, std::move(buffer), std::move(traceback)));
+  auto traceback = Traceback::Get();
+  int num_output_buffers = output_buffers[0].size();
+  std::vector<std::vector<PyBuffer::object>> outputs;
+  outputs.resize(num_output_buffers);
+  for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
+    outputs[buffer_id].reserve(num_computations);
+    for (int computation = 0; computation < num_computations; ++computation) {
+      outputs[buffer_id].push_back(PyBuffer::Make(
+          client_, std::move(output_buffers[computation][buffer_id]),
+          traceback));
     }
   }
   return outputs;
@@ -87,15 +137,7 @@ PyExecutable::ExecuteOnLocalDevices(
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()
     const {
-  std::vector<std::shared_ptr<HloModule>> modules;
-  modules.reserve(executable_->executables().size());
-  for (const auto& local_exec : executable_->executables()) {
-    if (!local_exec->executable()->has_module()) {
-      return InvalidArgument("Executable does not have HLO modules.");
-    }
-    modules.push_back(local_exec->executable()->shared_module());
-  }
-  return std::move(modules);
+  return executable_->GetHloModules();
 }
 
 }  // namespace xla

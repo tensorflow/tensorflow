@@ -91,6 +91,7 @@ PaddingConfig MakeSpatialPaddingConfig(
     int num_spatial_dims, absl::Span<const int64> stride,
     const TensorFormat& data_format) {
   PaddingConfig padding_config;
+  padding_config.mutable_dimensions()->Reserve(2 + num_spatial_dims);
   for (int i = 0; i < 2 + num_spatial_dims; ++i) {
     padding_config.add_dimensions();
   }
@@ -198,15 +199,17 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
   XlaBuilder* b = out_backprop.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     const int num_dims = kernel_size.size();
-
-    if (gradients_size.size() != num_dims) {
+    const int num_gradients = gradients_size.size();
+    if (num_gradients != num_dims) {
       return tensorflow::errors::InvalidArgument("gradients must be ", num_dims,
                                                  "-dimensional");
     }
 
     TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
                         b->GetShape(out_backprop));
-    if (out_backprop_xla_shape.dimensions().size() != num_dims) {
+    const int backprop_xla_num_dims =
+        out_backprop_xla_shape.dimensions().size();
+    if (backprop_xla_num_dims != num_dims) {
       return tensorflow::errors::InvalidArgument("out_backprop must be ",
                                                  num_dims, "-dimensional");
     }

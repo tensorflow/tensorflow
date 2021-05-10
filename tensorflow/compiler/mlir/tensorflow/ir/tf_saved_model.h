@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
 namespace mlir {
@@ -36,11 +35,19 @@ class TensorFlowSavedModelDialect : public Dialect {
                                             NamedAttribute named_attr) override;
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute named_attr) override;
+
+  static StringRef getDialectNamespace() { return "tf_saved_model"; }
 };
+
+}  // namespace tf_saved_model
+}  // namespace mlir
 
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
+
+namespace mlir {
+namespace tf_saved_model {
 
 // Returns the list of exported names for `op`.
 // An empty list means `op` is not exported.
@@ -54,12 +61,26 @@ bool HasTfSavedModelSemantics(ModuleOp module);
 
 // Returns the tf_saved_model.global_tensor op that func's arg_index'th argument
 // refers to as a bound input, or null.
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table);
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table);
 
-// Gets the type that an exported function arg that is bound to `global_tensor`
-// should have.
-Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor);
+template <typename T>
+T LookupBoundInputOfType(FuncOp func, int arg_index,
+                         const SymbolTable &symbol_table) {
+  return llvm::dyn_cast_or_null<T>(
+      LookupBoundInput(func, arg_index, symbol_table));
+}
+
+// Gets the type that an exported function arg that is bound to symbol ops such
+// as `global_tensor` and `asset` should have.
+Type GetBoundInputArgTypeFor(mlir::Operation *op);
+
+// Returns the session initializer of this module if it exists. Returns null
+// otherwise.
+SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
+
+// Returns the exported name for the session initializer function.
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(mlir::ModuleOp op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

@@ -14,6 +14,5 @@
 # ==============================================================================
 """Keras' Distribution Strategy library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=unused-import
+from tensorflow.python.keras.distribute import sidecar_evaluator

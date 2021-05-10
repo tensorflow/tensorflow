@@ -37,13 +37,9 @@ TEST_F(AliasPassthroughParamsTest, AliasPassThroughParams) {
                     .ValueOrDie();
   EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
   const auto& alias_config = module->input_output_alias_config();
-  EXPECT_EQ(0, alias_config.GetAliasedParameter({0}).value().parameter_number);
-  EXPECT_EQ(xla::HloInputOutputAliasConfig::kUserAlias,
-            alias_config.GetAliasedParameter({0}).value().kind);
+  EXPECT_EQ(0, alias_config.GetAliasedParameter({0})->parameter_number);
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
-  EXPECT_EQ(1, alias_config.GetAliasedParameter({2}).value().parameter_number);
-  EXPECT_EQ(xla::HloInputOutputAliasConfig::kUserAlias,
-            alias_config.GetAliasedParameter({2}).value().kind);
+  EXPECT_EQ(1, alias_config.GetAliasedParameter({2})->parameter_number);
 }
 
 TEST_F(AliasPassthroughParamsTest, DoNotAliasPassThroughParamsMoreThanOnce) {
@@ -57,7 +53,7 @@ TEST_F(AliasPassthroughParamsTest, DoNotAliasPassThroughParamsMoreThanOnce) {
                     .ValueOrDie();
   EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
   const auto& alias_config = module->input_output_alias_config();
-  EXPECT_EQ(0, alias_config.GetAliasedParameter({0}).value().parameter_number);
+  EXPECT_EQ(0, alias_config.GetAliasedParameter({0})->parameter_number);
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
 }
 

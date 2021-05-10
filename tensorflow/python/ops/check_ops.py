@@ -146,7 +146,7 @@ def _unary_assert_doc(sym, sym_name):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym}` is False. The check can be performed immediately during 
+        `x {sym}` is False. The check can be performed immediately during
         eager execution or if `x` is statically known.
     """.format(
         sym=sym, sym_name=cap_sym_name, opname=opname)
@@ -209,7 +209,7 @@ def _binary_assert_doc(sym):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym} y` is False. The check can be performed immediately during 
+        `x {sym} y` is False. The check can be performed immediately during
         eager execution or if `x` and `y` are statically known.
     """.format(
         sym=sym, opname=opname)
@@ -1151,14 +1151,15 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     ValueError:  If static checks determine `x` has wrong rank.
   """
   with ops.name_scope(name, 'assert_rank', (x, rank) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    if not isinstance(x, sparse_tensor.SparseTensor):
+      x = ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = message or ''
 
     static_condition = lambda actual_rank, given_rank: actual_rank == given_rank
     dynamic_condition = math_ops.equal
 
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(x, sparse_tensor.SparseTensor):
       name = ''
     else:
       name = x.name
@@ -1418,11 +1419,12 @@ def assert_rank_in(
   """
   with ops.name_scope(
       name, 'assert_rank_in', (x,) + tuple(ranks) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    if not isinstance(x, sparse_tensor.SparseTensor):
+      x = ops.convert_to_tensor(x, name='x')
     ranks = tuple([ops.convert_to_tensor(rank, name='rank') for rank in ranks])
     message = message or ''
 
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(x, sparse_tensor.SparseTensor):
       name = ''
     else:
       name = x.name
@@ -1518,7 +1520,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   This can always be checked statically, so this method returns nothing.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1537,7 +1539,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1550,14 +1552,17 @@ def assert_type(tensor, tf_type, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
+  tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
-    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if not isinstance(tensor, sparse_tensor.SparseTensor):
+      tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       if context.executing_eagerly():
         raise TypeError('%s tensor must be of type %s' % (message, tf_type))
       else:
-        raise TypeError('%s  %s must be of type %s' % (message, tensor.name,
-                                                       tf_type))
+        raise TypeError(
+            '%s  %s must be of type %s' %
+            (message, tensor.name if hasattr(tensor, 'name') else '', tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 
@@ -1580,7 +1585,7 @@ def _dimension_sizes(x):
   rank = x.get_shape().rank
   rank_is_known = rank is not None
   if rank_is_known and rank == 0:
-    return tuple([1])
+    return (1,)
   if rank_is_known and rank > 0:
     static_shape = x.get_shape().as_list()
     sizes = [
@@ -1634,7 +1639,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   >>> n = 10
   >>> q = 3
   >>> d = 7
-  >>> x = tf.zeros([n,q]) 
+  >>> x = tf.zeros([n,q])
   >>> y = tf.ones([n,d])
   >>> param = tf.Variable([1.0, 2.0, 3.0])
   >>> scalar = 1.0
@@ -1644,9 +1649,9 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   ...  (param, ('Q',)),
   ...  (scalar, ()),
   ... ])
-  
+
   >>> tf.debugging.assert_shapes([
-  ...   (x, ('N', 'D')), 
+  ...   (x, ('N', 'D')),
   ...   (y, ('N', 'D'))
   ... ])
   Traceback (most recent call last):
@@ -1745,8 +1750,23 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   prefix) are both treated as having a single dimension of size one.
 
   Args:
-    shapes: dictionary with (`Tensor` to shape) items, or a list of
-      (`Tensor`, shape) tuples. A shape must be an iterable.
+    shapes: A list of (`Tensor`, `shape`) tuples, wherein `shape` is the
+      expected shape of `Tensor`. See the example code above. The `shape` must
+      be an iterable. Each element of the iterable can be either a concrete
+      integer value or a string that abstractly represents the dimension.
+      For example,
+        - `('N', 'Q')` specifies a 2D shape wherein the first and second
+          dimensions of shape may or may not be equal.
+        - `('N', 'N', 'Q')` specifies a 3D shape wherein the first and second
+          dimensions are equal.
+        - `(1, 'N')` specifies a 2D shape wherein the first dimension is
+          exactly 1 and the second dimension can be any value.
+      Note that the abstract dimension letters take effect across different
+      tuple elements of the list. For example,
+      `tf.debugging.assert_shapes([(x, ('N', 'A')), (y, ('N', 'B'))]` asserts
+      that both `x` and `y` are rank-2 tensors and their first dimensions are
+      equal (`N`).
+      `shape` can also be a `tf.TensorShape`.
     data: The tensors to print out if the condition is False.  Defaults to error
       message and first few entries of the violating tensor.
     summarize: Print this many entries of the tensor.
@@ -1770,14 +1790,14 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   message = message or ''
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
     # Shape specified as None implies no constraint
-    shape_constraints = [
-        (ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
-    ]
+    shape_constraints = [(x if isinstance(x, sparse_tensor.SparseTensor) else
+                          ops.convert_to_tensor(x), s)
+                         for x, s in shapes if s is not None]
 
     executing_eagerly = context.executing_eagerly()
 
     def tensor_name(x):
-      if executing_eagerly:
+      if executing_eagerly or isinstance(x, sparse_tensor.SparseTensor):
         return _shape_and_dtype_str(x)
       return x.name
 
@@ -2202,17 +2222,58 @@ def assert_scalar(tensor, name=None, message=None):
 def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 
-  With eager execution this is a shape assertion, that returns the input:
+  When executed, this operation asserts that the input tensor `x`'s shape
+  is compatible with the `shape` argument.
+  See `tf.TensorShape.is_compatible_with` for details.
 
-  >>> x = tf.constant([1,2,3])
-  >>> print(x.shape)
-  (3,)
-  >>> x = tf.ensure_shape(x, [3])
+  >>> x = tf.constant([[1, 2, 3],
+  ...                  [4, 5, 6]])
+  >>> x = tf.ensure_shape(x, [2, 3])
+
+  Use `None` for unknown dimensions:
+
+  >>> x = tf.ensure_shape(x, [None, 3])
+  >>> x = tf.ensure_shape(x, [2, None])
+
+  If the tensor's shape is not compatible with the `shape` argument, an error
+  is raised:
+
   >>> x = tf.ensure_shape(x, [5])
   Traceback (most recent call last):
   ...
   tf.errors.InvalidArgumentError: Shape of tensor dummy_input [3] is not
     compatible with expected shape [5]. [Op:EnsureShape]
+
+  During graph construction (typically tracing a `tf.function`),
+  `tf.ensure_shape` updates the static-shape of the **result** tensor by
+  merging the two shapes. See `tf.TensorShape.merge_with` for details.
+
+  This is most useful when **you** know a shape that can't be determined
+  statically by TensorFlow.
+
+  The following trivial `tf.function` prints the input tensor's
+  static-shape before and after `ensure_shape` is applied.
+
+  >>> @tf.function
+  ... def f(tensor):
+  ...   print("Static-shape before:", tensor.shape)
+  ...   tensor = tf.ensure_shape(tensor, [None, 3])
+  ...   print("Static-shape after:", tensor.shape)
+  ...   return tensor
+
+  This lets you see the effect of `tf.ensure_shape` when the function is traced:
+  >>> cf = f.get_concrete_function(tf.TensorSpec([None, None]))
+  Static-shape before: (None, None)
+  Static-shape after: (None, 3)
+
+  >>> cf(tf.zeros([3, 3])) # Passes
+  >>> cf(tf.constant([1, 2, 3])) # fails
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+
+  The above example raises `tf.errors.InvalidArgumentError`, because `x`'s
+  shape, `(3,)`, is not compatible with the `shape` argument, `(None, 3)`
 
   Inside a `tf.function` or `v1.Graph` context it checks both the buildtime and
   runtime shapes. This is stricter than `tf.Tensor.set_shape` which only
@@ -2288,8 +2349,10 @@ def ensure_shape(x, shape, name=None):
     name: A name for this operation (optional). Defaults to "EnsureShape".
 
   Returns:
-    A `Tensor`. Has the same type and contents as `x`. At runtime, raises a
-    `tf.errors.InvalidArgumentError` if `shape` is incompatible with the shape
+    A `Tensor`. Has the same type and contents as `x`.
+
+  Raises:
+    tf.errors.InvalidArgumentError: If `shape` is incompatible with the shape
     of `x`.
   """
   if not isinstance(shape, tensor_shape.TensorShape):

@@ -108,31 +108,29 @@ def map_fn(fn,
 
   `fn_output_signature` can be specified using any of the following:
 
-    * A `tf.DType` or `tf.TensorSpec` (to describe a `tf.Tensor`)
-    * A `tf.RaggedTensorSpec` (to describe a `tf.RaggedTensor`)
-    * A `tf.SparseTensorSpec` (to describe a `tf.sparse.SparseTensor`)
-    * A (possibly nested) tuple, list, or dict containing the above types.
+  * A `tf.DType` or `tf.TensorSpec` (to describe a `tf.Tensor`)
+  * A `tf.RaggedTensorSpec` (to describe a `tf.RaggedTensor`)
+  * A `tf.SparseTensorSpec` (to describe a `tf.sparse.SparseTensor`)
+  * A (possibly nested) tuple, list, or dict containing the above types.
 
   #### RaggedTensors
 
   `map_fn` supports `tf.RaggedTensor` inputs and outputs.  In particular:
 
-    * If `elems` is a `RaggedTensor`, then `fn` will be called with each
-      row of that ragged tensor.
+  * If `elems` is a `RaggedTensor`, then `fn` will be called with each
+    row of that ragged tensor.
+    * If `elems` has only one ragged dimension, then the values passed to
+      `fn` will be `tf.Tensor`s.
+    * If `elems` has multiple ragged dimensions, then the values passed to
+      `fn` will be `tf.RaggedTensor`s with one fewer ragged dimension.
 
-      * If `elems` has only one ragged dimension, then the values passed to
-        `fn` will be `tf.Tensor`s.
-      * If `elems` has multiple ragged dimensions, then the values passed to
-        `fn` will be `tf.RaggedTensor`s with one fewer ragged dimension.
-
-    * If the result of `map_fn` should be a `RaggedTensor`, then use a
-      `tf.RaggedTensorSpec` to specify `fn_output_signature`.
-
-      * If `fn` returns `tf.Tensor`s with varying sizes, then use a
-        `tf.RaggedTensorSpec` with `ragged_rank=0` to combine them into a
-        single ragged tensor (which will have ragged_rank=1).
-      * If `fn` returns `tf.RaggedTensor`s, then use a `tf.RaggedTensorSpec`
-        with the same `ragged_rank`.
+  * If the result of `map_fn` should be a `RaggedTensor`, then use a
+    `tf.RaggedTensorSpec` to specify `fn_output_signature`.
+    * If `fn` returns `tf.Tensor`s with varying sizes, then use a
+      `tf.RaggedTensorSpec` with `ragged_rank=0` to combine them into a
+      single ragged tensor (which will have ragged_rank=1).
+    * If `fn` returns `tf.RaggedTensor`s, then use a `tf.RaggedTensorSpec`
+      with the same `ragged_rank`.
 
   >>> # Example: RaggedTensor input
   >>> rt = tf.ragged.constant([[1, 2, 3], [], [4, 5], [6]])
@@ -150,10 +148,10 @@ def map_fn(fn,
   *rows* of a `RaggedTensor`.  If you wish to map a function over the
   individual values, then you should use:
 
-    * `tf.ragged.map_flat_values(fn, rt)`
-      (if fn is expressible as TensorFlow ops)
-    * `rt.with_flat_values(map_fn(fn, rt.flat_values))`
-      (otherwise)
+  * `tf.ragged.map_flat_values(fn, rt)`
+    (if fn is expressible as TensorFlow ops)
+  * `rt.with_flat_values(map_fn(fn, rt.flat_values))`
+    (otherwise)
 
   E.g.:
 
@@ -165,14 +163,14 @@ def map_fn(fn,
 
   `map_fn` supports `tf.sparse.SparseTensor` inputs and outputs.  In particular:
 
-    * If `elems` is a `SparseTensor`, then `fn` will be called with each row
-      of that sparse tensor. In particular, the value passed to `fn` will be a
-      `tf.sparse.SparseTensor` with one fewer dimension than `elems`.
+  * If `elems` is a `SparseTensor`, then `fn` will be called with each row
+    of that sparse tensor. In particular, the value passed to `fn` will be a
+    `tf.sparse.SparseTensor` with one fewer dimension than `elems`.
 
-    * If the result of `map_fn` should be a `SparseTensor`, then use a
-      `tf.SparseTensorSpec` to specify `fn_output_signature`.  The individual
-      `SparseTensor`s returned by `fn` will be stacked into a single
-      `SparseTensor` with one more dimension.
+  * If the result of `map_fn` should be a `SparseTensor`, then use a
+    `tf.SparseTensorSpec` to specify `fn_output_signature`.  The individual
+    `SparseTensor`s returned by `fn` will be stacked into a single
+    `SparseTensor` with one more dimension.
 
   >>> # Example: SparseTensor input
   >>> st = tf.sparse.SparseTensor([[0, 0], [2, 0], [2, 1]], [2, 3, 4], [4, 4])
@@ -195,15 +193,15 @@ def map_fn(fn,
   *rows* of a `SparseTensor`.  If you wish to map a function over the nonzero
   values, then you should use:
 
-    * If the function is expressible as TensorFlow ops, use:
-      ```python
-      tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)
-      ```
-    * Otherwise, use:
-      ```python
-      tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
-                             st.dense_shape)
-      ```
+  * If the function is expressible as TensorFlow ops, use:
+    ```python
+    tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)
+    ```
+  * Otherwise, use:
+    ```python
+    tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
+                           st.dense_shape)
+    ```
 
   #### `map_fn` vs. vectorized operations
 
@@ -215,14 +213,14 @@ def map_fn(fn,
 
   `map_fn` should typically only be used if one of the following is true:
 
-    * It is difficult or expensive to express the desired transform with
-      vectorized operations.
-    * `fn` creates large intermediate values, so an equivalent vectorized
-      transform would take too much memory.
-    * Processing elements in parallel is more efficient than an equivalent
-      vectorized transform.
-    * Efficiency of the transform is not critical, and using `map_fn` is
-      more readable.
+  * It is difficult or expensive to express the desired transform with
+    vectorized operations.
+  * `fn` creates large intermediate values, so an equivalent vectorized
+    transform would take too much memory.
+  * Processing elements in parallel is more efficient than an equivalent
+    vectorized transform.
+  * Efficiency of the transform is not critical, and using `map_fn` is
+    more readable.
 
   E.g., the example given above that maps `fn=lambda t: tf.range(t, t + 3)`
   across `elems` could be rewritten more efficiently using vectorized ops:
@@ -235,7 +233,7 @@ def map_fn(fn,
            [2, 3, 4]], dtype=int32)>
 
   In some cases, `tf.vectorized_map` can be used to automatically convert a
-  function to a vectorized eqivalent.
+  function to a vectorized equivalent.
 
   #### Eager execution
 
@@ -255,7 +253,7 @@ def map_fn(fn,
            [2, 3, 4]], dtype=int32)>
 
 
-  Note that if you use the `tf.function` decorator, any non-TensorFlow Python
+  Note: if you use the `tf.function` decorator, any non-TensorFlow Python
   code that you may have written in your function won't get executed. See
   `tf.function` for more  details. The recommendation would be to debug without
   `tf.function` but switch to it to get performance benefits of running `map_fn`
@@ -269,7 +267,7 @@ def map_fn(fn,
     elems: A tensor or (possibly nested) sequence of tensors, each of which will
       be unstacked along their first dimension.  `fn` will be applied to the
       nested sequence of the resulting slices.  `elems` may include ragged and
-      sparse tensors.
+      sparse tensors. `elems` must consist of at least one tensor.
     dtype: Deprecated: Equivalent to `fn_output_signature`.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel. When graph building, the default value is 10. While executing
@@ -298,7 +296,7 @@ def map_fn(fn,
     TypeError: if `fn` is not callable or the structure of the output of
       `fn` and `fn_output_signature` do not match.
     ValueError: if the lengths of the output of `fn` and `fn_output_signature`
-      do not match.
+      do not match, or if the `elems` does not contain any tensor.
 
   Examples:
 
@@ -377,6 +375,13 @@ def map_fn(fn,
 
   # Flatten the input tensors, and get the TypeSpec for each one.
   elems_flat = nest.flatten(elems)
+
+  # Check in case this is an empty list
+  if len(elems_flat) == 0:
+    raise ValueError(
+        "elems must be a Tensor or (possibly nested) sequence of Tensors. "
+        "Got {}, which does not contain any Tensors.".format(elems))
+
   elems_flat_signature = [type_spec.type_spec_from_value(e) for e in elems_flat]
   elems_unflatten = lambda x: nest.pack_sequence_as(elems, x)
 
@@ -414,7 +419,8 @@ def map_fn(fn,
     ]
 
     # Check that inputs are not scalars.
-    elems_static_shape = elems_flat[0].shape
+    first_elem = elems_flat[0]
+    elems_static_shape = first_elem.shape
     if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
       if len(elems_flat) == 1:
         raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
@@ -431,7 +437,7 @@ def map_fn(fn,
         tensor_shape.dimension_value(
             elems_batchable[0].get_shape().with_rank_at_least(1)[0]))
     for tensor in elems_batchable[1:]:
-      n_static.merge_with(
+      n_static.assert_is_compatible_with(
           tensor_shape.Dimension(
               tensor_shape.dimension_value(
                   tensor.get_shape().with_rank_at_least(1)[0])))
@@ -512,7 +518,8 @@ def map_fn(fn,
       varscope.set_caching_device(None)
 
     result_flat = _result_batchable_to_flat(result_batchable,
-                                            result_flat_signature)
+                                            result_flat_signature,
+                                            n_static)
     result = result_unflatten(result_flat)
     return result
 
@@ -594,7 +601,8 @@ def _result_value_flat_to_batchable(result_value_flat, result_flat_signature):
   return result_value_batchable
 
 
-def _result_batchable_to_flat(result_batchable, result_flat_signature):
+def _result_batchable_to_flat(result_batchable, result_flat_signature,
+                              batch_size):
   """Converts result_batchable -> result_flat."""
   result_flat = []
   i = 0
@@ -602,7 +610,7 @@ def _result_batchable_to_flat(result_batchable, result_flat_signature):
     # pylint: disable=protected-access
     num_tensors = len(spec._flat_tensor_specs)
     result_flat.append(
-        spec._batch(None)._from_compatible_tensor_list(
+        spec._batch(batch_size)._from_compatible_tensor_list(
             result_batchable[i:i + num_tensors]))
     i += num_tensors
   assert i == len(result_batchable)

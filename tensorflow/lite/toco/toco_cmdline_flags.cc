@@ -29,7 +29,7 @@ limitations under the License.
 namespace toco {
 
 bool ParseTocoFlagsFromCommandLineFlags(
-    int* argc, char* argv[], string* msg,
+    int* argc, char* argv[], std::string* msg,
     ParsedTocoFlags* parsed_toco_flags_ptr) {
   using tensorflow::Flag;
   ParsedTocoFlags& parsed_flags = *parsed_toco_flags_ptr;
@@ -188,7 +188,10 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.enable_select_tf_ops.default_value(), ""),
       // WARNING: Experimental interface, subject to change
       Flag("force_select_tf_ops", parsed_flags.force_select_tf_ops.bind(),
-           parsed_flags.force_select_tf_ops.default_value(), "")};
+           parsed_flags.force_select_tf_ops.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("unfold_batchmatmul", parsed_flags.unfold_batchmatmul.bind(),
+           parsed_flags.unfold_batchmatmul.default_value(), "")};
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -212,7 +215,7 @@ enum class FlagRequirement {
 
 // Enforces the FlagRequirements are met for a given flag.
 template <typename T>
-void EnforceFlagRequirement(const T& flag, const string& flag_name,
+void EnforceFlagRequirement(const T& flag, const std::string& flag_name,
                             FlagRequirement requirement) {
   if (requirement == FlagRequirement::kMustBeSpecified) {
     QCHECK(flag.specified()) << "Missing required flag " << flag_name;
@@ -286,6 +289,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(unfold_batchmatmul, FlagRequirement::kNone);
 
   if (parsed_toco_flags.force_select_tf_ops.value() &&
       !parsed_toco_flags.enable_select_tf_ops.value()) {
@@ -317,10 +321,10 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
            "type of input arrays, use --input_data_type. If you are trying to "
            "control the quantization/dequantization of real-numbers input "
            "arrays in the output file, use --inference_input_type.";
-    std::vector<string> input_types =
+    std::vector<std::string> input_types =
         absl::StrSplit(parsed_toco_flags.input_types.value(), ',');
     QCHECK(!input_types.empty());
-    for (int i = 1; i < input_types.size(); i++) {
+    for (size_t i = 1; i < input_types.size(); i++) {
       QCHECK_EQ(input_types[i], input_types[0]);
     }
     toco::IODataType input_type;

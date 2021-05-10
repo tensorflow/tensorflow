@@ -15,9 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -91,6 +91,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(kDatasetType, params);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
@@ -467,6 +471,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
+    metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
   int64 header_bytes = -1;

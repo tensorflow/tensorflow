@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function_list.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_function.h"
 #include "tensorflow/c/tf_status.h"
 
 #ifdef __cplusplus
@@ -91,15 +92,13 @@ TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(
 //  status - Set to OK on success and an appropriate error on failure.
 // Returns:
 //  If status is not OK, returns nullptr. Otherwise, returns a
-//  TF_ConcreteFunction instance. Once `model` is deleted, all
-//  `TF_ConcreteFunctions` retrieved from it are invalid, and have been deleted.
-TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelSignatureDefFunction(
-    TF_SavedModel* model, const char* signature_def_key, TF_Status* status);
-
-// Returns a list of all ConcreteFunctions stored in this SavedModel.
-// The lifetime of the returned list is bound to `model`.
-TF_CAPI_EXPORT extern TF_ConcreteFunctionList* TF_ListSavedModelFunctions(
-    TF_SavedModel* model);
+//  TF_SignatureDefFunction instance. Once `model` is deleted, all
+//  `TF_SignatureDefFunctions` retrieved from it are invalid, and have been
+//  deleted.
+TF_CAPI_EXPORT extern TF_SignatureDefFunction*
+TF_GetSavedModelSignatureDefFunction(TF_SavedModel* model,
+                                     const char* signature_def_key,
+                                     TF_Status* status);
 
 #ifdef __cplusplus
 }  // end extern "C"

@@ -47,10 +47,7 @@ class InitializersTest(test.TestCase):
     self.assertEqual(tensor_shape.as_shape(shape), t2.shape)
     self.assertEqual(assertion, np.allclose(t1, t2, rtol=1e-15, atol=1e-15))
 
-  def _duplicated_test(self,
-                       init,
-                       shape=None,
-                       dtype=dtypes.float32):
+  def _duplicated_test(self, init, shape=None, dtype=dtypes.float32):
     if shape is None:
       shape = [100]
     t1 = self.evaluate(init(shape, dtype))
@@ -78,18 +75,50 @@ class InitializersTest(test.TestCase):
     if target_min is not None:
       self.assertGreater(lim, abs(output.min() - target_min))
 
+  def _partition_test(self, init):
+    full_shape = (4, 2)
+    partition_shape = (2, 2)
+    partition_offset = (0, 0)
+    full_value = self.evaluate(init(full_shape, dtype=dtypes.float32))
+    got = self.evaluate(
+        init(
+            full_shape,
+            dtype=dtypes.float32,
+            partition_shape=partition_shape,
+            partition_offset=partition_offset))
+    self.assertEqual(got.shape, partition_shape)
+    self.assertAllClose(
+        got, array_ops.slice(full_value, partition_offset, partition_shape))
+
 
 class ConstantInitializersTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testZeros(self):
-    self._range_test(init_ops_v2.Zeros(), shape=(4, 5),
-                     target_mean=0., target_max=0.)
+    self._range_test(
+        init_ops_v2.Zeros(), shape=(4, 5), target_mean=0., target_max=0.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZerosPartition(self):
+    init = init_ops_v2.Zeros()
+    self._partition_test(init)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZerosInvalidKwargs(self):
+    init = init_ops_v2.Zeros()
+    with self.assertRaisesWithLiteralMatch(TypeError,
+                                           r"Unknown keyword arguments: dtpye"):
+      init((2, 2), dtpye=dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
   def testOnes(self):
-    self._range_test(init_ops_v2.Ones(), shape=(4, 5),
-                     target_mean=1., target_max=1.)
+    self._range_test(
+        init_ops_v2.Ones(), shape=(4, 5), target_mean=1., target_max=1.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOnesPartition(self):
+    init = init_ops_v2.Ones()
+    self._partition_test(init)
 
   @test_util.run_in_graph_and_eager_modes
   def testConstantInt(self):
@@ -101,6 +130,14 @@ class ConstantInitializersTest(InitializersTest):
         target_min=2)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConstantPartition(self):
+    init = init_ops_v2.Constant([1, 2, 3, 4])
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        r"Constant initializer doesn't support partition-related arguments"):
+      init((4, 2), dtype=dtypes.float32, partition_shape=(2, 2))
+
+  @test_util.run_in_graph_and_eager_modes
   def testConstantTuple(self):
     init = init_ops_v2.constant_initializer((10, 20, 30))
     tensor = init(shape=[3])
@@ -110,11 +147,11 @@ class ConstantInitializersTest(InitializersTest):
   @test_util.run_in_graph_and_eager_modes
   def testConstantInvalidValue(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
-        TypeError, r"Invalid type for initial value: .*Tensor.*"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Invalid type for initial value: .*Tensor.*"):
       init_ops_v2.constant_initializer(c)
     v = variables.Variable([3.0, 2.0, 1.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Invalid type for initial value: .*Variable.*"):
       init_ops_v2.constant_initializer(v)
 
@@ -136,15 +173,13 @@ class ConstantInitializersTest(InitializersTest):
 
     self._testNDimConstantInitializer(value, shape, expected)
     self._testNDimConstantInitializer(np.asarray(value), shape, expected)
-    self._testNDimConstantInitializer(np.asarray(value).reshape(tuple(shape)),
-                                      shape, expected)
+    self._testNDimConstantInitializer(
+        np.asarray(value).reshape(tuple(shape)), shape, expected)
 
   def _testNDimConstantInitializerIncorrectNumberValues(self, value, shape):
     with test_util.use_gpu():
       init = init_ops_v2.constant_initializer(value)
-      self.assertRaises(TypeError,
-                        init,
-                        shape=shape)
+      self.assertRaises(TypeError, init, shape=shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testNDimConstantInitializerIncorrectNumberValues(self):
@@ -152,8 +187,8 @@ class ConstantInitializersTest(InitializersTest):
 
     for shape in [[2, 4], [2, 2]]:
       self._testNDimConstantInitializerIncorrectNumberValues(value, shape)
-      self._testNDimConstantInitializerIncorrectNumberValues(np.asarray(value),
-                                                             shape)
+      self._testNDimConstantInitializerIncorrectNumberValues(
+          np.asarray(value), shape)
       self._testNDimConstantInitializerIncorrectNumberValues(
           np.asarray(value).reshape(tuple([2, 3])), shape)
 
@@ -162,7 +197,7 @@ class RandomUniformInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testRangeInitializer(self):
-    shape = (9, 6, 7)
+    shape = (20, 6, 7)
     self._range_test(
         init_ops_v2.RandomUniform(minval=-1, maxval=1, seed=124),
         shape,
@@ -187,6 +222,11 @@ class RandomUniformInitializerTest(InitializersTest):
   def testDuplicatedInitializer(self):
     init = init_ops_v2.RandomUniform(0.0, 1.0)
     self._duplicated_test(init)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInitializePartition(self):
+    init = init_ops_v2.RandomUniform(0, 7, seed=1)
+    self._partition_test(init)
 
 
 class RandomNormalInitializerTest(InitializersTest):
@@ -216,6 +256,14 @@ class RandomNormalInitializerTest(InitializersTest):
   def testDuplicatedInitializer(self):
     init = init_ops_v2.RandomNormal(0.0, 1.0)
     self._duplicated_test(init)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInitializePartition(self):
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "XLA ignores seeds for RandomNormal, skip xla-enabled test.")
+    init = init_ops_v2.RandomNormal(0, 7, seed=1)
+    self._partition_test(init)
 
 
 class TruncatedNormalInitializerTest(InitializersTest):
@@ -247,6 +295,12 @@ class TruncatedNormalInitializerTest(InitializersTest):
     init = init_ops_v2.TruncatedNormal(0.0, 1.0)
     self._duplicated_test(init)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInitializePartition(self):
+    init = init_ops_v2.TruncatedNormal(0.0, 1.0, seed=1)
+    self._partition_test(init)
+
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidDataType(self):
     init = init_ops_v2.TruncatedNormal(0.0, 1.0)
     with self.assertRaises(ValueError):
@@ -292,8 +346,7 @@ class VarianceScalingInitializerTest(InitializersTest):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
-    init = init_ops_v2.VarianceScaling(
-        distribution="untruncated_normal")
+    init = init_ops_v2.VarianceScaling(distribution="untruncated_normal")
 
     with test_util.use_gpu(), test.mock.patch.object(
         random_ops, "random_normal",
@@ -317,13 +370,31 @@ class VarianceScalingInitializerTest(InitializersTest):
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInitializePartition(self):
+    partition_shape = (100, 100)
+    shape = [1000, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops_v2.VarianceScaling(distribution="untruncated_normal")
+
+    with test_util.use_gpu(), test.mock.patch.object(
+        random_ops, "random_normal",
+        wraps=random_ops.random_normal) as mock_random_normal:
+      x = self.evaluate(init(shape, partition_shape=partition_shape))
+      self.assertTrue(mock_random_normal.called)
+
+    self.assertEqual(x.shape, partition_shape)
+    self.assertNear(np.mean(x), expect_mean, err=1e-3)
+    self.assertNear(np.var(x), expect_var, err=1e-3)
+
 
 class OrthogonalInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testRangeInitializer(self):
-    self._range_test(init_ops_v2.Orthogonal(seed=123), shape=(20, 20),
-                     target_mean=0.)
+    self._range_test(
+        init_ops_v2.Orthogonal(seed=123), shape=(20, 20), target_mean=0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testInitializerIdentical(self):
@@ -366,10 +437,6 @@ class OrthogonalInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapesValues(self):
-
-    if test.is_built_with_rocm():
-      self.skipTest("Disable subtest on ROCm due to missing QR op support")
-
     for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
       init = init_ops_v2.Orthogonal()
       tol = 1e-5
@@ -385,6 +452,14 @@ class OrthogonalInitializerTest(InitializersTest):
         else:
           self.assertAllClose(
               np.dot(t, t.T), np.eye(t.shape[0]), rtol=tol, atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPartition(self):
+    init = init_ops_v2.Orthogonal(seed=1)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        r"Orthogonal initializer doesn't support partition-related arguments"):
+      init((4, 2), dtype=dtypes.float32, partition_shape=(2, 2))
 
 
 class IdentityInitializerTest(InitializersTest):
@@ -433,11 +508,20 @@ class IdentityInitializerTest(InitializersTest):
       init_default = init_ops_v2.Identity()
       init_custom = init_ops_v2.Identity(gain=0.9)
       with test_util.use_gpu():
-        self.assertAllClose(self.evaluate(init_default(shape, dtype=dtype)),
-                            np.eye(*shape))
+        self.assertAllClose(
+            self.evaluate(init_default(shape, dtype=dtype)), np.eye(*shape))
       with test_util.use_gpu():
-        self.assertAllClose(self.evaluate(init_custom(shape, dtype=dtype)),
-                            np.eye(*shape) * 0.9)
+        self.assertAllClose(
+            self.evaluate(init_custom(shape, dtype=dtype)),
+            np.eye(*shape) * 0.9)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPartition(self):
+    init = init_ops_v2.Identity()
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        r"Identity initializer doesn't support partition-related arguments"):
+      init((4, 2), dtype=dtypes.float32, partition_shape=(2, 2))
 
 
 class GlorotInitializersTest(InitializersTest):
@@ -484,10 +568,7 @@ class MethodInitializers(InitializersTest):
     fan_in, _ = init_ops_v2._compute_fans(shape)
     std = np.sqrt(2. / fan_in)
     self._range_test(
-        init_ops_v2.he_uniform(seed=123),
-        shape,
-        target_mean=0.,
-        target_std=std)
+        init_ops_v2.he_uniform(seed=123), shape, target_mean=0., target_std=std)
 
   @test_util.run_in_graph_and_eager_modes
   def testLecunNormal(self):
@@ -506,10 +587,7 @@ class MethodInitializers(InitializersTest):
     fan_in, _ = init_ops_v2._compute_fans(shape)
     std = np.sqrt(2. / fan_in)
     self._range_test(
-        init_ops_v2.he_normal(seed=123),
-        shape,
-        target_mean=0.,
-        target_std=std)
+        init_ops_v2.he_normal(seed=123), shape, target_mean=0., target_std=std)
 
 
 if __name__ == "__main__":

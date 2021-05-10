@@ -6,7 +6,7 @@ load(
 package(
     # To suppress build cleaner error about inclusion of schema_generate.h.
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -28,7 +28,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
-        "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
+        "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",
@@ -90,14 +90,15 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/tools/optimize:quantize_weights",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
@@ -113,6 +114,7 @@ tf_cc_test(
         ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
@@ -132,33 +134,11 @@ cc_library(
         ":types",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/tools:verifier",
         "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "op_version",
-    srcs = ["op_version.cc"],
-    hdrs = ["op_version.h"],
-    deps = [
-        ":operator",
-        "//tensorflow/lite/toco:model",
-        "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools/versioning",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "op_version_test",
-    srcs = ["op_version_test.cc"],
-    deps = [
-        ":op_version",
-        "//tensorflow/lite/toco:model",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -171,6 +151,7 @@ tf_cc_test(
         ":import",
         "//tensorflow/core:ops",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

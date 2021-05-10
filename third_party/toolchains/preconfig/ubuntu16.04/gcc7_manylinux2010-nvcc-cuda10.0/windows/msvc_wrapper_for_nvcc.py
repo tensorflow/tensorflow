@@ -130,6 +130,9 @@ def InvokeNvcc(argv, log=False):
   undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
 
+  fatbin_options, argv = GetOptionValue(argv, '-Xcuda-fatbinary')
+  fatbin_options = ['--fatbin-options=' + option for option in fatbin_options]
+
   # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [option for option in argv if option not in (src_files + out_file)]
 
@@ -154,6 +157,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
+  nvccopts += fatbin_options
   nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # Specify a unique temp directory for nvcc to generate intermediate files,

@@ -15,17 +15,17 @@ limitations under the License.
 
 #include <jni.h>
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/gpu_whitelist.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
@@ -51,8 +51,11 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
 }
 
 namespace {
-class WhitelistHelper {
+class CompatibilityListHelper {
  public:
+  CompatibilityListHelper()
+      : compatibility_list_(
+            tflite::acceleration::GPUCompatibilityList::Create()) {}
   absl::Status ReadInfo() {
     auto status = tflite::acceleration::RequestAndroidInfo(&android_info_);
     if (!status.ok()) return status;
@@ -74,42 +77,44 @@ class WhitelistHelper {
   }
 
   bool IsDelegateSupportedOnThisDevice() {
-    return whitelist_.Includes(android_info_, gpu_info_);
+    return compatibility_list_->Includes(android_info_, gpu_info_);
   }
 
  private:
   tflite::acceleration::AndroidInfo android_info_;
   tflite::gpu::GpuInfo gpu_info_;
-  tflite::acceleration::GPUWhitelist whitelist_;
+  std::unique_ptr<tflite::acceleration::GPUCompatibilityList>
+      compatibility_list_;
 };
 }  // namespace
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_Whitelist_createWhitelist(
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_gpu_CompatibilityList_createCompatibilityList(
     JNIEnv* env, jclass clazz) {
-  WhitelistHelper* whitelist = new WhitelistHelper;
-  auto status = whitelist->ReadInfo();
+  CompatibilityListHelper* compatibility_list = new CompatibilityListHelper;
+  auto status = compatibility_list->ReadInfo();
   // Errors in ReadInfo should almost always be failures to construct the OpenGL
   // environment. Treating that as "GPU unsupported" is reasonable, and we can
   // swallow the error.
   status.IgnoreError();
-  return reinterpret_cast<jlong>(whitelist);
+  return reinterpret_cast<jlong>(compatibility_list);
 }
 
 JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_gpu_Whitelist_nativeIsDelegateSupportedOnThisDevice(
-    JNIEnv* env, jclass clazz, jlong whitelist_handle) {
-  WhitelistHelper* whitelist =
-      reinterpret_cast<WhitelistHelper*>(whitelist_handle);
-  return whitelist->IsDelegateSupportedOnThisDevice() ? JNI_TRUE : JNI_FALSE;
+Java_org_tensorflow_lite_gpu_CompatibilityList_nativeIsDelegateSupportedOnThisDevice(
+    JNIEnv* env, jclass clazz, jlong compatibility_list_handle) {
+  CompatibilityListHelper* compatibility_list =
+      reinterpret_cast<CompatibilityListHelper*>(compatibility_list_handle);
+  return compatibility_list->IsDelegateSupportedOnThisDevice() ? JNI_TRUE
+                                                               : JNI_FALSE;
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_Whitelist_deleteWhitelist(
-    JNIEnv* env, jclass clazz, jlong whitelist_handle) {
-  WhitelistHelper* whitelist =
-      reinterpret_cast<WhitelistHelper*>(whitelist_handle);
-  delete whitelist;
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_gpu_CompatibilityList_deleteCompatibilityList(
+    JNIEnv* env, jclass clazz, jlong compatibility_list_handle) {
+  CompatibilityListHelper* compatibility_list =
+      reinterpret_cast<CompatibilityListHelper*>(compatibility_list_handle);
+  delete compatibility_list;
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

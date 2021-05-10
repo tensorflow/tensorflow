@@ -55,8 +55,8 @@ class TensordotTest(test_lib.TestCase):
     if context.executing_eagerly():
       return
     with self.cached_session() as sess:
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Matrix size-incompatible"):
+      with self.assertRaisesOpError(
+          r"In\[0\] mismatch In\[1\] shape: 2 vs\. 3: \[2,2\] \[3,2\]"):
         a_ph = array_ops.placeholder(dtypes.float32)
         b_ph = array_ops.placeholder(dtypes.float32)
         axes_ph = array_ops.placeholder(dtypes.int32)
@@ -165,6 +165,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     return a, b, a_dims, b_dims
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32("Tests tensordot, which calls matmul")
   def test_tensordot(self):
     if dynamic_shape_ and context.executing_eagerly():
       self.skipTest("Placeholders not support in eager mode")
@@ -178,7 +179,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     for _ in range(num_trials):
       a_np, b_np, a_dims_np, b_dims_np = _generate_random_tensors_and_dims()
       np_ans = np.tensordot(a_np, b_np, axes=(a_dims_np, b_dims_np))
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)
@@ -196,6 +197,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32("Tests tensordot, which calls matmul")
   def test_tensordot_scalar_axes(self):
     if dynamic_shape_ and context.executing_eagerly():
       self.skipTest("Placeholders not support in eager mode")
@@ -217,7 +219,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       all_axes.append(a_np.ndim - 1)
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)

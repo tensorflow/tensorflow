@@ -16,47 +16,44 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Name of XPlane that contains TraceMe events.
-ABSL_CONST_INIT extern const absl::string_view kHostThreads;
+TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 // Name prefix of XPlane that contains GPU events.
-ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+// Name prefix of XPlane that contains TPU events.
+TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains TPU runtime events.
+TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
-ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+// Name of XPlane that contains Roctracer API generated events.
+TF_CONST_INIT extern const absl::string_view kRoctracerApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
-ABSL_CONST_INIT extern const absl::string_view kMetadataPlane;
+TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
-ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlane;
+TF_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
+// Name of XPlane that contains events from python tracer.
+TF_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 
 // Names of XLines that contain ML-level events.
-ABSL_CONST_INIT extern const absl::string_view kStepLineName;
-ABSL_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
-ABSL_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
-ABSL_CONST_INIT extern const absl::string_view kXlaModuleLineName;
-ABSL_CONST_INIT extern const absl::string_view kXlaOpLineName;
-ABSL_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
-
-// Id of XPlane that contains TraceMe events.
-ABSL_CONST_INIT extern const int32 kHostPlaneId;
-// Ids prefix of XPlane that contains GPU events.
-ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
-// Id of XPlane that contains CUPTI driver API generated events which happens
-// on CPU host threads, e.g. Kernel launch.
-ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
-// Id of XPlane that contains profile metadata such as XLA debug info.
-ABSL_CONST_INIT extern const int32 kMetadataPlaneId;
-// Id of XPlane that contains kpi related metrics.
-ABSL_CONST_INIT extern const int32 kTFStreamzPlaneId;
-
-ABSL_CONST_INIT extern const int32 kThreadGroupMinPlaneId;
-ABSL_CONST_INIT extern const int32 kThreadGroupMaxPlaneId;
+TF_CONST_INIT extern const absl::string_view kStepLineName;
+TF_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
+TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
+TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
+TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
+TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
+TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -94,14 +91,32 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  // XLA related.
-  kLocalExecutableExecuteOnLocalDevice,
-  kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
-  // Virtual events for grouping.
-  kAsyncExecutorTraceContext,
+  kIterator,
+  kDeviceInputPipelineSecondIterator,
+  kPrefetchProduce,
+  kPrefetchConsume,
+  kParallelInterleaveProduce,
+  kParallelInterleaveConsume,
+  kParallelInterleaveInitializedInput,
+  kParallelMapProduce,
+  kParallelMapConsume,
+  kMapAndBatchProduce,
+  kMapAndBatchConsume,
+  kParseExampleProduce,
+  kParseExampleConsume,
+  // Batching related.
+  kBatchingSessionRun,
+  kProcessBatch,
+  kConcatInputTensors,
+  kMergeInputTensors,
+  kScheduleWithoutSplit,
+  kScheduleWithSplit,
+  kASBSQueueSchedule,
+  // JAX related.
+  kExecuteOnLocalDevices,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -138,8 +153,11 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kTensorLayout,
   kKpiName,
   kKpiValue,
+  kElementId,
+  kParentId,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -151,9 +169,15 @@ enum StatType {
   kDeviceId,
   kContextId,
   kCorrelationId,
+  // TODO(b/176137043): These "details" should differentiate between activity
+  // and API event sources.
   kMemcpyDetails,
   kMemallocDetails,
+  kMemFreeDetails,
+  kMemsetDetails,
+  kMemoryResidencyDetails,
   kKernelAnnotation,
+  kNVTXRange,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.
@@ -168,6 +192,10 @@ enum StatType {
   kIsEager,
   kTfFunctionCall,
   kTfFunctionTracingCount,
+  kFlops,
+  kBytesAccessed,
+  kSelectedGroupIds,
+  kSourceInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -183,8 +211,20 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
-  kLastStatType = kDevCapComputeCapMinor,
+  // Batching related.
+  kBatchSizeAfterPadding,
+  kPaddingAmount,
+  kBatchingInputTaskSize,
+  // GPU occupancy metrics
+  kTheoreticalOccupancyPct,
+  kOccupancyMinGridSize,
+  kOccupancySuggestedBlockSize,
+  kLastStatType = kOccupancySuggestedBlockSize,
 };
+
+inline std::string GpuPlaneName(int32 device_ordinal) {
+  return absl::StrCat(kGpuPlanePrefix, device_ordinal);
+}
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type);
 
@@ -197,6 +237,8 @@ inline bool IsHostEventType(HostEventType event_type,
 
 absl::optional<int64> FindHostEventType(absl::string_view event_name);
 
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name);
+
 absl::string_view GetStatTypeStr(StatType stat_type);
 
 bool IsStatType(StatType stat_type, absl::string_view stat_name);
@@ -206,6 +248,9 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 }
 
 absl::optional<int64> FindStatType(absl::string_view stat_name);
+
+// Returns true if the given event shouldn't be shown in the trace viewer.
+bool IsInternalEvent(absl::optional<int64> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(absl::optional<int64> stat_type);

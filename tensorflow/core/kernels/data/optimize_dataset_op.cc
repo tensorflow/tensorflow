@@ -14,46 +14,73 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
+// On mobile we do not provide optimize dataset op because not all of its
+// dependencies are available there. The op is replaced with a no-op.
+#if !defined(IS_MOBILE_PLATFORM)
 #include <map>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 /* static */ constexpr const char* const OptimizeDatasetOp::kDatasetType;
 /* static */ constexpr const char* const OptimizeDatasetOp::kInputDataset;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOptimizations;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsEnabled;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsDisabled;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsDefault;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const
     OptimizeDatasetOp::kOptimizationConfigs;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV1;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV2;
 
-constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
-constexpr char kOptimizers[] = "optimizers";
-constexpr char kOptimizerConfigs[] = "optimizer_configs";
+namespace {
 
-OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
-    : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
-}
+// Applies given optimizations and optimizatin_config in dataset graph rewrite
+// to return the OptimizeDataset.
+void MakeDatasetHelper(OpKernelContext* ctx,
+                       std::vector<tstring>& optimizations,
+                       const std::vector<string>& optimization_configs,
+                       DatasetBase* input, DatasetBase** output) {
+  // The vector stores the graduated experiment names which will be turned on
+  // for all input pipelines.
+  // clang-format off
+  std::vector<string> graduated_experiments = {
+    "disable_intra_op_parallelism",
+    "use_private_thread_pool"
+  };
+  // clang-format on
 
-void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                                    DatasetBase** output) {
-  std::vector<tstring> optimizations;
-  OP_REQUIRES_OK(
-      ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
+  // Add the graduated experiments to the optimization list and log them.
+  for (auto& experiment : graduated_experiments) {
+    if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
+        optimizations.end()) {
+      optimizations.push_back(experiment);
+    }
+    VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
+  }
 
-  auto config_factory = [this, &optimizations]() {
-    return CreateConfig(optimizations, optimization_configs_);
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
+  }
+
+  auto config_factory = [&optimizations, &optimization_configs]() {
+    return CreateRewriterConfig(optimizations, optimization_configs);
   };
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
                             /*record_fingerprint=*/true, output);
@@ -69,32 +96,94 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, s);
 }
 
-RewriterConfig OptimizeDatasetOp::CreateConfig(
-    std::vector<tstring> optimizations,
-    std::vector<string> optimizations_configs) {
-  RewriterConfig rewriter_config;
-  rewriter_config.add_optimizers(kOptimizerName);
-  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
-  rewriter_config.set_fail_on_optimizer_errors(true);
-  auto custom_optimizer = rewriter_config.add_custom_optimizers();
-  custom_optimizer->set_name(kOptimizerName);
-  auto* custom_optimizations_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
-  for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt.data(), opt.size());
+}  // namespace
+
+// static
+void OptimizeDatasetOp::MakeDatasetFromOptions(
+    OpKernelContext* ctx, DatasetBase* input,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    const std::vector<string>& optimization_configs, DatasetBase** output) {
+  std::vector<tstring> optimizations =
+      ConfigureExperimentsAndSelectOptimizations(
+          optimizations_enabled, optimizations_disabled, optimizations_default);
+  MakeDatasetHelper(ctx, optimizations, optimization_configs, input, output);
+}
+
+OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  auto& op_name = ctx->def().op();
+  if (op_name == kOptimizeDatasetV1) {
+    op_version_ = 1;
+  } else if (op_name == kOptimizeDatasetV2) {
+    op_version_ = 2;
   }
-  auto* config_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
-          .mutable_list();
-  for (const auto& config : optimizations_configs) {
-    config_list->add_s(config.data(), config.size());
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
+}
+
+void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  std::vector<tstring> optimizations;
+  if (op_version_ == 1) {
+    OP_REQUIRES_OK(
+        ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
+  } else if (op_version_ == 2) {
+    std::vector<tstring> optimizations_enabled, optimizations_disabled,
+        optimizations_default;
+    OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsEnabled,
+                                                     &optimizations_enabled));
+    OP_REQUIRES_OK(ctx,
+                   ParseVectorArgument<tstring>(ctx, kOptimizationsDisabled,
+                                                &optimizations_disabled));
+    OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
+                                                     &optimizations_default));
+    optimizations = ConfigureExperimentsAndSelectOptimizations(
+        optimizations_enabled, optimizations_disabled, optimizations_default);
   }
-  return rewriter_config;
+
+  MakeDatasetHelper(ctx, optimizations, optimization_configs_, input, output);
 }
 
 namespace {
 REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
+#else   // !IS_MOBILE_PLATFORM
+namespace tensorflow {
+namespace data {
+
+// static
+void OptimizeDatasetOp::MakeDatasetFromOptions(
+    OpKernelContext* ctx, DatasetBase* input,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    const std::vector<string>& optimization_configs, DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
+
+OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {}
+
+void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
+
+namespace {
+REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+}  // namespace
+}  // namespace data
+}  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM

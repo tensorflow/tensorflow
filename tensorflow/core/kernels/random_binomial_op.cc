@@ -30,8 +30,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -182,7 +184,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
     // the sample shape and [H1, ... Hm] for the batch shape of the samples.
     // We have B1 * ... * Bk samples per batch member we need.
     auto DoWork = [num_batches, samples_per_batch, &bcast, &counts, &probs,
-                   &gen, &output](int start_output, int limit_output) {
+                   &gen, &output](int64 start_output, int64 limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
       Eigen::array<T, 4> z;
@@ -253,7 +255,6 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
           }
         } else if (prob > T(0.5)) {
           T q = T(1) - prob;
-          double dcount = static_cast<double>(count);
           double dq = static_cast<double>(q);
           if (count * q >= T(10)) {
             for (int64 sample_idx = output_idx % samples_per_batch;
@@ -375,7 +376,7 @@ class RandomBinomialOp : public OpKernel {
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
                 errors::InvalidArgument("algorithm must be of shape [], not ",
                                         alg_tensor.shape().DebugString()));
-    Algorithm alg = alg_tensor.flat<Algorithm>()(0);
+    Algorithm alg = Algorithm(alg_tensor.flat<int64>()(0));
 
     int64 samples_per_batch = 1;
     const int64 num_sample_dims =

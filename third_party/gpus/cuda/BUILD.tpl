@@ -1,48 +1,57 @@
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
 
-config_setting(
-    name = "using_nvcc",
-    values = {
-        "define": "using_cuda_nvcc=true",
-    },
+# Config setting whether TensorFlow is built with CUDA support using clang.
+#
+# TODO(b/174244321), DEPRECATED: this target will be removed when all users
+# have been converted to :is_cuda_enabled (most) or :is_cuda_compiler_clang.
+selects.config_setting_group(
+    name = "using_clang",
+    match_all = [
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//:is_cuda_compiler_clang",
+    ],
 )
 
-config_setting(
-    name = "using_clang",
-    values = {
-        "define": "using_cuda_clang=true",
-    },
+# Config setting whether TensorFlow is built with CUDA support using nvcc.
+#
+# TODO(b/174244321), DEPRECATED: this target will be removed when all users
+# have been converted to :is_cuda_enabled (most) or :is_cuda_compiler_nvcc.
+selects.config_setting_group(
+    name = "using_nvcc",
+    match_all = [
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+    ],
 )
 
 # Equivalent to using_clang && -c opt.
-config_setting(
+selects.config_setting_group(
     name = "using_clang_opt",
-    values = {
-        "define": "using_cuda_clang=true",
-        "compilation_mode": "opt",
-    },
+    match_all = [
+        ":using_clang",
+        ":_opt",
+    ],
 )
 
 config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
+    name = "_opt",
+    values = {"compilation_mode": "opt"},
+    visibility = ["//visibility:private"],
 )
 
-config_setting(
-    name = "freebsd",
-    values = {"cpu": "freebsd"},
-)
-
+# Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'
+# All clients including TensorFlow should use these directives.
 cuda_header_library(
     name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
-        ":cuda-include"
+        ":cuda-include",
     ],
     include_prefix = "third_party/gpus",
     includes = [
@@ -54,10 +63,8 @@ cuda_header_library(
 cc_library(
     name = "cudart_static",
     srcs = ["cuda/lib/%{cudart_static_lib}"],
-    linkopts = select({
-        ":freebsd": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
+    linkopts = [
+        "-ldl",
         "-lpthread",
         %{cudart_static_linkopt}
     ],
@@ -79,51 +86,58 @@ cuda_header_library(
     name = "cublas_headers",
     hdrs = [":cublas-include"],
     include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cublas/include"],
     strip_include_prefix = "cublas/include",
     deps = [":cuda_headers"],
-    includes = ["cublas/include"],
 )
 
 cuda_header_library(
     name = "cusolver_headers",
     hdrs = [":cusolver-include"],
     include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cusolver/include"],
     strip_include_prefix = "cusolver/include",
     deps = [":cuda_headers"],
-    includes = ["cusolver/include"],
 )
 
 cuda_header_library(
     name = "cufft_headers",
     hdrs = [":cufft-include"],
     include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cufft/include"],
     strip_include_prefix = "cufft/include",
     deps = [":cuda_headers"],
-    includes = ["cufft/include"],
 )
 
 cuda_header_library(
     name = "cusparse_headers",
     hdrs = [":cusparse-include"],
     include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cusparse/include"],
     strip_include_prefix = "cusparse/include",
     deps = [":cuda_headers"],
-    includes = ["cusparse/include"],
 )
 
 cuda_header_library(
     name = "curand_headers",
     hdrs = [":curand-include"],
     include_prefix = "third_party/gpus/cuda/include",
+    includes = ["curand/include"],
     strip_include_prefix = "curand/include",
     deps = [":cuda_headers"],
-    includes = ["curand/include"],
 )
 
 cc_library(
     name = "cublas",
     srcs = ["cuda/lib/%{cublas_lib}"],
     data = ["cuda/lib/%{cublas_lib}"],
+    linkstatic = 1,
+)
+
+cc_library(
+    name = "cublasLt",
+    srcs = ["cuda/lib/%{cublasLt_lib}"],
+    data = ["cuda/lib/%{cublasLt_lib}"],
     linkstatic = 1,
 )
 
@@ -168,6 +182,7 @@ cc_library(
     name = "cuda",
     deps = [
         ":cublas",
+        ":cublasLt",
         ":cuda_headers",
         ":cudart",
         ":cudnn",
@@ -176,10 +191,15 @@ cc_library(
     ],
 )
 
+alias(
+    name = "cub_headers",
+    actual = "%{cub_actual}",
+)
+
 cuda_header_library(
     name = "cupti_headers",
     hdrs = [":cuda-extras"],
-    include_prefix="third_party/gpus",
+    include_prefix = "third_party/gpus",
     includes = ["cuda/extras/CUPTI/include/"],
     deps = [":cuda_headers"],
 )
@@ -202,14 +222,6 @@ cc_library(
     data = [":cuda-nvvm"],
 )
 
-filegroup(
-    name = "cuda_root",
-    srcs = [
-        "cuda/bin/fatbinary",
-        "cuda/bin/bin2c",
-    ],
-)
-
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
@@ -220,7 +232,7 @@ bzl_library(
 
 py_library(
     name = "cuda_config_py",
-    srcs = ["cuda/cuda_config.py"]
+    srcs = ["cuda/cuda_config.py"],
 )
 
 %{copy_rules}

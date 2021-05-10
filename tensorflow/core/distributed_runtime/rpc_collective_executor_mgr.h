@@ -38,6 +38,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
       const ConfigProto& config, const DeviceMgr* dev_mgr,
       std::unique_ptr<DeviceResolverDistributed> dev_resolver,
       std::unique_ptr<CollectiveParamResolverDistributed> param_resolver,
+      std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
       WorkerCacheInterface* worker_cache, const string& task_name);
 
   virtual ~RpcCollectiveExecutorMgr();

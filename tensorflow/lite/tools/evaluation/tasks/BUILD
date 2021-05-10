@@ -5,15 +5,19 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
     name = "task_executor",
+    srcs = ["task_executor.cc"],
     hdrs = ["task_executor.h"],
     copts = tflite_copts(),
     linkopts = task_linkopts(),
     deps = [
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "@com_google_absl//absl/types:optional",
     ],

@@ -30,14 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -1096,33 +1096,33 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateWhitelist() {
-  absl::flat_hash_map<string, std::vector<string>>* whitelist_table =
-      tensorflow::GetWhitelistTable();
+absl::flat_hash_set<string> GetOrCreateAllowlist() {
+  absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
+      tensorflow::GetAllowlistTable();
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  absl::flat_hash_set<string> whitelist;
+  absl::flat_hash_set<string> allowlist;
 
   for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ',')) {
     if (s == "FUSIBLE") {
-      for (auto pair : *whitelist_table) {
-        whitelist.insert(pair.second.begin(), pair.second.end());
+      for (auto pair : *allowlist_table) {
+        allowlist.insert(pair.second.begin(), pair.second.end());
       }
-    } else if (whitelist_table->contains(s)) {
-      auto v = whitelist_table->at(s);
-      whitelist.insert(v.begin(), v.end());
+    } else if (allowlist_table->contains(s)) {
+      auto v = allowlist_table->at(s);
+      allowlist.insert(v.begin(), v.end());
     } else if (!s.empty()) {
       // Should be a user provided TF operation.
-      whitelist.insert(string(s));
+      allowlist.insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && !whitelist.empty()) {
-    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
-    absl::c_sort(vwhitelist);
+  if (VLOG_IS_ON(2) && !allowlist.empty()) {
+    std::vector<string> vallowlist(allowlist.begin(), allowlist.end());
+    absl::c_sort(vallowlist);
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
-            << absl::StrJoin(vwhitelist, " ");
+            << absl::StrJoin(vallowlist, " ");
   }
-  return whitelist;
+  return allowlist;
 }
 
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
@@ -1156,12 +1156,12 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
-  auto whitelist = GetOrCreateWhitelist();
+  auto allowlist = GetOrCreateAllowlist();
 
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (const auto& s : whitelist) {
+  for (const auto& s : allowlist) {
     if (!all_ops.contains(string(s))) {
       return errors::InvalidArgument(
           "The operation '", s,
@@ -1196,17 +1196,29 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    DeviceType jit_device_type(registration->compilation_device_name);
-
-    RecursiveCompilabilityChecker::OperationFilter op_filter =
+    RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
+    filter.require_always_compilable = true;
+    filter.allow_string_consts = false;
+    filter.allow_collective_reduce_v2 = false;
 
-    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
-             .IsCompilableNode(*node, lib_runtime)) {
+    RecursiveCompilabilityChecker checker(
+        filter, DeviceType{registration->compilation_device_name});
+
+    if (!checker.IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
 
-    if (!whitelist.empty() && !whitelist.contains(node->def().op())) {
+    if (node->type_string() == "Const") {
+      // Skip Const op with type DT_STRING, since XLA autoclustering doesn't
+      // support it.
+      const AttrValue* attr = node->attrs().Find("dtype");
+      if (attr != nullptr && attr->type() == DT_STRING) {
+        continue;
+      }
+    }
+
+    if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
       VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
@@ -1685,9 +1697,15 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute ops in the graph, which indicates
+    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
+    // clustering.
+    if (n->type_string() == "TPUExecute") {
       return Status::OK();
     }
   }
@@ -1710,40 +1728,6 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
   return fuel;
 }
 }  // anonymous namespace
-
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                  RecursiveCompilabilityChecker::UncompilableNodesMap*
-                      uncompilable_node_info) {
-  Device* device = flr->device();
-  const XlaOpRegistry::DeviceRegistration* registration;
-  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
-                                            &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
-
-  // We can always *compile* resource operations, stateful RNGs and dummy ops,
-  // even if we are sometimes unable to auto-cluster them.
-  RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_stack_ops = true;
-  op_filter.allow_tensor_array_ops = true;
-  op_filter.allow_stateful_rng_ops = true;
-  op_filter.allow_control_trigger = true;
-  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
-  op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_slow_ops = true;
-  op_filter.allow_inaccurate_ops = true;
-
-  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
-  if (!uncompilable_node_info) {
-    // We do not need uncompilable node info. Just return the result.
-    return checker.IsCompilableCall(ndef, flr);
-  }
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
-      checker.FindUncompilableNodes(ndef, flr);
-  uncompilable_node_info->swap(uncompilable_node_result);
-  return uncompilable_node_info->empty();
-}
 
 Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
@@ -1781,7 +1765,7 @@ Status MarkForCompilationPass::RunForTest(
   return MarkForCompilation(options, debug_options);
 }
 
-absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
   // Table format: category name: {list of TF operations in that category}
   static absl::flat_hash_map<string, std::vector<string>>* result =
       new absl::flat_hash_map<string, std::vector<string>>{
@@ -1808,7 +1792,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
             "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
-            "_UnaryOpsComposition",
+            "_UnaryOpsComposition", "CollectiveReduceV2",
             // The following 4 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
             "Snapshot"}},
@@ -1834,10 +1818,12 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
       "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
       "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
-      "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
-      "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
-      "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
+      "ConcatOffset", "Const", "MirrorPad", "MirrorPadGrad", "Pack", "Pad",
+      "PadV2", "Reverse", "ReverseV2", "ReverseSequence", "Slice", "Split",
+      "SplitV", "StridedSlice", "StridedSliceGrad",
+      "ResourceStridedSliceAssign", "Tile", "Transpose", "InvertPermutation",
+      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate",
+     }}};
   // clang-format on
   return result;
 }
@@ -1845,7 +1831,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
 namespace testing {
 void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
 
-absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
   absl::flat_hash_set<string> result{"AdjustContrastv2",
                                      "AdjustHue",
                                      "AdjustSaturation",
@@ -1860,6 +1846,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "AvgPoolGrad",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
+                                     "BatchMatMulV3",
                                      "BatchToSpace",
                                      "BatchToSpaceND",
                                      "BesselI0e",
@@ -1952,9 +1939,12 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "ParallelDynamicStitch",
                                      "ParameterizedTruncatedNormal",
                                      "PartitionedCall",
+                                     "Polygamma",
+                                     "PopulationCount",
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
+                                     "QuantizeAndDequantizeV4",
                                      "RFFT",
                                      "RFFT2D",
                                      "RFFT3D",
@@ -1995,6 +1985,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "ResourceScatterNdUpdate",
                                      "ResourceScatterSub",
                                      "ResourceScatterUpdate",
+                                     "RngReadAndSkip",
+                                     "RngSkip",
                                      "Roll",
                                      "ScatterNd",
                                      "SelfAdjointEigV2",
@@ -2014,13 +2006,22 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "StatefulUniform",
                                      "StatefulUniformFullInt",
                                      "StatefulUniformInt",
+                                     "StatelessCase",
                                      "StatelessIf",
                                      "StatelessMultinomial",
+                                     "StatelessRandomGetAlg",
+                                     "StatelessRandomGetKeyCounter",
+                                     "StatelessRandomGetKeyCounterAlg",
                                      "StatelessRandomNormal",
+                                     "StatelessRandomNormalV2",
                                      "StatelessRandomUniform",
+                                     "StatelessRandomUniformV2",
                                      "StatelessRandomUniformInt",
+                                     "StatelessRandomUniformIntV2",
                                      "StatelessRandomUniformFullInt",
+                                     "StatelessRandomUniformFullIntV2",
                                      "StatelessTruncatedNormal",
+                                     "StatelessTruncatedNormalV2",
                                      "StatelessWhile",
                                      "Svd",
                                      "SymbolicGradient",
@@ -2047,10 +2048,13 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorListSplit",
                                      "TensorListStack",
                                      "TensorScatterAdd",
+                                     "TensorScatterMax",
+                                     "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
+                                     "Unique",
                                      "UpperBound",
                                      "UnsortedSegmentMax",
                                      "UnsortedSegmentMin",
@@ -2058,11 +2062,14 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "UnsortedSegmentSum",
                                      "VarIsInitializedOp",
                                      "VariableShape",
+                                     "Where",
                                      "While",
                                      "XlaBroadcastHelper",
                                      "XlaConv",
+                                     "XlaConvV2",
                                      "XlaDequantize",
                                      "XlaDot",
+                                     "XlaDotV2",
                                      "XlaDynamicSlice",
                                      "XlaDynamicUpdateSlice",
                                      "XlaEinsum",
@@ -2078,12 +2085,17 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
                                      "XlaSend",
+                                     "XlaSetBound",
+                                     "XlaSetDynamicDimensionSize",
                                      "XlaSharding",
                                      "XlaSort",
                                      "XlaSpmdFullToShardShape",
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
+                                     "XlaVariadicReduce",
+                                     "XlaVariadicSort",
                                      "XlaWhile",
+                                     "Zeta",
                                      "_Arg",
                                      "_ArrayToList",
                                      "_ListToArray",

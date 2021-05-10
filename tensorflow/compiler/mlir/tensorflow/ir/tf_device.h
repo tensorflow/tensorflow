@@ -20,9 +20,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DEVICE_H_
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
 namespace mlir {
 namespace tf_device {
@@ -35,15 +38,16 @@ namespace tf_device {
 // XlaRun.
 class TensorFlowDeviceDialect : public Dialect {
  public:
+  static StringRef getDialectNamespace() { return "tf_device"; }
   // Constructing TensorFlowDevice dialect under an non-null MLIRContext.
   explicit TensorFlowDeviceDialect(MLIRContext* context);
 };
 
+}  // namespace tf_device
+}  // namespace mlir
+
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h.inc"
-
-}  // namespace tf_device
-}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DEVICE_H_

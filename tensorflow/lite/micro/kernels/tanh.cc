@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -39,17 +41,23 @@ struct OpData {
   int input_left_shift;
 };
 
+void* TanhInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+}
+
 TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
                                        OpData* data) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
-  if (input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-    // The number if input integer bits is set to be consistent with the
-    // required value in reference_integer_ops::Tanh
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     static constexpr int kInputIntegerBits = 4;
     const double input_real_multiplier =
         static_cast<double>(input->params.scale) *
@@ -63,65 +71,87 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
+  data->input_zero_point = input->params.zero_point;
+  return CalculateArithmeticOpData(context, node, data);
+}
+
 }  // namespace
 
 TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  OpData data;
-  CalculateArithmeticOpData(context, node, &data);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  if (input->type == kTfLiteFloat32) {
-    switch (output->type) {
-      case kTfLiteFloat32: {
-        reference_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
-                            GetTensorShape(output),
-                            GetTensorData<float>(output));
-        return kTfLiteOk;
-      }
-      default:
-        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
-                           TfLiteTypeGetName(input->type),
-                           TfLiteTypeGetName(output->type));
-        return kTfLiteError;
-    }
-  } else if (input->type == kTfLiteInt8) {
-    switch (output->type) {
-      case kTfLiteInt8: {
-        reference_integer_ops::Tanh(
-            input->params.zero_point, data.input_range_radius,
-            data.input_multiplier, data.input_left_shift,
-            NumElements(input->dims), GetTensorData<int8_t>(input),
-            GetTensorData<int8_t>(output));
-        return kTfLiteOk;
-      }
-      default:
-        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
-                           TfLiteTypeGetName(input->type),
-                           TfLiteTypeGetName(output->type));
-        return kTfLiteError;
-    }
-  } else {
-    TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
-                       TfLiteTypeGetName(input->type),
-                       TfLiteTypeGetName(output->type));
-    return kTfLiteError;
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      reference_ops::Tanh(tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<float>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<float>(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt16: {
+      TanhParams params;
+      params.input_left_shift = data.input_left_shift;
+      reference_ops::Tanh(params, tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<int16_t>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<int16_t>(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteUInt8: {
+      TanhParams params;
+      params.input_zero_point = data.input_zero_point;
+      params.input_range_radius = data.input_range_radius;
+      params.input_multiplier = data.input_multiplier;
+      params.input_left_shift = data.input_left_shift;
+      reference_ops::Tanh(params, tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<uint8_t>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<uint8_t>(output));
+
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      reference_integer_ops::Tanh(
+          data.input_zero_point, data.input_range_radius, data.input_multiplier,
+          data.input_left_shift, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                         TfLiteTypeGetName(input->type),
+                         TfLiteTypeGetName(output->type));
+      return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace activations
 
-TfLiteRegistration* Register_TANH() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/activations::TanhEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_TANH() {
+  return {/*init=*/activations::TanhInit,
+          /*free=*/nullptr,
+          /*prepare=*/activations::TanhPrepare,
+          /*invoke=*/activations::TanhEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 }  // namespace micro
 }  // namespace ops

@@ -13,10 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 """Contains the `Node` class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -27,16 +25,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 
 _CONSTANT_VALUE = '_CONSTANT_VALUE'
 
 
-class Node(object):
+class Node:
   """A `Node` describes the connectivity between two layers.
 
   Each time a layer is connected to some new input,
@@ -44,7 +40,7 @@ class Node(object):
   Each time the output of a layer is used by another layer,
   a node is added to `layer._outbound_nodes`.
 
-  Arguments:
+  Args:
       layer: The Layer for the Layer.__call__ this node represents.
       call_args: The positional arguments the Layer was called with.
       call_kwargs: The keyword arguments the Layer was called with.
@@ -79,10 +75,10 @@ class Node(object):
     self._flat_arguments = nest.flatten((self.call_args, self.call_kwargs))
     # Used to avoid expensive `nest` operations in the most common case.
     self._single_positional_tensor_passed = (not self.call_kwargs and len(
-        self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
+        self.call_args) == 1 and tensor_util.is_tf_type(self.call_args[0]))
 
-    if not keras_tensor.keras_tensors_enabled():
-      # Create TensorFlowOpLayers if needed.
+    if not ops.executing_eagerly_outside_functions():
+      # Create TensorFlowOpLayers if needed (in TF1)
       for obj in self._flat_arguments:
         if (isinstance(obj, ops.Tensor) and
             base_layer_utils.needs_keras_history(
@@ -170,18 +166,33 @@ class Node(object):
     arguments.update(kwargs)
     kwargs = arguments
 
+    def _serialize_keras_tensor(t):
+      """Serializes a single Tensor passed to `call`."""
+      if hasattr(t, '_keras_history'):
+        kh = t._keras_history
+        node_index = kh.node_index
+        node_key = make_node_key(kh.layer.name, node_index)
+        new_node_index = node_conversion_map.get(node_key, 0)
+        return [kh.layer.name, new_node_index, kh.tensor_index]
+
+      if isinstance(t, np.ndarray):
+        return t.tolist()
+
+      if isinstance(t, ops.Tensor):
+        return backend.get_value(t).tolist()
+
+      return t
+
     kwargs = nest.map_structure(_serialize_keras_tensor, kwargs)
     try:
-      json.dumps(kwargs, default=serialization.get_json_type)
+      json.dumps(kwargs, default=json_utils.get_json_type)
     except TypeError:
       kwarg_types = nest.map_structure(type, kwargs)
-      logging.warning('Layer ' + self.layer.name +
+      raise TypeError('Layer ' + self.layer.name +
                       ' was passed non-JSON-serializable arguments. ' +
                       'Arguments had types: ' +
-                      str(kwarg_types) + '. They will not be included '
-                      'in the serialized model (and thus will be missing '
-                      'at deserialization time).')
-      kwargs = {}
+                      str(kwarg_types) + '. They cannot be serialized out '
+                      'when saving the model.')
 
     # `kwargs` is added to each Tensor in the first arg. This should be
     # changed in a future version of the serialization format.
@@ -201,7 +212,8 @@ class Node(object):
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
-    if not nest.is_sequence(data):
+    if (not nest.is_nested(data) and
+        not self.layer._preserve_input_structure_in_config):
       data = [data]
     data = tf_utils.convert_inner_node_data(data)
     return data
@@ -275,18 +287,3 @@ class KerasHistory(
 
 def is_keras_tensor(obj):
   return hasattr(obj, '_keras_history')
-
-
-def _serialize_keras_tensor(t):
-  """Serializes a single Tensor passed to `call`."""
-  if hasattr(t, '_keras_history'):
-    kh = t._keras_history
-    return [kh.layer.name, kh.node_index, kh.tensor_index]
-
-  if isinstance(t, np.ndarray):
-    return t.tolist()
-
-  if isinstance(t, ops.Tensor):
-    return backend.get_value(t).tolist()
-
-  return t

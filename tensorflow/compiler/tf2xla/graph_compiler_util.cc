@@ -216,7 +216,8 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
   }
   arg_nodes->clear();
   for (const auto& index_node : indexed_arg_nodes) {
-    if (index_node.first != arg_nodes->size()) {
+    const int arg_nodes_size = arg_nodes->size();
+    if (index_node.first != arg_nodes_size) {
       return errors::InvalidArgument(
           "Expected ", FunctionLibraryDefinition::kArgOp, " node with index ",
           arg_nodes->size(), ", but got index ", index_node.first);

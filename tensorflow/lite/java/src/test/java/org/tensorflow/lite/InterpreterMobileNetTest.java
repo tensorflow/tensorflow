@@ -38,11 +38,11 @@ public final class InterpreterMobileNetTest {
 
   private static final ByteBuffer MOBILENET_FLOAT_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite");
 
   private static final ByteBuffer MOBILENET_QUANTIZED_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
 
   @Test
   public void testMobileNet() {
@@ -55,6 +55,16 @@ public final class InterpreterMobileNetTest {
   }
 
   @Test
+  public void testMobileNetEnhancedCpuKernels() {
+    runMobileNetFloatTest(new Interpreter.Options().setUseXNNPACK(true));
+  }
+
+  @Test
+  public void testMobileNetEnhancedCpuKernelsMultithreaded() {
+    runMobileNetFloatTest(new Interpreter.Options().setUseXNNPACK(true).setNumThreads(2));
+  }
+
+  @Test
   public void testMobileNetQuantized() {
     runMobileNetQuantizedTest(new Interpreter.Options());
   }
@@ -62,6 +72,12 @@ public final class InterpreterMobileNetTest {
   @Test
   public void testMobileNetQuantizedMultithreaded() {
     runMobileNetQuantizedTest(new Interpreter.Options().setNumThreads(2));
+  }
+
+  @Test
+  public void testMobileNetQuantizedEnhancedCpu() {
+    // The "enhanced CPU flag" should only impact float models, this is a sanity test to confirm.
+    runMobileNetQuantizedTest(new Interpreter.Options().setUseXNNPACK(true));
   }
 
   private static void runMobileNetFloatTest(Interpreter.Options options) {

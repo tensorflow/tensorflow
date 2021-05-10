@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+
 #include <algorithm>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -34,7 +36,7 @@ void ThunkSchedule::AddDependenciesOnTransitiveOperands(
     // list if `operand` is assigned to a different stream. As an optimization,
     // we skip `operand`'s operands because `operand` depends on them already.
     if (stream_assignment_->StreamNumberForHlo(operand) !=
-        stream_assignment_->StreamNumberForHlo(*thunk.hlo_instruction())) {
+        stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(&thunk))) {
       depends_on_[&thunk].push_back(FindOrDie(hlo_to_thunk, &operand));
     }
   } else {
@@ -50,22 +52,17 @@ void ThunkSchedule::AddDependenciesOnTransitiveOperands(
 ThunkSchedule::ThunkSchedule(
     std::unique_ptr<ThunkSequence> thunks,
     std::unique_ptr<StreamAssignment> stream_assignment,
-    const std::vector<HloInstruction*>& hlo_total_order)
+    absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo)
     : thunks_(std::move(thunks)),
-      stream_assignment_(std::move(stream_assignment)) {
+      stream_assignment_(std::move(stream_assignment)),
+      thunk_to_hlo_(std::move(thunk_to_hlo)) {
   absl::flat_hash_map<const HloInstruction*, Thunk*> hlo_to_thunk;
-  for (const auto& thunk : *thunks_) {
-    InsertOrDie(&hlo_to_thunk, thunk->hlo_instruction(), thunk.get());
+  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
+    InsertOrDie(&hlo_to_thunk, thunk_to_hlo_.at(thunk.get()), thunk.get());
   }
 
-  for (HloInstruction* hlo : hlo_total_order) {
-    if (Thunk** thunk = tensorflow::gtl::FindOrNull(hlo_to_thunk, hlo)) {
-      thunk_total_order_.push_back(*thunk);
-    }
-  }
-
-  for (const Thunk* thunk : thunk_total_order_) {
-    const auto* dst = thunk->hlo_instruction();
+  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
+    const auto* dst = thunk_to_hlo_.at(thunk);
     CHECK(stream_assignment_->HasStreamAssigned(*dst));
     for (const auto* src : dst->operands()) {
       AddDependenciesOnTransitiveOperands(*thunk, *src, hlo_to_thunk);
@@ -82,10 +79,13 @@ ThunkSchedule::ThunkSchedule(
   }
 }
 
+ThunkSchedule::ThunkSchedule(std::unique_ptr<ThunkSequence> thunks)
+    : thunks_(std::move(thunks)) {}
+
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
-  for (int i = 0; i < thunk_total_order_.size(); ++i) {
-    InsertOrDie(&thunk_to_total_order, thunk_total_order_[i], i);
+  for (int i = 0; i < thunks_->size(); ++i) {
+    InsertOrDie(&thunk_to_total_order, thunks_->at(i).get(), i);
   }
 
   int stream_count = stream_assignment_->StreamCount();
@@ -110,19 +110,20 @@ void ThunkSchedule::RemoveRedundantDependencyEdges() {
   // S1 thunk depends on a S2 thunk ordered <=last_dependency[S1][S2], that is a
   // redundant dependency edge.
   Array2D<int> last_dependency(stream_count, stream_count, -1);
-  for (const Thunk* dst : thunk_total_order_) {
+  for (const std::unique_ptr<Thunk>& dst_thunk : TotalOrder()) {
+    const Thunk* dst = dst_thunk.get();
     if (!depends_on_.contains(dst)) {
       continue;
     }
 
     int dst_stream =
-        stream_assignment_->StreamNumberForHlo(*dst->hlo_instruction());
+        stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(dst));
     std::list<const Thunk*>& sources = FindOrDie(depends_on_, dst);
     for (auto iter = sources.begin(); iter != sources.end();) {
       const Thunk* src = *iter;
       // `dst` depends on `src`.
       int src_stream =
-          stream_assignment_->StreamNumberForHlo(*src->hlo_instruction());
+          stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(src));
       int src_order = FindOrDie(thunk_to_total_order, src);
       if (src_order <= last_dependency(dst_stream, src_stream)) {
         iter = sources.erase(iter);
@@ -147,38 +148,32 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
 }
 
 string ThunkSchedule::ToString() const {
-  if (thunk_total_order_.empty()) {
+  if (thunks_->empty()) {
     return "No thunks.";
   }
 
-  const Thunk* thunk_with_longest_kind = *absl::c_max_element(
-      thunk_total_order_, [](const Thunk* a, const Thunk* b) {
-        return ThunkKindToString(a->kind()).length() <
-               ThunkKindToString(b->kind()).length();
-      });
-  int64 max_thunk_kind_len =
-      ThunkKindToString(thunk_with_longest_kind->kind()).length();
+  auto get_thunk_annotation = [&](const Thunk* thunk) -> std::string {
+    auto iter = thunk_to_hlo_.find(thunk);
+    if (iter != thunk_to_hlo_.end() && iter->second != nullptr) {
+      return iter->second->ToString();
+    } else {
+      return "(no HloInstruction)";
+    }
+  };
 
   string result = "Total order:\n";
-  for (Thunk* thunk : thunk_total_order_) {
-    // Write out the thunk kind, padded out to max_thunk_kind_len.
-    absl::string_view kind_str = ThunkKindToString(thunk->kind());
-    absl::StrAppend(&result, kind_str,
-                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
-    if (thunk->hlo_instruction() != nullptr) {
-      absl::StrAppend(&result, thunk->hlo_instruction()->ToString());
-    } else {
-      absl::StrAppend(&result, "(no HloInstruction)");
-    }
-    absl::StrAppend(&result, "\n");
-  }
+  absl::StrAppend(&result, thunks_->ToString(0, get_thunk_annotation));
   absl::StrAppend(&result, "\nDependencies:\n");
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;
     for (const Thunk* dependency : entry.second) {
-      absl::StrAppend(&result, "\t", dependent->hlo_instruction()->name(),
-                      " depends on ", dependency->hlo_instruction()->name(),
-                      "\n");
+      auto dependent_iter = thunk_to_hlo_.find(dependent);
+      auto dependency_iter = thunk_to_hlo_.find(dependency);
+      if (dependent_iter != thunk_to_hlo_.end() &&
+          dependency_iter != thunk_to_hlo_.end()) {
+        absl::StrAppend(&result, "\t", dependent_iter->second->name(),
+                        " depends on ", dependency_iter->second->name(), "\n");
+      }
     }
   }
   return result;

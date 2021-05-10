@@ -16,22 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
 namespace py = pybind11;
-
-bool InitializeNumpyAPIForTypes() {
-  // Caution: import_array1 works by initializing a static variable
-  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
-  // therefore be called from the *same translation unit* as any users of
-  // NumPy C APIs (here PyArray_View). This awkward wrapper function
-  // must not be inlined into its caller.
-  import_array1(false);
-  return true;
-}
 
 xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto* types =
@@ -81,8 +71,8 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case U64:
       return py::dtype::of<uint64>();
     case BF16: {
-      TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
-      return py::dtype::from_args(bfloat16);
+      py::handle bfloat16(tensorflow::Bfloat16Dtype());
+      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
     }
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
@@ -100,39 +90,67 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
   }
 }
 
+const NumpyScalarTypes& GetNumpyScalarTypes() {
+  static const NumpyScalarTypes* singleton = []() {
+    NumpyScalarTypes* dtypes = new NumpyScalarTypes();
+    const auto numpy = py::module::import("numpy");
+    dtypes->np_bool = py::object(numpy.attr("bool_"));
+    dtypes->np_int8 = py::object(numpy.attr("int8"));
+    dtypes->np_int16 = py::object(numpy.attr("int16"));
+    dtypes->np_int32 = py::object(numpy.attr("int32"));
+    dtypes->np_int64 = py::object(numpy.attr("int64"));
+    dtypes->np_uint8 = py::object(numpy.attr("uint8"));
+    dtypes->np_uint16 = py::object(numpy.attr("uint16"));
+    dtypes->np_uint32 = py::object(numpy.attr("uint32"));
+    dtypes->np_uint64 = py::object(numpy.attr("uint64"));
+    dtypes->np_bfloat16 =
+        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+    dtypes->np_float16 = py::object(numpy.attr("float16"));
+    dtypes->np_float32 = py::object(numpy.attr("float32"));
+    dtypes->np_float64 = py::object(numpy.attr("float64"));
+    dtypes->np_complex64 = py::object(numpy.attr("complex64"));
+    dtypes->np_complex128 = py::object(numpy.attr("complex128"));
+    dtypes->np_longlong = py::object(numpy.attr("longlong"));
+    dtypes->np_intc = py::object(numpy.attr("intc"));
+    return dtypes;
+  }();
+  return *singleton;
+}
+
 // Returns a numpy-style format descriptor string for `type`.
 StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
+  // We use an "=" prefix to indicate that we prefer "standard" types like
+  // np.int32 rather than "native" types like np.cint. pybind11 does not qualify
+  // its format descriptors.
   switch (type) {
     case PRED:
-      return py::format_descriptor<bool>::format();
+      return std::string("?");
     case S8:
-      return py::format_descriptor<int8>::format();
+      return std::string("=b");
     case S16:
-      return py::format_descriptor<int16>::format();
+      return std::string("=h");
     case S32:
-      return py::format_descriptor<int32>::format();
+      return std::string("=i");
     case S64:
-      return py::format_descriptor<int64>::format();
+      return std::string("=q");
     case U8:
-      return py::format_descriptor<uint8>::format();
+      return std::string("=B");
     case U16:
-      return py::format_descriptor<uint16>::format();
+      return std::string("=H");
     case U32:
-      return py::format_descriptor<uint32>::format();
+      return std::string("=I");
     case U64:
-      return py::format_descriptor<uint64>::format();
-    case BF16:
-      return std::string("H");  // PEP 3118 code for "unsigned int16"
+      return std::string("=Q");
     case F16:
-      return std::string("e");  // PEP 3118 code for "float16"
+      return std::string("=e");
     case F32:
-      return py::format_descriptor<float>::format();
+      return std::string("=f");
     case F64:
-      return py::format_descriptor<double>::format();
+      return std::string("=d");
     case C64:
-      return py::format_descriptor<std::complex<float>>::format();
+      return std::string("=Zf");
     case C128:
-      return py::format_descriptor<std::complex<double>>::format();
+      return std::string("=Zd");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
@@ -179,6 +197,21 @@ StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
   }
 }
 
+PrimitiveType Squash64BitTypes(PrimitiveType type) {
+  switch (type) {
+    case S64:
+      return S32;
+    case U64:
+      return U32;
+    case F64:
+      return F32;
+    case C128:
+      return C64;
+    default:
+      return type;
+  }
+}
+
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
   std::vector<ssize_t> strides;
@@ -213,31 +246,11 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
   TF_RET_CHECK(m.shape().IsArray());
 
   py::object literal_object = py::cast(literal);
-  TF_ASSIGN_OR_RETURN(std::string format, FormatDescriptorForPrimitiveType(
-                                              m.shape().element_type()));
-  py::buffer_info info(
-      m.untyped_data(),  // Pointer to buffer
-      xla::ShapeUtil::ByteSizeOfPrimitiveType(
-          m.shape().element_type()),  // Size of one scalar
-      format,                         // Python struct-style format descriptor
-      m.shape().dimensions_size(),    // Number of dimensions
-      m.shape().dimensions(),         // Buffer dimensions
-      ByteStridesForShape(m.shape())  // Strides (in bytes) for each index
-  );
-
-  py::array array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
-                  literal_object);
-  if (m.shape().element_type() == xla::BF16) {
-    // We requested an array of uint16 since NumPy doesn't know how
-    // to produce our custom bfloat16 type. Reinterpret the array as bfloat16
-    // before handing it back to the caller.
-    TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
-    array = py::reinterpret_steal<py::array>(
-        PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
-                     reinterpret_cast<PyArray_Descr*>(bfloat16.release().ptr()),
-                     static_cast<PyTypeObject*>(nullptr)));
-  }
-  return array;
+  TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                      PrimitiveTypeToDtype(m.shape().element_type()));
+  return py::array(dtype, m.shape().dimensions(),
+                   ByteStridesForShape(m.shape()), m.untyped_data(),
+                   literal_object);
 }
 
 StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
@@ -270,12 +283,20 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
   return tree;
 }
 
-py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+template <typename IntType>
+static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   py::tuple out(xs.size());
   for (int i = 0; i < xs.size(); ++i) {
     out[i] = py::int_(xs[i]);
   }
   return out;
+}
+
+py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+  return IntSpanToTupleHelper(xs);
+}
+py::tuple IntSpanToTuple(absl::Span<int const> xs) {
+  return IntSpanToTupleHelper(xs);
 }
 
 std::vector<int64> IntSequenceToVector(const py::object& sequence) {
@@ -292,39 +313,23 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   if (!array) {
     return absl::nullopt;
   }
-
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {
     throw std::runtime_error(type_or_status.status().ToString());
   }
   PrimitiveType type = type_or_status.ValueOrDie();
 
-  if (type == BF16) {
-    // The NumPy array protocol has no way to describe our custom bfloat16
-    // type, so we cast to an array of uint16 instead. We are going to pass
-    // a raw buffer pointer to BorrowingLiteral anyway, so it doesn't
-    // really matter what type we use here, so long as it has the correct size
-    // and alignment.
-    array = py::reinterpret_steal<py::array>(
-        PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
-                     reinterpret_cast<PyArray_Descr*>(
-                         py::dtype::of<uint16>().release().ptr()),
-                     static_cast<PyTypeObject*>(nullptr)));
-  }
-
-  py::buffer_info buffer_info = array.request();
-
   absl::InlinedVector<int64, 4> dims(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
   }
   Shape shape = ShapeUtil::MakeShape(type, dims);
-  if (buffer_info.size * buffer_info.itemsize != ShapeUtil::ByteSizeOf(shape)) {
+  if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
     throw std::runtime_error(absl::StrCat(
-        "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
-        " vs. ", ShapeUtil::ByteSizeOf(shape)));
+        "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",
+        ShapeUtil::ByteSizeOf(shape)));
   }
-  return CastToArrayResult{array, static_cast<const char*>(buffer_info.ptr),
+  return CastToArrayResult{array, static_cast<const char*>(array.data()),
                            shape};
 }
 

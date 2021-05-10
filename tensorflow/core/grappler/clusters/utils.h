@@ -28,7 +28,7 @@ DeviceProperties GetLocalCPUInfo();
 
 // Returns the DeviceProperties for the specified GPU attached to the server on
 // which grappler is running.
-DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id);
+DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id);
 
 // Returns the DeviceProperties of the specified device
 DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device);

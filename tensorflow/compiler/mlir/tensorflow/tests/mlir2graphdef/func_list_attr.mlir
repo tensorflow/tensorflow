@@ -18,7 +18,6 @@ func @main() {
 // CHECK-NEXT:         dtype: DT_INT32
 // CHECK-NEXT:         tensor_shape {
 // CHECK-NEXT:         }
-// CHECK-NEXT:         int_val: 0
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
@@ -43,7 +42,7 @@ func @main() {
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
 // CHECK:      }
-    %1:2 = tf_executor.island wraps "tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo, @bar], device = "", output_shapes = []} : (tensor<i32>) -> tensor<*xf32> loc("Case")
+    %1:2 = tf_executor.island wraps "tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo, @bar], device = "", output_shapes = [], is_stateless = false} : (tensor<i32>) -> tensor<*xf32> loc("Case")
     tf_executor.fetch
   }
   return

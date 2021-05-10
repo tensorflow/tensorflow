@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <initializer_list>
+#include <stdint.h>
+
+#include <complex>
+#include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
-
-TfLiteRegistration* Register_RFFT2D();
+namespace builtin {
 
 namespace {
 
@@ -40,8 +39,8 @@ class Rfft2dOpModel : public SingleOpModel {
     TensorType output_type = TensorType_COMPLEX64;
     output_ = AddOutput({output_type, {}});
 
-    const std::vector<uint8_t> custom_option;
-    SetCustomOp("Rfft2d", custom_option, Register_RFFT2D);
+    SetBuiltinOp(BuiltinOperator_RFFT2D, BuiltinOptions_Rfft2dOptions,
+                 CreateRfft2dOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -143,12 +142,6 @@ TEST(Rfft2dOpTest, InputDimsGreaterThan2) {
 }
 
 }  // namespace
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

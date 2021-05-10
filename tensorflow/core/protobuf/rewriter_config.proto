@@ -9,7 +9,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message AutoParallelOptions {
   bool enable = 1;
@@ -39,6 +39,13 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
+  // Enum for layout conversion between NCHW and NHWC on CPU. Default is OFF.
+  enum CpuLayout {
+    NO_CONVERSION_ON_CPU = 0;
+    NCHW_TO_NHWC = 1;
+    NHWC_TO_NCHW = 2;
+  }
+
   // Enum controlling the number of times to run optimizers. The default is to
   // run them twice.
   enum NumIterationsType {
@@ -46,6 +53,9 @@ message RewriterConfig {
     ONE = 1;
     TWO = 2;
   }
+
+  // CPU Conversion settings between NHCW and NCHW.
+  CpuLayout cpu_layout_conversion = 50;
 
   // Optimize tensor layouts (default is ON)
   // e.g. This will try to use NCHW layout on GPU which is faster.
@@ -85,13 +95,19 @@ message RewriterConfig {
   // Enable the swap of kernel implementations based on the device placement
   // (default is ON).
   Toggle implementation_selector = 22;
-  // Optimize data types (default is OFF).
-  // e.g., This will try to use float16 on GPU which is faster.
+  // Optimize data types for CUDA (default is OFF).
+  // This will try to use float16 on GPU which is faster.
   // Note that this can change the numerical stability of the graph and may
   // require the use of loss scaling to maintain model convergence.
   Toggle auto_mixed_precision = 23;
+  // Optimize data types for MKL (default is OFF).
+  // This will try to use bfloat16 on CPUs, which is faster.
+  // Note that this can change the numerical stability of the graph.
+  Toggle auto_mixed_precision_mkl = 25;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
+  // Optimizers registered by plugin (default is ON)
+  Toggle use_plugin_optimizers = 28;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).
@@ -102,6 +118,18 @@ message RewriterConfig {
   // 0 means the system picks an appropriate number.
   // < 0 means do not skip optimization.
   int32 min_graph_nodes = 17;
+
+  // Disable optimizations that assume compressed tensors. Note that this flag
+  // is experimental and may be removed in the future.
+  bool experimental_disable_compressed_tensor_optimization = 26;
+
+  // Disable folding quantization emulation ops such as FakeQuantWithMinMax* and
+  // QuantizeAndDequantize*. Some compilers (e.g. the TF-to-tflite converter)
+  // have to extract quantization configs (e.g. min/max range, number of bits,
+  // and per-channel) from the quantization emulation ops. Note that this flag
+  // is experimental and may be removed in the future. See b/174138564 for more
+  // details.
+  bool experimental_disable_folding_quantization_emulation = 27;
 
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
@@ -142,8 +170,8 @@ message RewriterConfig {
   // "foo/gradients/bar", but not "foo_gradients/"
   string memory_optimizer_target_node_name_scope = 6;
   // Maximum number of milliseconds to spend optimizing a single graph before
-  // timing out. If equal to 0 the system picks a default (currently 5 minutes).
-  // If less than 0 the optimizer will never time out.
+  // timing out. If less than or equal to 0 (default value) the optimizer will
+  // never time out.
   int64 meta_optimizer_timeout_ms = 20;
 
   // Configures AutoParallel optimization passes either through the

@@ -43,16 +43,16 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
               and specifying a default driver will abort the tests.
       features: [str], list of extra features to enable.
     """
-    if driver != _default_driver:
-        fail("There is no present support for custom drivers. Please omit" +
-             " the driver parameter when running this test. If you require" +
-             " custom driver support, please file an issue to request it.")
+
+    # Remove the default_driver from the data: it does not exist as a file and is
+    # just a placeholder from the copybara rewrite.
+    data = [d for d in data if d != _default_driver]
 
     # Disable tests on windows for now, to enable testing rest of all xla and mlir.
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
-        tags = tags + ["no_windows"],
+        tags = tags + ["no_pip", "no_windows"],
         args = [
             "tensorflow/compiler/mlir/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,

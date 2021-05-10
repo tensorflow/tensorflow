@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/map_and_batch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -316,17 +316,17 @@ DATASET_OUTPUT_SHAPES_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
 std::vector<CardinalityTestCase<MapAndBatchDatasetParams>>
 CardinalityTestCases() {
   return {{/*dataset_params=*/MapAndBatchDatasetParams1(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapAndBatchDatasetParams2(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams3(),
            /*expected_cardinality=*/3},
           {/*dataset_params=*/MapAndBatchDatasetParams4(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapAndBatchDatasetParams5(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams6(),
-           /*expected_cardinality=*/3}};
+           /*expected_cardinality=*/kUnknownCardinality}};
 }
 
 DATASET_CARDINALITY_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,

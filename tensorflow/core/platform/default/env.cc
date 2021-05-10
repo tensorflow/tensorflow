@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <fnmatch.h>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/ram_file_system.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -68,7 +70,8 @@ class PThread : public Thread {
     }
     int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
     // There is no mechanism for the thread creation API to fail, so we CHECK.
-    CHECK_EQ(ret, 0) << "Thread creation via pthread_create() failed.";
+    CHECK_EQ(ret, 0) << "Thread " << name
+                     << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
   }
 
@@ -134,15 +137,8 @@ class PosixEnv : public Env {
   }
 
   int32 GetCurrentThreadId() override {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int32>(tid64);
-#elif defined(__FreeBSD__)
-    return pthread_getthreadid_np();
-#else
-    return static_cast<int32>(pthread_self());
-#endif
+    static thread_local int32 current_thread_id = GetCurrentThreadIdInternal();
+    return current_thread_id;
   }
 
   bool GetCurrentThreadName(string* name) override {
@@ -151,13 +147,11 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = thread_name->second;
+        *name = strings::StrCat(thread_name->second, "/", GetCurrentThreadId());
         return true;
       }
     }
-#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
-    return false;
-#else
+#if defined(__GLIBC__) || defined(__FreeBSD__)
     char buf[100];
 #ifdef __FreeBSD__
     int res = 0;
@@ -170,6 +164,8 @@ class PosixEnv : public Env {
     }
     *name = buf;
     return true;
+#else
+    return false;
 #endif
   }
 
@@ -191,8 +187,9 @@ class PosixEnv : public Env {
     });
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -231,7 +228,50 @@ class PosixEnv : public Env {
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
+
+  int32 GetCurrentThreadIdInternal() {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    return pthread_getthreadid_np();
+#elif defined(__NR_gettid)
+    return static_cast<int32>(syscall(__NR_gettid));
+#else
+    return std::hash<std::thread::id>()(std::this_thread::get_id());
+#endif
+  }
 };
+
+#if defined(LIBTPU_ON_GCE)
+// This is a temporary fix for including GCS file system on TPU builds.
+// Will be removed once b/176954917 is fully resolved with the build fix.
+bool RegisterGcsFileSystemForTpu() {
+  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
+                    O_RDWR, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
+    return false;
+  }
+
+  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
+      nullptr, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+  if (fn == MAP_FAILED) {
+    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
+    return false;
+  }
+
+  FileSystem* fs = reinterpret_cast<FileSystem*>((*fn)());
+  tensorflow::Env::Default()
+      ->RegisterFileSystem("gs", std::unique_ptr<FileSystem>(fs))
+      .IgnoreError();
+
+  munmap(fn, sizeof(void* (*)()));
+  close(fd);
+  return true;
+}
+#endif
 
 }  // namespace
 
@@ -239,6 +279,10 @@ class PosixEnv : public Env {
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
+
+#if defined(LIBTPU_ON_GCE)
+bool register_gcs_for_tpu = RegisterGcsFileSystemForTpu();
+#endif
 
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;

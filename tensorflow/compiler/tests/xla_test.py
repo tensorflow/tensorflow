@@ -83,7 +83,16 @@ class XLATestCase(test.TestCase):
 
   def __init__(self, method_name='runTest'):
     super(XLATestCase, self).__init__(method_name)
-    context.context().enable_mlir_bridge = test_util.is_mlir_bridge_enabled()
+    if 'XLA' in FLAGS.test_device:
+      context.context().enable_xla_devices()
+
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
+    if test_util.is_mlir_bridge_enabled():
+      context.context().enable_mlir_bridge = True
+    elif test_util.is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self.device = FLAGS.test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
@@ -235,16 +244,23 @@ class XLATestCase(test.TestCase):
         'test_session not supported on XLATestCase, please use session')
 
   @contextlib.contextmanager
-  def test_scope(self):
-    """Test scope that runs tests on a Tensorflow/XLA device.
-
-    Uses a compilation_scope() to mark operators to compile.
+  def device_scope(self):
+    """Scope that runs tests on `self.device`.
 
     Yields:
       A scope to apply to the operators under test.
     """
     with ops.device('device:{}:0'.format(self.device)):
       yield
+
+  def test_scope(self):
+    """Deprecated alias of `device_scope`.
+
+    This should be avoided as the name starts with `test`, so test runners
+    treat it as a test. This interferes with class decorators that operate on
+    each test method.
+    """
+    return self.device_scope()
 
 
 def Benchmark(tf_bench,

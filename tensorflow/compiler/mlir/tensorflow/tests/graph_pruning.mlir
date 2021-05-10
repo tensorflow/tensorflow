@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-graph-pruning | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-executor-graph-pruning | FileCheck %s
 
 // Two islands chained by data-flow contributing to the graph return are
 // preserved.
@@ -16,20 +16,6 @@ func @chained_islands(%arg0 : i32) -> i32 {
     tf_executor.fetch %2#0 : i32
   }
   return %0 : i32
-}
-
-// Check that a function that does not have arguments/results is ignored by
-// thep pruning pass: this could be a V1 graph imported without feeds/fetches.
-// CHECK-LABEL: func @empty_islands(
-func @empty_islands() {
-// CHECK: tf_executor.island
-  tf_executor.graph {
-    %0 = tf_executor.island {
-      tf_executor.yield
-    }
-    tf_executor.fetch
-  }
-  return
 }
 
 // Check that an unused island that doesn't contribute to the fetch is removed.
@@ -162,6 +148,40 @@ func @control_fetch(%arg0 : i32) {
       tf_executor.yield
     }
     tf_executor.fetch %2 : !tf_executor.control
+  }
+  return
+}
+
+// -----
+
+// Check that a function that is named "main" and does not have the
+// "tf.entry_function" attribute defined is ignored by the pruning pass: this
+// could be a V1 graph imported without feed/fetch/target nodes.
+// CHECK-LABEL: func @main(
+func @main() {
+// CHECK: tf_executor.island
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// -----
+
+// Check that a function that is named "main" and does have the
+// "tf.entry_function" attribute defined with no feed/fetch/target nodes is
+// pruned.
+// CHECK-LABEL: func @main(
+func @main() attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = ""}} {
+// CHECK-NOT: tf_executor.island
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    tf_executor.fetch
   }
   return
 }

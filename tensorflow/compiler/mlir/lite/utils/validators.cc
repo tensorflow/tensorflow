@@ -61,6 +61,33 @@ bool TFIntListIs1XY1(const ArrayAttr &attr) {
   return true;
 }
 
+// Returns true if the given `op`
+//   * has an attribute with the given `name`,
+//   * and the attribute is an integer list of the form [1, X, Y, Z, 1],
+// and writes X, Y as 32-bit integer attribute to `x`, `y`, z.
+bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
+                      IntegerAttr *y, IntegerAttr *z) {
+  auto attr = op->getAttrOfType<ArrayAttr>(name);
+  if (!attr) return false;
+
+  auto elements = attr.getValue();
+  if (elements.size() != 5 ||
+      std::any_of(elements.begin(), elements.end(),
+                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+    return false;
+
+  if (elements.front().cast<IntegerAttr>().getInt() != 1 ||
+      elements.back().cast<IntegerAttr>().getInt() != 1)
+    return false;
+
+  Builder b(op->getContext());
+  *x = b.getI32IntegerAttr(elements[1].cast<IntegerAttr>().getInt());
+  *y = b.getI32IntegerAttr(elements[2].cast<IntegerAttr>().getInt());
+  *z = b.getI32IntegerAttr(elements[3].cast<IntegerAttr>().getInt());
+
+  return true;
+}
+
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
 bool TFIntListIsAllOnes(const ArrayAttr &attr) {
@@ -76,6 +103,22 @@ bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
   // probably be considered as broadcastable), but given we are working with
   // attributes here that shouldn't be an issue,
   return OpTrait::util::getBroadcastedType(a.getType(), b.getType()) != Type();
+}
+
+bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
+  if (elements_shape.empty()) return true;
+
+  for (auto dim : elements_shape.drop_back(1)) {
+    if (dim != 1) return false;
+  }
+  return true;
+}
+
+bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
+  if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
+    return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
+  }
+  return false;
 }
 
 }  // namespace TFL

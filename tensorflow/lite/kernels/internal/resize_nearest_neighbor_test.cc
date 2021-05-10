@@ -42,7 +42,7 @@ void TestReferenceResizeNearestNeighbor(
   ASSERT_EQ(expected_output_data, output_data);
 }
 
-// Sanity test values are from
+// Consistency test values are from
 // third_party/tensorflow/core/kernels/resize_nearest_neighbor_op_test.cc.
 
 TEST(ResizeNearestNeighborReference, Test2x2To1x1) {
@@ -86,6 +86,17 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
   std::vector<int32> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
   std::vector<uint8> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To3x3Int16) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<int16_t> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<int16_t> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);

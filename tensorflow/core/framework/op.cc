@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -289,16 +290,17 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
   return OpNotFound(op_type_name);
 }
 
-// Other registration ---------------------------------------------------------
-
 namespace register_op {
-OpDefBuilderReceiver::OpDefBuilderReceiver(
-    const OpDefBuilderWrapper<true>& wrapper) {
+
+InitOnStartupMarker OpDefBuilderWrapper::operator()() {
   OpRegistry::Global()->Register(
-      [wrapper](OpRegistrationData* op_reg_data) -> Status {
-        return wrapper.builder().Finalize(op_reg_data);
+      [builder =
+           std::move(builder_)](OpRegistrationData* op_reg_data) -> Status {
+        return builder.Finalize(op_reg_data);
       });
+  return {};
 }
-}  // namespace register_op
+
+}  //  namespace register_op
 
 }  // namespace tensorflow

@@ -44,7 +44,8 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1, 2],
           "output_shape": [[]],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "const_weight_bias": [False]
       },
       # TODO(yunluli): Adding simple tests for now to unblock edgetpu debugging.
       # Need to add more test cases.
@@ -57,7 +58,20 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1],
           "output_shape": [[1, 3, 3, 2]],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "const_weight_bias": [True]
+      },
+      {
+          "input_shape": [[1, 3, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "has_bias": [False],
+          "strides": [[1, 1, 1, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 3, 3, 2]],
+          "fully_quantize": [False],
+          "const_weight_bias": [True]
       },
       {
           "input_shape": [[1, 3, 3, 1]],
@@ -68,7 +82,8 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1],
           "output_shape": [[1, 6, 6, 2]],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "const_weight_bias": [True]
       },
       {
           "input_shape": [[1, 4, 3, 1]],
@@ -79,7 +94,8 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1],
           "output_shape": [[1, 8, 6, 2]],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "const_weight_bias": [True]
       },
       {
           "input_shape": [[1, 3, 3, 1]],
@@ -90,14 +106,15 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1],
           "output_shape": [[1, 3, 3, 2]],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "const_weight_bias": [True]
       },
   ]
 
   def get_tensor_shapes(parameters):
     input_shape = parameters["input_shape"]
     filter_size = parameters["filter_size"]
-    if not parameters["fully_quantize"]:
+    if not parameters["const_weight_bias"]:
       filter_shape = filter_size + [
           input_shape[3], parameters["channel_multiplier"]
       ]
@@ -113,7 +130,7 @@ def make_transpose_conv_tests(options):
     filter_input = tf.compat.v1.placeholder(
         dtype=tf.float32, name="filter", shape=filter_shape)
 
-    if not parameters["fully_quantize"]:
+    if not parameters["const_weight_bias"]:
       input_tensors = [input_tensor, filter_input]
       conv_outputs = tf.nn.conv2d(
           input_tensor,
@@ -130,8 +147,11 @@ def make_transpose_conv_tests(options):
           data_format=parameters["data_format"])
     else:
       input_tensors = [input_tensor]
-      filter_input = create_tensor_data(
-          np.float32, filter_shape, min_value=-1, max_value=1)
+      if parameters["fully_quantize"]:
+        filter_input = create_tensor_data(
+            np.float32, filter_shape, min_value=-1, max_value=1)
+      else:
+        filter_input = create_tensor_data(np.float32, filter_shape)
       out = tf.nn.conv2d_transpose(
           input_tensor,
           filter_input,
@@ -140,27 +160,38 @@ def make_transpose_conv_tests(options):
           padding=parameters["padding"],
           data_format=parameters["data_format"])
       if parameters["has_bias"]:
-        bias_input = create_tensor_data(
-            np.float32, (parameters["output_shape"][-1],),
-            min_value=-1,
-            max_value=1)
+        if parameters["fully_quantize"]:
+          bias_input = create_tensor_data(
+              np.float32, (parameters["output_shape"][-1],),
+              min_value=-1,
+              max_value=1)
+        else:
+          bias_input = create_tensor_data(np.float32,
+                                          (parameters["output_shape"][-1],))
         out = tf.nn.bias_add(
             out, bias_input, data_format=parameters["data_format"])
+
+        mul_data = create_tensor_data(np.float32,
+                                      (parameters["output_shape"][-1],))
+        out = tf.math.multiply(out, mul_data)
 
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    if not parameters["fully_quantize"]:
+    if not parameters["const_weight_bias"]:
       values = [
           create_tensor_data(np.float32, input_shape),
           create_tensor_data(np.float32, filter_shape)
       ]
     else:
-      values = [
-          create_tensor_data(
-              np.float32, input_shape, min_value=-1, max_value=1),
-      ]
+      if parameters["fully_quantize"]:
+        values = [
+            create_tensor_data(
+                np.float32, input_shape, min_value=-1, max_value=1),
+        ]
+      else:
+        values = [create_tensor_data(np.float32, input_shape),]
 
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 

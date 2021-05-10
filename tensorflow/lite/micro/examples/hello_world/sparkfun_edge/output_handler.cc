@@ -22,7 +22,7 @@ This function uses the device's LEDs to visually indicate the current y value.
 The y value is in the range -1 <= y <= 1. The LEDs (red, green, blue,
 and yellow) are physically lined up in the following order:
 
-                         [ R G B Y ]
+                         [ R B G Y ]
 
 The following table represents how we will light the LEDs for different values:
 
@@ -55,7 +55,7 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
     // The blue LED is lit for all negative values
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_BLUE);
     // The red LED is lit in only some cases
-    if (y_value <= -0.75) {
+    if (y_value <= -0.75f) {
       am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_RED);
     } else {
       am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
@@ -68,13 +68,14 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
     // The green LED is lit for all positive values
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_GREEN);
     // The yellow LED is lit in only some cases
-    if (y_value >= 0.75) {
+    if (y_value >= 0.75f) {
       am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
     } else {
       am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
     }
   }
   // Log the current X and Y values
-  TF_LITE_REPORT_ERROR(error_reporter, "x_value: %f, y_value: %f\n", x_value,
-                       y_value);
+  TF_LITE_REPORT_ERROR(error_reporter, "x_value: %f, y_value: %f\n",
+                       static_cast<double>(x_value),
+                       static_cast<double>(y_value));
 }

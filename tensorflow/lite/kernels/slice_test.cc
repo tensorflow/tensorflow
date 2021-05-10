@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -107,6 +112,16 @@ TEST_P(SliceOpTest, In3D) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TEST_P(SliceOpTest, In5D) {
+  SliceOpModel<float, int32_t> m({5, 1, 1, 1, 1}, {5}, {1, 0, 0, 0, 0}, {5},
+                                 {3, 1, 1, 1, 1}, TensorType_INT32,
+                                 TensorType_FLOAT32, GetParam());
+  m.SetInput({1, 2, 3, 4, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 1, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
 }
 
 TEST_P(SliceOpTest, InputFloat) {
@@ -221,6 +236,16 @@ TEST_P(SliceOpTest, SliceInt8) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
+TEST_P(SliceOpTest, SliceInt16) {
+  SliceOpModel<int16_t, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                   {2, 1, -1, 1}, TensorType_INT32,
+                                   TensorType_INT16, GetParam());
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
 TEST_P(SliceOpTest, SliceString) {
   SliceOpModel<string, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
                                   {2, 1, -1, 1}, TensorType_INT32,
@@ -236,6 +261,25 @@ TEST_P(SliceOpTest, SliceString) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({"1,0,0,0", "1,0,1,0", "1,0,2,0",  //
                                 "2,0,0,0", "2,0,1,0", "2,0,2,0"}));
+}
+
+TEST_P(SliceOpTest, SliceInt64) {
+  SliceOpModel<int64_t, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                   {2, 1, -1, 1}, TensorType_INT32,
+                                   TensorType_INT64, GetParam());
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
+TEST_P(SliceOpTest, SliceBool) {
+  SliceOpModel<bool, int32_t> m({2, 3}, {2}, {1, 0}, {2}, {-1, 2},
+                                TensorType_INT32, TensorType_BOOL, GetParam());
+  m.SetInput({true, false, true, false, true, true});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({false, true}));
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,

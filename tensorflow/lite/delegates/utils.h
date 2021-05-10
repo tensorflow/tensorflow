@@ -33,7 +33,8 @@ namespace tflite {
 namespace delegates {
 
 // Creates a new Read/Write tensor having the same shape as the original, but
-// with a different type.
+// with a different type. Note that this might void existing references to
+// tensors.
 TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               const int original_tensor_index,
                                               TfLiteType new_type,
@@ -59,7 +60,10 @@ class GraphPartitionHelper {
         supported_nodes_(
             ConvertVectorToTfLiteIntArray(supported_node_indices)) {}
 
-  virtual ~GraphPartitionHelper() { TfLiteIntArrayFree(supported_nodes_); }
+  virtual ~GraphPartitionHelper() {
+    TfLiteIntArrayFree(supported_nodes_);
+    TfLiteIntArrayFree(original_execution_plan_);
+  }
 
   // Partition the graph into node subsets such that each subset could be
   // replaced with one delegate kernel (i.e. a kTfLiteBuiltinDelegate op).
@@ -88,6 +92,7 @@ class GraphPartitionHelper {
   }
 
   int num_total_nodes() const { return num_total_nodes_; }
+  int num_supported_nodes() const { return num_supported_nodes_; }
   int num_partitions() const { return partitions_.size(); }
 
  protected:
@@ -107,6 +112,10 @@ class GraphPartitionHelper {
   // TfLiteContext::PreviewDelegatePartitioning for details.
   std::vector<TfLiteDelegateParams*> partitions_;
 
+  // Copy of (pre-delegation) execution plan obtained from TfLiteContext in
+  // PrepareSupportedNodes
+  TfLiteIntArray* original_execution_plan_ = nullptr;
+
  private:
   // Generate a list of supported nodes (i.e. populating 'supported_nodes_') by
   // iterating over all nodes (i,e. those listed in the execution_plan
@@ -120,6 +129,8 @@ class GraphPartitionHelper {
   // execution_plan size associated w/ 'context_')
   int num_total_nodes_ = 0;
 
+  int num_supported_nodes_ = 0;
+
   // Tells if a node is supported as it could be delegated.
   const IsNodeSupportedFn is_node_supported_fn_ = nullptr;
 
@@ -130,8 +141,8 @@ class GraphPartitionHelper {
 // Specialized partitioner for graphs that possibly contain fp16 tensors.
 //
 // From nodes that accept fp16 inputs, this delegates the following:
-// 1. All nodes (except DEQUANTIZE) that are supported with fp16 inputs by the
-// delegate (in the TFLite graph, these nodes take in dequantized FP32
+// 1. All nodes (except DEQUANTIZE) that are supported with constant fp16 inputs
+// by the delegate (in the TFLite graph, these nodes take in dequantized FP32
 // outputs).
 // 2. All fp16 DEQUANTIZE nodes that have *all* their consumers in the *first*
 // delegated partition. This is because TFLite's partitioning algorithm
@@ -167,11 +178,10 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
 
   // ('dequantize' here refers to fp16 DEQUANTIZE)
   // Mapping of dequantize nodes' output tensor-id to its node id.
-  std::unordered_map<int, int> dequant_nodes_;
+  // TODO(b/156707497): Use absl hash_maps here.
+  std::unordered_map<int, int> constant_dequant_nodes_;
   // Mapping of DEQUANTIZE node's output (fp32) to its input (fp16).
-  std::unordered_map<int, int> dequant_map_;
-  // mapping of DEQUANTIZE output tensor-id to its number of consumers.
-  std::unordered_map<int, int> dequant_consumers_;
+  std::unordered_map<int, int> constant_dequant_map_;
 };
 
 }  // namespace delegates

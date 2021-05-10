@@ -12,13 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
+
+#include <stdint.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -53,15 +60,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // TODO(ahentz): Our current implementations rely on the input being 4D,
+  // Our current implementations relies on the input being 4D,
   // and the size being 1D tensor with exactly 2 elements.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
-  TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, size->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
 
   output->type = input->type;
@@ -78,9 +89,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteResizeNearestNeighborParams*>(node->builtin_data);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
@@ -114,10 +129,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
         GetTensorShape(size), GetTensorData<int32>(size),
         GetTensorShape(output), GetTensorData<int8_t>(output));
+  } else if (output->type == kTfLiteInt16) {
+    reference_ops::ResizeNearestNeighbor(
+        op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(output), GetTensorData<int16_t>(output));
   } else {
-    context->ReportError(context,
-                         "Output type is %d, requires float, uint8 or int8.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(
+        context, "Output type is %s, requires float, uint8, int8 or int16.",
+        TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

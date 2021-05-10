@@ -16,26 +16,23 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/magic_wand/magic_wand_model_data.h"
 #include "tensorflow/lite/micro/examples/magic_wand/ring_micro_features_data.h"
 #include "tensorflow/lite/micro/examples/magic_wand/slope_micro_features_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Set up logging
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_magic_wand_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -47,17 +44,11 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   static tflite::MicroMutableOpResolver<5> micro_op_resolver;  // NOLINT
-  micro_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddDepthwiseConv2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddSoftmax();
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   // Finding the minimum value for your model may require some trial and error.
@@ -66,7 +57,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Build an interpreter to run the model with
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
 
   // Allocate memory from the tensor_arena for the model's tensors
   interpreter.AllocateTensors();
@@ -87,15 +79,15 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Provide an input value
   const float* ring_features_data = g_ring_micro_f9643d42_nohash_4_data;
-  TF_LITE_REPORT_ERROR(error_reporter, "%d", input->bytes);
-  for (int i = 0; i < (input->bytes / sizeof(float)); ++i) {
+  TF_LITE_REPORT_ERROR(&micro_error_reporter, "%d", input->bytes);
+  for (size_t i = 0; i < (input->bytes / sizeof(float)); ++i) {
     input->data.f[i] = ring_features_data[i];
   }
 
   // Run the model on this input and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -125,14 +117,14 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Now test with a different input, from a recording of "Slope".
   const float* slope_features_data = g_slope_micro_f2e59fea_nohash_1_data;
-  for (int i = 0; i < (input->bytes / sizeof(float)); ++i) {
+  for (size_t i = 0; i < (input->bytes / sizeof(float)); ++i) {
     input->data.f[i] = slope_features_data[i];
   }
 
   // Run the model on this "Slope" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 

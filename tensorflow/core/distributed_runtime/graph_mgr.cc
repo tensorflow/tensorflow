@@ -49,7 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -135,12 +136,11 @@ Status GraphMgr::InitItem(
 
   // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
   // does that below.
-
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
-      /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+      /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [this, session](const int64 step_id, const DeviceMgr*,
                           Rendezvous** r) -> Status {
@@ -402,7 +402,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
       [done, rendezvous, received_keys, out, keys](const Status s) {
         rendezvous->Unref();
         size_t output_size = 0;
-        for (int i = 0; i < keys.size(); ++i) {
+        for (int i = 0, end = keys.size(); i < end; ++i) {
           (*out)[keys[i]] = (*received_keys)[i];
           output_size += (*out)[keys[i]].AllocatedBytes();
         }
@@ -419,8 +419,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  profiler::TraceMe activity(
-      [step_id] { return absl::StrCat("RunGraph#id=", step_id, "#"); },
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
+      [step_id] {
+        return profiler::TraceMeEncode(
+            "RunGraph", {{"id", step_id}, {"_r", 1} /*root_event*/});
+      },
+      profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
@@ -486,10 +491,12 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       cancellation_manager, session,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
-        profiler::TraceMe activity(
+        profiler::TraceMeConsumer activity(
+            // From TraceMeProducer in GraphMgr::ExecuteAsync.
             [step_id] {
-              return absl::StrCat("RunGraphDone#id=", step_id, "#");
+              return profiler::TraceMeEncode("RunGraphDone", {{"id", step_id}});
             },
+            profiler::ContextType::kTfExecutor, step_id,
             profiler::TraceMeLevel::kInfo);
         done(s);
         metrics::RecordGraphInputTensors(input_size);

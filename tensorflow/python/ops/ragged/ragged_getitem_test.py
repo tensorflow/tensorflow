@@ -158,9 +158,9 @@ class RaggedGetItemTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def _TestGetItemException(self, rt, slice_spec, expected, message):
     """Helper function for testing RaggedTensor.__getitem__ exceptions."""
     tensor_slice_spec = _make_tensor_slice_spec(slice_spec, True)
-    with self.assertRaisesRegexp(expected, message):
+    with self.assertRaisesRegex(expected, message):
       self.evaluate(rt.__getitem__(slice_spec))
-    with self.assertRaisesRegexp(expected, message):
+    with self.assertRaisesRegex(expected, message):
       self.evaluate(rt.__getitem__(tensor_slice_spec))
 
   @parameterized.parameters(

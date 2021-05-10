@@ -23,7 +23,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
@@ -31,7 +30,6 @@ from tensorflow.python.platform import test
 
 class CollectiveOpXlaTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def testScopedAllocatorWithXla(self):
     group_size = 2
     group_key = 1
@@ -50,14 +48,15 @@ class CollectiveOpXlaTest(test.TestCase):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
 
-    with self.session(config=cfg) as sess:
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default(), self.session(config=cfg) as sess:
       run_ops = []
       for i in range(group_size):
         with ops.device('CPU:%d' % i):
           tensor_val = [i + 1.] * tensor_size
           constant = constant_op.constant(tensor_val)
 
-          @def_function.function(experimental_compile=True)
+          @def_function.function(jit_compile=True)
           def f(x):
             return 2 * x + 1
 

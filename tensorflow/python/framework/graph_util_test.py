@@ -19,39 +19,30 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_util
-from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.grappler import tf_optimizer
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.ops import math_ops as math_ops_lib
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training.saver import export_meta_graph
 
 
 # Utility device function to use for testing
-def test_device_func_pin_variable_to_cpu(op):
+def TestDeviceFuncPinVariableToCpu(op):
   if op.device:
     return op.device
   return "/cpu:0" if op.node_def.op in ["Variable", "VariableV2"] else op.device
 
 
-class DeviceFunctionsTest(test.TestCase):
+class GraphUtilTest(test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
@@ -61,7 +52,7 @@ class DeviceFunctionsTest(test.TestCase):
           name="var_0",
           container="",
           shared_name="")
-      with g.device(test_device_func_pin_variable_to_cpu):
+      with g.device(TestDeviceFuncPinVariableToCpu):
         var_1 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
@@ -80,7 +71,7 @@ class DeviceFunctionsTest(test.TestCase):
           name="var_3",
           container="",
           shared_name="")
-      with g.device(test_device_func_pin_variable_to_cpu):
+      with g.device(TestDeviceFuncPinVariableToCpu):
         var_4 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
@@ -113,7 +104,7 @@ class DeviceFunctionsTest(test.TestCase):
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)
-      with ops.device(test_device_func_pin_variable_to_cpu):
+      with ops.device(TestDeviceFuncPinVariableToCpu):
         var_1 = variables.VariableV1(1)
         with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.VariableV1(2)
@@ -148,7 +139,7 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testDefaultDevice(self):
     with ops.Graph().as_default() as g, g.device(
-        test_device_func_pin_variable_to_cpu):
+        TestDeviceFuncPinVariableToCpu):
       with g.device("/job:ps"):
         const_0 = constant_op.constant(5.0)
       with g.device("/device:GPU:0"):
@@ -201,7 +192,7 @@ class DeviceFunctionsTest(test.TestCase):
     graph_def = graph_pb2.GraphDef()
     n1 = graph_def.node.add()
     n1.name = "n1"
-    with self.assertRaisesRegexp(TypeError, "must be a list"):
+    with self.assertRaisesRegex(TypeError, "must be a list"):
       graph_util.extract_sub_graph(graph_def, "n1")
 
   def create_node_def(self, op, name, inputs):
@@ -315,203 +306,161 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertProtoEquals(graph_def,
                            graph_util.remove_training_nodes(graph_def))
 
+  def testSimpleGraphdefsCompareEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-class ConvertVariablesToConstantsTest(test.TestCase):
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-  def _ensure_no_variables_in_graph(self, graph_def):
-    """Ensures there are no variables in the graph."""
-    for node in graph_def.node:
-      self.assertNotIn(
-          node.op, ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-  def _test_variable_to_const_conversion(self, use_resource):
-    with ops.Graph().as_default():
-      with variable_scope.variable_scope("", use_resource=use_resource):
-        variable_node = variable_scope.get_variable(
-            "variable_node", initializer=1.0)
-        another_variable = variable_scope.get_variable(
-            "unused_variable_node", initializer=1.0)
-        output_node = math_ops_lib.multiply(
-            variable_node, 2.0, name="output_node")
-        with session.Session() as sess:
-          self.evaluate(variable_node.initializer)
-          output = self.evaluate(output_node)
-          self.assertNear(2.0, output, 0.00001)
-          variable_graph_def = sess.graph.as_graph_def()
-          # First get the constant_graph_def when variable_names_whitelist is
-          # set, note that if variable_names_whitelist is not set an error will
-          # be thrown because unused_variable_node is not initialized.
-          constant_graph_def = graph_util.convert_variables_to_constants(
-              sess,
-              variable_graph_def, ["output_node"],
-              variable_names_whitelist=set(["variable_node"]))
+  def testNodeDefsInDifferentOrderCompareEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", []),
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+    ])
 
-          # Then initialize the unused variable, and get another
-          # constant_graph_def when variable_names_whitelist is not set.
-          self.evaluate(another_variable.initializer)
-          constant_graph_def_without_variable_whitelist = (
-              graph_util.convert_variables_to_constants(
-                  sess, variable_graph_def, ["output_node"]))
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-          # The unused variable should be cleared so the two graphs should be
-          # equivalent.
-          self.assertEqual(
-              str(constant_graph_def),
-              str(constant_graph_def_without_variable_whitelist))
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-          # Test variable name black list. This should result in the variable
-          # not being a const.
-          constant_graph_def_with_blacklist = (
-              graph_util.convert_variables_to_constants(
-                  sess,
-                  variable_graph_def, ["output_node"],
-                  variable_names_blacklist=set(["variable_node"])))
-          variable_node = None
-          for node in constant_graph_def_with_blacklist.node:
-            if node.name == "variable_node":
-              variable_node = node
-          self.assertIsNotNone(variable_node)
-          if use_resource:
-            self.assertEqual(variable_node.op, "VarHandleOp")
-          else:
-            self.assertEqual(variable_node.op, "VariableV2")
+  def testDifferentGraphDefsCompareNotEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-    # Now we make sure the variable is now a constant, and that the graph still
-    # produces the expected result.
-    with ops.Graph().as_default():
-      _ = importer.import_graph_def(constant_graph_def, name="")
-      self.assertEqual(4, len(constant_graph_def.node))
-      self._ensure_no_variables_in_graph(constant_graph_def)
-      with session.Session() as sess:
-        output_node = sess.graph.get_tensor_by_name("output_node:0")
-        output = self.evaluate(output_node)
-        self.assertNear(2.0, output, 0.00001)
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 2, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertFalse(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-  def test_resource_variable_can_be_written_after_blacklisting(self):
-    with ops.Graph().as_default():
-      with variable_scope.variable_scope("", use_resource=True):
-        variable_node = variable_scope.get_variable(
-            "variable_node", initializer=1.0)
-        another_variable = variable_scope.get_variable(
-            "unused_variable_node", initializer=2.0)
-        with ops.control_dependencies([
-            variable_node.assign(another_variable + variable_node)]):
-          output_node = array_ops.identity(variable_node, name="output_node")
-        initializer_name = variable_node.initializer.name
-        with session.Session() as sess:
-          self.evaluate(variable_node.initializer)
-          self.evaluate(another_variable.initializer)
-          output = self.evaluate(output_node)
-          self.assertNear(3.0, output, 0.00001)
-          variable_graph_def = sess.graph.as_graph_def()
+  def testGraphdefsWithNanCompareNonEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-          # Test variable name black list. This should result in the variable
-          # not being a const.  Furthermore, the paths that read from and assign
-          # to the blacklisted variable should continue to be valid.
-          constant_graph_def_with_blacklist = (
-              graph_util.convert_variables_to_constants(
-                  sess,
-                  variable_graph_def, ["output_node", initializer_name],
-                  variable_names_blacklist=set(["variable_node"])))
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertFalse(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-          variable_node = None
-          for node in constant_graph_def_with_blacklist.node:
-            if node.name == "variable_node":
-              variable_node = node
-          self.assertIsNotNone(variable_node)
-          self.assertEqual(variable_node.op, "VarHandleOp")
+  def testSimpleGraphdefEqualityWithNansEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
 
-    # Now we make sure another_variable is now a constant, but the original
-    # variable is not, and that the graph can be executed and update the
-    # variable can be updated with each execution.
-    with ops.Graph().as_default():
-      _ = importer.import_graph_def(constant_graph_def_with_blacklist, name="")
-      with session.Session() as sess:
-        output_node = sess.graph.get_tensor_by_name("output_node:0")
-        self.evaluate(sess.graph.get_operation_by_name(initializer_name))
-        output = self.evaluate(output_node)
-        self.assertNear(3.0, output, 0.00001)
-        output = self.evaluate(output_node)
-        self.assertNear(5.0, output, 0.00001)
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertTrue(
+        graph_util.graph_defs_equal(
+            graph_def1, graph_def2, treat_nan_as_equal=True))
 
-  def _inline_functions(self, graph_def, arrays):
-    meta_graph = export_meta_graph(graph_def=graph_def)
-    fetch_collection = meta_graph_pb2.CollectionDef()
-    for name in arrays:
-      fetch_collection.node_list.value.append(name)
-    meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
-
-    # Initialize RewriterConfig with everything disabled except function
-    # inlining.
-    config = config_pb2.ConfigProto()
-    rewrite_options = config.graph_options.rewrite_options
-    rewrite_options.optimizers.append("function")
-    return tf_optimizer.OptimizeGraph(config, meta_graph)
-
-  def _test_convert_variables_with_functions(self, inline_functions):
-    """Freezes a graph with functions."""
+  def testGraphDefsWithFunctionLibsCompareEqual(self):
 
     @function.Defun(dtypes.float32)
-    def plus_one(x):
-      return x + 1.0
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
 
-    with ops.Graph().as_default():
-      variable_node = variables.Variable(1.0, name="variable_node")
-      _ = variables.Variable(1.0, name="unused_variable_node")
-      defun_node = plus_one(variable_node)
-      _ = math_ops_lib.multiply(defun_node, 2.0, name="output_node")
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([F1.definition])
 
-      with session.Session() as sess:
-        self.evaluate(variables.variables_initializer([variable_node]))
-        variable_graph_def = sess.graph.as_graph_def()
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
 
-        if inline_functions:
-          # Run Grappler to create the VarOpHandle --> Placeholder -->
-          # ResourceVariable pattern.
-          variable_graph_def = self._inline_functions(
-              variable_graph_def, ["variable_node", "output_node"])
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(library)
 
-        constant_graph_def = graph_util.convert_variables_to_constants(
-            sess, variable_graph_def, ["output_node"])
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-    self._ensure_no_variables_in_graph(constant_graph_def)
+  def testGraphDefsWithPermutedFunctionsCompareEqual(self):
 
-  def testReferenceVariables(self):
-    """Freezes a graph with reference variables."""
-    self._test_variable_to_const_conversion(use_resource=False)
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
 
-  def testResourceVariables(self):
-    """Freezes a graph with resource variables."""
-    self._test_variable_to_const_conversion(use_resource=True)
+    @function.Defun(dtypes.float32)
+    def F2(x):
+      return math_ops.exp(x)
 
-  def testWithFunctions(self):
-    """Freezes a graph with functions."""
-    self._test_convert_variables_with_functions(inline_functions=False)
+    definition_1 = F1.definition
+    definition_2 = F2.definition
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([definition_1, definition_2])
 
-  def testWithInlinedFunctions(self):
-    """Freezes a graph with functions that have been inlined using Grappler."""
-    self._test_convert_variables_with_functions(inline_functions=True)
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
 
-  def testGraphWithSwitch(self):
-    """Freezes a graph which contains a Switch with type RESOURCE_DT."""
-    with ops.Graph().as_default():
-      with variable_scope.variable_scope("", use_resource=True):
-        x = variable_scope.get_variable("var_x", initializer=1.0)
-        y = variable_scope.get_variable("var_y", initializer=2.0)
-        f1 = lambda: variable_scope.get_variable("var_f1", initializer=17.0)
-        f2 = lambda: variable_scope.get_variable("var_f2", initializer=23.0)
-        cond_node = control_flow_ops.case([(gen_math_ops.less(x, y), f1)],
-                                          default=f2)
-        _ = math_ops_lib.multiply(cond_node, 2.0, name="output_node")
+    reversed_library = function_pb2.FunctionDefLibrary()
+    reversed_library.function.extend([definition_2, definition_1])
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(reversed_library)
 
-        with session.Session() as sess:
-          sess.run(variables.global_variables_initializer())
-          variable_graph_def = sess.graph.as_graph_def()
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
-          constant_graph_def = graph_util.convert_variables_to_constants(
-              sess, variable_graph_def, ["output_node"])
+  def testGraphDefsWithPermutedNodesInFunctionsCompareEqual(self):
 
-    self._ensure_no_variables_in_graph(constant_graph_def)
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    f1_def = F1.definition
+
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([f1_def])
+
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
+
+    reversed_function = function_pb2.FunctionDef()
+    reversed_function.CopyFrom(f1_def)
+    # Clear the node_def attribute.
+    del reversed_function.node_def[:]
+    reversed_function.node_def.extend(reversed(f1_def.node_def))
+    reversed_library = function_pb2.FunctionDefLibrary()
+    reversed_library.function.extend([reversed_function])
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(reversed_library)
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
 
 if __name__ == "__main__":

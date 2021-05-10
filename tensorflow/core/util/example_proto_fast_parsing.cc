@@ -167,11 +167,14 @@ class Feature {
   }
 
   // Helper methods
-  tstring& construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
-    return bytes_list->construct_at_end();
+  tstring* construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
+    if (bytes_list->EndDistance() <= 0) {
+      return nullptr;
+    }
+    return &bytes_list->construct_at_end();
   }
-  tstring& construct_at_end(SmallVector<tstring>* bytes_list) {
-    return bytes_list->emplace_back();
+  tstring* construct_at_end(SmallVector<tstring>* bytes_list) {
+    return &bytes_list->emplace_back();
   }
 
   template <typename Result>
@@ -192,9 +195,10 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      tstring& bytes = construct_at_end(bytes_list);
-      bytes.resize_uninitialized(bytes_length);
-      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
+      tstring* bytes = construct_at_end(bytes_list);
+      if (bytes == nullptr) return false;
+      bytes->resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes->data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;
@@ -2281,12 +2285,13 @@ Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
         context_features.find(c.feature_name)->second;
     TensorShape dense_shape, example_shape;
     DataType dtype = c.dtype;
-    const size_t expected_max_elements = feature.length;
+    const size_t data_max_elements = feature.length;
     if (!c.shape.AsTensorShape(&example_shape) ||
-        expected_max_elements != example_shape.num_elements()) {
+        data_max_elements != example_shape.num_elements()) {
       return errors::InvalidArgument(
-          "Inconsistent number of elements for feature ", c.feature_name, ": ",
-          expected_max_elements, " vs ", dense_shape.num_elements());
+          "Inconsistent max number of elements for feature ", c.feature_name,
+          ": expected ", example_shape.num_elements(), ", but found ",
+          data_max_elements);
     }
     if (is_batch) {
       dense_shape.AddDim(num_examples);
@@ -2320,7 +2325,7 @@ Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
         EnableAliasing(&stream);
         num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
       }
-      if (num_elements != expected_max_elements) {
+      if (num_elements != data_max_elements) {
         return errors::InvalidArgument(
             "Unexpected number of elements in example ",
             ExampleName(example_names, e));

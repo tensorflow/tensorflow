@@ -12,13 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -173,13 +180,14 @@ TEST(TransposeTest, TestRefOps4D) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(TransposeTest, TestRefOps4DInt8) {
-  std::vector<int8_t> out;
+template <typename T>
+void TransposeTestTestRefOps4D() {
+  std::vector<T> out;
   // Basic 4d.
   RunTestPermutation({2, 3, 4, 5}, {2, 0, 1, 3}, &out);
   ASSERT_EQ(
       out,
-      std::vector<int8_t>(
+      std::vector<T>(
           {0,  1,  2,  3,  4,  20, 21, 22, 23, 24, 40,  41,  42,  43,  44,
            60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 100, 101, 102, 103, 104,
            5,  6,  7,  8,  9,  25, 26, 27, 28, 29, 45,  46,  47,  48,  49,
@@ -190,10 +198,14 @@ TEST(TransposeTest, TestRefOps4DInt8) {
            75, 76, 77, 78, 79, 95, 96, 97, 98, 99, 115, 116, 117, 118, 119}));
   RunTestPermutation({2, 3, 4, 5}, {0, 1, 2, 3}, &out);
   // Basic identity.
-  std::vector<int8_t> ref(out.size());
+  std::vector<T> ref(out.size());
   for (int k = 0; k < ref.size(); k++) ref[k] = k;
   ASSERT_EQ(out, ref);
 }
+
+TEST(TransposeTest, TestRefOps4DInt8) { TransposeTestTestRefOps4D<int8_t>(); }
+
+TEST(TransposeTest, TestRefOps4DInt16) { TransposeTestTestRefOps4D<int16_t>(); }
 
 class TransposeOpModel : public SingleOpModel {
  public:

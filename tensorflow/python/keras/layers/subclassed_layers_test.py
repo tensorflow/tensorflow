@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras subclassed layers utilizing desired user syntax."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -37,7 +33,7 @@ class SubclassedLayersTest(keras_parameterized.TestCase):
     class BuildConstantLayer(keras.layers.Layer):
 
       def build(self, input_shape):
-        self.b = ops.convert_to_tensor_v2(2.0)
+        self.b = ops.convert_to_tensor_v2_with_dispatch(2.0)
 
       def call(self, inputs):
         return self.b * inputs
@@ -46,7 +42,7 @@ class SubclassedLayersTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(1,))
 
-    x = ops.convert_to_tensor_v2([[3.0]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[3.0]])
     self.assertEqual(
         tf_utils.is_symbolic_tensor(model(x)), not context.executing_eagerly())
     self.assertEqual(
@@ -58,10 +54,10 @@ class SubclassedLayersTest(keras_parameterized.TestCase):
     class BuildDerivedConstantLayer(keras.layers.Layer):
 
       def build(self, input_shape):
-        a = ops.convert_to_tensor_v2(1.0)
+        a = ops.convert_to_tensor_v2_with_dispatch(1.0)
         b = 2.0 * a
         self.variable = variables.Variable(b)
-        self.constant = ops.convert_to_tensor_v2(self.variable)
+        self.constant = ops.convert_to_tensor_v2_with_dispatch(self.variable)
 
       def call(self, inputs):
         return self.variable * self.constant * inputs
@@ -70,7 +66,7 @@ class SubclassedLayersTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(1,))
 
-    x = ops.convert_to_tensor_v2([[3.0]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[3.0]])
     self.assertEqual(
         tf_utils.is_symbolic_tensor(model(x)), not context.executing_eagerly())
     self.assertEqual(

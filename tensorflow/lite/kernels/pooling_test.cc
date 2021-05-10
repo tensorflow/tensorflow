@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <stdint.h>
 
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -1147,6 +1150,19 @@ TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.0, 6.5}));
 }
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(FloatPoolingOpTest, MaxPoolWithZeroStride) {
+  EXPECT_DEATH(
+      FloatPoolingOpModel m(BuiltinOperator_MAX_POOL_2D,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                            /*filter_width=*/2, /*filter_height=*/2,
+                            /*output=*/{TensorType_FLOAT32, {}},
+                            /*padding=*/Padding_VALID,
+                            /*stride_w=*/0, /*stride_h=*/0),
+      "Cannot allocate tensors");
+}
+#endif
 
 }  // namespace
 }  // namespace tflite

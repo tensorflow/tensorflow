@@ -25,6 +25,68 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_shape
+
+
+def where_v2(condition, x=None, y=None, name=None):
+  """Return the elements where `condition` is `True`.
+
+  : If both `x` and `y` are None: Retrieve indices of true elements.
+
+    Returns the coordinates of true elements of `condition`. The coordinates
+    are returned in a 2-D tensor with shape
+    `[num_true_values, dim_size(condition)]`, where `result[i]` is the
+    coordinates of the `i`th true value (in row-major order).
+
+  : If both `x` and `y` are non-`None`: Multiplex between `x` and `y`.
+
+    Choose an output shape  from the shapes of `condition`, `x`, and `y` that
+    all three shapes are broadcastable to; and then use the broadcasted
+    `condition` tensor as a mask that chooses whether the corredsponding element
+    in the output should be taken from `x` (if `condition` is true) or `y` (if
+    `condition` is false).
+
+  >>> # Example: retrieve indices of true elements
+  >>> tf.where(tf.ragged.constant([[True, False], [True]]))
+  <tf.Tensor: shape=(2, 2), dtype=int64, numpy= array([[0, 0], [1, 0]])>
+
+  >>> # Example: multiplex between `x` and `y`
+  >>> tf.where(tf.ragged.constant([[True, False], [True, False, True]]),
+  ...          tf.ragged.constant([['A', 'B'], ['C', 'D', 'E']]),
+  ...          tf.ragged.constant([['a', 'b'], ['c', 'd', 'e']]))
+  <tf.RaggedTensor [[b'A', b'b'], [b'C', b'd', b'E']]>
+
+  Args:
+    condition: A potentially ragged tensor of type `bool`
+    x: A potentially ragged tensor (optional).
+    y: A potentially ragged tensor (optional).  Must be specified if `x` is
+      specified.  Must have the same rank and type as `x`.
+    name: A name of the operation (optional).
+
+  Returns:
+    : If both `x` and `y` are `None`:
+      A `Tensor` with shape `(num_true, rank(condition))`.
+    : Otherwise:
+      A potentially ragged tensor with the same type as `x` and `y`, and whose
+      shape is broadcast-compatible with `x`, `y`, and `condition`.
+
+  Raises:
+    ValueError: When exactly one of `x` or `y` is non-`None`; or when
+      `condition`, `x`, and `y` have incompatible shapes.
+  """
+  if (x is None) != (y is None):
+    raise ValueError('x and y must be either both None or both non-None')
+
+  with ops.name_scope('RaggedWhere', name, [condition, x, y]):
+    condition = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        condition, name='condition')
+    if x is None:
+      return _coordinate_where(condition)
+    else:
+      x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+      y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, name='y')
+      condition, x, y = ragged_tensor.match_row_splits_dtypes(condition, x, y)
+      return _elementwise_where_v2(condition, x, y)
 
 
 def where(condition, x=None, y=None, name=None):
@@ -132,6 +194,32 @@ def _elementwise_where(condition, x, y):
 
   else:
     raise ValueError('Input shapes do not match.')
+
+
+def _elementwise_where_v2(condition, x, y):
+  """Ragged version of tf.where_v2(condition, x, y)."""
+  # Broadcast x, y, and condition to have the same shape.
+  if not (condition.shape.is_fully_defined() and x.shape.is_fully_defined() and
+          y.shape.is_fully_defined() and x.shape == y.shape and
+          condition.shape == x.shape):
+    shape_c = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(
+        condition)
+    shape_x = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(x)
+    shape_y = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(y)
+    shape = ragged_tensor_shape.broadcast_dynamic_shape(
+        shape_c, ragged_tensor_shape.broadcast_dynamic_shape(shape_x, shape_y))
+    condition = ragged_tensor_shape.broadcast_to(condition, shape)
+    x = ragged_tensor_shape.broadcast_to(x, shape)
+    y = ragged_tensor_shape.broadcast_to(y, shape)
+
+  condition_is_ragged = isinstance(condition, ragged_tensor.RaggedTensor)
+  x_is_ragged = isinstance(x, ragged_tensor.RaggedTensor)
+  y_is_ragged = isinstance(y, ragged_tensor.RaggedTensor)
+  if not (condition_is_ragged or x_is_ragged or y_is_ragged):
+    return array_ops.where_v2(condition, x, y)
+
+  return ragged_functional_ops.map_flat_values(array_ops.where_v2, condition, x,
+                                               y)
 
 
 def _coordinate_where(condition):

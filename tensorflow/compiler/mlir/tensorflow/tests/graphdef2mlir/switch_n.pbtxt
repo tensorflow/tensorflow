@@ -1,10 +1,10 @@
-# RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - -mlir-print-debuginfo | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - -mlir-print-debuginfo -mlir-print-local-scope | FileCheck %s
 
-# CHECK: tf_executor.SwitchN
+# CHECK: tf_executor._SwitchN
 # CHECK-SAME: of 3 : tensor<*xi32>
 # CHECK-SAME: T = i32
 # CHECK-SAME: loc("Case/branch_index/_3")
-# CHECK: tf_executor.SwitchN
+# CHECK: tf_executor._SwitchN
 # CHECK-SAME: of 2 : tensor<*xf32>
 # CHECK-SAME: T = f32
 # CHECK-SAME: loc("Case/Case/input_0/_7")

@@ -84,7 +84,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
   int num_tries;
 
   if (unique) {
-    CHECK_LE(batch_size + avoided_values.size(), range_);
+    CHECK_LE(static_cast<int64>(batch_size + avoided_values.size()), range_);
     std::unordered_set<int64> used(batch_size);
     used.insert(avoided_values.begin(), avoided_values.end());
     int num_picked = 0;

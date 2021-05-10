@@ -51,7 +51,8 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   static int64 ShapeSizeBytes(const Shape& shape);
 
  protected:
-  StatusOr<Literal> Evaluate(const HloComputation& computation,
+  StatusOr<Literal> Evaluate(const ServiceExecutableRunOptions* run_options,
+                             const HloComputation& computation,
                              absl::Span<const Literal> arg_literals) override
       TF_LOCKS_EXCLUDED(evaluator_lock_);
 

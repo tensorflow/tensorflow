@@ -1,11 +1,12 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops=true -emit-builtin-tflite-ops=false -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops=true -emit-builtin-tflite-ops=false -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK:  {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
-// CHECK-NEXT:      builtin_code: CUSTOM,
+// CHECK-NEXT:      deprecated_builtin_code: 32,
 // CHECK-NEXT:      custom_code: "FlexAddV2"
+// CHECK-NEXT:      builtin_code: CUSTOM
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    subgraphs: [ {
 // CHECK-NEXT:      tensors: [ {
@@ -46,6 +47,7 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 3
 // CHECK-NEXT:    } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:  }
 
   %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>

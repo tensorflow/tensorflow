@@ -58,6 +58,10 @@ class BufferAllocations {
   se::DeviceMemoryBase GetDeviceAddress(
       BufferAllocation::Index buffer_index) const;
 
+  // Returns a mutable value for the allocation at a given `buffer_index`.
+  se::DeviceMemoryBase& GetMutableDeviceAddress(
+      BufferAllocation::Index buffer_index);
+
   // Same as above, but also adjusts the returned address for the offset and
   // size contained in the given slice.
   se::DeviceMemoryBase GetDeviceAddress(
@@ -66,7 +70,7 @@ class BufferAllocations {
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
   Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
-                  const BufferAssignment* buffer_assignment);
+                  absl::Span<const BufferAllocation> allocations);
 
   std::string ToString() {
     std::string out;

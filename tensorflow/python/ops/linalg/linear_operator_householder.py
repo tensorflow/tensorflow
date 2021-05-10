@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
@@ -123,6 +124,14 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
       ValueError:  `is_self_adjoint` is not `True`, `is_positive_definite` is
         not `False` or `is_square` is not `True`.
     """
+    parameters = dict(
+        reflection_axis=reflection_axis,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[reflection_axis]):
       self._reflection_axis = linear_operator_util.convert_nonref_to_tensor(
@@ -147,11 +156,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
       super(LinearOperatorHouseholder, self).__init__(
           dtype=self._reflection_axis.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
       # TODO(b/143910018) Remove graph_parents in V3.
       self._set_graph_parents([self._reflection_axis])
@@ -198,10 +207,10 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
     # Note that because this is a reflection, it lies in O(n) (for real vector
     # spaces) or U(n) (for complex vector spaces), and thus is its own adjoint.
-    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis)
     x = linalg.adjoint(x) if adjoint_arg else x
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     x_dot_normalized_v = math_ops.matmul(mat, x, adjoint_a=True)
 
@@ -229,18 +238,18 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 
   def _eigvals(self):

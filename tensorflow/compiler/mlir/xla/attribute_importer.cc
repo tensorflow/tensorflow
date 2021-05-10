@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+
 namespace xla {
 
 static mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements,
@@ -42,7 +45,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
 }
 
 // Converts the gather dimensions to attributes.
-mlir::xla_hlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
                                    dnums.offset_dims().end());
@@ -50,14 +53,14 @@ mlir::xla_hlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
   std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
                                        dnums.start_index_map().end());
-  return mlir::xla_hlo::GatherDimensionNumbers::get(
+  return mlir::mhlo::GatherDimensionNumbers::get(
       Convert(offset_dims, builder), Convert(collapsed_slice_dims, builder),
       Convert(start_index_map, builder),
       builder->getI64IntegerAttr(dnums.index_vector_dim()),
       builder->getContext());
 }
 
-mlir::xla_hlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
+mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
@@ -66,7 +69,7 @@ mlir::xla_hlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
   std::vector<int64_t> scatter_dims_to_operand_dims(
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
-  return mlir::xla_hlo::ScatterDimensionNumbers::get(
+  return mlir::mhlo::ScatterDimensionNumbers::get(
       Convert(update_window_dims, builder),
       Convert(inserted_window_dims, builder),
       Convert(scatter_dims_to_operand_dims, builder),
@@ -74,7 +77,7 @@ mlir::xla_hlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
       builder->getContext());
 }
 
-mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(
+mlir::mhlo::DotDimensionNumbers ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> rhs_contracting_dimensions(
       dnums.rhs_contracting_dimensions().begin(),
@@ -93,12 +96,12 @@ mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(
   auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions, builder);
   auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions, builder);
 
-  return mlir::xla_hlo::DotDimensionNumbers::get(
+  return mlir::mhlo::DotDimensionNumbers::get(
       lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
       rhs_contracting_dims_attr, builder->getContext());
 }
 
-mlir::xla_hlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
+mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder) {
   llvm::SmallVector<int64_t, 4> input_spatial_dims(
       dnums.input_spatial_dimensions().begin(),
@@ -109,7 +112,7 @@ mlir::xla_hlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
   llvm::SmallVector<int64_t, 4> output_spatial_dims(
       dnums.output_spatial_dimensions().begin(),
       dnums.output_spatial_dimensions().end());
-  return mlir::xla_hlo::ConvDimensionNumbers::get(
+  return mlir::mhlo::ConvDimensionNumbers::get(
       builder->getI64IntegerAttr(dnums.input_batch_dimension()),
       builder->getI64IntegerAttr(dnums.input_feature_dimension()),
       Convert(input_spatial_dims, builder),
@@ -119,6 +122,37 @@ mlir::xla_hlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
       builder->getI64IntegerAttr(dnums.output_batch_dimension()),
       builder->getI64IntegerAttr(dnums.output_feature_dimension()),
       Convert(output_spatial_dims, builder), builder->getContext());
+}
+
+StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
+  switch (type) {
+    case FftType::FFT:
+      return mlir::mhlo::FftType::FFT;
+    case FftType::IFFT:
+      return mlir::mhlo::FftType::IFFT;
+    case FftType::RFFT:
+      return mlir::mhlo::FftType::RFFT;
+    case FftType::IRFFT:
+      return mlir::mhlo::FftType::IRFFT;
+    default:
+      return InvalidArgument("Unknown FFT type enum value #%d", type);
+  }
+}
+
+StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+    xla::TriangularSolveOptions_Transpose transpose) {
+  switch (transpose) {
+    case TriangularSolveOptions::NO_TRANSPOSE:
+      return mlir::mhlo::Transpose::NO_TRANSPOSE;
+    case TriangularSolveOptions::TRANSPOSE:
+      return mlir::mhlo::Transpose::TRANSPOSE;
+    case TriangularSolveOptions::ADJOINT:
+      return mlir::mhlo::Transpose::ADJOINT;
+    case TriangularSolveOptions::TRANSPOSE_INVALID:
+      return mlir::mhlo::Transpose::TRANSPOSE_INVALID;
+    default:
+      return InvalidArgument("Unknown transpose enum value #%d", transpose);
+  }
 }
 
 }  // namespace xla

@@ -17,18 +17,35 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 
 using tensorflow::string;
+using tensorflow::tstring;
 
 TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, float value) {
   float data[] = {value};
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, nullptr, 0, status);
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx,
+                                         const tensorflow::tstring& value) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_STRING, nullptr, 0, status);
+  tstring* data = static_cast<tstring*>(TF_TensorData(t));
+  *data = value;
   TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
@@ -80,6 +97,46 @@ TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx) {
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
                                         sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx,
+                                                  float data[], int64_t dims[],
+                                                  int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[],
+                                                int64_t dims[], int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[],
+                                              int64_t dims[], int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0], num_dims, status);
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -143,7 +200,7 @@ TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "container", "localhost", 0);
   TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (!device_name.empty()) {
     TFE_OpSetDevice(op, device_name.c_str(), status);

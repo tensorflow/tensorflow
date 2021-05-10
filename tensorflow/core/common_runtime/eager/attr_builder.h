@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "tensorflow/c/eager/abstract_op_attrs.h"
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -83,10 +84,21 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // of the NodeDef till BuildNodeDef is called, or Set is called with certain
 // uncommon types (see template specializations of Set to see which types
 // trigger a NodeDef creation).
-class AttrBuilder {
+//
+// Setting attributes via `Set` may cause arena-allocated protocol buffer
+// messages to be destructed, which is not thread safe. This means that it is
+// currently not safe to set attributes on *different* AttrBuilder objects from
+// multiple threads. This does not apply to `CopyAttributes`.
+class AttrBuilder : public AbstractOpAttrs {
  public:
-  AttrBuilder() {}
-  explicit AttrBuilder(const char* op) { Reset(op); }
+  AttrBuilder()
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {}
+
+  ~AttrBuilder() override {}
+  explicit AttrBuilder(const char* op)
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {
+    Reset(op);
+  }
 
   void Reset(const char* op) {
     op_name_ = op;
@@ -150,6 +162,20 @@ class AttrBuilder {
   void FillAttrValueMapWithoutDefaults(AttrValueMap* m) const;
   const NodeDef& BuildNodeDef();
 
+  // Transfers the attributes from `other` to this AttrBuilder. Does not
+  // overwrite existing attributes. Since it does not require deserializing and
+  // re-serializing attributes, it is much more efficient than going through an
+  // AttrValueMap.
+  void CopyAttributes(const AttrBuilder& other);
+
+  void GetNameAttrList(tensorflow::NameAttrList* name_and_attrs) const override;
+
+  bool GetInt(absl::string_view attr_name, int64_t* result) const override;
+  bool GetFloat(absl::string_view attr_name, float* result) const override;
+  bool GetBool(absl::string_view attr_name, bool* result) const override;
+  bool GetType(absl::string_view attr_name,
+               tensorflow::DataType* result) const override;
+
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
@@ -163,10 +189,7 @@ class AttrBuilder {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
     // If attribute is set more than once, its first value prevails
-    if (AttrSlice(m).Find(attr_name) == nullptr) {
-      SetAttrValue(value, &attr_tmp_);
-      m->insert(AttrValueMap::value_type(attr_name, attr_tmp_));
-    }
+    m->insert({attr_name, value});
   }
 
   void AddAttrIfNotPresent(StringPiece attr_name, const AttrValue& value);
@@ -193,7 +216,6 @@ Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
 template <>
 Status AttrBuilder::Get(StringPiece attr_name,
                         tensorflow::DataType* value) const;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

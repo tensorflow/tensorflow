@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 
 void RegisterLoggingDevice(TFE_Context* context, const char* name,
-                           bool* arrived_flag, bool* executed_flag,
-                           TF_Status* status);
+                           bool strict_scope_placement, bool* arrived_flag,
+                           bool* executed_flag, TF_Status* status);
 void AllocateLoggingDevice(const char* name, bool* arrived_flag,
                            bool* executed_flag, TFE_CustomDevice** device,
                            void** device_info);

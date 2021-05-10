@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "INT16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "INT32"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

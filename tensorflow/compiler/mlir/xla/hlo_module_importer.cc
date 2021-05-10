@@ -17,12 +17,12 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -30,15 +30,25 @@ limitations under the License.
 
 namespace xla {
 
+HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
+                                     bool import_all_computation)
+    : import_all_computation_(import_all_computation),
+      module_(module),
+      builder_(module.getContext()) {
+  module.getContext()->loadDialect<mlir::StandardOpsDialect>();
+  module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
+}
+
 Status HloModuleImporter::Import(const xla::HloModule& module) {
-  // TODO(hinsu): Only import the entry computation here once all HLO ops with
-  // reference to other computation are updated to have a region instead of a
-  // function attribute.
-  for (const auto& computation : module.computations()) {
-    auto result = HloFunctionImporter::ImportFunction(
-        module_, &builder_, &function_map_, computation);
-    TF_RETURN_IF_ERROR(result.status());
-  }
+  if (!import_all_computation_)
+    // Only import the entry computation, any reachable one will be imported
+    // unless turned into a region operation.
+    return HloFunctionImporter::ImportAsFunc(
+        *module.entry_computation(), module_, &function_map_, &builder_);
+
+  for (const auto* computation : module.computations())
+    TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
+        *computation, module_, &function_map_, &builder_));
 
   return Status::OK();
 }

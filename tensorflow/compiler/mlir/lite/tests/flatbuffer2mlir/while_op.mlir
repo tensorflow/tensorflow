@@ -1,8 +1,14 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 
-// Check to see if function references in while loops are preserved
-// TODO(b/138222071) Expect first output to be a scalar
-// CHECK:   %{{.*}}:2 = "tf.While"(%{{.*}}, %{{.*}}) {body = @body, cond = @cond, is_stateless = false} : (tensor<i32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<1xf32>)
+// Check to see if nested regions in while loops are preserved
+// CHECK:     %{{.*}}:2 = "tfl.while"(%{{.*}}, %{{.*}}) ( {
+// CHECK:     ^bb0(%{{.*}}: tensor<*xi32>, %{{.*}}: tensor<*xf32>):
+// CHECK:       "tfl.yield"(%{{.*}}) : (tensor<*xi1>) -> ()
+// CHECK:     },  {
+// CHECK:     ^bb0(%{{.*}}: tensor<*xi32>, %{{.*}}: tensor<*xf32>):
+// CHECK:       "tfl.yield"(%{{.*}}, %{{.*}}) : (tensor<*xi32>, tensor<*xf32>) -> ()
+// CHECK:     }) : (tensor<i32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<1xf32>)
+
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // While %arg0 is greater than zero, element wise add %arg1 with itself.
   %0:2 = "tfl.while"(%arg0, %arg1) ( {

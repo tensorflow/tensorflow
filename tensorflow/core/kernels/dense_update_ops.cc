@@ -87,9 +87,6 @@ class DenseUpdateOp : public OpKernel {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -98,7 +95,6 @@ typedef Eigen::SyclDevice SYCLDevice;
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 // uint32 not included in ALL_TYPES
-TF_CALL_uint32(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 // quint16 not included in QUANTIZIED_TYPES
 TF_CALL_quint16(REGISTER_KERNELS);
@@ -115,18 +111,10 @@ TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
+TF_CALL_uint8(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                 \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("Assign").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      AssignOpT<SYCLDevice, type>);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -149,19 +137,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
       DenseUpdateOp<GPUDevice, type, DenseUpdateType::SUB>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
+TF_CALL_uint8(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // end GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("AssignSub").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
-
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -22,9 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-
-using ::testing::FloatNear;
-using ::testing::Pointwise;
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_test_util.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,77 +29,18 @@ namespace cl {
 namespace {
 
 TEST_F(OpenCLOperationTest, DepthwiseConv3x3SimpleWeights) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 2, 2);
-  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-
-  DepthwiseConvolution2DAttributes attr;
-  attr.padding.prepended = HW(1, 1);
-  attr.padding.appended = HW(1, 1);
-  attr.strides = HW(1, 1);
-  attr.dilations = HW(1, 1);
-  attr.weights.shape = OHWI(1, 3, 3, 2);
-  attr.weights.data = {0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-                       1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f};
-  attr.bias.shape = Linear(2);
-  attr.bias.data = {0.0f, 0.0f};
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      DepthwiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthwiseConv3x3(creation_context_, op_def, attr, &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps), {6.0f, 16.0f, 8.0f, 16.0f, 10.0f,
-                                             16.0f, 12.0f, 16.0f}));
-    }
-  }
+  auto status = DepthwiseConv3x3SimpleWeightsTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 TEST_F(OpenCLOperationTest, DepthwiseConv3x3) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 2, 2);
-  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  auto status = DepthwiseConv3x3Test(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
-  DepthwiseConvolution2DAttributes attr;
-  attr.padding.prepended = HW(1, 1);
-  attr.padding.appended = HW(1, 1);
-  attr.strides = HW(1, 1);
-  attr.dilations = HW(1, 1);
-  attr.weights.shape = OHWI(1, 3, 3, 2);
-  attr.weights.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 0.0f, 1.0f, 2.0f,
-                       3.0f, 4.0f, 5.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  attr.bias.shape = Linear(2);
-  attr.bias.data = {0.5f, -0.5f};
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      DepthwiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthwiseConv3x3(creation_context_, op_def, attr, &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps), {40.5f, 67.5f, 16.5f, 35.5f, 40.5f,
-                                             67.5f, 16.5f, 35.5f}));
-    }
-  }
+TEST_F(OpenCLOperationTest, DepthWiseConv3x3StrideH2SimpleWeights) {
+  auto status = DepthWiseConv3x3StrideH2SimpleWeightsTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 }  // namespace

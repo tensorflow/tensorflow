@@ -130,6 +130,9 @@ def InvokeNvcc(argv, log=False):
   undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
 
+  fatbin_options, argv = GetOptionValue(argv, '-Xcuda-fatbinary')
+  fatbin_options = ['--fatbin-options=' + option for option in fatbin_options]
+
   # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [option for option in argv if option not in (src_files + out_file)]
 
@@ -150,11 +153,19 @@ def InvokeNvcc(argv, log=False):
     ]
   _, argv = GetOptionValue(argv, '--no-cuda-include-ptx')
 
+  # nvcc doesn't respect the INCLUDE and LIB env vars from MSVC,
+  # so we explicity specify the system include paths and library search paths.
+  if 'INCLUDE' in os.environ:
+    nvccopts += [('--system-include="%s"' % p) for p in os.environ['INCLUDE'].split(";")]
+  if 'LIB' in os.environ:
+    nvccopts += [('--library-path="%s"' % p) for p in os.environ['LIB'].split(";")]
+
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
-  nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
+  nvccopts += fatbin_options
+  nvccopts += ['--compiler-options=' + ",".join(host_compiler_options)]
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # Specify a unique temp directory for nvcc to generate intermediate files,
   # then Bazel can ignore files under NVCC_TEMP_DIR during dependency check

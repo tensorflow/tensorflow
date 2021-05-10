@@ -140,7 +140,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         constant_op.constant([3, 2, 3], dtypes.int64))
 
     if invalid_indices:
-      with self.assertRaisesRegexp(errors_impl.OpError, "out of order"):
+      with self.assertRaisesRegex(errors_impl.OpError, "out of order"):
         self._set_size(sp)
     else:
       self.assertAllEqual([
@@ -368,7 +368,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         constant_op.constant([4, 2, 4], dtypes.int64))
 
     if invalid_indices:
-      with self.assertRaisesRegexp(errors_impl.OpError, "out of order"):
+      with self.assertRaisesRegex(errors_impl.OpError, "out of order"):
         self._set_intersection(sp_a, sp_b)
     else:
       expected_indices = [
@@ -858,9 +858,9 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         constant_op.constant([4, 2, 4], dtypes.int64))
 
     if invalid_indices:
-      with self.assertRaisesRegexp(errors_impl.OpError, "out of order"):
+      with self.assertRaisesRegex(errors_impl.OpError, "out of order"):
         self._set_difference(sp_a, sp_b, False)
-      with self.assertRaisesRegexp(errors_impl.OpError, "out of order"):
+      with self.assertRaisesRegex(errors_impl.OpError, "out of order"):
         self._set_difference(sp_a, sp_b, True)
     else:
       # a-b
@@ -1154,7 +1154,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         constant_op.constant([4, 2, 4], dtypes.int64))
 
     if invalid_indices:
-      with self.assertRaisesRegexp(errors_impl.OpError, "out of order"):
+      with self.assertRaisesRegex(errors_impl.OpError, "out of order"):
         self._set_union(sp_a, sp_b)
     else:
       expected_indices = [

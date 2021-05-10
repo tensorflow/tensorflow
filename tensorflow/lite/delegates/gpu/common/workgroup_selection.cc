@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/workgroup_selection.h"
 
+#include <math.h>
+
+#include <cmath>
 #include <set>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -184,30 +188,30 @@ template std::vector<uint3> GenerateWorkGroupSizes(
     WorkGroupSizeAlignment z_alignment);
 
 template <typename T>
-absl::Status GenerateWorkGroupSizesAlignedToGrid(
-    const T& grid, const T& max_work_group_size,
-    const int max_work_group_invocations, std::vector<T>* work_groups) {
+void GenerateWorkGroupSizesAlignedToGrid(const T& grid,
+                                         const T& max_work_group_size,
+                                         const int max_work_group_total_size,
+                                         std::vector<T>* work_groups) {
   auto alignment = WorkGroupSizeAlignment::PRECISE;
   *work_groups = GenerateWorkGroupSizes<T>(
-      grid, /*min_work_group_total_size = */ 32, max_work_group_invocations,
+      grid, /*min_work_group_total_size = */ 32, max_work_group_total_size,
       max_work_group_size, alignment, alignment, alignment);
   // If the grid parameter too small, method below cannot generate workgroups.
   if (work_groups->empty()) {
-    AddCornerCases(grid, max_work_group_invocations, max_work_group_size,
+    AddCornerCases(grid, max_work_group_total_size, max_work_group_size,
                    alignment, alignment, alignment, work_groups);
   }
-  return absl::OkStatus();
 }
 
 // Specializations of GenerateWorkGroupSizesAlignedToGrid for int3 and uint3
 
-template absl::Status GenerateWorkGroupSizesAlignedToGrid(
+template void GenerateWorkGroupSizesAlignedToGrid(
     const int3& grid, const int3& max_work_group_size,
-    const int max_work_group_invocations, std::vector<int3>* work_groups);
+    const int max_work_group_total_size, std::vector<int3>* work_groups);
 
-template absl::Status GenerateWorkGroupSizesAlignedToGrid(
+template void GenerateWorkGroupSizesAlignedToGrid(
     const uint3& grid, const uint3& max_work_group_size,
-    const int max_work_group_invocations, std::vector<uint3>* work_groups);
+    const int max_work_group_total_size, std::vector<uint3>* work_groups);
 
 }  // namespace gpu
 }  // namespace tflite

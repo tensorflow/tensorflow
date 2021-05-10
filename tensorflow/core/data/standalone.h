@@ -98,11 +98,20 @@ class Dataset {
 
   // Creates an iterator for this dataset.
   Status MakeIterator(std::unique_ptr<Iterator>* result);
+  // Creates an iterator, optionally with a split provider.
+  Status MakeIterator(std::unique_ptr<SplitProvider> split_provider,
+                      std::unique_ptr<Iterator>* result);
+
+  // Creates a split provider for this dataset.
+  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Returns a pointer to the underlying dataset.
+  const DatasetBase* Get() const;
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
           ProcessFunctionLibraryRuntime* pflr,
-          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool);
+          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
+          std::function<void(std::function<void()>)> runner);
 
   DatasetBase* dataset_;  // owned
   std::unique_ptr<DeviceMgr> device_mgr_;

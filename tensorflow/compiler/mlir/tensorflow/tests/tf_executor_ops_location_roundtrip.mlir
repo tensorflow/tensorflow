@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -mlir-print-debuginfo | tf-opt -mlir-print-debuginfo -mlir-print-op-generic | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -mlir-print-debuginfo -mlir-print-local-scope | tf-opt -mlir-print-debuginfo -mlir-print-op-generic -mlir-print-local-scope | FileCheck %s
 
 // This file should be written in the generic form with debug locations.
 // (that is, as if printed with `-mlir-print-debuginfo -mlir-print-op-generic`).

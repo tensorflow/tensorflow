@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,6 +72,12 @@ int64 TakeDataset::Cardinality() const {
   }
 
   return std::min(n, count_);
+}
+
+Status TakeDataset::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  inputs->push_back(input_);
+  return Status::OK();
 }
 
 Status TakeDataset::CheckExternalState() const {

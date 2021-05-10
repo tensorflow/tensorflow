@@ -41,12 +41,11 @@ namespace gpu {
 class CholeskyThunk : public Thunk {
  public:
   static StatusOr<int64> ScratchBufferSize(int64 n);
-  CholeskyThunk(const CholeskyOptions& options,
+  CholeskyThunk(ThunkInfo thunk_info, const CholeskyOptions& options,
                 BufferAllocation::Slice a_buffer,
                 BufferAllocation::Slice workspace_buffer,
-                BufferAllocation::Slice info_buffer,
-                PrimitiveType type,
-                int64 batch_size, int64 n, const HloInstruction* hlo);
+                BufferAllocation::Slice info_buffer, PrimitiveType type,
+                int64 batch_size, int64 n);
 
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;
@@ -64,10 +63,6 @@ class CholeskyThunk : public Thunk {
   const int64 batch_size_;
   const int64 a_batch_stride_;
   const int64 n_;
-
-  tensorflow::mutex mu_;
-  absl::flat_hash_map<se::Stream*, CusolverContext> contexts_
-      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

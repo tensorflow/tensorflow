@@ -1,0 +1,35 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule main.17
+
+// CHECK: func @main(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>) -> tensor<f32> {
+// CHECK:   %0 = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ( {
+// CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK:   %1 = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ( {
+// CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
+// CHECK: }
+
+%region_0.3 (Arg_0.4: f32[], Arg_1.5: f32[]) -> f32[] {
+  %Arg_0.4 = f32[] parameter(0)
+  %Arg_1.5 = f32[] parameter(1)
+  ROOT %add.6 = f32[] add(f32[] %Arg_0.4, f32[] %Arg_1.5)
+}
+
+%region_1.8 (Arg_0.9: f32[], Arg_1.10: f32[]) -> (f32[], f32[]) {
+  %Arg_0.9 = f32[] parameter(0)
+  %Arg_1.10 = f32[] parameter(1)
+  %add.11 = f32[] add(f32[] %Arg_0.9, f32[] %Arg_1.10)
+  %subtract.12 = f32[] subtract(f32[] %Arg_0.9, f32[] %Arg_1.10)
+  ROOT %tuple.13 = (f32[], f32[]) tuple(f32[] %add.11, f32[] %subtract.12)
+}
+
+ENTRY %main.17 (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[] {
+  %Arg_0.1 = f32[] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+  %fusion.7 = f32[] fusion(f32[] %Arg_0.1, f32[] %Arg_1.2), kind=kLoop, calls=%region_0.3
+  %fusion.14 = (f32[], f32[]) fusion(f32[] %Arg_0.1, f32[] %Arg_1.2), kind=kLoop, calls=%region_1.8
+  %get-tuple-element.15 = f32[] get-tuple-element((f32[], f32[]) %fusion.14), index=0
+  ROOT %get-tuple-element.16 = f32[] get-tuple-element((f32[], f32[]) %fusion.14), index=1
+}

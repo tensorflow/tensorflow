@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <vector>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
@@ -154,9 +155,12 @@ class BasicCPUAllocator : public SubAllocator {
 
   ~BasicCPUAllocator() override {}
 
-  void* Alloc(size_t alignment, size_t num_bytes) override;
+  void* Alloc(size_t alignment, size_t num_bytes,
+              size_t* bytes_received) override;
 
   void Free(void* ptr, size_t num_bytes) override;
+
+  bool SupportsCoalescing() const override { return false; }
 
  private:
   int numa_node_;

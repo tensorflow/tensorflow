@@ -1,0 +1,31 @@
+path: "tensorflow.__internal__.test.combinations"
+tf_module {
+  member {
+    name: "NamedObject"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OptionalParameter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ParameterModifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TestCombination"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "generate"
+    mtype: "<class \'functools.partial\'>"
+  }
+  member_method {
+    name: "combine"
+    argspec: "args=[], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "times"
+    argspec: "args=[], varargs=combined, keywords=None, defaults=None"
+  }
+}

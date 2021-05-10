@@ -40,11 +40,23 @@ class GcsFileSystem;
 // The environment variable that overrides the block size for aligned reads from
 // GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
 constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
+#if defined(LIBTPU_ON_GCE)
+// Overwrite the default max block size for `libtpu` BUILDs which do not
+// offer a mechanism to override the default through environment variable.
+constexpr size_t kDefaultBlockSize = 512 * 1024 * 1024;
+#else
 constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
+#endif
 // The environment variable that overrides the max size of the LRU cache of
 // blocks read from GCS. Specified in MB.
 constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
+#if defined(LIBTPU_ON_GCE)
+// Overwrite the default max cache size for `libtpu` BUILDs which do not
+// offer a mechanism to override the default through environment variable.
+constexpr size_t kDefaultMaxCacheSize = 163840LL * 1024LL * 1024LL;
+#else
 constexpr size_t kDefaultMaxCacheSize = 0;
+#endif
 // The environment variable that overrides the maximum staleness of cached file
 // contents. Once any block of a file reaches this staleness, all cached blocks
 // will be evicted on the next read.
@@ -101,6 +113,11 @@ class GcsStatsInterface {
   virtual ~GcsStatsInterface() = default;
 };
 
+struct UploadSessionHandle {
+  std::string session_uri;
+  bool resumable;
+};
+
 /// Google Cloud Storage implementation of a file system.
 ///
 /// The clients should use RetryingGcsFileSystem defined below,
@@ -122,46 +139,55 @@ class GcsFileSystem : public FileSystem {
                 size_t matching_paths_cache_max_entries,
                 RetryConfig retry_config, TimeoutConfig timeouts,
                 const std::unordered_set<string>& allowed_locations,
-                std::pair<const string, const string>* additional_header);
+                std::pair<const string, const string>* additional_header,
+                bool compose_append);
+
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(const string& fname,
+  Status NewWritableFile(const string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status GetMatchingPaths(const string& pattern,
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
                           std::vector<string>* results) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status CreateDir(const string& dirname) override;
+  Status CreateDir(const string& dirname, TransactionToken* token) override;
 
-  Status DeleteDir(const string& dirname) override;
+  Status DeleteDir(const string& dirname, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, uint64* file_size) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* file_size) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
 
-  Status IsDirectory(const string& fname) override;
+  Status IsDirectory(const string& fname, TransactionToken* token) override;
 
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+  Status DeleteRecursively(const string& dirname, TransactionToken* token,
+                           int64* undeleted_files,
                            int64* undeleted_dirs) override;
 
-  void FlushCaches() override;
+  void FlushCaches(TransactionToken* token) override;
 
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
@@ -187,6 +213,8 @@ class GcsFileSystem : public FileSystem {
   std::unordered_set<string> allowed_locations() const {
     return allowed_locations_;
   }
+
+  bool compose_append() const { return compose_append_; }
   string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
   }
@@ -264,6 +292,31 @@ class GcsFileSystem : public FileSystem {
   virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                                    char* buffer, size_t* bytes_transferred);
 
+  // Creates an upload session for an upcoming GCS object upload.
+  virtual Status CreateNewUploadSession(uint64 start_offset,
+                                        const std::string& object_to_upload,
+                                        const std::string& bucket,
+                                        uint64 file_size,
+                                        const std::string& gcs_path,
+                                        UploadSessionHandle* session_handle);
+
+  // Uploads object data to session.
+  virtual Status UploadToSession(const std::string& session_uri,
+                                 uint64 start_offset, uint64 already_uploaded,
+                                 const std::string& tmp_content_filename,
+                                 uint64 file_size,
+                                 const std::string& file_path);
+
+  /// \brief Requests status of a previously initiated upload session.
+  ///
+  /// If the upload has already succeeded, sets 'completed' to true.
+  /// Otherwise sets 'completed' to false and 'uploaded' to the currently
+  /// uploaded size in bytes.
+  virtual Status RequestUploadSessionStatus(const string& session_uri,
+                                            uint64 file_size,
+                                            const std::string& gcs_path,
+                                            bool* completed, uint64* uploaded);
+
   Status ParseGcsPathForScheme(StringPiece fname, string scheme,
                                bool empty_object_ok, string* bucket,
                                string* object);
@@ -278,6 +331,12 @@ class GcsFileSystem : public FileSystem {
                               string* bucket, string* object);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
+
+  // Used by a subclass.
+  TimeoutConfig timeouts_;
+
+  /// The retry configuration used for retrying failed calls.
+  RetryConfig retry_config_;
 
  private:
   // GCS file statistics.
@@ -361,6 +420,8 @@ class GcsFileSystem : public FileSystem {
   mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
       TF_GUARDED_BY(block_cache_lock_);
+
+  bool cache_enabled_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 
@@ -373,13 +434,9 @@ class GcsFileSystem : public FileSystem {
   using BucketLocationCache = ExpiringLRUCache<string>;
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
   std::unordered_set<string> allowed_locations_;
-
-  TimeoutConfig timeouts_;
+  bool compose_append_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
-
-  /// The initial delay for exponential backoffs when retrying failed calls.
-  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;

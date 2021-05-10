@@ -30,8 +30,8 @@ namespace {
 class OperatorTest : public ::testing::Test {
  protected:
   // Return the operator for the given name and type.
-  const BaseOperator& GetOperator(const string& name, OperatorType type) {
-    using OpsByName = std::map<string, std::unique_ptr<BaseOperator>>;
+  const BaseOperator& GetOperator(const std::string& name, OperatorType type) {
+    using OpsByName = std::map<std::string, std::unique_ptr<BaseOperator>>;
     using OpsByType = std::map<OperatorType, std::unique_ptr<BaseOperator>>;
 
     static auto* by_name = new OpsByName(BuildOperatorByNameMap());
@@ -86,7 +86,7 @@ class OperatorTest : public ::testing::Test {
   // Verify serialization and deserialization of simple operators (those
   // that don't have any configuration parameters).
   template <typename T>
-  void CheckSimpleOperator(const string& name, OperatorType type) {
+  void CheckSimpleOperator(const std::string& name, OperatorType type) {
     Options options;
     auto output_toco_op =
         SerializeAndDeserialize(GetOperator(name, type), T(), &options);
@@ -99,7 +99,7 @@ class OperatorTest : public ::testing::Test {
   }
 
   template <typename T>
-  void CheckReducerOperator(const string& name, OperatorType type) {
+  void CheckReducerOperator(const std::string& name, OperatorType type) {
     T op;
 
     op.keep_dims = false;
@@ -738,9 +738,7 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "EluGrad"));
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "RFFT"));
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
-  // While the RandomShuffle op is available on desktop, it is not in the kernel
-  // set available on mobile and should be excluded.
-  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RandomShuffle"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "RandomShuffle"));
 }
 
 TEST_F(OperatorTest, BuiltinMirrorPad) {
@@ -956,6 +954,8 @@ TEST_F(OperatorTest, VersioningTanhTest) {
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   StridedSliceOperator op;
   op.inputs = {"input1"};
+  op.ellipsis_mask = 0;
+  op.new_axis_mask = 0;
   auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
   const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
 

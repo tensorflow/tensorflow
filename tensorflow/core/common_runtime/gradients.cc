@@ -130,7 +130,7 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
   // The gradient node's outputs have the same types as the node 'n's
   // inputs, except for resources.
   DataTypeVector out_types = n->input_types();
-  for (int i = 0; i < out_types.size(); ++i) {
+  for (int i = 0, end = out_types.size(); i < end; ++i) {
     if (out_types[i] == DT_RESOURCE) {
       // TODO(apassos): figure out how to get the right dtype
       out_types[i] = DT_FLOAT;
@@ -221,7 +221,7 @@ SymbolicGradientBuilder::SymbolicGradientBuilder(
   x_grad_node_outputs_->clear();
   x_grad_node_outputs_->resize(x_node_outputs_.size());
   stop_nodes_.reserve(x_node_outputs_.size());
-  for (int i = 0; i < x_node_outputs_.size(); ++i) {
+  for (int i = 0, end = x_node_outputs_.size(); i < end; ++i) {
     stop_nodes_.insert(x_node_outputs_[i].node->id());
   }
 }
@@ -397,7 +397,7 @@ Status SymbolicGradientBuilder::Compute() {
     }
   }
 
-  for (int i = 0; i < x_node_outputs_.size(); ++i) {
+  for (int i = 0, end = x_node_outputs_.size(); i < end; ++i) {
     (*x_grad_node_outputs_)[i] = SumGradients(x_node_outputs_[i]);
   }
 

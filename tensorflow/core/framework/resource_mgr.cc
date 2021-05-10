@@ -37,10 +37,11 @@ ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-    const std::vector<string>& allowed_devices) {
+    const absl::optional<ManagedStackTrace>& definition_stack_trace) {
   ResourceHandle result;
   result.set_device(device.name());
   result.set_container(container);
+  result.set_definition_stack_trace(definition_stack_trace);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
   } else {
@@ -49,7 +50,6 @@ ResourceHandle MakeResourceHandle(
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);
-  result.set_allowed_devices(allowed_devices);
   return result;
 }
 
@@ -67,39 +67,12 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
 namespace internal {
 
 Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
-  const string& current_device_name = ctx->device()->attributes().name();
-  if (current_device_name == p.device()) {
-    return Status::OK();
-  }
-  DeviceNameUtils::ParsedName parsed_current_device_name;
-  if (!DeviceNameUtils::ParseFullName(current_device_name,
-                                      &parsed_current_device_name)) {
+  if (ctx->device()->attributes().name() != p.device()) {
     return errors::InvalidArgument(
-        "Cannot parse device name in OpKernelContext: ", current_device_name);
+        "Trying to access resource ", p.name(), " located in device ",
+        p.device(), " from device ", ctx->device()->attributes().name());
   }
-
-  for (const string& device : p.allowed_devices()) {
-    DeviceNameUtils::ParsedName parsed;
-    if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-      return errors::InvalidArgument("Cannot parse allowed device name: ",
-                                     device);
-    }
-    if (DeviceNameUtils::IsCompleteSpecification(parsed,
-                                                 parsed_current_device_name)) {
-      return Status::OK();
-    }
-  }
-  string error_message = strings::StrCat("Trying to access resource ", p.name(),
-                                         " located in device ", p.device(),
-                                         " from device ", current_device_name);
-  if (!p.allowed_devices().empty()) {
-    absl::StrAppend(&error_message, " (allowed devices: ");
-    for (const string& device : p.allowed_devices()) {
-      absl::StrAppend(&error_message, device, ", ");
-    }
-    absl::StrAppend(&error_message, ") ");
-  }
-  return errors::InvalidArgument(error_message);
+  return Status::OK();
 }
 
 }  // end namespace internal
@@ -218,19 +191,33 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                                type.name());
 }
 
+Status ResourceMgr::Lookup(const ResourceHandle& handle,
+                           ResourceBase** resource) const {
+  tf_shared_lock l(mu_);
+  return DoLookup(handle.container(), handle.hash_code(),
+                  /*type_name=*/"ResourceBase", handle.name(), resource);
+}
+
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
+                             ResourceBase** resource) const {
+  return DoLookup(container, type.hash_code(), type.name(), name, resource);
+}
+
+Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
+                             const string& type_name,
+                             const string& resource_name,
                              ResourceBase** resource) const {
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
     return errors::NotFound("Container ", container,
                             " does not exist. (Could not find resource: ",
-                            container, "/", name, ")");
+                            container, "/", resource_name, ")");
   }
-  auto iter = b->find({type.hash_code(), name});
+  auto iter = b->find({type_hash_code, resource_name});
   if (iter == b->end()) {
-    return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
-                            " does not exist.");
+    return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                            type_name, " does not exist.");
   }
   *resource = const_cast<ResourceBase*>(iter->second.resource.get());
   (*resource)->Ref();
@@ -353,18 +340,15 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
   return Status::OK();
 }
 
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      ResourceBase** value) {
+  TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  return ctx->resource_manager()->Lookup(p, value);
+}
+
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   return ctx->resource_manager()->Delete(p);
-}
-
-Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
-  int n;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
-  for (int i = 0; i < n; ++i) {
-    c->set_output(i, c->Scalar());
-  }
-  return Status::OK();
 }
 
 }  //  end namespace tensorflow

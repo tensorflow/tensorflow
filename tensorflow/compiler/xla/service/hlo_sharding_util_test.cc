@@ -76,6 +76,20 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit) {
   EXPECT_EQ(result.value(), output_sharding);
 }
 
+TEST(HloShardingUtilTest, ReshapeShardingTiledSplit2) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {16, 7});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {4, 4, 7});
+  Array2D<int64> tile(16, 1);
+  tile.FillIota(0);
+  HloSharding input_sharding = HloSharding::Tile(tile);
+  tile.Reshape({4, 4, 1});
+  HloSharding output_sharding = HloSharding::Tile(tile);
+  absl::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), output_sharding);
+}
+
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplitThenMerge) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {16, 4, 7});
   Shape output_shape = ShapeUtil::MakeShape(F32, {4, 16, 7});

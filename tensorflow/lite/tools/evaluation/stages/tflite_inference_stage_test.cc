@@ -121,6 +121,40 @@ TEST(TfliteInferenceStage, CorrectModelInfo) {
   EXPECT_EQ(output_shape->data[3], 3);
 }
 
+TEST(TfliteInferenceStage, TestResizeModel) {
+  // Create stage.
+  EvaluationStageConfig config = GetTfliteInferenceStageConfig();
+  TfliteInferenceStage stage(config);
+
+  // Initialize.
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+
+  // Resize.
+  EXPECT_EQ(stage.ResizeInputs({{3, 8, 8, 3}}), kTfLiteOk);
+
+  const TfLiteModelInfo* model_info = stage.GetModelInfo();
+  // Verify Input
+  EXPECT_EQ(model_info->inputs.size(), 1);
+  const TfLiteTensor* tensor = model_info->inputs[0];
+  EXPECT_EQ(tensor->type, kTfLiteUInt8);
+  EXPECT_EQ(tensor->bytes, 3 * kTotalElements);
+  const TfLiteIntArray* input_shape = tensor->dims;
+  EXPECT_EQ(input_shape->data[0], 3);
+  EXPECT_EQ(input_shape->data[1], 8);
+  EXPECT_EQ(input_shape->data[2], 8);
+  EXPECT_EQ(input_shape->data[3], 3);
+  // Verify Output
+  EXPECT_EQ(model_info->outputs.size(), 1);
+  tensor = model_info->outputs[0];
+  EXPECT_EQ(tensor->type, kTfLiteUInt8);
+  EXPECT_EQ(tensor->bytes, 3 * kTotalElements);
+  const TfLiteIntArray* output_shape = tensor->dims;
+  EXPECT_EQ(output_shape->data[0], 3);
+  EXPECT_EQ(output_shape->data[1], 8);
+  EXPECT_EQ(output_shape->data[2], 8);
+  EXPECT_EQ(output_shape->data[3], 3);
+}
+
 TEST(TfliteInferenceStage, CorrectOutput) {
   // Create stage.
   EvaluationStageConfig config = GetTfliteInferenceStageConfig();

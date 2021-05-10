@@ -1,7 +1,15 @@
 path: "tensorflow.experimental"
 tf_module {
   member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "dlpack"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "numpy"
     mtype: "<type \'module\'>"
   }
   member {
@@ -19,5 +27,9 @@ tf_module {
   member_method {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
   }
 }

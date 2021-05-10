@@ -20,28 +20,29 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
-  """Test that experimental_compile=True correctly throws an exception if XLA is not available.
+  """Test that jit_compile=True correctly throws an exception if XLA is not available.
 
   This test should only be run without `--config=cuda`, as that implicitly links
   in XLA JIT.
   """
 
-  def testExperimentalCompileRaisesExceptionWhenXlaIsUnsupported(self):
+  def testJitCompileRaisesExceptionWhenXlaIsUnsupported(self):
     if test.is_built_with_rocm() or test_util.is_xla_enabled():
       return
 
-    with self.assertRaisesRegexp(ValueError, 'XLA support is not'):
+    with self.assertRaisesRegex(errors.UnimplementedError,
+                                'check target linkage'):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def fn(x):
-        return array_ops.unique(x).y
+        return x + x
 
       fn([1, 1, 2, 3])
 

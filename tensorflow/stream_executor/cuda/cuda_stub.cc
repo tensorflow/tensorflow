@@ -95,14 +95,14 @@ typedef void(CUDA_CB* CUhostFn)(void* userData);
 
 #if CUDA_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cuda_9_0.inc"
-#elif CUDA_VERSION == 10000
+#elif CUDA_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cuda_10_0.inc"
-#elif CUDA_VERSION <= 10010
+#elif CUDA_VERSION < 10020
 #include "tensorflow/stream_executor/cuda/cuda_10_1.inc"
-#elif CUDA_VERSION <= 10020
+#elif CUDA_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cuda_10_2.inc"
-#elif CUDA_VERSION <= 11000
+#elif CUDA_VERSION < 11020
 #include "tensorflow/stream_executor/cuda/cuda_11_0.inc"
 #else
-#error "We have no wrapper for this version."
+#include "tensorflow/stream_executor/cuda/cuda_11_2.inc"
 #endif

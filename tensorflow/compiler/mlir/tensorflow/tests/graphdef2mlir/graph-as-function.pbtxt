@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s
 
 # Verify main graph was converted to a function, args/rets are mapped correctly,
 # and ops in the main graph are retained. In addition, check if subsequent
@@ -13,7 +13,7 @@
 # CHECK:          %[[ISLAND_2:.*]], %[[ISLAND_2_control:.*]] = tf_executor.island wraps "tf.StatefulPartitionedCall"
 # CHECK-SAME:       f = @[[FUNC:[a-z0-9]*]]
 # CHECK:          tf_executor.fetch %[[ISLAND_1]], %[[ISLAND_2]] : tensor<*xf32>, tensor<*xf32>
-# CHECK:      func @[[FUNC]](%arg0: tensor<*xf32> {tf._user_specified_name = "inputs"}, %arg1: tensor<*x!tf.resource>) -> tensor<*xf32>
+# CHECK:      func private @[[FUNC]](%arg0: tensor<*xf32> {tf._user_specified_name = "inputs"}, %arg1: tensor<*x!tf.resource>) -> tensor<*xf32>
 
 node {
   name: "args_0"

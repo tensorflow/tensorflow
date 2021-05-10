@@ -39,7 +39,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/util/cuda_solvers.h"
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
@@ -151,10 +151,9 @@ class WhereCPUOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    // TODO(ebrevdo): Replace single-threaded copy with a
-    // multithreaded block copy by getting block counts above instead
-    // of a global NumTrue, then having each block filled in in
-    // separate threads below.
+    // TODO(ebrevdo): Replace single-threaded copy with a multithreaded block
+    // copy by getting block counts above instead of a global NumTrue, then
+    // having each block filled in separate threads below.
     int64 found_true = 0;
 
 #define HANDLE_DIM(NDIM)                                                      \
@@ -275,44 +274,27 @@ class WhereGPUOp : public AsyncOpKernel {
                         OpKernelContext* context, DoneCallback done) {
     // Step 0: alloc nnz
     // Step 1: call nnz kernel
-    // Step 2: copy nnz to host
-    // Step 3: call create_output
-    // Step 4: call where kernel
-    Tensor num_true;
-    OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_temp(DataTypeToEnum<Tindex>::v(),
-                                                TensorShape({}), &num_true),
-                         done);
-    typename TTypes<Tindex>::UnalignedScalar num_true_t(
-        num_true.scalar<Tindex>().data());
+    // Step 2: call create_output
+    // Step 3: call where kernel
 
-    se::DeviceMemoryBase num_true_ptr(static_cast<void*>(num_true_t.data()));
+    // Allocate pinned memory for `num_true`.  This memory is accessible on host
+    // and device.
+    ScratchSpace<Tindex> num_true(context, 1, /*on_host=*/true);
+    typename TTypes<Tindex>::UnalignedScalar num_true_t(
+        num_true.mutable_data());
+
     // Push kernel to stream to get number of true elements.
     const GPUDevice& d = context->eigen_device<GPUDevice>();
     Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
         context, d, input.flat<T>(), num_true_t);
     OP_REQUIRES_OK_ASYNC(context, s, done);
 
-    // Copy num_true to host;
-    ScratchSpace<Tindex> num_true_host(context, 1, /* on_host */ true);
-
-    auto stream = context->op_device_context()->stream();
-    OP_REQUIRES_ASYNC(
-        context,
-        stream
-            ->ThenMemcpy(num_true_host.mutable_data(), num_true_ptr,
-                         sizeof(Tindex))
-            .ok(),
-        errors::Internal("WhereOp: failed to copy num_true from device"), done);
-
     auto create_and_check_output = [context, &d, &input, input_dims,
-                                    num_true_host, done]() {
+                                    num_true = std::move(num_true), done]() {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
       ScopedActivateExecutorContext scoped_activation{stream->parent()};
-
-      Tindex num_true = *num_true_host.data();
 
       // TODO(ebrevdo): Properly copy back found_true value to CPU for
       // validation checking.  Currently Where<GPUDevice>::Compute()
@@ -321,10 +303,11 @@ class WhereGPUOp : public AsyncOpKernel {
 
       // Step 1: Allocate the output and perform the selection/copy.
       Tensor* output;
-      OP_REQUIRES_OK_ASYNC(context,
-                           context->allocate_output(
-                               0, TensorShape({num_true, input_dims}), &output),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_output(
+              0, TensorShape({*num_true.data(), input_dims}), &output),
+          done);
 
 #define HANDLE_DIM(NDIM)                                              \
   case NDIM: {                                                        \
@@ -366,6 +349,8 @@ class WhereGPUOp : public AsyncOpKernel {
 
       done();
     };
+
+    auto stream = context->op_device_context()->stream();
     context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
         stream, create_and_check_output);
   }

@@ -32,7 +32,7 @@ PYBIND11_MODULE(_pywrap_cost_analyzer, m) {
         [](const py::bytes& serialized_metagraph, bool per_node_report,
            bool verbose, tensorflow::grappler::Cluster* cluster) -> py::bytes {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(serialized_metagraph)) {
+          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
             return "The MetaGraphDef could not be parsed as a valid protocol "
                    "buffer";
           }

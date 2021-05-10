@@ -44,62 +44,18 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-from tensorflow.python.platform import build_info
 
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.2.0'
+_VERSION = '2.6.0'
 
-REQUIRED_PACKAGES = [
-    'absl-py >= 0.7.0',
-    'astunparse == 1.6.3',
-    'gast == 0.3.3',
-    'google_pasta >= 0.1.8',
-    'h5py >= 2.10.0, < 2.11.0',
-    'keras_preprocessing >= 1.1.1, < 1.2',
-    'numpy >= 1.16.0, < 2.0',
-    'opt_einsum >= 2.3.2',
-    'protobuf >= 3.9.2',
-    'tensorboard >= 2.2.0, < 2.3.0',
-    'tensorflow_estimator >= 2.2.0, < 2.3.0',
-    'termcolor >= 1.1.0',
-    'wrapt >= 1.11.1',
-    'wheel >= 0.26',
-    'six >= 1.12.0',
-    # scipy < 1.4.1 causes segfaults due to pybind11
-    'scipy == 1.4.1',
-]
 
-# Generate a footer describing the CUDA technology this release was built
-# against.
-GPU_DESCRIPTION = ''
-gpu_classifiers = []
-if build_info.build_info['is_cuda_build']:
-  gpu_header = ('\nTensorFlow {} for NVIDIA GPUs was built with these '
-                'platform and library versions:\n\n  - ').format(_VERSION)
-  bi = build_info.build_info
-  desc_lines = []
-  gpu_classifiers.append('Environment :: GPU :: NVIDIA CUDA :: ' +
-                         bi['cuda_version'])
-  if 'cuda_version' in bi:
-    desc_lines.append('NVIDIA CUDA ' + bi['cuda_version'])
-  if 'cudnn_version' in bi:
-    desc_lines.append('NVIDIA cuDNN ' + bi['cudnn_version'])
-  if 'cuda_compute_capabilities' in bi:
-    desc_lines.append('NVIDIA CUDA Compute Capabilities ' +
-                      ', '.join(bi['cuda_compute_capabilities']))
-  if desc_lines:
-    GPU_DESCRIPTION = gpu_header + '\n  - '.join(desc_lines)
-
-if sys.byteorder == 'little':
-  # grpcio does not build correctly on big-endian machines due to lack of
-  # BoringSSL support.
-  # See https://github.com/tensorflow/tensorflow/issues/17882.
-  REQUIRED_PACKAGES.append('grpcio >= 1.8.6')
-
+# We use the same setup.py for all tensorflow_* packages and for the nightly
+# equivalents (tf_nightly_*). The package is controlled from the argument line
+# when building the pip package.
 project_name = 'tensorflow'
 if '--project_name' in sys.argv:
   project_name_idx = sys.argv.index('--project_name')
@@ -107,20 +63,90 @@ if '--project_name' in sys.argv:
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
 
-# tf-nightly should depend on tb-nightly
+
+# All versions of TF need these packages. We use the `~=` syntax to pin packages
+# to the latest major.minor release accepting all other patches on top of that.
+# If we already know of a patched version, we pin to that.
+# For packages that don't have yet a stable release, we pin using `~= 0.x` which
+# means we accept any `0.y` version (y >= x) but not the first major release. We
+# will need additional testing for that.
+# NOTE: This assumes that all packages follow SemVer. If a package follows a
+# different versioning scheme (e.g., PVP), we use different bound specifier and
+# comment the versioning scheme.
+# NOTE: Please add test only packages to `TEST_PACKAGES` below.
+REQUIRED_PACKAGES = [
+    # NOTE: As numpy has releases that break semver guarantees and several other
+    # deps depend on numpy without an upper bound, we must install numpy before
+    # everything else.
+    'numpy ~= 1.19.2',
+    # Install other dependencies
+    'absl-py ~= 0.10',
+    'astunparse ~= 1.6.3',
+    'flatbuffers ~= 1.12.0',
+    'google_pasta ~= 0.2',
+    'h5py ~= 3.1.0',
+    'keras_preprocessing ~= 1.1.2',
+    'opt_einsum ~= 3.3.0',
+    'protobuf >= 3.9.2',
+    'six ~= 1.15.0',
+    'termcolor ~= 1.1.0',
+    'typing_extensions ~= 3.7.4',
+    'wheel ~= 0.35',
+    'wrapt ~= 1.12.1',
+    # These packages need to be pinned exactly as newer versions are
+    # incompatible with the rest of the ecosystem
+    'gast == 0.4.0',
+    # TensorFlow ecosystem packages that TF exposes API for
+    # These need to be in sync with the existing TF version
+    # They are updated during the release process
+    # When updating these, please also update the nightly versions below
+    'tensorboard ~= 2.5',
+    'tensorflow_estimator ~= 2.4.0',
+    # TODO(scottzhu): OSS keras hasn't been formally released yet.
+    # Use keras-nightly at the moment.
+    'keras-nightly ~= 2.5.0.dev',
+]
+
+
+# For nightly packages, instead of depending on tensorboard,
+# tensorflow_estimator and keras, we depend on their nightly equivalent.
+# When updating these, make sure to also update the release versions above.
+# NOTE: the nightly versions are one version ahead of the release ones!
+# NOTE: the nightly versions specify alpha/dev!
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.6.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
+    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
+
+
+# grpcio does not build correctly on big-endian machines due to lack of
+# BoringSSL support.
+# See https://github.com/tensorflow/tensorflow/issues/17882.
+if sys.byteorder == 'little':
+  REQUIRED_PACKAGES.append('grpcio >= 1.37.0, < 2.0')
+
+
+# Packages which are only needed for testing code.
+# Please don't add test-only packages to `REQUIRED_PACKAGES`!
+# Follows the same conventions as `REQUIRED_PACKAGES`
+TEST_PACKAGES = [
+    'portpicker ~= 1.3.1',
+    'scipy ~= 1.5.2',
+    'tblib ~= 1.7.0',
+    'dill ~= 0.3.2',
+]
+
 
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
   project_name_no_gpu = project_name[:-len('-gpu')]
   _GPU_PACKAGE_NOTE = 'Note that %s package by default supports both CPU and '\
       'GPU. %s has the same content and exists solely for backward '\
-      'compatiblity. Please migrate to %s for GPU support.'\
+      'compatibility. Please migrate to %s for GPU support.'\
       % (project_name_no_gpu, project_name, project_name_no_gpu)
   DOCLINES.append(_GPU_PACKAGE_NOTE)
 
@@ -131,6 +157,7 @@ CONSOLE_SCRIPTS = [
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
+    'import_pb_to_tensorboard = tensorflow.python.tools.import_pb_to_tensorboard:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
@@ -145,10 +172,6 @@ CONSOLE_SCRIPTS = [
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
   CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
-
-TEST_PACKAGES = [
-    'scipy >= 0.15.1',
-]
 
 
 class BinaryDistribution(Distribution):
@@ -261,6 +284,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.proto', 'tensorflow/python/framework')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -268,6 +292,7 @@ headers = (
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
@@ -280,7 +305,8 @@ setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
-    long_description='\n'.join(DOCLINES[2:]) + GPU_DESCRIPTION,
+    long_description='\n'.join(DOCLINES[2:]),
+    long_description_content_type="text/markdown",
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -301,11 +327,6 @@ setup(
         ] + matches,
     },
     zip_safe=False,
-    # Accessible with importlib.metadata.metadata('tf-pkg-name').items()
-    platforms=[
-        '{}:{}'.format(key, value)
-        for key, value in build_info.build_info.items()
-    ],
     distclass=BinaryDistribution,
     cmdclass={
         'install_headers': InstallHeaders,
@@ -314,15 +335,17 @@ setup(
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
+        # TODO(angerson) Add IFTTT when possible
+        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
@@ -330,7 +353,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
-    ] + gpu_classifiers),
+    ]),
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',
 )

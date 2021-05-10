@@ -27,6 +27,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensorSpec
@@ -65,10 +66,11 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     for field in a.field_names():
       self.assertAllEqual(a.field_value(field), b.field_value(field))
 
-  def assertAllTensorsEqual(self, list1, list2):
-    self.assertLen(list1, len(list2))
-    for (t1, t2) in zip(list1, list2):
-      self.assertAllEqual(t1, t2)
+  def assertAllTensorsEqual(self, x, y):
+    assert isinstance(x, dict) and isinstance(y, dict)
+    self.assertEqual(set(x), set(y))
+    for key in x:
+      self.assertAllEqual(x[key], y[key])
 
   def testConstruction(self):
     spec1_fields = dict(a=T_1_2_3_4)
@@ -90,7 +92,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
        r'field_specs must be a dictionary with TypeSpec values\.'),
   ])
   def testConstructionErrors(self, shape, field_specs, error):
-    with self.assertRaisesRegexp(TypeError, error):
+    with self.assertRaisesRegex(TypeError, error):
       structured_tensor.StructuredTensorSpec(shape, field_specs)
 
   def testValueType(self):
@@ -130,13 +132,6 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
           'fields': dict(x=[[1.0, 2.0]]),
           'field_specs': dict(x=T_1_2),
       },
-      # TODO(edloper): Enable this test once we update StructuredTensorSpec
-      # to contain the shared row partitions.
-      #{
-      #    'shape': [1, 2, 3],
-      #    'fields': {},
-      #    'field_specs': {},
-      #},
       {
           'shape': [2],
           'fields': dict(
@@ -153,6 +148,29 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(actual_components, components)
     rt_reconstructed = spec._from_components(actual_components)
     self.assertAllEqual(struct, rt_reconstructed)
+
+  def testToFromComponentsEmptyScalar(self):
+    struct = StructuredTensor.from_fields(fields={}, shape=[])
+    spec = struct._type_spec
+    components = spec._to_components(struct)
+    rt_reconstructed = spec._from_components(components)
+    self.assertAllEqual(struct, rt_reconstructed)
+    self.assertEqual(components, ((), ()))
+
+  def testToFromComponentsEmptyTensor(self):
+    struct = StructuredTensor.from_fields(fields={}, shape=[1, 2, 3])
+    spec = struct._type_spec
+    components = spec._to_components(struct)
+    rt_reconstructed = spec._from_components(components)
+    self.assertAllEqual(struct, rt_reconstructed)
+    self.assertLen(components, 2)
+    nrows, row_partitions = components
+    self.assertAllEqual(nrows, 1)
+    self.assertLen(row_partitions, 2)
+    self.assertIsInstance(row_partitions[0], row_partition.RowPartition)
+    self.assertIsInstance(row_partitions[1], row_partition.RowPartition)
+    self.assertAllEqual(row_partitions[0].row_splits(), [0, 2])
+    self.assertAllEqual(row_partitions[1].row_splits(), [0, 3, 6])
 
   @parameterized.parameters([
       {
@@ -213,30 +231,56 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
               'b': StructuredTensor.from_fields(shape=[2], fields={
                   'x': [[5], [6]]})}),
       },
+      {
+          'unbatched': lambda: [
+              StructuredTensor.from_fields(shape=[], fields={
+                  'Ragged3d': ragged_factory_ops.constant_value([[1, 2], [3]]),
+                  'Ragged2d': ragged_factory_ops.constant_value([1]),
+              }),
+              StructuredTensor.from_fields(shape=[], fields={
+                  'Ragged3d': ragged_factory_ops.constant_value([[1]]),
+                  'Ragged2d': ragged_factory_ops.constant_value([2, 3]),
+              })],
+          'batch_size': 2,
+          'batched': lambda: StructuredTensor.from_fields(shape=[2], fields={
+              'Ragged3d': ragged_factory_ops.constant_value(
+                  [[[1, 2], [3]], [[1]]]),
+              'Ragged2d': ragged_factory_ops.constant_value([[1], [2, 3]]),
+          }),
+          'use_only_batched_spec': True,
+      },
   ])  # pyformat: disable
-  def testBatchUnbatchValues(self, unbatched, batch_size, batched):
+  def testBatchUnbatchValues(self, unbatched, batch_size, batched,
+                             use_only_batched_spec=False):
     batched = batched()  # Deferred init because it creates tensors.
     unbatched = unbatched()  # Deferred init because it creates tensors.
 
     # Test batching.
-    unbatched_spec = type_spec.type_spec_from_value(unbatched[0])
+    if use_only_batched_spec:
+      unbatched_spec = type_spec.type_spec_from_value(batched)._unbatch()
+    else:
+      unbatched_spec = type_spec.type_spec_from_value(unbatched[0])
     unbatched_tensor_lists = [unbatched_spec._to_tensor_list(st)
                               for st in unbatched]
     batched_tensor_list = [array_ops.stack(tensors)
                            for tensors in zip(*unbatched_tensor_lists)]
     actual_batched = unbatched_spec._batch(batch_size)._from_tensor_list(
         batched_tensor_list)
+    self.assertTrue(
+        unbatched_spec._batch(batch_size).is_compatible_with(actual_batched))
     self.assertAllEqual(actual_batched, batched)
 
     # Test unbatching
     batched_spec = type_spec.type_spec_from_value(batched)
-    batched_tensor_list = batched_spec._to_tensor_list(batched)
+    batched_tensor_list = batched_spec._to_batched_tensor_list(batched)
     unbatched_tensor_lists = zip(
         *[array_ops.unstack(tensor) for tensor in batched_tensor_list])
     actual_unbatched = [
         batched_spec._unbatch()._from_tensor_list(tensor_list)
         for tensor_list in unbatched_tensor_lists]
     self.assertLen(actual_unbatched, len(unbatched))
+    for st in actual_unbatched:
+      self.assertTrue(batched_spec._unbatch().is_compatible_with(st))
     for (actual, expected) in zip(actual_unbatched, unbatched):
       self.assertAllEqual(actual, expected)
 

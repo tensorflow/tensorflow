@@ -1,0 +1,1332 @@
+# Generates CUDA kernels using MLIR codegen.
+
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load(
+    "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "cpu_kernel_library",
+    "gpu_kernel_library",
+    "if_mlir_generated_cpu_kernels_enabled",
+    "if_mlir_generated_experimental_kernels_enabled",
+    "if_mlir_generated_gpu_kernels_enabled",
+)
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cc_test",
+)
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
+package(
+    default_visibility = [
+        "//tensorflow/core/kernels:__subpackages__",
+    ],
+    licenses = ["notice"],
+)
+
+bool_flag(
+    name = "enable_gpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "is_gpu_enabled",
+    flag_values = {":enable_gpu": "True"},
+)
+
+bool_flag(
+    name = "enable_cpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "is_cpu_enabled",
+    flag_values = {":enable_cpu": "True"},
+)
+
+# This flag may only be enabled with enable_gpu and enable_cpu are true.
+bool_flag(
+    name = "enable_experimental",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "is_experimental_enabled",
+    flag_values = {":enable_experimental": "True"},
+)
+
+cc_library(
+    name = "base_op",
+    srcs = ["base_op.cc"],
+    hdrs = ["base_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:allocation_description_proto_cc",
+        "//tensorflow/core/framework:op_requires",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "base_gpu_op",
+    hdrs = ["base_gpu_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [":base_op"],
+)
+
+cc_library(
+    name = "base_cpu_op",
+    hdrs = ["base_cpu_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [":base_op"],
+)
+
+tf_kernel_library(
+    name = "gpu_cwise_unary_op",
+    srcs = if_mlir_generated_gpu_kernels_enabled([
+        "gpu_op_abs.cc",
+        "gpu_op_acos.cc",
+        "gpu_op_acosh.cc",
+        "gpu_op_angle.cc",
+        "gpu_op_asin.cc",
+        "gpu_op_asinh.cc",
+        "gpu_op_atan.cc",
+        "gpu_op_atanh.cc",
+        "gpu_op_ceil.cc",
+        "gpu_op_complex_abs.cc",
+        "gpu_op_conj.cc",
+        "gpu_op_cos.cc",
+        "gpu_op_cosh.cc",
+        "gpu_op_digamma.cc",
+        "gpu_op_erf.cc",
+        "gpu_op_erfc.cc",
+        "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
+        "gpu_op_floor.cc",
+        "gpu_op_imag.cc",
+        "gpu_op_invert.cc",
+        "gpu_op_is_finite.cc",
+        "gpu_op_is_inf.cc",
+        "gpu_op_is_nan.cc",
+        "gpu_op_lgamma.cc",
+        "gpu_op_log.cc",
+        "gpu_op_log1p.cc",
+        "gpu_op_logical_not.cc",
+        "gpu_op_neg.cc",
+        "gpu_op_real.cc",
+        "gpu_op_rsqrt.cc",
+        "gpu_op_sign.cc",
+        "gpu_op_sin.cc",
+        "gpu_op_sinh.cc",
+        "gpu_op_sqrt.cc",
+        "gpu_op_square.cc",
+        "gpu_op_tan.cc",
+        "gpu_op_tanh.cc",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_reciprocal.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_gpu_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_abs_kernels",
+        ":gpu_acos_kernels",
+        ":gpu_acosh_kernels",
+        ":gpu_angle_kernels",
+        ":gpu_asin_kernels",
+        ":gpu_asinh_kernels",
+        ":gpu_atan_kernels",
+        ":gpu_atanh_kernels",
+        ":gpu_ceil_kernels",
+        ":gpu_complex_abs_kernels",
+        ":gpu_conj_kernels",
+        ":gpu_cos_kernels",
+        ":gpu_cosh_kernels",
+        ":gpu_digamma_kernels",
+        ":gpu_erf_kernels",
+        ":gpu_erfc_kernels",
+        ":gpu_exp_kernels",
+        ":gpu_expm1_kernels",
+        ":gpu_floor_kernels",
+        ":gpu_imag_kernels",
+        ":gpu_invert_kernels",
+        ":gpu_is_finite_kernels",
+        ":gpu_is_inf_kernels",
+        ":gpu_is_nan_kernels",
+        ":gpu_lgamma_kernels",
+        ":gpu_log1p_kernels",
+        ":gpu_log_kernels",
+        ":gpu_logical_not_kernels",
+        ":gpu_neg_kernels",
+        ":gpu_real_kernels",
+        ":gpu_rsqrt_kernels",
+        ":gpu_sign_kernels",
+        ":gpu_sin_kernels",
+        ":gpu_sinh_kernels",
+        ":gpu_sqrt_kernels",
+        ":gpu_square_kernels",
+        ":gpu_tan_kernels",
+        ":gpu_tanh_kernels",
+        "//third_party/eigen3",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":gpu_reciprocal_kernels",
+    ]),
+)
+
+tf_kernel_library(
+    name = "cpu_cwise_unary_op",
+    srcs = if_mlir_generated_cpu_kernels_enabled([
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "cpu_op_abs.cc",
+        "cpu_op_ceil.cc",
+        "cpu_op_cos.cc",
+        "cpu_op_floor.cc",
+        "cpu_op_invert.cc",
+        "cpu_op_rsqrt.cc",
+        "cpu_op_sin.cc",
+        "cpu_op_sqrt.cc",
+        "cpu_op_square.cc",
+        "cpu_op_tan.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_cpu_kernels_enabled([
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":base_cpu_op",
+        ":cpu_abs_kernels",
+        ":cpu_ceil_kernels",
+        ":cpu_cos_kernels",
+        ":cpu_floor_kernels",
+        ":cpu_invert_kernels",
+        ":cpu_rsqrt_kernels",
+        ":cpu_sin_kernels",
+        ":cpu_sqrt_kernels",
+        ":cpu_square_kernels",
+        ":cpu_tan_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "gpu_cwise_binary_op",
+    srcs = if_mlir_generated_gpu_kernels_enabled([
+        "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
+        "gpu_op_bitwise_and.cc",
+        "gpu_op_bitwise_or.cc",
+        "gpu_op_bitwise_xor.cc",
+        "gpu_op_complex.cc",
+        "gpu_op_div.cc",
+        "gpu_op_equal.cc",
+        "gpu_op_greater.cc",
+        "gpu_op_greater_equal.cc",
+        "gpu_op_left_shift.cc",
+        "gpu_op_less.cc",
+        "gpu_op_less_equal.cc",
+        "gpu_op_logical_and.cc",
+        "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
+        "gpu_op_mul.cc",
+        "gpu_op_not_equal.cc",
+        "gpu_op_polygamma.cc",
+        "gpu_op_pow.cc",
+        "gpu_op_right_shift.cc",
+        "gpu_op_select.cc",
+        "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_floor_div.cc",
+        "gpu_op_squared_difference.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_gpu_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_add_v2_kernels",
+        ":gpu_atan2_kernels",
+        ":gpu_bitwise_and_kernels",
+        ":gpu_bitwise_or_kernels",
+        ":gpu_bitwise_xor_kernels",
+        ":gpu_complex_kernels",
+        ":gpu_div_kernels",
+        ":gpu_equal_kernels",
+        ":gpu_greater_equal_kernels",
+        ":gpu_greater_kernels",
+        ":gpu_left_shift_kernels",
+        ":gpu_less_equal_kernels",
+        ":gpu_less_kernels",
+        ":gpu_logical_and_kernels",
+        ":gpu_logical_or_kernels",
+        ":gpu_maximum_kernels",
+        ":gpu_minimum_kernels",
+        ":gpu_mul_kernels",
+        ":gpu_not_equal_kernels",
+        ":gpu_polygamma_kernels",
+        ":gpu_pow_kernels",
+        ":gpu_right_shift_kernels",
+        ":gpu_select_v2_kernels",
+        ":gpu_sub_kernels",
+        ":gpu_zeta_kernels",
+        "//third_party/eigen3",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":gpu_floor_div_kernels",
+        ":gpu_squared_difference_kernels",
+    ]),
+)
+
+tf_kernel_library(
+    name = "cpu_cwise_binary_op",
+    srcs = if_mlir_generated_cpu_kernels_enabled([
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "cpu_op_add.cc",
+        "cpu_op_bitwise_and.cc",
+        "cpu_op_bitwise_or.cc",
+        "cpu_op_bitwise_xor.cc",
+        "cpu_op_left_shift.cc",
+        "cpu_op_right_shift.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_cpu_kernels_enabled([
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":base_cpu_op",
+        ":cpu_add_v2_kernels",
+        ":cpu_bitwise_and_kernels",
+        ":cpu_bitwise_or_kernels",
+        ":cpu_bitwise_xor_kernels",
+        ":cpu_left_shift_kernels",
+        ":cpu_right_shift_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "cwise_op",
+    srcs = [],
+    deps = [
+        ":cpu_cwise_binary_op",
+        ":cpu_cwise_unary_op",
+    ] + if_cuda_or_rocm([
+        ":gpu_cwise_unary_op",
+        ":gpu_cwise_binary_op",
+    ]),
+)
+
+tf_kernel_library(
+    name = "gpu_cast_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_cast.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_cast_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "cast_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_cast_op",
+    ]),
+)
+
+tf_kernel_library(
+    name = "gpu_relu_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_relu.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_relu_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "relu_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_relu_op",
+    ]),
+)
+
+cc_library(
+    name = "base_ops_test",
+    testonly = 1,
+    srcs = ["base_ops_test.cc"],
+    hdrs = ["base_ops_test.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "base_unary_ops_test",
+    testonly = 1,
+    hdrs = ["base_unary_ops_test.h"],
+    deps = [
+        ":base_ops_test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gpu_unary_ops_test",
+    size = "small",
+    srcs = ["gpu_unary_ops_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
+    ],
+    deps = [
+        ":base_ops_test",
+        ":base_unary_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_unary_ops_test",
+    size = "small",
+    srcs = ["cpu_unary_ops_test.cc"],
+    deps = [
+        ":base_ops_test",
+        ":base_unary_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
+cc_library(
+    name = "base_binary_ops_test",
+    testonly = 1,
+    hdrs = ["base_binary_ops_test.h"],
+    deps = [
+        ":base_ops_test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gpu_binary_ops_test",
+    size = "medium",
+    srcs = ["gpu_binary_ops_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
+    ],
+    deps = [
+        ":base_binary_ops_test",
+        ":base_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_binary_ops_test",
+    size = "medium",
+    srcs = ["cpu_binary_ops_test.cc"],
+    deps = [
+        ":base_binary_ops_test",
+        ":base_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
+# TODO(b/160731748): Re-enable when it works again.
+# gpu_kernel_library(
+#     name = "gpu_bias_add_kernels",
+#     op = "bias_add",
+#     tile_size = "16x16",
+#     types = [
+#         "f16",
+#         "f32",
+#         "f64",
+#     ],
+# )
+
+gpu_kernel_library(
+    name = "gpu_relu_kernels",
+    op = "relu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+# TODO(b/25387198): Add an int32 kernel.
+gpu_kernel_library(
+    name = "gpu_abs_kernels",
+    op = "abs",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_acos_kernels",
+    op = "acos",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_acosh_kernels",
+    op = "acosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+    # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_angle_kernels",
+    op = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_asin_kernels",
+    op = "asin",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_asinh_kernels",
+    op = "asinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_atan_kernels",
+    op = "atan",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_atanh_kernels",
+    op = "atanh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_conj_kernels",
+    op = "conj",
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_cosh_kernels",
+    op = "cosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+    # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_erf_kernels",
+    op = "erf",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_erfc_kernels",
+    op = "erfc",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_imag_kernels",
+    op = "imag",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_invert_kernels",
+    op = "invert",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_not_kernels",
+    op = "logical_not",
+    tile_size = "256",
+    types = ["i1"],
+)
+
+gpu_kernel_library(
+    name = "gpu_real_kernels",
+    op = "real",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_reciprocal_kernels",
+    op = "reciprocal",
+    tile_size = "256",
+    types = [
+        # TODO(b/162572921): Enable when it works for complex types.
+        # "c64",
+        # "c128",
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_polygamma_kernels",
+    op = "polygamma",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_digamma_kernels",
+    op = "digamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels",
+    op = "lgamma",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_sign_kernels",
+    op = "sign",
+    tile_size = "256",
+    types = [
+        # TODO(b/162577610): Add bf16, c64 and c128.
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sinh_kernels",
+    op = "sinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # May be compute-bound.
+    # unroll_factors = "4",
+)
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "square",
+        "squared_difference",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+            "c64",
+            "c128",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "add_v2",
+        "sub",
+    ]
+]
+
+gpu_kernel_library(
+    name = "gpu_complex_kernels",
+    op = "complex",
+    output_types = [
+        "c64",
+        "c128",
+    ],
+    tile_size = "1024",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_complex_abs_kernels",
+    op = "complex_abs",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_div_kernels",
+    op = "div",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i16",
+        "i64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_mul_kernels",
+    op = "mul",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+# Bitwise operations.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            # TODO(b/172804967): Enable once fixed.
+            # "ui8",
+            # "ui16",
+            # "ui32",
+            # "ui64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+        "left_shift",
+        "right_shift",
+    ]
+]
+
+gpu_kernel_library(
+    name = "gpu_atan2_kernels",
+    op = "atan2",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+# Logical operations.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "i1",
+        ],
+    )
+    for op in [
+        "logical_and",
+        "logical_or",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        output_types = ["i1"] * 10,
+        tile_size = "1024",
+        types = [
+            "c64",
+            "c128",
+            "f16",
+            "f32",
+            "f64",
+            "i1",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "equal",
+        "not_equal",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        output_types = ["i1"] * 7,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "less",
+        "less_equal",
+        "greater",
+        "greater_equal",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "maximum",
+        "minimum",
+    ]
+]
+
+# Kernels that support all floating-point and signed int types.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "neg",
+    ]
+]
+
+gpu_kernel_library(
+    name = "gpu_floor_div_kernels",
+    op = "floor_div",
+    tile_size = "1024",
+    # TODO(172804967): Enable for integer types also once unsigned integers are
+    # supported.
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+# Kernels that support all floating-point types.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "ceil",
+        "exp",
+        "expm1",
+        "floor",
+        "log",
+        "log1p",
+        "relu_grad",
+        "rsqrt",
+        "sqrt",
+        "tanh",
+    ]
+]
+
+# Kernels that support all floating-point types but have i1 output.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        output_types = ["i1"] * 3,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "is_finite",
+        "is_inf",
+        "is_nan",
+    ]
+]
+
+# Kernels that support all floating-point types but cannot be vectorized.
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+    )
+    for op in [
+        "cos",
+        "sin",
+        "tan",
+    ]
+]
+
+gpu_kernel_library(
+    name = "gpu_cast_kernels",
+    op = "cast",
+    # We generate all combinations of input types/output types from the set
+    # {i1, i8, i16, i32, i64, f16, f32, f64}. The easiest way to do this is to
+    # repeat each input type 8 times and match it with the 8 different output
+    # types (thus, the list of 8 different output types needs to be repeated 8
+    # times as well).
+    output_types = [
+        "i1",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+    ] * 8,
+    tile_size = "256",
+    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 +
+            ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
+)
+
+gpu_kernel_library(
+    name = "gpu_pow_kernels",
+    op = "pow",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+)
+
+gpu_kernel_library(
+    # The zeta kernels needs many registers so tile at 256.
+    name = "gpu_zeta_kernels",
+    op = "zeta",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_select_v2_kernels",
+    op = "select_v2",
+    tile_size = "256",
+    types = [
+        "i1",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+)
+
+cpu_kernel_library(
+    name = "cpu_abs_kernels",
+    op = "abs",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_invert_kernels",
+    op = "invert",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        # TODO(b/172804967): Enable once fixed.
+        # "ui8",
+        # "ui16",
+        # "ui32",
+        # "ui64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_ceil_kernels",
+    op = "ceil",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_cos_kernels",
+    op = "cos",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_floor_kernels",
+    op = "floor",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_rsqrt_kernels",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_sin_kernels",
+    op = "sin",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_sqrt_kernels",
+    op = "sqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_square_kernels",
+    op = "square",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_tan_kernels",
+    op = "tan",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_add_v2_kernels",
+    op = "add_v2",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+# Binary bitwise operations.
+[
+    cpu_kernel_library(
+        name = "cpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            # TODO(b/172804967): Enable once fixed.
+            # "ui8",
+            # "ui16",
+            # "ui32",
+            # "ui64",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+        "left_shift",
+        "right_shift",
+    ]
+]

@@ -29,12 +29,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
-// The cmd line flag to specify the whitelist of functions. Rest are trimmed
+// The cmd line flag to specify the allowlist of functions. Rest are trimmed
 // after this pass is run.
 // NOLINTNEXTLINE
-static llvm::cl::list<std::string> trim_funcs_whitelist(
-    "tfl-trim-funcs-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of whitelisted functions. The first "
+static llvm::cl::list<std::string> trim_funcs_allowlist(
+    "tfl-trim-funcs-allowlist", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma separated list of allowlisted functions. The first "
                    "function specified will be used as main."),
     llvm::cl::CommaSeparated);
 
@@ -43,25 +43,25 @@ namespace TFL {
 namespace {
 
 // The pass to trim functions before we legalize to TFL
-// dialect using the specified whitelist.
+// dialect using the specified allowlist.
 class TrimFunctionsPass
     : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
-  explicit TrimFunctionsPass() : trim_funcs_whitelist_(trim_funcs_whitelist) {}
-  explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_whitelist)
-      : trim_funcs_whitelist_(trim_funcs_whitelist) {}
+  explicit TrimFunctionsPass() : trim_funcs_allowlist_(trim_funcs_allowlist) {}
+  explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist)
+      : trim_funcs_allowlist_(trim_funcs_allowlist) {}
 
  private:
   void runOnOperation() override;
   bool TrimModule();
   void Verify();
 
-  llvm::ArrayRef<std::string> trim_funcs_whitelist_;
+  llvm::ArrayRef<std::string> trim_funcs_allowlist_;
 };
 
 void TrimFunctionsPass::runOnOperation() {
-  // trim the functions in the module using the trim_funcs_whitelist_
-  // by removing functions not in the whitelist.
+  // trim the functions in the module using the trim_funcs_allowlist_
+  // by removing functions not in the allowlist.
   if (TrimModule()) {
     // verify the updated module is still valid, if not signal the
     // pass as failed.
@@ -70,20 +70,20 @@ void TrimFunctionsPass::runOnOperation() {
 }
 
 bool TrimFunctionsPass::TrimModule() {
-  // if no trim_funcs_whitelist_ is specified, this pass is a no-op.
-  if (trim_funcs_whitelist_.empty()) return false;
+  // if no trim_funcs_allowlist_ is specified, this pass is a no-op.
+  if (trim_funcs_allowlist_.empty()) return false;
 
   llvm::SmallVector<FuncOp, 4> funcs_to_trim;
   for (auto func : getOperation().getOps<FuncOp>()) {
-    if (llvm::is_contained(trim_funcs_whitelist_, func.getName())) {
-      // If no main is specified in the whitelist, use the 1st func
-      // in trim_funcs_whitelist as the main.
+    if (llvm::is_contained(trim_funcs_allowlist_, func.getName())) {
+      // If no main is specified in the allowlist, use the 1st func
+      // in trim_funcs_allowlist as the main.
       // TODO(ashwinm): Currently tflite flatbuffer export assumes there is
       // always a main. This is strictly not required for TFlite. We need to
       // remove that restriction once we have support to attribute the main
       // tensorflow function in MLIR TF import using an entry_point attr.
-      if (!llvm::is_contained(trim_funcs_whitelist_, "main") &&
-          func.getName() == trim_funcs_whitelist_[0]) {
+      if (!llvm::is_contained(trim_funcs_allowlist_, "main") &&
+          func.getName() == trim_funcs_allowlist_[0]) {
         func.setName("main");
       }
     } else {
@@ -99,7 +99,7 @@ bool TrimFunctionsPass::TrimModule() {
 }
 
 // validate that all reachable functions from the remaining functions are
-// also in the whitelist.
+// also in the allowlist.
 void TrimFunctionsPass::Verify() {
   // TODO(ashwinm): Instead, we should make sure that references to all
   // SymbolRefAttrs of all ops are present.
@@ -109,7 +109,7 @@ void TrimFunctionsPass::Verify() {
     auto walk_result = func.walk([&](CallOp op) -> WalkResult {
       if (!symbol_table.lookup<FuncOp>(op.getCallee()))
         return getOperation().emitError()
-               << func.getName() << " is not in the funcs whitelist";
+               << func.getName() << " is not in the funcs allowlist";
       return WalkResult::advance();
     });
     if (walk_result.wasInterrupted()) return signalPassFailure();
@@ -121,13 +121,13 @@ void TrimFunctionsPass::Verify() {
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
-    llvm::ArrayRef<std::string> trim_funcs_whitelist) {
-  return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
+    llvm::ArrayRef<std::string> trim_funcs_allowlist) {
+  return std::make_unique<TrimFunctionsPass>(trim_funcs_allowlist);
 }
 
 static PassRegistration<TrimFunctionsPass> pass(
     "tfl-trim-funcs-tf",
-    "Trim functions to restrict them to a specified whitelist prior to "
+    "Trim functions to restrict them to a specified allowlist prior to "
     "legalization to TensorFlow lite dialect");
 
 }  // namespace TFL

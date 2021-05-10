@@ -74,7 +74,7 @@ library {
     }
     # The attribute "experimental_ints_on_device" and the return type INT32
     # ensure that kDeviceRetOp is used instead of kRetOp
-    # CHECK-LABEL: func @foo
+    # CHECK-LABEL: func private @foo
     # CHECK:    tf.experimental_ints_on_device = true
     # CHECK:    return %{{.*}} tensor<{{.*}}i32>
     attr {

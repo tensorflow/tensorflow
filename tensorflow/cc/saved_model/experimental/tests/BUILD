@@ -2,13 +2,16 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cc_test(
     name = "saved_model_api_test",
     srcs = [
         "saved_model_api_test.cc",
+    ],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     deps = [
         "//tensorflow/cc/experimental/base/public:runtime",

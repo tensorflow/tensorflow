@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <complex>
+#include <stdint.h>
 
+#include <complex>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -43,6 +46,22 @@ class CastOpModel : public SingleOpModel {
   int output_;
 };
 
+TEST(CastOpModel, CastInt16ToFloat) {
+  CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
+  m.PopulateTensor<int16_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({100.f, 200.f, 300.f, 400.f, 500.f, 600.f}));
+}
+
+TEST(CastOpModel, CastInt16ToInt32) {
+  CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_INT32, {2, 3}});
+  m.PopulateTensor<int16_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({100, 200, 300, 400, 500, 600}));
+}
+
 TEST(CastOpModel, CastInt32ToFloat) {
   CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
   m.PopulateTensor<int32_t>(m.input(), {100, 200, 300, 400, 500, 600});
@@ -56,6 +75,14 @@ TEST(CastOpModel, CastFloatToInt32) {
   m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
   m.Invoke();
   EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({100, 20, 3, 0, 0, 1}));
+}
+
+TEST(CastOpModel, CastFloatToInt16) {
+  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_INT16, {3, 2}});
+  m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
               ElementsAreArray({100, 20, 3, 0, 0, 1}));
 }
 

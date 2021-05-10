@@ -23,13 +23,6 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import forma
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
-_KUBERNETES_API_CLIENT_INSTALLED = True
-try:
-  from kubernetes import client as k8sclient  # pylint: disable=g-import-not-at-top
-  from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
-except ImportError:
-  _KUBERNETES_API_CLIENT_INSTALLED = False
-
 
 @tf_export('distribute.cluster_resolver.KubernetesClusterResolver')
 class KubernetesClusterResolver(ClusterResolver):
@@ -39,6 +32,31 @@ class KubernetesClusterResolver(ClusterResolver):
   the Kubernetes namespace and label selector for pods, we will retrieve the
   pod IP addresses of all running pods matching the selector, and return a
   ClusterSpec based on that information.
+
+  Note: it cannot retrieve `task_type`, `task_id` or `rpc_layer`. To use it
+  with some distribution strategies like
+  `tf.distribute.experimental.MultiWorkerMirroredStrategy`, you will need to
+  specify `task_type` and `task_id` by setting these attributes.
+
+  Usage example with tf.distribute.Strategy:
+
+    ```Python
+    # On worker 0
+    cluster_resolver = KubernetesClusterResolver(
+        {"worker": ["job-name=worker-cluster-a", "job-name=worker-cluster-b"]})
+    cluster_resolver.task_type = "worker"
+    cluster_resolver.task_id = 0
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+
+    # On worker 1
+    cluster_resolver = KubernetesClusterResolver(
+        {"worker": ["job-name=worker-cluster-a", "job-name=worker-cluster-b"]})
+    cluster_resolver.task_type = "worker"
+    cluster_resolver.task_id = 1
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+    ```
   """
 
   def __init__(self,
@@ -73,17 +91,19 @@ class KubernetesClusterResolver(ClusterResolver):
         `override_client` is passed in.
       RuntimeError: If autoresolve_task is not a boolean or a callable.
     """
-    if _KUBERNETES_API_CLIENT_INSTALLED:
+    try:
+      from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
+
       k8sconfig.load_kube_config()
+    except ImportError:
+      if not override_client:
+        raise ImportError('The Kubernetes Python client must be installed '
+                          'before using the Kubernetes Cluster Resolver. '
+                          'To install the Kubernetes Python client, run '
+                          '`pip install kubernetes` on your command line.')
 
     if not job_to_label_mapping:
       job_to_label_mapping = {'worker': ['job-name=tensorflow']}
-
-    if not override_client and not _KUBERNETES_API_CLIENT_INSTALLED:
-      raise ImportError('The Kubernetes Python client must be installed before'
-                        'using the Kubernetes Cluster Resolver. To install the'
-                        'Kubernetes Python client, run `pip install '
-                        'kubernetes` on your command line.')
 
     self._job_to_label_mapping = job_to_label_mapping
     self._tf_server_port = tf_server_port
@@ -100,6 +120,8 @@ class KubernetesClusterResolver(ClusterResolver):
     calling this function, or pass in the `task_type` and `task_id`
     parameters when using this function. If you do both, the function parameters
     will override the object properties.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.
@@ -132,10 +154,15 @@ class KubernetesClusterResolver(ClusterResolver):
       RuntimeError: If any of the pods returned by the master is not in the
         `Running` phase.
     """
-    if not self._override_client:
-      k8sconfig.load_kube_config()
+    if self._override_client:
+      client = self._override_client
+    else:
+      from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
+      from kubernetes import client as k8sclient  # pylint: disable=g-import-not-at-top
 
-    client = self._override_client or k8sclient.CoreV1Api()
+      k8sconfig.load_kube_config()
+      client = k8sclient.CoreV1Api()
+
     cluster_map = {}
 
     for tf_job in self._job_to_label_mapping:

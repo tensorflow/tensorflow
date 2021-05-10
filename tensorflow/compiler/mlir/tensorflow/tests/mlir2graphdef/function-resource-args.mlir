@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 func @main() -> tensor<*x!tf.resource> attributes {tf.entry_function = {inputs = "", outputs = "func_call"}} {
   %0 = tf_executor.graph {

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -83,6 +83,12 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       return kUnknownCardinality;
     }
     return n1 + n2;
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    inputs->push_back(to_concatenate_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {

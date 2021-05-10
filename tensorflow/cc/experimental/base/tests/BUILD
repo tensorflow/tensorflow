@@ -1,8 +1,10 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Tests for the C++ header-only base types.
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

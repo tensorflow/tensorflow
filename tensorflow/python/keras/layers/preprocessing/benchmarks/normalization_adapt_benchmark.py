@@ -13,13 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for Keras text vectorization preprocessing layer's adapt method."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import time
 
-from absl import flags
 import numpy as np
 
 from tensorflow.python import keras
@@ -32,8 +28,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
 
 v2_compat.enable_v2_behavior()
 
@@ -60,7 +54,7 @@ def reduce_fn(state, values):
   return (k, n + batch_size, ex, ex2)
 
 
-class BenchmarkAdapt(benchmark.Benchmark):
+class BenchmarkAdapt(benchmark.TensorFlowBenchmark):
   """Benchmark adapt."""
 
   def run_dataset_implementation(self, num_elements, batch_size):

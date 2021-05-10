@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests specific to deferred-build `Sequential` models."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import unittest
 import numpy as np
@@ -129,7 +125,10 @@ class TestDeferredSequential(keras_parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'model_path')
     model.save(path)
     new_model = keras.models.load_model(path)
-    for layer1, layer2 in zip(model._layers, new_model._layers):
+    model_layers = model._flatten_layers(include_self=True, recursive=False)
+    new_model_layers = new_model._flatten_layers(
+        include_self=True, recursive=False)
+    for layer1, layer2 in zip(model_layers, new_model_layers):
       self.assertEqual(layer1.name, layer2.name)
       for w1, w2 in zip(layer1.weights, layer2.weights):
         self.assertAllClose(w1, w2)
@@ -144,7 +143,10 @@ class TestDeferredSequential(keras_parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'model_path.h5')
     model.save(path)
     new_model = keras.models.load_model(path)
-    for layer1, layer2 in zip(model._layers, new_model._layers):
+    model_layers = model._flatten_layers(include_self=True, recursive=False)
+    new_model_layers = new_model._flatten_layers(
+        include_self=True, recursive=False)
+    for layer1, layer2 in zip(model_layers, new_model_layers):
       self.assertEqual(layer1.name, layer2.name)
       for w1, w2 in zip(layer1.weights, layer2.weights):
         self.assertAllClose(w1, w2)

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset.h"
 
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -67,6 +67,10 @@ class WindowDataset : public DatasetBase {
 
   string DebugString() const override { return kWindowDataset; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -74,8 +78,8 @@ class WindowDataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
-    return errors::Unimplemented("%s does not support serialization",
-                                 DebugString());
+    return errors::Unimplemented(DebugString(),
+                                 " does not support serialization");
   }
 
  private:

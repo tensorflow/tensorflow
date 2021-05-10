@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Compresses the contents of find_cuda_config.py.oss.
+"""Compresses the contents of 'find_cuda.py'.
 
 The compressed file is what is actually being used. It works around remote
 config not being able to upload files yet.
@@ -22,13 +22,13 @@ import zlib
 
 
 def main():
-  with open('find_cuda_config.py.oss', 'rb') as f:
+  with open('find_cuda.py', 'rb') as f:
     data = f.read()
 
   compressed = zlib.compress(data)
   b64encoded = base64.b64encode(compressed)
 
-  with open('find_cuda_config.py.gz.base64.oss', 'wb') as f:
+  with open('find_cuda.py.gz.base64', 'wb') as f:
     f.write(b64encoded)
 
 

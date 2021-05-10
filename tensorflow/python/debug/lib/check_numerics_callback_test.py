@@ -250,14 +250,12 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     # Check that the correct line for op creation is printed.
     self.assertTrue(re.search(r"Stack trace of op's creation", message))
     self.assertIn("return math_ops.log(-x)", message)
-    if context.executing_eagerly():
-      # The code path for raising error is slightly different under graph mode.
-      self.assertTrue(message.endswith("\n"))
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_xla(
       "There is a small inconsistency in the step at which overflow happens: "
       "128 (without XLA) and 127 (with XLA).")
+  @test_util.disable_tfrt("b/177261532: TFRT cannot detect overflow yet.")
   def testOverflowInTfFunction(self):
     """Test catching Infinity caused by overflow in a tf.function with while."""
     check_numerics_callback.enable_check_numerics()

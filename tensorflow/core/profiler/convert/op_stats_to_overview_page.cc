@@ -19,21 +19,25 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
+#include "tensorflow/core/profiler/utils/format_utils.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
+#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -68,6 +72,9 @@ void ComputeHostTips(OverviewPageRecommendation* re) {
   *re->add_host_tips() = MakeOverviewPageTip(
       "input_pipeline_analyzer (especially Section 3 for the breakdown of "
       "input operations on the Host)");
+  *re->add_host_tips() = MakeOverviewPageTip(
+      "tf_data_bottleneck_analysis (find the bottleneck in the tf.data input "
+      "pipeline)");
   *re->add_host_tips() = MakeOverviewPageTip(
       "trace_viewer (look at the activities on the timeline of each Host "
       "Thread near the bottom of the trace view)");
@@ -114,7 +121,7 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
         (100.0 * precision_stats.compute_16bit_ps()) / total_compute_ps;
     if (percent_16bit < kLowPrecisionPercentThreshold) {
       return absl::StrCat(
-          "Only ", absl::StrFormat("%.1lf", percent_16bit),
+          "Only ", OneDigit(percent_16bit),
           "% of device computation is 16 bit. So you might want to replace "
           "more 32-bit Ops by 16-bit Ops to improve performance (if the "
           "reduced accuracy is acceptable).");
@@ -125,16 +132,20 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
 
 }  // namespace
 
-void SetCommonRecommendation(absl::string_view input_classification,
-                             absl::string_view input_statement,
-                             absl::string_view output_statement,
-                             HardwareType hardware_type,
-                             absl::string_view tf_function_statement_html,
-                             OverviewPageRecommendation* re) {
+void SetCommonRecommendation(
+    absl::string_view input_classification, absl::string_view input_statement,
+    absl::string_view output_statement, HardwareType hardware_type,
+    absl::string_view tf_function_statement_html,
+    absl::string_view eager_statement_html,
+    absl::string_view outside_compilation_statement_html,
+    OverviewPageRecommendation* re) {
   re->set_bottleneck(std::string(input_classification));
   re->set_statement(std::string(input_statement));
   re->set_output_statement(std::string(output_statement));
   re->set_tf_function_statement_html(std::string(tf_function_statement_html));
+  re->set_eager_statement_html(std::string(eager_statement_html));
+  re->set_outside_compilation_statement_html(
+      std::string(outside_compilation_statement_html));
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -146,6 +157,10 @@ OverviewPageRecommendation ComputeGenericRecommendation(
     const PrecisionStats& precision_stats) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
+  generic.set_device_collectives_bottleneck(
+      bottleneck.device_collectives_classification());
+  generic.set_device_collectives_statement(
+      bottleneck.device_collectives_statement());
   generic.set_kernel_launch_bottleneck(
       bottleneck.kernel_launch_classification());
   generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
@@ -160,6 +175,8 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
   OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
+  KernelStatsByOpName kernel_stats_by_op_name =
+      GroupKernelReportsByOpName(op_stats.kernel_stats_db());
   uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
@@ -174,8 +191,13 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
+    auto iter = kernel_stats_by_op_name.find(op->name());
+    if (iter != kernel_stats_by_op_name.end()) {
+      op->set_is_op_tensorcore_eligible(
+          iter->second.is_op_tensor_core_eligible);
+      op->set_is_op_using_tensorcore(iter->second.tensor_core_duration_ns != 0);
+    }
   }
-  SetRemarks(op_stats, &analysis);
   uint64 total_device_compute_ps =
       op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
       op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
@@ -189,13 +211,39 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
+
   uint64 num_host_tf_ops = 0;
+  uint64 total_host_op_time_ps_exclude_idle = 0;
+  uint64 eager_host_op_time_ps = 0;
   for (const OpMetrics& metrics : op_stats.host_op_metrics_db().metrics_db()) {
     num_host_tf_ops += metrics.occurrences();
+    if (!IsIdleOp(metrics)) {
+      total_host_op_time_ps_exclude_idle += metrics.self_time_ps();
+      if (metrics.is_eager()) eager_host_op_time_ps += metrics.self_time_ps();
+    }
   }
   uint64 num_device_tf_ops = 0;
+  uint64 total_device_op_time_ps_exclude_idle = 0;
+  uint64 eager_device_op_time_ps = 0;
   for (const OpMetrics& metrics : device_tf_op_metrics_db.metrics_db()) {
     num_device_tf_ops += metrics.occurrences();
+    if (!IsIdleOp(metrics)) {
+      total_device_op_time_ps_exclude_idle += metrics.self_time_ps();
+      if (metrics.is_eager()) eager_device_op_time_ps += metrics.self_time_ps();
+    }
+  }
+  // Figures out outside_compilation time from
+  // op_stats.device_op_metrics_db().metrics_db(). We don't use the
+  // {metrics.provenance(), metrics.name()} from
+  // device_tf_op_metrics_db.metrics_db(), because metrics.provenance() there is
+  // not set and metrics.name() can be either HLO-Op name or TF-Op name, which
+  // will confuse IsOutsideCompilationOp().
+  uint64 outside_compilation_device_op_time_ps = 0;
+  for (const OpMetrics& metrics :
+       op_stats.device_op_metrics_db().metrics_db()) {
+    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+      continue;
+    outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
   analysis.set_host_tf_op_percent(
@@ -203,6 +251,15 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   analysis.set_device_tf_op_percent(
       100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
   analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
+  analysis.set_host_op_time_eager_percent(
+      100.0 *
+      SafeDivide(eager_host_op_time_ps, total_host_op_time_ps_exclude_idle));
+  analysis.set_device_op_time_eager_percent(
+      100.0 * SafeDivide(eager_device_op_time_ps,
+                         total_device_op_time_ps_exclude_idle));
+  analysis.set_device_op_time_outside_compilation_percent(
+      100.0 * SafeDivide(outside_compilation_device_op_time_ps,
+                         total_device_op_time_ps_exclude_idle));
   return analysis;
 }
 
@@ -269,7 +326,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   auto num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (decltype(candidates)::size_type i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
@@ -280,14 +337,40 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
                       ") due to either retracing or eager execution.");
 }
 
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          HardwareType hardware_type) {
+std::string EagerRecommendationHtml(double host_op_time_eager_percent,
+                                    double device_op_time_eager_percent) {
+  std::string recommendation = "";
+  if (host_op_time_eager_percent > kEagerReportThresholdInPercent)
+    absl::StrAppend(&recommendation, OneDigit(host_op_time_eager_percent),
+                    "% of Op time on the host used eager execution. ");
+  if (device_op_time_eager_percent > kEagerReportThresholdInPercent)
+    absl::StrAppend(&recommendation, OneDigit(device_op_time_eager_percent),
+                    "% of Op time on the device used eager execution. ");
+  if (!recommendation.empty())
+    absl::StrAppend(&recommendation, "Performance could be improved with ",
+                    AnchorElement("https://www.tensorflow.org/guide/function",
+                                  "tf.function."));
+  return recommendation;
+}
+
+std::string OutsideCompilationRecommendationHtml(
+    double device_op_time_outside_compilation_percent) {
+  if (device_op_time_outside_compilation_percent <=
+      kOutsideCompilationThresholdInPercent)
+    return "";
+  return absl::StrCat(
+      OneDigit(device_op_time_outside_compilation_percent),
+      " % of Op time on the device are for outside compilation. Performance "
+      "could be improved by avoiding outside compilation.");
+}
+
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
   *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
   *overview_page.mutable_input_analysis() =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+      ConvertOpStatsToInputPipelineAnalysis(op_stats);
   BottleneckAnalysis bottleneck = ComputeBottleneckAnalysis(
       overview_page.input_analysis().input_time_breakdown(),
       overview_page.input_analysis().step_details());
@@ -295,36 +378,17 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(
       bottleneck.input_classification(), bottleneck.input_statement(), "",
-      hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
+      ParseHardwareType(op_stats.run_environment().device_type()),
+      TfFunctionRecommendationHtml(op_stats.tf_function_db()),
+      EagerRecommendationHtml(
+          overview_page.analysis().host_op_time_eager_percent(),
+          overview_page.analysis().device_op_time_eager_percent()),
+      OutsideCompilationRecommendationHtml(
+          overview_page.analysis()
+              .device_op_time_outside_compilation_percent()),
       overview_page.mutable_recommendation());
-  SetOverviewPageErrorMessage(op_stats, &overview_page);
+  PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
   return overview_page;
-}
-
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
-  if (op_stats.step_db().use_incomplete_step()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorIncompleteStep));
-    analysis->set_remark_color("red");
-  } else if (op_stats.step_db().step_sequence().empty()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorNoStepMarker));
-    analysis->set_remark_color("red");
-  } else {
-    analysis->set_remark_text("");
-    analysis->set_remark_color("black");
-  }
-}
-
-void SetOverviewPageErrorMessage(const OpStats& op_stats,
-                                 OverviewPage* overview_page) {
-  *overview_page->mutable_errors() = op_stats.errors();
-  absl::c_sort(*overview_page->mutable_errors());
-  if (overview_page->errors().empty()) {
-    // Shows run-environment error only if there is no other existing error.
-    if (op_stats.run_environment().device_type() != "CPU" &&
-        op_stats.run_environment().device_core_count() <= 0) {
-      *overview_page->add_errors() = std::string(kNoDeviceTraceCollected);
-    }
-  }
 }
 
 }  // namespace profiler

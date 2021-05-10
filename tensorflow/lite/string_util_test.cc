@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/string_util.h"
 
+#include <stdint.h>
+
+#include <string>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -97,27 +101,53 @@ TEST(StringUtil, TestStringUtil) {
   ASSERT_EQ(t2->bytes, 15);
 }
 
-TEST(StringUtil, TestAddJoinedString) {
+TEST(StringUtil, TestAddJoinedStringCharSeparator) {
   Interpreter interpreter;
   interpreter.AddTensors(1);
   TfLiteTensor* t0 = interpreter.tensor(0);
   t0->type = kTfLiteString;
   t0->allocation_type = kTfLiteDynamic;
 
-  char s0[] = "ABC";
-  char s1[] = "DEFG";
-  char s2[] = "";
-  char s3[] = "XYZ";
+  char s0[] = "";
+  char s1[] = "ABC";
+  char s2[] = "DEFG";
+  char s3[] = "";
+  char s4[] = "XYZ";
 
   DynamicBuffer buf;
-  buf.AddJoinedString({{s0, 3}, {s1, 4}, {s2, 0}, {s3, 3}}, ' ');
+  buf.AddJoinedString({{s0, 0}, {s1, 3}, {s2, 4}, {s3, 0}, {s4, 3}}, ' ');
   buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 1);
   StringRef str_ref;
   str_ref = GetString(t0, 0);
-  ASSERT_EQ(string(str_ref.str, str_ref.len), "ABC DEFG  XYZ");
-  ASSERT_EQ(t0->bytes, 25);
+  ASSERT_EQ(string(str_ref.str, str_ref.len), " ABC DEFG  XYZ");
+  ASSERT_EQ(t0->bytes, 26);
+}
+
+TEST(StringUtil, TestAddJoinedStringStringRefSeparator) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  char s[] = " - ";
+  char s0[] = "";
+  char s1[] = "ABC";
+  char s2[] = "DEFG";
+  char s3[] = "";
+  char s4[] = "XYZ";
+
+  DynamicBuffer buf;
+  buf.AddJoinedString({{s0, 0}, {s1, 3}, {s2, 4}, {s3, 0}, {s4, 3}}, {s, 3});
+  buf.WriteToTensorAsVector(t0);
+
+  ASSERT_EQ(GetStringCount(t0), 1);
+  StringRef str_ref;
+  str_ref = GetString(t0, 0);
+  ASSERT_EQ(string(str_ref.str, str_ref.len), " - ABC - DEFG -  - XYZ");
+  ASSERT_EQ(t0->bytes, 34);
 }
 
 TEST(StringUtil, TestEmptyList) {

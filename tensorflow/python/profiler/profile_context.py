@@ -25,12 +25,12 @@ import sys
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import model_analyzer
+from tensorflow.python.util import _pywrap_tfprof as print_mdl
 from tensorflow.python.util import compat
 
 WARMUP_STEPS = 10
@@ -295,16 +295,14 @@ class ProfileContext(object):
       return
     if self._debug:
       sys.stderr.write('debug: dumping file at step: %d\n' % step)
-    if not gfile.Exists(self._profiler_dir):
-      gfile.MakeDirs(self._profiler_dir)
+    gfile.MakeDirs(self._profiler_dir)
 
     filename = os.path.join(compat.as_bytes(self._profiler_dir),
                             compat.as_bytes('profile_%d' % step))
     self.profiler._write_profile(filename)  # pylint: disable=protected-access
 
   def _dump_file(self, pb, basename):
-    if not gfile.Exists(self._profiler_dir):
-      gfile.MakeDirs(self._profiler_dir)
+    gfile.MakeDirs(self._profiler_dir)
     with gfile.Open(os.path.join(self._profiler_dir, basename), 'w') as f:
       f.write('%s' % pb)
 

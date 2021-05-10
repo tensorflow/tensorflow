@@ -1,0 +1,31 @@
+path: "tensorflow.__internal__.distribute.multi_process_runner"
+tf_module {
+  member {
+    name: "NotInitializedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SubprocessTimeoutError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnexpectedSubprocessExitError"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "create_cluster_spec"
+    argspec: "args=[\'has_chief\', \'num_workers\', \'num_ps\', \'has_eval\'], varargs=None, keywords=None, defaults=[\'False\', \'1\', \'0\', \'False\'], "
+  }
+  member_method {
+    name: "get_barrier"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'fn\', \'cluster_spec\', \'rpc_layer\', \'max_run_time\', \'return_output\', \'timeout\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'200\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "test_main"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

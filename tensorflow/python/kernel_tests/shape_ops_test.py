@@ -256,18 +256,18 @@ class ShapeOpsTest(test.TestCase):
   def testExpandDimsScalar(self):
     with self.cached_session():
       inp = constant_op.constant(7)
-      self.assertAllEqual([7], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([7], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([7], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([7], array_ops.expand_dims(inp, -1))
 
       inp = constant_op.constant(True)
-      self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([True], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([True], array_ops.expand_dims(inp, -1))
 
   def testExpandDimsDimType(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       x = np.zeros([2])
       np_ans = np.expand_dims(x, axis=0)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         tensor = array_ops.expand_dims(x, constant_op.constant(0, dtype))
         tf_ans = self.evaluate(tensor)
       self.assertShapeEqual(np_ans, tensor)
@@ -433,7 +433,7 @@ class TileTest(test.TestCase, parameterized.TestCase):
   def testSimple(self):
     # multiples could be int32 or int64
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         inp = np.random.rand(4, 1).astype(np.float32)
         a = constant_op.constant(inp)
         tiled = array_ops.tile(a, constant_op.constant([1, 4], dtype=dtype))
@@ -505,7 +505,7 @@ class TileTest(test.TestCase, parameterized.TestCase):
         bytes: (dtypes.string, bytes)
     }
     for dtype_np, (dtype_tf, cast) in types_to_test.items():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         inp = np.random.rand(4, 1).astype(dtype_np)
         a = constant_op.constant(
             [cast(x) for x in inp.ravel(order="C")],
@@ -601,7 +601,7 @@ class TileTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientSimpleReductionOnGPU(self):
-    with self.session(use_gpu=True):
+    with self.session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 1], dtype=dtypes.float32)
@@ -616,7 +616,7 @@ class TileTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientStridedReductionOnGPU(self):
-    with self.session(use_gpu=True):
+    with self.session():
       inp = np.random.rand(4, 2).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 2], dtype=dtypes.float32)

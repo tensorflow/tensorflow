@@ -175,16 +175,10 @@ static void TestHWAccelerator(bool enableHWTrace) {
   test::FillValues<float>(&x_tensor, {1, 1});
   Node* x = test::graph::Constant(&graph, x_tensor);
   x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
-#ifdef TENSORFLOW_USE_SYCL
-  x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
-#endif  // TENSORFLOW_USE_SYCL
 
   // y = A * x
   Node* y = test::graph::Matmul(&graph, a, x, false, false);
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
-#ifdef TENSORFLOW_USE_SYCL
-  y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
-#endif  // TENSORFLOW_USE_SYCL
 
   Node* y_neg = test::graph::Unary(&graph, "Neg", y);
   y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
@@ -195,9 +189,6 @@ static void TestHWAccelerator(bool enableHWTrace) {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
-#ifdef TENSORFLOW_USE_SYCL
-  (*options.config.mutable_device_count())["SYCL"] = 1;
-#endif  // TENSORFLOW_USE_SYCL
   options.config.set_allow_soft_placement(true);
   options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));

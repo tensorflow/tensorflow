@@ -26,6 +26,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+using ::testing::SizeIs;
+using ::testing::StrEq;
+
 class HloPassPipelineTest : public HloTestBase {
  protected:
   StatusOr<HloModuleGroup> ParseModuleGroup(
@@ -253,6 +257,44 @@ ENTRY main {
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr("Module group pass cannot be run on a module"));
+}
+
+// Test that metadata is set when a module group goes through a pass pipeline.
+TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
+  HloModuleGroup module_group(TestName());
+  module_group.push_back(CreateNewVerifiedModule());
+  module_group.push_back(CreateNewVerifiedModule());
+
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<BazToQuxModuleGroupPass>();
+  pipeline.AddPass<FooToBarModulePass>();
+  TF_ASSERT_OK(pipeline.RunOnModuleGroup(&module_group).status());
+  ASSERT_THAT(module_group.modules(), SizeIs(2));
+
+  std::vector<std::string> pass_names = {"pipeline-start", "baz2qux",
+                                         "foo2bar"};
+  std::string pipeline_name = std::string(pipeline.name());
+  for (const HloModule* module : module_group.modules()) {
+    const HloModuleMetadataProto& metadata = module->metadata().proto();
+    EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
+    EXPECT_EQ(metadata.module_group_name(), module_group.name());
+
+    ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
+    for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
+      const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
+      EXPECT_NE(pass_metadata.pass_id(), 0);
+      EXPECT_THAT(pass_metadata.pass_name(), StrEq(pass_names[pass]));
+      EXPECT_THAT(pass_metadata.pipeline_name(), StrEq(pipeline_name));
+      EXPECT_FALSE(pass_metadata.module_changed());
+      EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
+      EXPECT_THAT(pass_metadata.module_group_module_ids(),
+                  ElementsAre(module_group.module(0).unique_id(),
+                              module_group.module(1).unique_id()));
+      EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+      EXPECT_LE(pass_metadata.start_timestamp_usec(),
+                pass_metadata.end_timestamp_usec());
+    }
+  }
 }
 
 }  // namespace

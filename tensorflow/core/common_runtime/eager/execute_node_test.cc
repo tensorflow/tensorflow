@@ -37,7 +37,7 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*flr=*/nullptr, /*pflr=*/nullptr, /*input_devices=*/{},
             /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
             /*runner=*/nullptr, /*collective_executor=*/nullptr,
-            host_cpu_device, /*name=*/"",
+            host_cpu_device, /*name=*/"", /*outputs_on_op_device=*/false,
             /*rendezvous_creator=*/nullptr, /*get_op_id=*/nullptr),
         test_input_devices_(std::move(input_devices)) {}
 
@@ -67,9 +67,8 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
 
   auto ctx = new EagerContext(
       SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
-      &device_mgr, false, nullptr, nullptr, nullptr);
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      &device_mgr, false, nullptr, nullptr);
 
   // Set a RemoteMgr to the EagerContext.
   auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
@@ -94,9 +93,9 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
       TensorHandle::CreateLocalHandle(std::move(t1), device0, device0, ctx);
   // Create two remote TensorHandles
   TensorHandle* h2 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/1, /*output_num=*/0, dtype, device1, ctx);
+      /*op_id=*/1, /*output_num=*/0, dtype, device1, /*is_ready=*/true, ctx);
   TensorHandle* h3 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/2, /*output_num=*/1, dtype, device1, ctx);
+      /*op_id=*/2, /*output_num=*/1, dtype, device1, /*is_ready=*/true, ctx);
   // Create a packed TensorHandle
   TensorHandle* packed_h = nullptr;
   TF_ASSERT_OK(TensorHandle::CreatePackedHandle({h1, h2}, ctx, &packed_h));
@@ -106,7 +105,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
 
   std::vector<Device*> input_devices;
   for (auto* h : inputs) {
-    input_devices.push_back(absl::get<Device*>(h->DeviceOrHostCPU(*ctx)));
+    input_devices.push_back(h->DeviceOrHostCPU(*ctx));
   }
   const core::RefCountPtr<KernelAndDevice> kernel(
       new TestKernelAndDeviceFunc(std::move(input_devices), device0));

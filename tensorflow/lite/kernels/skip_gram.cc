@@ -31,13 +31,12 @@ limitations under the License.
 
 #include <ctype.h>
 
-#include <string>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
@@ -50,8 +49,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TF_LITE_ENSURE_EQ(context, GetInput(context, node, 0)->type, kTfLiteString);
-  TF_LITE_ENSURE_EQ(context, GetOutput(context, node, 0)->type, kTfLiteString);
+  const TfLiteTensor* input_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input_tensor));
+  TF_LITE_ENSURE_TYPES_EQ(context, input_tensor->type, kTfLiteString);
+  TfLiteTensor* output_tensor;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output_tensor));
+  TF_LITE_ENSURE_TYPES_EQ(context, output_tensor->type, kTfLiteString);
   return kTfLiteOk;
 }
 
@@ -91,7 +94,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Split sentence to words.
   std::vector<StringRef> words;
-  tflite::StringRef strref = tflite::GetString(GetInput(context, node, 0), 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  tflite::StringRef strref = tflite::GetString(input, 0);
   int prev_idx = 0;
   for (int i = 1; i < strref.len; i++) {
     if (isspace(*(strref.str + i))) {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
 
@@ -42,7 +43,8 @@ absl::Status RunModelSample(const std::string& model_name) {
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
-  create_info.storage_type = GetFastestStorageType(env.device());
+  create_info.storage_type = GetFastestStorageType(env.device().GetInfo());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;
@@ -64,14 +66,13 @@ absl::Status RunModelSample(const std::string& model_name) {
 
   const int kNumRuns = 10;
   for (int i = 0; i < kNumRuns; ++i) {
-    const auto start = absl::Now();
+    const auto start = std::chrono::high_resolution_clock::now();
     for (int k = 0; k < num_runs_per_sec; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
-    const auto end = absl::Now();
-    const double total_time_ms =
-        static_cast<double>((end - start) / absl::Nanoseconds(1)) * 1e-6;
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
     const double average_inference_time = total_time_ms / num_runs_per_sec;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }
