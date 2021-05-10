@@ -27,8 +27,9 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   tflite::MicroErrorReporter micro_error_reporter;
-  // This test times out on a Bluepill because of the very slow FFT calculations,
-  // so replace it with a version that does nothing for this platform.
+  // This test times out on a Bluepill because of the very slow FFT
+  // calculations, so replace it with a version that does nothing for this
+  // platform.
 }
 
 TF_LITE_MICRO_TESTS_END
