@@ -383,6 +383,19 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
                      const std::array<int64, 3>& output_shape,
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
+    OP_REQUIRES(
+        context, tensor_in_shape.dim_size(0) == out_backprop.dim_size(0),
+        errors::InvalidArgument(
+            "Expected first dimension of tensor_in_shape and "
+            "out_backprop to match, got ",
+            tensor_in_shape.dim_size(0), " and ", out_backprop.dim_size(0)));
+    OP_REQUIRES(
+        context, tensor_in_shape.dim_size(4) == out_backprop.dim_size(4),
+        errors::InvalidArgument(
+            "Expected last dimension of tensor_in_shape and "
+            "out_backprop to match, got ",
+            tensor_in_shape.dim_size(4), " and ", out_backprop.dim_size(4)));
+
     output->flat<T>().setZero();
     std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(3),
                                         tensor_in_shape.dim_size(2),
