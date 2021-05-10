@@ -88,6 +88,10 @@ class ConvolutionVisitor {
   ConvDetails GetConvolutionDetails(HloInstruction* convolution,
                                     ConvolutionDimensionNumbers& dim_numbers);
 
+  // Returns if the convolution is a forward window dilated convolution.
+  bool IsForwardWindowDilatedConv(HloInstruction* convolution,
+                                  ConvolutionDimensionNumbers& dim_numbers);
+
   // Function that determines if space-to-batch can be propagated into the
   // consumer. Such propagation is only possible when all required operands are
   // space-to-batch'ed.
@@ -293,6 +297,28 @@ ConvolutionVisitor::ConvolutionVisitor(SpaceToBatchController ctrl,
   }
 }
 
+bool ConvolutionVisitor::IsForwardWindowDilatedConv(
+    HloInstruction* convolution, ConvolutionDimensionNumbers& dim_numbers) {
+  const int64 window_dilation_factor =
+      convolution->window()
+          .dimensions(get_chosen_spatial_dim(convolution))
+          .window_dilation();
+
+  if (window_dilation_factor == 1) {
+    return false;
+  }
+
+  const int64 output_spatial_dim = dim_numbers.output_spatial_dimensions(
+      get_chosen_spatial_dim(convolution));
+  const int64 kernel_spatial_dim = dim_numbers.kernel_spatial_dimensions(
+      get_chosen_spatial_dim(convolution));
+
+  // If convolution's spatial dim size is larger than that of RHS, this is a
+  // forward RHS dilated convolution.
+  return convolution->operand(1)->shape().dimensions(kernel_spatial_dim) <
+         convolution->shape().dimensions(output_spatial_dim);
+}
+
 bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
     HloInstruction* convolution) {
   ConvolutionDimensionNumbers dim_numbers =
@@ -312,7 +338,9 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
   if (convolution->window()
           .dimensions(get_chosen_spatial_dim(convolution))
           .window_dilation() != 1) {
-    return false;
+    if (!IsForwardWindowDilatedConv(convolution, dim_numbers)) {
+      return false;
+    }
   }
 
   const ConvDetails c = GetConvolutionDetails(convolution, dim_numbers);
@@ -352,7 +380,7 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
     return false;
   }
 
-  VLOG(1) << "spatial size " << c.spatial_size;
+  VLOG(1) << "spatial size " << c.spatial_size << " halo size " << c.halo_size;
 
   // If the ratio is not within the 2X range, we can't Halo Pad from the next
   // split.
@@ -2931,9 +2959,19 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
 
   auto kernel = convolution->mutable_operand(1);
   const auto& kernel_shape = kernel->shape();
-  const int64 kernel_spatial_dim_size =
-      kernel_shape.dimensions(dim_numbers.kernel_spatial_dimensions(
-          get_chosen_spatial_dim(convolution)));
+  const int64 kernel_spatial_dim = dim_numbers.kernel_spatial_dimensions(
+      get_chosen_spatial_dim(convolution));
+  int64 kernel_spatial_dim_size = kernel_shape.dimensions(kernel_spatial_dim);
+
+  if (IsForwardWindowDilatedConv(convolution, dim_numbers)) {
+    const int64 window_dilation_factor =
+        convolution->window()
+            .dimensions(get_chosen_spatial_dim(convolution))
+            .window_dilation();
+    kernel_spatial_dim_size =
+        (kernel_spatial_dim_size - 1) * (window_dilation_factor - 1) +
+        kernel_spatial_dim_size;
+  }
 
   const int64 spatial_dimension_to_split =
       dim_numbers.input_spatial_dimensions(get_chosen_spatial_dim(convolution));
