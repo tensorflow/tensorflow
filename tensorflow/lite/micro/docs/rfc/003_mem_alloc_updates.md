@@ -5,12 +5,12 @@
 | **RFC #3**    |                                                             |
 | **Author(s)** | Vijay Pawar (vpawar@cadence.com)                            |
 | **Sponsor**   | Pete Warden (petewarden@google.com)                         |
-| **Updated**   | 2021-05-11                                                  |
+| **Updated**   | 2021-05-12                                                  |
 
 ## Background
 
 TensorFlow Lite for Microcotrollers (TFLM) makes deploying of neural networks on DSP very easy. For edge devices, DSP would generally run multiple neural networks simultaneously and would also run DSP workload for frontend decode of neural networks, music playback, speech encode - decode etc. To enable quick and efficient deployment of these mix workloads on DSP, some framework would be useful. We are planning to use Cadence's Xtensa Audio Framework (XAF) for this purpose.
-The current memory allocation in TFLM is not favorable for integration into XAF, so following updates are being proposed.
+The current memory allocation scheme in TFLM is not favorable for integration into XAF, so following updates are being proposed.
 
 ## Current TFLM Memory Allocations
 In current TFLM implementation, one large tensor arena buffer is passed to MicroInterpreter. MicroInterpreter then allocates various tensors and buffers required for the network from this arena through init and prepare calls of operators. Scratch allocations are done from the head of the arena and persistent allocations are done from the tail of the arena.
