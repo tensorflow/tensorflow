@@ -47651,15 +47651,15 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 
 // Strip leading and trailing whitespaces from the Tensor.
 //
-// Arguments:
-//	input: A string `Tensor` of any shape.
-//
-// Returns A string `Tensor` of the same shape as the input.
-//
 // Examples:
 //
 // >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
 // array([b'TensorFlow', b'The python library'], dtype=object)
+//
+// Arguments:
+//	input: A string `Tensor` of any shape.
+//
+// Returns A string `Tensor` of the same shape as the input.
 func StringStrip(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
