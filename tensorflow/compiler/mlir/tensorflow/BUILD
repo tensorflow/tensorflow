@@ -850,6 +850,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_options",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -877,6 +879,7 @@ cc_library(
         "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
+        "transforms/initialize_variables_in_session_init.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
@@ -886,8 +889,10 @@ cc_library(
         "transforms/tf_saved_model_passes.h",
     ],
     deps = [
+        ":convert_tensor",
         ":lift_variables_lib",
         ":mark_initialized_variables_lib",
+        ":session_utils",
         ":tensorflow",
         ":tensorflow_ops",
         ":tensorflow_passes",
@@ -1156,6 +1161,7 @@ cc_library(
     name = "tensorflow_test_passes",
     srcs = [
         "transforms/init_text_file_to_import_test_pass.cc",
+        "transforms/initialize_variables_in_session_init_test_pass.cc",
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
@@ -1166,6 +1172,7 @@ cc_library(
         ":lower_tf_lib",
         ":mark_initialized_variables_lib",
         ":tensorflow",
+        ":tf_saved_model_passes",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
