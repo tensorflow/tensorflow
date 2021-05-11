@@ -235,12 +235,12 @@ class Conv(Layer):
     # They must not have 0 entries along any dimension
     # Check dimensions other than batch and channel, must be greater than 0
     if self._channels_first:
-      for idx, dimension in enumerate(input_shape.as_list()[2:]):
-        self._check_invalid_dimension(dimension, idx)
+      for idx, dimension in enumerate(input_shape.as_list()[-self.rank:]):
+        self._check_invalid_dimension(dimension, idx, input_shape)
 
     else:
-      for idx, dimension in enumerate(input_shape.as_list()[1:-1]):
-        self._check_invalid_dimension(dimension, idx)
+      for idx, dimension in enumerate(input_shape.as_list()[-self.rank-1:-1]):
+        self._check_invalid_dimension(dimension, idx, input_shape)
 
     self._convolution_op = functools.partial(
         nn_ops.convolution_v2,
@@ -314,13 +314,14 @@ class Conv(Layer):
   def _recreate_conv_op(self, inputs):  # pylint: disable=unused-argument
     return False
 
-  def _check_invalid_dimension(self, dimension, idx):
+  def _check_invalid_dimension(self, dimension, idx, input_shape):
     """Checks if output has all positive dimensions"""
-    output_dimension = conv_utils.conv_output_length(dimension,
-                                                     self.kernel_size[idx],
-                                                     self.padding,
-                                                     self.strides[idx],
-                                                     dilation = self.dilation_rate[idx])
+    output_dimension = conv_utils.conv_output_length(
+        dimension,
+        self.kernel_size[idx],
+        self.padding,
+        self.strides[idx],
+        dilation=self.dilation_rate[idx])
     if output_dimension is not None and output_dimension <= 0:
       raise ValueError('One of the dimensions in output tensor is less than or'
       ' equal to zero. Please check the input shape. '

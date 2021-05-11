@@ -169,7 +169,8 @@ class Conv1DTest(keras_parameterized.TestCase):
   def test_conv1d_invalid_output_shapes(self):
     kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
-      keras.layers.Conv1D(**kwargs)
+      layer = keras.layers.Conv1D(**kwargs)
+      layer.build((None, 5, 2))
 
 
 @keras_parameterized.run_all_keras_modes
@@ -306,7 +307,8 @@ class Conv2DTest(keras_parameterized.TestCase):
   def test_conv2d_invalid_output_shapes(self):
     kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
-      keras.layers.Conv2D(**kwargs)
+      layer = keras.layers.Conv2D(**kwargs)
+      layer.build((None, 5, 5, 2))
 
 
 @keras_parameterized.run_all_keras_modes
@@ -446,7 +448,8 @@ class Conv3DTest(keras_parameterized.TestCase):
   def test_conv3d_invalid_output_shapes(self):
     kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
-      keras.layers.Conv3D(**kwargs)
+      layer = keras.layers.Conv3D(**kwargs)
+      layer.build((None, 5, 5, 5, 2))
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -536,7 +539,8 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
   def test_conv1dtranspose_invalid_output_shapes(self):
     kwargs = {'filters': 2, 'kernel_size': 10}
     with self.assertRaises(ValueError):
-      keras.layers.Conv1DTranspose(**kwargs)
+      layer = keras.layers.Conv1DTranspose(**kwargs)
+      layer.build((None, 5, 2))
 
 
 @keras_parameterized.run_all_keras_modes
@@ -571,10 +575,6 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
-  def test_conv3dtanspose_invalid_output_shapes(self):
-    kwargs = {'filters': 2, 'kernel_size': 10}
-    with self.assertRaises(ValueError):
-      keras.layers.Conv3DTranspose(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
