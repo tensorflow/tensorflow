@@ -422,7 +422,21 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
 // RankSpecializationClusterOp
 //===----------------------------------------------------------------------===//
 
+void RankSpecializationClusterOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  // RankSpecializationClusterOp has unconditional control flows into the region
+  // and back to the parent, so return the correct RegionSuccessor purely based
+  // on the index being None or 0.
+  if (index.hasValue()) {
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+  regions.push_back(RegionSuccessor(&body()));
+}
+
 static LogicalResult Verify(RankSpecializationClusterOp op) {
+  if (failed(RegionBranchOpInterface::verifyTypes(op))) return failure();
   if (op.body().getArgumentTypes() != op.getOperandTypes())
     return op.emitOpError() << "block argument types must match operand types";
 

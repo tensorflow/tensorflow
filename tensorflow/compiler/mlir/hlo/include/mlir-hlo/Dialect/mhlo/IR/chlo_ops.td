@@ -757,6 +757,7 @@ def HLOClient_MinimumBroadcastShapesOp :
 
 def HLOClient_RankSpecializationClusterOp
     : HLOClient_Op<"rank_specialization_cluster", [
+    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"RankSpecializationClusterYieldOp">,
     RecursiveSideEffects]> {
 

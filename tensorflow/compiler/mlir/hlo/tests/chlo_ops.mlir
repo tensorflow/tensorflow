@@ -42,6 +42,19 @@ func @rank_specialization_cluster(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 
 // -----
 
+func @rank_specialization_cluster(%arg0 : tensor<*xf32>,
+    %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+  // expected-error @+1{{source has 2 operands, but target successor needs 1}}
+  %0 = "chlo.rank_specialization_cluster"(%arg0, %arg1) ({
+  ^bb0(%arg0_ : tensor<*xf32>, %arg1_ : tensor<*xf32>):
+    "chlo.rank_specialization_cluster_yield"(%arg0_, %arg1_)
+        : (tensor<*xf32>, tensor<*xf32>) -> ()
+  }) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 func @rank_specialization_cluster(%arg0 : tensor<*xf32>) -> tensor<*xf32> {
   // expected-error @+1{{block argument types must match operand types}}
   %0 = "chlo.rank_specialization_cluster"(%arg0) ({
