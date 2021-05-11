@@ -217,6 +217,8 @@ class SparseFillEmptyRowsOp : public OpKernel {
     // TODO(ebrevdo): add shape checks between values, indices,
     // dense_shape.  Also add check that dense rank > 0.
 
+    OP_REQUIRES(context, dense_shape_t.NumElements() != 0,
+            errors::InvalidArgument("Dense shape cannot be empty."));
     OP_REQUIRES_OK(context, functor::SparseFillEmptyRows<Device, T, Tindex>()(
                                 context, default_value_t, indices_t, values_t,
                                 dense_shape_t));
