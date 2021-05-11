@@ -694,7 +694,7 @@ def _tf_repositories():
         name = "jsoncpp_git",
         build_file = "//third_party:jsoncpp.BUILD",
         sha256 = "e34a628a8142643b976c7233ef381457efad79468c67cb1ae0b83a33d7493999",
-        strip_prefix = "jsoncpp-1.9.2",
+        strip_prefix = "jsoncpp-1.9.4",
         system_build_file = "//third_party/systemlibs:jsoncpp.BUILD",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.9.4.tar.gz",
