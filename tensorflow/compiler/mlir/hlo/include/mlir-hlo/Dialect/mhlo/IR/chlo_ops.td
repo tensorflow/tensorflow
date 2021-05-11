@@ -76,11 +76,9 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 class HLOClient_BroadcastBinaryElementwiseOp<
-  string mnemonic, list<OpTrait> traits> :
-        HLOClient_Op<mnemonic,
-            !listconcat(traits, [
-              DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-              ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>])> {
+  string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
+      DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
+      "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -411,8 +409,8 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    !listconcat(traits, [InferFusibilityOpInterface, NoSideEffect,
-    SameOperandsAndResultShape])> {
+    traits # [InferFusibilityOpInterface, NoSideEffect,
+    SameOperandsAndResultShape]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
