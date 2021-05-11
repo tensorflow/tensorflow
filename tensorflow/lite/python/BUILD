@@ -536,3 +536,15 @@ pytype_strict_library(
         if_true = [":metrics_portable"],
     ),
 )
+
+py_library(
+    name = "analyzer",
+    srcs = [
+        "analyzer.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/tools:visualize",
+    ],
+)
