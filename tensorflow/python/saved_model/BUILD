@@ -652,3 +652,22 @@ tf_py_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+py_test(
+    name = "deferred_init_vars_test",
+    srcs = ["deferred_init_vars_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":load",
+        ":save",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//third_party/py/numpy",
+    ],
+)
