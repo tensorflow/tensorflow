@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_allowlist")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
@@ -81,6 +82,17 @@ cc_library(
     deps = [":error_reporter"],
 )
 
+cc_library(
+    name = "op_resolver_internal",
+    hdrs = ["op_resolver_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + micro_copts(),
+    visibility = op_resolver_internal_visibility_allowlist() + [
+        "//tensorflow/lite:__pkg__",
+    ],
+    deps = [":op_resolver"],
+)
+
 cc_test(
     name = "error_reporter_test",
     size = "small",
@@ -98,6 +110,22 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite/schema:schema_conversion_utils",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "op_resolver_internal_test",
+    size = "small",
+    srcs = ["op_resolver_internal_test.cc"],
+    deps = [
+        ":op_resolver",
+        ":op_resolver_internal",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -443,6 +443,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
