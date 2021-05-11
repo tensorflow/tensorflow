@@ -663,6 +663,12 @@ class ProdReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
+  def testInt64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int64)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
