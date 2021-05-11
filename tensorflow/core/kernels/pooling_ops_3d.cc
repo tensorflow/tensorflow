@@ -706,6 +706,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
+    if (!context->status().ok()) return;  // params is invalid
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
@@ -723,6 +724,17 @@ class MaxPooling3dGradGradOp : public OpKernel {
         context, out_grad_backprop.NumElements() > 0,
         errors::InvalidArgument("received empty tensor out_grad_backprop: ",
                                 out_grad_backprop.DebugString()));
+    OP_REQUIRES(context,
+                tensor_in.NumElements() == out_grad_backprop.NumElements(),
+                errors::InvalidArgument("tensor_in and out_grad_backprop must "
+                                        "have same number of elements, got <",
+                                        tensor_in.DebugString(), "> and <",
+                                        out_grad_backprop.DebugString(), ">"));
+    OP_REQUIRES(
+        context, tensor_out.NumElements() == output->NumElements(),
+        errors::InvalidArgument(
+            "tensor_out and output must have same number of elements, got <",
+            tensor_out.DebugString(), "> and <", output->DebugString(), ">"));
 
     LaunchMaxPooling3dGradGradOp<Device, T>::launch(
         context, params, tensor_in, tensor_out, out_grad_backprop, output);
