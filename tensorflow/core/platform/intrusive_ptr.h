@@ -21,10 +21,14 @@ namespace core {
 // A utility for managing the lifetime of ref-counted objects.
 //
 // Generally used for objects that derive from `tensorflow::RefCounted`.
-// Use add_ref = true to take ownership of the raw ptr.
 template <class T>
 class IntrusivePtr {
  public:
+  // add_ref=false indicates that IntrusivePtr owns the underlying pointer.
+  //
+  // In most cases, we expect this to be called with add_ref=false, except in
+  // special circumstances where the lifetime of the underlying RefCounted
+  // object needs to be externally managed.
   IntrusivePtr(T* h, bool add_ref) { reset(h, add_ref); }
   IntrusivePtr(const IntrusivePtr& o) { reset(o.handle_, /*add_ref=*/true); }
   IntrusivePtr(IntrusivePtr&& o) {
