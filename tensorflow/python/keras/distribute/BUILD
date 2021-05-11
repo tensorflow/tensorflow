@@ -951,7 +951,7 @@ distribute_py_test(
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "dataset_creator_model_fit_ps_only_test.py",
-    shard_count = 9,
+    shard_count = 30,
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
@@ -960,6 +960,7 @@ distribute_py_test(
     ],
     deps = [
         ":dataset_creator_model_fit_test_base",
+        ":strategy_combinations",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",

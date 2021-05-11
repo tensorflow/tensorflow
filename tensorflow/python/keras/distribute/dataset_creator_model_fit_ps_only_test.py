@@ -22,11 +22,14 @@ from tensorflow.python.distribute.coordinator import cluster_coordinator as coor
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import callbacks as callbacks_lib
 from tensorflow.python.keras.distribute import dataset_creator_model_fit_test_base as test_base
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.platform import gfile
 
 
 @ds_combinations.generate(
-    combinations.combine(strategy=["ParameterServerStrategy"], mode="eager"))
+    combinations.combine(
+        strategy=strategy_combinations.parameter_server_strategies,
+        mode="eager"))
 class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     test_base.DatasetCreatorModelFitTestBase):
 
