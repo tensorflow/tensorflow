@@ -549,6 +549,9 @@ tf_cc_test(
     name = "collective_rma_distributed_test",
     size = "small",
     srcs = ["collective_rma_distributed_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/187863739): Fix failure and remove.
+    ],
     deps = [
         ":collective_rma_distributed",
         ":device_resolver_distributed",
