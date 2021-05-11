@@ -12,30 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""User-defined Struct classes."""
-
-# TODO(edloper): Rename Struct to ExtensionType.
-#
-# In particular, we will be defining two separate but related types:
-#   * Struct is basically a map<str, value>, and does support subclassing,
-#     adding new, properties, methods, etc.
-#   * ExtensionType is a user-defined class, with support for adding new
-#     properties, methods, etc., and for registering dispatchers.
-#   * The state of an ExtensionType can be stored using a Struct.
-#   * Comparing this to Python, `ExtensionType` is like a class, and `Struct`
-#     is like the `__dict__` for an instance of a class.
-
-# Note: this module is not named `struct` to avoid a name clash with the
-# standard Python `struct` module.
+"""User-defined ExtensionType classes."""
 
 import abc
 import typing
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type_field
 from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import struct_field
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
@@ -48,7 +34,7 @@ from tensorflow.python.util import tf_inspect
 
 # Attribute used to keep track of when we're inside a user-defined constructor
 # (in which case the fields of `self` may be modified).
-_IN_CONSTRUCTOR = '_tf_struct_in_constructor'
+_IN_CONSTRUCTOR = '_tf_extension_type_in_constructor'
 
 
 # ==============================================================================
@@ -74,36 +60,39 @@ def _create_object_from_type_and_dict(cls, obj_dict):
 
 
 # ==============================================================================
-# Metaclass for tf.Struct
+# Metaclass for tf.ExtensionType
 # ==============================================================================
-class StructMetaclass(abc.ABCMeta):
-  """Metaclass for tf.Struct types."""
+class ExtensionTypeMetaclass(abc.ABCMeta):
+  """Metaclass for tf.ExtensionType types."""
 
   def __init__(cls, name, bases, namespace):
     # Don't transform base classes that are part of the framework -- only
     # transform user classes.  We identify classes that are part of the
-    # framework by setting '_tf_struct_do_not_transform_this_class=True'
+    # framework by setting '_tf_extension_type_do_not_transform_this_class=True'
     # in the class definition.  (Note: we check for this in the class namespace,
     # so it is *not* ineherited.)
-    if not namespace.get('_tf_struct_do_not_transform_this_class', False):
+    if not namespace.get('_tf_extension_type_do_not_transform_this_class',
+                         False):
       _check_field_annotations(cls)
-      _add_struct_constructor(cls)
+      _add_extension_type_constructor(cls)
       _add_type_spec(cls)
-    super(StructMetaclass, cls).__init__(name, bases, namespace)
+    super(ExtensionTypeMetaclass, cls).__init__(name, bases, namespace)
 
 
 # ==============================================================================
-# Base class for user-defined structures
+# Base class for user-defined types
 # ==============================================================================
-class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
-  """Base class for TensorFlow `Struct` classes.
+class ExtensionType(
+    composite_tensor.CompositeTensor, metaclass=ExtensionTypeMetaclass):
+  """Base class for TensorFlow `ExtensionType` classes.
 
-  Tensorflow `Struct` classes are specialized Python classes that can be
+  Tensorflow `ExtensionType` classes are specialized Python classes that can be
   used transparently with TensorFlow -- e.g., they can be used with ops
   such as `tf.cond` or `tf.while_loop` and used as inputs or outputs for
   `tf.function` and Keras layers.
 
-  New `Struct` classes are defined by creating a subclass of `tf.Struct` that
+  New `ExtensionType` classes are defined by creating a subclass of
+  `tf.ExtensionType` that
   contains type annotations for all instance variables.  The following type
   annotations are supported:
 
@@ -115,7 +104,8 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
   Python booleans      | `b: bool`
   Python None          | `n: None`
   Tensors              | `t: tf.Tensor`
-  Struct types         | `rt: tf.RaggdTensor`
+  Composite Tensors    | `rt: tf.RaggdTensor`
+  Extension Types      | `m: MyMaskedTensor`
   Tensor shapes        | `shape: tf.TensorShape`
   Tensor dtypes        | `dtype: tf.DType`
   Type unions          | `length: typing.Union[int, float]`
@@ -133,46 +123,47 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
   (such as `typing.Union` or `typing.Tuple`).  TODO(b/184564088) Define
   tf generic types to avoid this limitation.
 
-  Struct values are immutable -- i.e., once constructed, you can not modify or
-  delete any of their instance members.
+  ExtensionType values are immutable -- i.e., once constructed, you can not
+  modify or delete any of their instance members.
 
   ### Examples
 
-  >>> class MaskedTensor(Struct):
+  >>> class MaskedTensor(ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.TensorSpec(shape=None, dtype=tf.bool)
 
-  >>> class Toy(Struct):
+  >>> class Toy(ExtensionType):
   ...   name: str
   ...   price: ops.Tensor
   ...   features: typing.Mapping[str, ops.Tensor]
 
-  >>> class ToyStore(Struct):
+  >>> class ToyStore(ExtensionType):
   ...   name: str
   ...   toys: typing.Tuple[Toy, ...]
   """
 
   # Let the metaclass know that it should *not* transform this class (since
-  # this class is part of the tf.struct framework, and not a user class).
-  _tf_struct_do_not_transform_this_class = True
+  # this class is part of the ExtensionType framework, and not a user class).
+  _tf_extension_type_do_not_transform_this_class = True
 
   def __init__(self, *args, **kwargs):
-    if type(self) is Struct:  # pylint: disable=unidiomatic-typecheck
-      raise AssertionError('Struct is an abstract base class.')
+    if type(self) is ExtensionType:  # pylint: disable=unidiomatic-typecheck
+      raise AssertionError('ExtensionType is an abstract base class.')
 
-  # This class variable is used to cache the return value for _tf_struct_fields.
-  _tf_struct_cached_fields = None
+  # This class variable is used to cache the return value for
+  # _tf_extension_type_fields.
+  _tf_extension_type_cached_fields = None
 
   @classmethod
-  def _tf_struct_fields(cls):  # pylint: disable=no-self-argument
-    """An ordered list of `StructField`s describing the fields of this struct.
+  def _tf_extension_type_fields(cls):  # pylint: disable=no-self-argument
+    """An ordered list describing the fields of this ExtensionType.
 
     Returns:
-      A list of `StructField` objects.  Forward references are resolved if
-      possible, or left unresolved otherwise.
+      A list of `ExtensionTypeField` objects.  Forward references are resolved
+      if possible, or left unresolved otherwise.
     """
-    if cls._tf_struct_cached_fields is not None:
-      return cls._tf_struct_cached_fields
+    if cls._tf_extension_type_cached_fields is not None:
+      return cls._tf_extension_type_cached_fields
 
     try:
       type_hints = typing.get_type_hints(cls)
@@ -183,8 +174,8 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
       #   `Foo` hasn't been defined yet.
       # * AttributeError comes from an annotation like `foo.Bar`, where
       #   the module `foo` exists but `Bar` hasn't been defined yet.
-      # Note: If a user attempts to instantiate a `Struct` type that still
-      # has unresolved forward references (e.g., because of a typo or a
+      # Note: If a user attempts to instantiate a `ExtensionType` type that
+      # still has unresolved forward references (e.g., because of a typo or a
       # missing import), then the constructor will raise an exception.
       type_hints = {}
       for base in reversed(cls.__mro__):
@@ -193,37 +184,42 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
 
     fields = []
     for (name, value_type) in type_hints.items():
-      default = getattr(cls, name, struct_field.StructField.NO_DEFAULT)
-      fields.append(struct_field.StructField(name, value_type, default))
+      default = getattr(cls, name,
+                        extension_type_field.ExtensionTypeField.NO_DEFAULT)
+      fields.append(
+          extension_type_field.ExtensionTypeField(name, value_type, default))
     fields = tuple(fields)
 
     if ok_to_cache:
-      cls._tf_struct_cached_fields = fields
+      cls._tf_extension_type_cached_fields = fields
 
     return fields
 
   @classmethod
-  def _tf_struct_has_field(cls, name):
-    return any(name == field.name for field in cls._tf_struct_fields())
+  def _tf_extension_type_has_field(cls, name):
+    return any(name == field.name for field in cls._tf_extension_type_fields())
 
-  def _tf_struct_convert_fields(self):
-    struct_field.convert_fields(self._tf_struct_fields(), self.__dict__)
+  def _tf_extension_type_convert_fields(self):
+    extension_type_field.convert_fields(self._tf_extension_type_fields(),
+                                        self.__dict__)
 
   def __repr__(self):
     fields = ', '.join([
         f'{field.name}={getattr(self, field.name)!r}'
-        for field in self._tf_struct_fields()
+        for field in self._tf_extension_type_fields()
     ])
     return f'{type(self).__name__}({fields})'
 
   def __setattr__(self, name, value):
-    if hasattr(self, _IN_CONSTRUCTOR) and self._tf_struct_has_field(name):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       self.__dict__[name] = value
     else:
       raise AttributeError('cannot assign to field %r' % name)
 
   def __delattr__(self, name):
-    if hasattr(self, _IN_CONSTRUCTOR) and self._tf_struct_has_field(name):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       del self.__dict__[name]
     else:
       raise AttributeError('cannot delete field %r' % name)
@@ -266,18 +262,19 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
 
   # This instance variable is used to cache the value for the _type_spec
   # property.
-  _tf_struct_cached_type_spec = None
+  _tf_extension_type_cached_type_spec = None
 
   @property
   def _type_spec(self):  # CompositeTensor API.
     # Note: the TypeSpec contains all static (non-tensor) data from `self`.
-    if self._tf_struct_cached_type_spec is None:
-      self.__dict__['_tf_struct_cached_type_spec'] = self.Spec.from_value(self)
-    return self._tf_struct_cached_type_spec
+    if self._tf_extension_type_cached_type_spec is None:
+      self.__dict__[
+          '_tf_extension_type_cached_type_spec'] = self.Spec.from_value(self)
+    return self._tf_extension_type_cached_type_spec
 
 
 # ==============================================================================
-# Base class for the tf.Struct TypeSpecs
+# Base class for the tf.ExtensionType TypeSpecs
 # ==============================================================================
 # TODO(b/184565242) Support custom TypeSpec constructors.
 # TODO(b/184565242) Support custom TypeSpec methods & properties.
@@ -287,13 +284,13 @@ class Struct(composite_tensor.CompositeTensor, metaclass=StructMetaclass):
 # TODO(b/184565242) Support conversion to/from FullType
 
 
-class StructSpec(type_spec.TypeSpec):
-  """Base class for tf.Struct TypeSpec."""
+class ExtensionTypeSpec(type_spec.TypeSpec):
+  """Base class for tf.ExtensionType TypeSpec."""
 
   def _serialize(self):  # TypeSpec API.
     return tuple(
         (f.name, _change_nested_mappings_to(self.__dict__[f.name], dict))
-        for f in self._tf_struct_fields())
+        for f in self._tf_extension_type_fields())
 
   @classmethod
   def _deserialize(cls, state):  # TypeSpec API.
@@ -317,7 +314,7 @@ class StructSpec(type_spec.TypeSpec):
     fields = nest.pack_sequence_as(self.__dict__, flat)
 
     # Build the new value.  Bypass the constructor (__init__), in case the user
-    # who defined the struct type used a custom constructor.
+    # who defined the ExtensionType used a custom constructor.
     return _create_object_from_type_and_dict(self.value_type, fields)
 
   @property
@@ -335,18 +332,20 @@ class StructSpec(type_spec.TypeSpec):
   def from_value(cls, value):
     value_fields = value.__dict__
     spec_fields = nest.map_structure(_replace_tensor_with_spec, value_fields)
-    spec_fields.pop('_tf_struct_cached_type_spec', None)
-    spec_fields.pop('_tf_struct_cached_fields', None)
+    spec_fields.pop('_tf_extension_type_cached_type_spec', None)
+    spec_fields.pop('_tf_extension_type_cached_fields', None)
     return _create_object_from_type_and_dict(cls, spec_fields)
 
   def __setattr__(self, name, value):
-    if hasattr(self, _IN_CONSTRUCTOR) and self._tf_struct_has_field(name):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       self.__dict__[name] = value
     else:
       raise AttributeError('cannot assign to field %r' % name)
 
   def __delattr__(self, name):
-    if hasattr(self, _IN_CONSTRUCTOR) and self._tf_struct_has_field(name):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       del self.__dict__[name]
     else:
       raise AttributeError('cannot delete field %r' % name)
@@ -355,16 +354,16 @@ class StructSpec(type_spec.TypeSpec):
     """Perform post-construction validation."""
 
   @classmethod
-  def _tf_struct_fields(cls):
-    return cls.value_type._tf_struct_fields()  # pylint: disable=protected-access
+  def _tf_extension_type_fields(cls):
+    return cls.value_type._tf_extension_type_fields()  # pylint: disable=protected-access
 
   @classmethod
-  def _tf_struct_has_field(cls, name):
-    return any(name == field.name for field in cls._tf_struct_fields())
+  def _tf_extension_type_has_field(cls, name):
+    return any(name == field.name for field in cls._tf_extension_type_fields())
 
-  def _tf_struct_convert_fields(self):
-    struct_field.convert_fields_for_spec(self._tf_struct_fields(),
-                                         self.__dict__)
+  def _tf_extension_type_convert_fields(self):
+    extension_type_field.convert_fields_for_spec(
+        self._tf_extension_type_fields(), self.__dict__)
 
   def __repr__(self):
     fields = ', '.join([f'{k}={v!r}' for (k, v) in self._serialize()])
@@ -392,36 +391,36 @@ def _change_nested_mappings_to(value, new_type):
 
 
 # ==============================================================================
-# Helper methods for tf.StructMetaclass
+# Helper methods for tf.ExtensionTypeMetaclass
 # ==============================================================================
 
 
 def _check_field_annotations(cls):
-  """Validates the field annotations for tf.Struct subclass `cls`."""
+  """Validates the field annotations for tf.ExtensionType subclass `cls`."""
   # Check that no fields use reserved names.
   for name in cls.__dict__:
-    if struct_field.StructField.is_reserved_name(name):
+    if extension_type_field.ExtensionTypeField.is_reserved_name(name):
       raise ValueError(f"The field name '{name}' is reserved.")
 
   # Check that all fields have type annotaitons.
   annotations = getattr(cls, '__annotations__', {})
   for (key, value) in cls.__dict__.items():
     if not (key in annotations or callable(value) or key.startswith('_abc_') or
-            key == '_tf_struct_fields' or key.startswith('__') and
+            key == '_tf_extension_type_fields' or key.startswith('__') and
             key.endswith('__') or isinstance(value, property)):
       raise ValueError('Field %s must have a type annotation' % key)
 
 
-def _add_struct_constructor(cls):
-  """Creates a constructor for a Struct or StructSpec subclass."""
+def _add_extension_type_constructor(cls):
+  """Creates a constructor for a ExtensionType or ExtensionTypeSpec subclass."""
   if '__init__' in cls.__dict__:
     _wrap_user_constructor(cls)
   else:
-    _build_struct_constructor(cls)
+    _build_extension_type_constructor(cls)
 
 
 def _wrap_user_constructor(cls):
-  """Wraps a user-defined constructor for tf.Struct subclass `cls`."""
+  """Wraps a user-defined constructor for tf.ExtensionType subclass `cls`."""
   user_constructor = cls.__init__
 
   def wrapped_init(self, *args, **kwargs):
@@ -429,22 +428,22 @@ def _wrap_user_constructor(cls):
     user_constructor(self, *args, **kwargs)
     del self.__dict__[_IN_CONSTRUCTOR]
 
-    self._tf_struct_convert_fields()  # pylint: disable=protected-access
+    self._tf_extension_type_convert_fields()  # pylint: disable=protected-access
     self.__validate__()
 
   cls.__init__ = tf_decorator.make_decorator(user_constructor, wrapped_init)
 
 
 # TODO(b/184565242) Consider using the templating system from autograph here.
-def _build_struct_constructor(cls):
-  """Builds a constructor for tf.Struct subclass `cls`."""
-  fields = cls._tf_struct_fields()  # pylint: disable=protected-access
+def _build_extension_type_constructor(cls):
+  """Builds a constructor for tf.ExtensionType subclass `cls`."""
+  fields = cls._tf_extension_type_fields()  # pylint: disable=protected-access
 
   # Check that no-default fields don't follow default fields.  (Otherwise, we
   # can't build a well-formed constructor.)
   default_fields = []
   for field in fields:
-    if field.default is not struct_field.StructField.NO_DEFAULT:
+    if field.default is not extension_type_field.ExtensionTypeField.NO_DEFAULT:
       default_fields.append(field.name)
     elif default_fields:
       raise ValueError(
@@ -456,7 +455,7 @@ def _build_struct_constructor(cls):
   params = []
   kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
   for field in fields:
-    if field.default is struct_field.StructField.NO_DEFAULT:
+    if field.default is extension_type_field.ExtensionTypeField.NO_DEFAULT:
       default = tf_inspect.Parameter.empty
     else:
       default = field.default
@@ -470,7 +469,7 @@ def _build_struct_constructor(cls):
     bound_args = signature.bind(*args, **kwargs)
     bound_args.apply_defaults()
     self.__dict__.update(bound_args.arguments)
-    self._tf_struct_convert_fields()  # pylint: disable=protected-access
+    self._tf_extension_type_convert_fields()  # pylint: disable=protected-access
     self.__validate__()
 
   # __signature__ is supported by some inspection/documentation tools
@@ -486,10 +485,10 @@ def _build_struct_constructor(cls):
 
 
 def _build_spec_constructor(cls):
-  """Builds a constructor for StructSpec subclass `cls`."""
+  """Builds a constructor for ExtensionTypeSpec subclass `cls`."""
   params = []
   kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
-  for field in cls._tf_struct_fields():  # pylint: disable=protected-access
+  for field in cls._tf_extension_type_fields():  # pylint: disable=protected-access
     params.append(tf_inspect.Parameter(field.name, kind))
 
   signature = tf_inspect.Signature(params, return_annotation=cls.__name__)
@@ -498,7 +497,7 @@ def _build_spec_constructor(cls):
     bound_args = signature.bind(*args, **kwargs)
     bound_args.apply_defaults()
     self.__dict__.update(bound_args.arguments)
-    self._tf_struct_convert_fields()  # pylint: disable=protected-access
+    self._tf_extension_type_convert_fields()  # pylint: disable=protected-access
     self.__validate__()
 
   # __signature__ is supported by some inspection/documentation tools.
@@ -513,12 +512,12 @@ def _build_spec_constructor(cls):
 
 
 def _add_type_spec(cls):
-  """Creates a nested TypeSpec class for tf.Struct subclass `cls`."""
-  # Build the TypeSpec class for this struct type, and add it as a
+  """Creates a nested TypeSpec class for tf.ExtensionType subclass `cls`."""
+  # Build the TypeSpec class for this ExtensionType, and add it as a
   # nested class.
   spec_name = cls.__name__ + '.Spec'
   spec_dict = {'value_type': cls}
-  spec = type(spec_name, (StructSpec,), spec_dict)
+  spec = type(spec_name, (ExtensionTypeSpec,), spec_dict)
   setattr(cls, 'Spec', spec)
 
   # Build a constructor for the TypeSpec class.
@@ -533,42 +532,45 @@ def _add_type_spec(cls):
 
 
 # ==============================================================================
-# Anonymous Struct
+# Anonymous ExtensionType
 # ==============================================================================
-class AnonymousStruct(Struct):
-  """Fallback used to decode `tf.Struct` when the original type is unavailable.
+class AnonymousExtensionType(ExtensionType):
+  """Fallback used to decode `tf.ExtensionType` when the original type is unavailable.
 
   When a SavedModel is serialized, the signatures of any functions in the
-  SavedModel can include `tf.Struct` subclasses.  These subclasses are usually
+  SavedModel can include `tf.ExtensionType` subclasses.  These subclasses are
+  usually
   registered, so they can be restored when the SavedModel is loaded.  However,
-  if a SavedModel is loaded without first registering the Struct types in its
-  signature, then the SavedModel will fall back to using the `AnonymousStruct`
+  if a SavedModel is loaded without first registering the ExtensionType types in
+  its
+  signature, then the SavedModel will fall back to using the
+  `AnonymousExtensionType`
   type instead.
 
-  If necessary, `AnonymousStruct` objects can be converted to a concrete
-  `tf.Struct` subclass (and vice versa) using `reinterpret_struct`.
+  If necessary, `AnonymousExtensionType` objects can be converted to a concrete
+  `tf.ExtensionType` subclass (and vice versa) using `reinterpret`.
   """
 
   # Let the metaclass know that it should *not* transform this class (since
-  # this class is part of the tf.struct framework, and not a user class).
-  _tf_struct_do_not_transform_this_class = True
+  # this class is part of the ExtensionType framework, and not a user class).
+  _tf_extension_type_do_not_transform_this_class = True
 
   def __init__(self, **fields):
     for name in fields:
-      if (struct_field.StructField.is_reserved_name(name) or
+      if (extension_type_field.ExtensionTypeField.is_reserved_name(name) or
           (name.startswith('__') and name.endswith('__'))):
         raise ValueError(f'The field name {name!r} is reserved.')
     fields = [(k, _convert_anonymous_fields(v)) for (k, v) in fields.items()]
     self.__dict__.update(fields)
-    self._tf_struct_convert_fields()
+    self._tf_extension_type_convert_fields()
     super().__init__()
 
   @classmethod
-  def _tf_struct_fields(cls):
+  def _tf_extension_type_fields(cls):
     return [
-        struct_field.StructField(name, None)
+        extension_type_field.ExtensionTypeField(name, None)
         for name in cls.__dict__
-        if not struct_field.StructField.is_reserved_name(name)
+        if not extension_type_field.ExtensionTypeField.is_reserved_name(name)
     ]
 
   def __setattr__(self, name, value):
@@ -577,37 +579,38 @@ class AnonymousStruct(Struct):
   def __delattr__(self, name):
     raise AttributeError('cannot delete field %r' % name)
 
-  def _tf_struct_convert_fields(self):
+  def _tf_extension_type_convert_fields(self):
     fields = [(k, _convert_anonymous_fields(v))
               for (k, v) in self.__dict__.items()
-              if not struct_field.StructField.is_reserved_name(k)]
+              if not extension_type_field.ExtensionTypeField.is_reserved_name(k)
+             ]
     self.__dict__.update(fields)
 
   def __repr__(self):
     fields = [
         f'{k}={v!r}' for (k, v) in self.__dict__.items()
-        if not struct_field.StructField.is_reserved_name(k)
+        if not extension_type_field.ExtensionTypeField.is_reserved_name(k)
     ]
-    return f'AnonymousStruct({", ".join(fields)})'
+    return f'AnonymousExtensionType({", ".join(fields)})'
 
-  _tf_struct_cached_type_spec = None
+  _tf_extension_type_cached_type_spec = None
 
   @property
   def _type_spec(self):  # CompositeTensor API.
     # Note: the TypeSpec contains all static (non-tensor) data from `self`.
-    if self._tf_struct_cached_type_spec is None:
-      spec = AnonymousStructSpec.from_value(self)
-      self.__dict__['_tf_struct_cached_type_spec'] = spec
-    return self._tf_struct_cached_type_spec
+    if self._tf_extension_type_cached_type_spec is None:
+      spec = AnonymousExtensionTypeSpec.from_value(self)
+      self.__dict__['_tf_extension_type_cached_type_spec'] = spec
+    return self._tf_extension_type_cached_type_spec
 
 
-@type_spec.register('tf.AnonymousStruct.Spec')
-class AnonymousStructSpec(StructSpec):
-  """TypeSpec for AnonymousStruct."""
+@type_spec.register('tf.AnonymousExtensionType.Spec')
+class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
+  """TypeSpec for AnonymousExtensionType."""
 
   def __init__(self, **fields):
     for name in fields:
-      if (struct_field.StructField.is_reserved_name(name) or
+      if (extension_type_field.ExtensionTypeField.is_reserved_name(name) or
           (name.startswith('__') and name.endswith('__'))):
         raise ValueError(f'The field name {name!r} is reserved.')
     fields = [(k, _convert_anonymous_fields(v, for_spec=True))
@@ -615,12 +618,13 @@ class AnonymousStructSpec(StructSpec):
     self.__dict__.update(fields)
     super().__init__()
 
-  value_type = AnonymousStruct  # TypeSpec API.
+  value_type = AnonymousExtensionType  # TypeSpec API.
 
   def _serialize(self):  # TypeSpec API.
-    return tuple((name, _change_nested_mappings_to(value, dict))
-                 for (name, value) in self.__dict__.items()
-                 if not struct_field.StructField.is_reserved_name(name))
+    return tuple(
+        (name, _change_nested_mappings_to(value, dict))
+        for (name, value) in self.__dict__.items()
+        if not extension_type_field.ExtensionTypeField.is_reserved_name(name))
 
   def __setattr__(self, name, value):
     raise AttributeError('cannot assign to field %r' % name)
@@ -630,7 +634,7 @@ class AnonymousStructSpec(StructSpec):
 
 
 def _convert_anonymous_fields(value, for_spec=False):
-  """Type-checks and converts `value` for inclusion in an AnonymousStruct."""
+  """Type-checks and converts `value` for inclusion in an AnonymousExtensionType."""
   if isinstance(value, (int, float, bool, str, bytes, type(None), dtypes.DType,
                         tensor_shape.TensorShape)):
     return value
@@ -655,36 +659,36 @@ def _convert_anonymous_fields(value, for_spec=False):
 
 
 # ==============================================================================
-# reinterpret_struct
+# reinterpret
 # ==============================================================================
-def reinterpret_struct(struct, new_type):
-  """Converts a given `Struct` to a new type with compatible fields.
+def reinterpret(value, new_type):
+  """Converts a given `ExtensionType` to a new type with compatible fields.
 
-  In particular, this can be used to convert a concrete subclass of `Struct`
-  to an `AnonymousStruct`, or vice versa.  When converting to a non-anonymous
-  struct type, field values are type-checked to ensure they are consistent with
-  `new_type`'s type annotations, and validated with `new_type.__validate__`.
+  In particular, this can be used to convert a concrete subclass of
+  `ExtensionType` to an `AnonymousExtensionType`, or vice versa.  When
+  converting to a non-anonymous ExtensionType, field values are type-checked to
+  ensure they are consistent with `new_type`'s type annotations, and validated
+  with `new_type.__validate__`.
 
   Args:
-    struct: An instance of a subclass of `tf.Struct`
-    new_type: A subclass of `tf.Struct`
+    value: An instance of a subclass of `tf.ExtensionType`
+    new_type: A subclass of `tf.ExtensionType`
 
   Returns:
-    An instance of `new_type`, whose fields are copied from `struct`.
+    An instance of `new_type`, whose fields are copied from `value`.
   """
-  if not isinstance(struct, Struct):
-    raise ValueError(f'Expected `struct` to be a tf.Struct; got {struct!r}')
-  if not (isinstance(new_type, type) and issubclass(new_type, Struct)):
-    raise ValueError('Expected `new_type` to be a subclass of tf.Struct;'
+  if not isinstance(value, ExtensionType):
+    raise ValueError(
+        f'Expected `value` to be a tf.ExtensionType; got {value!r}')
+  if not (isinstance(new_type, type) and issubclass(new_type, ExtensionType)):
+    raise ValueError('Expected `new_type` to be a subclass of tf.ExtensionType;'
                      f' got {new_type!r}')
 
   fields = [
-      item for item in struct.__dict__.items()
-      if not struct_field.StructField.is_reserved_name(item[0])
+      item for item in value.__dict__.items()
+      if not extension_type_field.ExtensionTypeField.is_reserved_name(item[0])
   ]
-  new_struct = _create_object_from_type_and_dict(new_type, fields)
-  new_struct._tf_struct_convert_fields()  # pylint: disable=protected-access
-  new_struct.__validate__()
-  return new_struct
-
-
+  new_value = _create_object_from_type_and_dict(new_type, fields)
+  new_value._tf_extension_type_convert_fields()  # pylint: disable=protected-access
+  new_value.__validate__()
+  return new_value

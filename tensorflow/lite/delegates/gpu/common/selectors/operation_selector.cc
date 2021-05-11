@@ -406,9 +406,9 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         const int kernel_x = weights_shape.w;
         const int kernel_y = weights_shape.h;
         if (weights_desc.layout ==
-                WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
+                WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
             weights_desc.layout ==
-                WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+                WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
           // weights are 4x textures 2d
           conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1, -2, -3, -4};
           int texture_width = dst_depth;

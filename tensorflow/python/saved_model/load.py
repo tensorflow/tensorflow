@@ -161,13 +161,14 @@ class Loader(object):
       self._concrete_functions[name] = _WrapperFunction(concrete_function)
 
     self._load_all()
-    self._restore_checkpoint()
 
-    for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
-        init_op = node._initialize()  # pylint: disable=protected-access
-        if not context.executing_eagerly():
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    if not save_options.experimental_skip_checkpoint:
+      self._restore_checkpoint()
+      for node in self._nodes:
+        if isinstance(node, tracking.CapturableResource):
+          init_op = node._initialize()  # pylint: disable=protected-access
+          if not context.executing_eagerly():
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""

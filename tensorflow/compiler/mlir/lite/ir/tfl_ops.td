@@ -2740,6 +2740,8 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   }]>;
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_RangeOp: TFL_Op<"range", [

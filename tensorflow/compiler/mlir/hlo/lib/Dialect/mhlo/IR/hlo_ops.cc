@@ -3237,6 +3237,39 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
     return DenseIntElementsAttr::get(result_ty, {false});
   }
 
+  auto op_el_type = lhs().getType().cast<ShapedType>().getElementType();
+  // Fold tensor<*xi1> != false to just return tensor<*xi1>
+  if (direction == "NE" && op_el_type.isInteger(1)) {
+    DenseIntElementsAttr cst_attr;
+    if (matchPattern(lhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
+        return rhs();
+      }
+    }
+
+    if (matchPattern(rhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
+        return lhs();
+      }
+    }
+  }
+
+  // Fold tensor<*xi1> == True to just return tensor<*xi1>
+  if (direction == "EQ" && op_el_type.isInteger(1)) {
+    DenseIntElementsAttr cst_attr;
+    if (matchPattern(lhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
+        return rhs();
+      }
+    }
+
+    if (matchPattern(rhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
+        return lhs();
+      }
+    }
+  }
+
   if (!operands[0] || !operands[1]) {
     return {};
   }

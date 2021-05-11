@@ -774,9 +774,12 @@ cc_library(
 cc_library(
     name = "custom_ops",
     srcs = [
+        "atan2.cc",
+        "irfft2d.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
         "random_uniform.cc",
+        "sign.cc",
         "unidirectional_sequence_gru.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -789,6 +792,8 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1469,6 +1474,20 @@ cc_test(
 )
 
 cc_test(
+    name = "atan2_test",
+    size = "small",
+    srcs = ["atan2_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "multinomial_test",
     size = "small",
     srcs = ["multinomial_test.cc"],
@@ -1515,6 +1534,20 @@ cc_test(
     name = "random_uniform_test",
     size = "small",
     srcs = ["random_uniform_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sign_test",
+    size = "small",
+    srcs = ["sign_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -2310,6 +2343,22 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "irfft2d_test",
+    size = "small",
+    srcs = ["irfft2d_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -1,6 +1,7 @@
 path: "tensorflow.data.experimental.RandomDataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.random_ops.RandomDatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.RandomDataset\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<class \'collections.abc.Iterable\'>"
@@ -95,6 +96,10 @@ tf_class {
   member_method {
     name: "prefetch"
     argspec: "args=[\'self\', \'buffer_size\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "random"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "range"

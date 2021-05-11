@@ -14,12 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
-
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -307,7 +305,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->computations()) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;
@@ -331,15 +329,6 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;
-  }
-
-  if (changed) {
-    // Run DCE if changed. This pass may create new while loops with new
-    // computations and if we don't delete the old ones, we can have spurious
-    // verification failures (e.g., the verifier may see multiple channel
-    // instructions that have the same channel ids).
-    HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   if (changed) {

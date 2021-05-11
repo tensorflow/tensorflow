@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
@@ -1236,7 +1237,8 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
-  auto build_gemm_config = [](auto op) {
+  auto build_gemm_config = [](auto op, absl::optional<double> gemm_bias_beta =
+                                           absl::nullopt) {
     GpuGemmConfig config;
     GemmBackendConfig& backend = config.backend_config;
     config.output_shape = TypeToShape(op.output().getType());
@@ -1249,6 +1251,9 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
     backend.set_alpha_real(op.alpha_real().convertToDouble());
     backend.set_alpha_imag(op.alpha_imag().convertToDouble());
     backend.set_batch_size(op.batch_size());
+    if (gemm_bias_beta.has_value()) {
+      backend.set_beta(gemm_bias_beta.value());
+    }
 
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();
@@ -1271,21 +1276,33 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
   GpuGemmConfig config;
   BufferAllocation::Slice lhs, rhs, bias, output;
 
-  auto make_thunk_for_gemm = [&](bool implements_whole_instruction) {
-    return absl::make_unique<GemmThunk>(input.thunk_info, std::move(config),
-                                        lhs, rhs, output,
-                                        implements_whole_instruction);
+  const bool use_bef_thunk = BefThunk::SupportsOp(input.op);
+  auto make_thunk_for_gemm = [&](bool implements_whole_instruction)
+      -> StatusOr<std::unique_ptr<Thunk>> {
+    std::unique_ptr<Thunk> thunk;
+    if (use_bef_thunk) {
+      TF_ASSIGN_OR_RETURN(
+          thunk,
+          BefThunk::Create(input.thunk_info, input.op,
+                           std::vector<BufferAllocation::Slice>{lhs, rhs},
+                           std::vector<BufferAllocation::Slice>{output}));
+    } else {
+      thunk = absl::make_unique<GemmThunk>(input.thunk_info, std::move(config),
+                                           lhs, rhs, output,
+                                           implements_whole_instruction);
+    }
+    return thunk;
   };
 
   if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(input.op)) {
-    config = build_gemm_config(gemm);
+    if (!use_bef_thunk) config = build_gemm_config(gemm);
     TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm.lhs()));
     TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm.rhs()));
     TF_ASSIGN_OR_RETURN(output, GetAllocationSliceForMlir(gemm.output()));
   } else if (auto gemm_bias =
                  mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
-    config = build_gemm_config(gemm_bias);
-    config.backend_config.set_beta(gemm_bias.beta().convertToDouble());
+    if (!use_bef_thunk)
+      config = build_gemm_config(gemm_bias, gemm_bias.beta().convertToDouble());
     TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm_bias.lhs()));
     TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm_bias.rhs()));
     TF_ASSIGN_OR_RETURN(bias, GetAllocationSliceForMlir(gemm_bias.bias()));
@@ -1301,17 +1318,21 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
           Thunk::ThunkInfo(),
           /*source_buffer=*/bias,
           /*destination_buffer=*/output,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(config.output_shape)));
-      thunks.push_back(
+          /*mem_size=*/
+          ShapeUtil::ByteSizeOf(TypeToShape(gemm_bias.output().getType()))));
+      TF_ASSIGN_OR_RETURN(
+          auto thunk,
           make_thunk_for_gemm(/*implements_whole_instruction=*/false));
+      thunks.push_back(std::move(thunk));
       AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
           input.thunk_info, std::move(thunks)));
       return Status::OK();
     }
   }
 
-  AddThunkToThunkSequence(
-      make_thunk_for_gemm(/*implements_whole_instruction=*/true));
+  TF_ASSIGN_OR_RETURN(
+      auto thunk, make_thunk_for_gemm(/*implements_whole_instruction=*/true));
+  AddThunkToThunkSequence(std::move(thunk));
   return Status::OK();
 }
 

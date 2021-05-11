@@ -26,7 +26,7 @@ module attributes {gpu.container_module} {
   gpu.module @abs_kernel {
     // CHECK-LABEL: llvm.func @abs_kernel
     // ABI-SAME: %[[ARG0:.*]]: !llvm.ptr<f32>, %[[ARG1:.*]]: !llvm.ptr<f32> {llvm.align = 16 : index},
-    // ABI-SAME: %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr<f32>, %[[ARG6:.*]]: !llvm.ptr<f32> {llvm.align = 16 : index, llvm.noalias = true},
+    // ABI-SAME: %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr<f32>, %[[ARG6:.*]]: !llvm.ptr<f32> {llvm.align = 16 : index, llvm.noalias},
     // ABI-SAME: %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
     // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr<f32>, %[[ARG1:.*]]: !llvm.ptr<f32>, %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr<f32>, %[[ARG6:.*]]: !llvm.ptr<f32>, %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
     llvm.func @abs_kernel(%arg0: !llvm.ptr<f32>, %arg1: !llvm.ptr<f32>, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: !llvm.ptr<f32>, %arg6: !llvm.ptr<f32>, %arg7: i64, %arg8: i64, %arg9: i64) attributes {gpu.kernel} {
@@ -92,7 +92,7 @@ module attributes {gpu.container_module} {
     // CHECK-LABEL: llvm.func @AddV2_kernel
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
-    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
+    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias}
     llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr<f32>, %arg2: !llvm.ptr<f32>, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr<f32>, %arg7: !llvm.ptr<f32>, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr<f32>, %arg12: !llvm.ptr<f32>, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {
       // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
       // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
@@ -178,10 +178,10 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: gpu.module @AddV2_kernel_3
   gpu.module @AddV2_kernel_3 {
     // CHECK-LABEL: llvm.func @AddV2_kernel
-    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
+    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias}
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
-    llvm.func @AddV2_kernel(%arg0: i64, %arg1: i64, %arg2: !llvm.ptr<f32>, %arg3: !llvm.ptr<f32> {llvm.align = 16 : index, llvm.noalias = true}, %arg4: i64, %arg5: i64, %arg6: i64, %arg7: i64, %arg8: i64, %arg9: !llvm.ptr<f32>, %arg10: !llvm.ptr<f32> {llvm.align = 16 : index}, %arg11: i64, %arg12: i64, %arg13: i64, %arg14: i64, %arg15: i64, %arg16: !llvm.ptr<f32>, %arg17: !llvm.ptr<f32> {llvm.align = 16 : index}, %arg18: i64, %arg19: i64, %arg20: i64, %arg21: i64, %arg22: i64) attributes {gpu.kernel} {
+    llvm.func @AddV2_kernel(%arg0: i64, %arg1: i64, %arg2: !llvm.ptr<f32>, %arg3: !llvm.ptr<f32> {llvm.align = 16 : index, llvm.noalias}, %arg4: i64, %arg5: i64, %arg6: i64, %arg7: i64, %arg8: i64, %arg9: !llvm.ptr<f32>, %arg10: !llvm.ptr<f32> {llvm.align = 16 : index}, %arg11: i64, %arg12: i64, %arg13: i64, %arg14: i64, %arg15: i64, %arg16: !llvm.ptr<f32>, %arg17: !llvm.ptr<f32> {llvm.align = 16 : index}, %arg18: i64, %arg19: i64, %arg20: i64, %arg21: i64, %arg22: i64) attributes {gpu.kernel} {
       // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
       // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
@@ -286,7 +286,7 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: gpu.module @AddV2_kernel
   gpu.module @AddV2_kernel {
     // CHECK-LABEL: llvm.func @AddV2_kernel
-    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
+    // ABI-SAME: {llvm.align = 16 : index, llvm.noalias}
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
     llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr<f32>, %arg2: !llvm.ptr<f32>, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr<f32>, %arg7: !llvm.ptr<f32>, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr<f32>, %arg12: !llvm.ptr<f32>, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {

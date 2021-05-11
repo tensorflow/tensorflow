@@ -568,6 +568,12 @@ cc_library(
 )
 
 cc_library(
+    name = "intrusive_ptr",
+    hdrs = ["intrusive_ptr.h"],
+    deps = [],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -1536,6 +1542,7 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
+        "intrusive_ptr.h",
         "platform.h",
         "protobuf_internal.h",
         "refcount.h",
@@ -1662,6 +1669,7 @@ filegroup(
         "hash.h",
         "host_info.h",
         "init_main.h",
+        "intrusive_ptr.h",
         "load_library.h",
         "logging.h",
         "macros.h",

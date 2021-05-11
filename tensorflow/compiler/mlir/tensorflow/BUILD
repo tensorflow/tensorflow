@@ -823,11 +823,13 @@ cc_library(
         "transforms/mark_initialized_variables.h",
     ],
     deps = [
+        ":session_utils",
         ":tensorflow_ops",
         "//tensorflow/compiler/mlir:string_container_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
@@ -848,6 +850,24 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_options",
+    ],
+)
+
+cc_library(
+    name = "session_utils",
+    srcs = ["utils/session_utils.cc"],
+    hdrs = ["utils/session_utils.h"],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_ops",
+        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -984,6 +1004,7 @@ cc_library(
         "transforms/gpu_fusion.cc",
         "transforms/graph_pruning.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/hoist_replicate_invariant_resource_writes.cc",
         "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",

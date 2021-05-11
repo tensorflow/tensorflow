@@ -2454,6 +2454,29 @@ OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
+  auto input_type = input().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return nullptr;
+
+  ArrayRef<int64_t> shape = input_type.getShape();
+  auto result_type = getType().cast<ShapedType>();
+  if (result_type.getElementType().isInteger(64)) {
+    return DenseElementsAttr::get<int64_t>(result_type, shape);
+  } else if (result_type.getElementType().isInteger(32)) {
+    SmallVector<int32_t, 4> shape_i32;
+    shape_i32.reserve(shape.size());
+    for (int64_t dim : shape) {
+      shape_i32.push_back(dim);
+    }
+    return DenseElementsAttr::get<int32_t>(result_type, shape_i32);
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // SqrtOp
 //===----------------------------------------------------------------------===//
 

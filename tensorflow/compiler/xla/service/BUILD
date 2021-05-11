@@ -3933,7 +3933,6 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":memory_space_assignment",
-        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -5073,7 +5072,6 @@ cc_library(
     hdrs = ["while_loop_invariant_code_motion.h"],
     deps = [
         ":hlo",
-        ":hlo_dce",
         ":hlo_pass",
         ":tuple_util",
         ":while_loop_analysis",

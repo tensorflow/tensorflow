@@ -142,8 +142,8 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     expected_values.update({
         'op_name': 'CONV_2D',
         'tensor_idx': 7 if quantized_io else 8,
-        'scales': [0.15686275],
-        'zero_points': [-128],
+        'scale': 0.15686275,
+        'zero_point': -128,
         'tensor_name': r'Identity[1-9]?$'
     })
     for key, value in expected_values.items():

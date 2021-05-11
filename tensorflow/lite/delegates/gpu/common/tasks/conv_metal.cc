@@ -476,7 +476,7 @@ kernel void ComputeFunction(
             }
             std::string s_val = "src" + s_id;
             std::string r_val = "r" + r_id;
-            if (params.weights_layout == WeightsLayout::kOHWIOGroupO4I4) {
+            if (params.weights_layout == WeightsLayout::kOSpatialIOGroupO4I4) {
               c += "    " + r_val + "." + channels[ch] + " += dot(" + f_val +
                    ", " + s_val + ");\n";
             } else {  // WeightsInnerBlockLayout::I404
@@ -704,7 +704,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_launch_order = int3(0, 1, 2);
-  params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+  params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
 
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
 
@@ -805,7 +805,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
-  params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+  params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
   int g1 = GetGroupsCount(dst_shape, {8, 4, 1}, block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
   int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
@@ -873,9 +873,9 @@ ConvolutionMetal::ConvParams GetConvParamsForIntel(
   }
   params.work_group_size = int3(8, 2, 1);
   if (precision == CalculationsPrecision::F32_F16) {
-    params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
   } else {
-    params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
   }
 
   if (src_slices % 2 == 0) {
@@ -911,9 +911,9 @@ ConvolutionMetal::ConvParams GetConvParamsForAMD(
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   if (precision == CalculationsPrecision::F32_F16) {
-    params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
   } else {
-    params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
   }
   return params;
 }
@@ -947,7 +947,7 @@ ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
     params.different_weights_for_height = false;
     params.x_kernel_is_1 = IsKernelXIs1(attr);
     params.y_kernel_is_1 = IsKernelYIs1(attr);
-    params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
     return params;
   }
 }
@@ -1087,7 +1087,7 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
   if (gpu_info.IsApple()) {
-    params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
     if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       params.weights_upload_type =
           ConvolutionMetal::WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -1100,19 +1100,19 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
       params.block_size = int3(4, 1, 4);
     }
   } else if (gpu_info.IsIntel()) {
-    params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
     params.weights_upload_type =
         ConvolutionMetal::WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
   } else if (gpu_info.IsAMD()) {
-    params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
     params.weights_upload_type =
         ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);
     params.block_size = int3(2, 1, 4);
   } else {
-    params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
     params.weights_upload_type =
         ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);

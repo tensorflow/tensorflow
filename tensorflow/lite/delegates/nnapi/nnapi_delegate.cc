@@ -3857,7 +3857,8 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
 TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                          TfLiteNode* node, int* nnapi_errno) {
   const bool allow_padding =
-      nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13;
+      nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13 &&
+      nnapi_->ANeuralNetworksExecution_enableInputAndOutputPadding != nullptr;
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
 

@@ -587,7 +587,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/distribute:values",
-        "//tensorflow/python/framework:tensor_struct",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -650,5 +650,24 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_test(
+    name = "deferred_init_vars_test",
+    srcs = ["deferred_init_vars_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":load",
+        ":save",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//third_party/py/numpy",
     ],
 )

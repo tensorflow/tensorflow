@@ -48,6 +48,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 std::unique_ptr<OperationPass<FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass();
 
+// Creates a pass that moves writes to replicate invariant resource variables
+// outside tf_device.replicate op.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateHoistReplicateInvariantResourceWritesPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();

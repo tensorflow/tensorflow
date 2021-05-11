@@ -53,29 +53,30 @@ class DelegateContext {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  const TfLiteRegistration kRegistration = {
-      .init = [](TfLiteContext* context, const char* buffer, size_t) -> void* {
-        auto* delegate_context = new DelegateContext();
-        if (!delegate_context->Init(
-                context,
-                reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
-          delete delegate_context;
-          return nullptr;
-        }
-        return delegate_context;
-      },
-      .free = [](TfLiteContext* context, void* buffer) -> void {
-        delete reinterpret_cast<DelegateContext*>(buffer);
-      },
-      .prepare = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-        return node->user_data ? kTfLiteOk : kTfLiteError;
-      },
-      .invoke = nullptr,
+  TfLiteRegistration registration;
+  registration.init = [](TfLiteContext* context, const char* buffer,
+                         size_t) -> void* {
+    auto* delegate_context = new DelegateContext();
+    if (!delegate_context->Init(
+            context, reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
+      delete delegate_context;
+      return nullptr;
+    }
+    return delegate_context;
   };
+  registration.free = [](TfLiteContext* context, void* buffer) -> void {
+    delete reinterpret_cast<DelegateContext*>(buffer);
+  };
+  registration.prepare = [](TfLiteContext* context,
+                            TfLiteNode* node) -> TfLiteStatus {
+    return node->user_data ? kTfLiteOk : kTfLiteError;
+  };
+  registration.invoke = nullptr;
+  registration.custom_name = nullptr;
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, kRegistration, ops_to_replace, delegate);
+      context, registration, ops_to_replace, delegate);
   TfLiteIntArrayFree(ops_to_replace);
   return status;
 }
@@ -105,8 +106,7 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Conversion from TfLite model failed.");
   }
 
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
+  ModelTransformer transformer(graph);
   if (!ApplyModelTransformations(&transformer)) {
     return absl::InternalError("Graph transformations failed");
   }

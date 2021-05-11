@@ -228,53 +228,6 @@ class alignas(alignof(T) * N) AlignedVector {
     value_type uniform(uniform_u);
     UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
   }
-  // Implicit conversion.
-  template <typename U, typename std::enable_if<
-                            std::is_convertible<U, T>::value, int>::type = 0>
-  __host__ __device__ AlignedVector(const AlignedVector<U, N>& other) {
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = other[i]; }
-  }
-  // Explicit conversion.
-  template <typename U,
-            typename std::enable_if<!std::is_convertible<U, T>::value &&
-                                        std::is_constructible<T, U>::value,
-                                    int>::type = 0>
-  __host__ __device__ explicit AlignedVector(const AlignedVector<U, N>& other) {
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) {
-      values_[i] = T(other[i]);
-    }
-  }
-
-  __host__ __device__ value_type& operator[](int i) { return values_[i]; }
-  __host__ __device__ const value_type& operator[](int i) const {
-    return values_[i];
-  }
-
-#define DEFINE_BINARY_UPDATE_OPERATOR(op)                                      \
-  __host__ __device__ AlignedVector& operator op(const AlignedVector& rhs) {   \
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] op rhs[i]; } \
-    return *this;                                                              \
-  }
-  DEFINE_BINARY_UPDATE_OPERATOR(+=)
-  DEFINE_BINARY_UPDATE_OPERATOR(-=)
-  DEFINE_BINARY_UPDATE_OPERATOR(*=)
-  DEFINE_BINARY_UPDATE_OPERATOR(/=)
-#undef DEFINE_BINARY_UPDATE_OPERATOR
-
-#define DEFINE_BINARY_OPERATOR(op)                          \
-  friend __host__ __device__ AlignedVector operator op(     \
-      const AlignedVector& lhs, const AlignedVector& rhs) { \
-    AlignedVector ret;                                      \
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) {      \
-      ret[i] = lhs[i] op rhs[i];                            \
-    }                                                       \
-    return ret;                                             \
-  }
-  DEFINE_BINARY_OPERATOR(+)
-  DEFINE_BINARY_OPERATOR(-)
-  DEFINE_BINARY_OPERATOR(*)
-  DEFINE_BINARY_OPERATOR(/)
-#undef DEFINE_BINARY_OPERATOR
 
  private:
   value_type values_[N];

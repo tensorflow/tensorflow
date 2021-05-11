@@ -2206,7 +2206,8 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
-    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 
   let results = (outs

@@ -1188,6 +1188,10 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{1});
           define_value_at(/*index=*/{2});
           define_value_at(/*index=*/{3});
+          if (instruction->operand_count() > 1) {
+            CHECK_EQ(instruction->operand_count(), 4);
+            define_value_at(/*index=*/{4});
+          }
           break;
         case HloOpcode::kCollectivePermuteDone:
           // CollectivePermuteDone's output aliases its input tuple element {1}.
@@ -1405,9 +1409,36 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
   if (IsInPlaceOperation(instruction->opcode())) {
     return {{HloUse{instruction, 0, {}}, {}}};
+  } else if (instruction->opcode() == HloOpcode::kCollectivePermute &&
+             instruction->operands().size() == 4) {
+    if (instruction->operand(1)->shape().IsTuple()) {
+      std::vector<std::pair<HloUse, ShapeIndex>> in_place_pairs(
+          {{HloUse{instruction, 1, {}}, {}}});
+      for (int i = 0; i < instruction->operand(1)->shape().tuple_shapes_size();
+           i++) {
+        in_place_pairs.push_back({HloUse{instruction, 1, {i}}, {i}});
+      }
+      return in_place_pairs;
+    } else {
+      return {{HloUse{instruction, 1, {}}, {}}};
+    }
+  } else if (instruction->opcode() == HloOpcode::kCollectivePermuteStart &&
+             instruction->operands().size() == 4) {
+    if (instruction->operand(1)->shape().IsTuple()) {
+      std::vector<std::pair<HloUse, ShapeIndex>> in_place_pairs(
+          {{HloUse{instruction, 1, {}}, {1}}});
+      for (int i = 0; i < instruction->operand(1)->shape().tuple_shapes_size();
+           i++) {
+        in_place_pairs.push_back({HloUse{instruction, 1, {i}}, {1, i}});
+      }
+      return in_place_pairs;
+    } else {
+      return {{HloUse{instruction, 1, {}}, {1}}};
+    }
   } else if (instruction->opcode() != HloOpcode::kFusion) {
     return {};
   }
+
   std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
   for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
     const HloInstruction* hlo_generating_output =

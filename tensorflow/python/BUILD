@@ -206,11 +206,11 @@ py_library(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:subscribe",
-        "//tensorflow/python/framework:tensor_struct",
         "//tensorflow/python/framework:test_ops",  # TODO(b/183988750): Break testing code out into separate rule.
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",

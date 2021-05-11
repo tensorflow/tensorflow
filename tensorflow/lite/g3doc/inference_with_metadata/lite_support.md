@@ -41,7 +41,7 @@ dependencies {
 ```
 
 Explore the
-[TensorFlow Lite Support Library AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-support)
+[TensorFlow Lite Support Library AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-support)
 for different versions of the Support Library.
 
 ### Basic image manipulation and conversion

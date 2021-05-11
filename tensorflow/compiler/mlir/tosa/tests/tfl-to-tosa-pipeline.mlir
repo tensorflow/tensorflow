@@ -154,15 +154,6 @@ func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // -----
 
-// CHECK-LABEL: test_concat
-// CHECK: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
-func @test_concat(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<26x21x3xf32> {
-  %0 = "tfl.concatenation"(%arg0, %arg1)  {axis = 0 : i32, fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<26x21x3xf32>
-  return %0 : tensor<26x21x3xf32>
-}
-
-// -----
-
 // CHECK-LABEL: test_logical_and
 // CHECK: %[[VAR0:.*]] = "tosa.logical_and"(%arg0, %arg1)
 func @test_logical_and(%arg0: tensor<13x21x3xi1>, %arg1: tensor<13x21x1xi1>) -> tensor<13x21x3xi1> {
@@ -489,29 +480,6 @@ func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> ten
 func @test_addn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.add_n"(%arg0, %arg1, %arg2, %arg3) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
-}
-
-// -----
-
-// CHECK-LABEL: test_concatv2
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.concat"(%[[VAR0]], %arg2) {axis = 0 : i64}
-// CHECK: %[[VAR2:.*]] = "tosa.concat"(%[[VAR1]], %arg3) {axis = 0 : i64}
-func @test_concatv2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<52x21x3xf32> {
-  %0 = "tfl.concatenation"(%arg0, %arg1, %arg2, %arg3)  {axis = 0 : i32, fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<52x21x3xf32>
-  return %0 : tensor<52x21x3xf32>
-}
-
-// -----
-
-// CHECK-LABEL: test_stack
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.concat"(%[[VAR0]], %arg2) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.concat"(%[[VAR1]], %arg3) {axis = 0 : i64}
-// CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [4, 13, 21, 3]}
-func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32> {
-  %0 = "tfl.pack"(%arg0, %arg1, %arg2, %arg3)  {axis = 0 : i32, values_count = 4 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32>
-  return %0 : tensor<4x13x21x3xf32>
 }
 
 // -----

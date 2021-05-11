@@ -70,6 +70,9 @@ class CTCDecodeHelper {
     if (inputs_shape.dims() != 3) {
       return errors::InvalidArgument("inputs is not a 3-Tensor");
     }
+    if (inputs_shape.num_elements() == 0) {
+      return errors::InvalidArgument("inputs must not be empty");
+    }
 
     const int64 max_time = inputs_shape.dim_size(0);
     const int64 batch_size = inputs_shape.dim_size(1);
