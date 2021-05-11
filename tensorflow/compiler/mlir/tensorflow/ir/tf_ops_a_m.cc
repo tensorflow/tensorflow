@@ -130,15 +130,6 @@ static LogicalResult Verify(AnyOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// ApproximateEqualOp
-//===----------------------------------------------------------------------===//
-
-void ApproximateEqualOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ApproximateEqualTransDistr>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 

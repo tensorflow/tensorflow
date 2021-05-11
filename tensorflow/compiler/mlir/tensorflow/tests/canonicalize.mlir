@@ -2038,21 +2038,6 @@ func @testRightShiftTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32
 // CHECK: return %2
 }
 
-// CHECK-LABEL: testApproximateEqualTransDistr
-func @testApproximateEqualTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
-  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
-  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
-  %4 = "tf.ApproximateEqual"(%2, %3) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  return %4: tensor<*xi32>
-
-// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-// CHECK: %1 = "tf.ApproximateEqual"(%arg0, %arg1) : (tensor<8x4x8xi32>, tensor<8x4x8xi32>) -> tensor<8x4x8xi32>
-// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
-// CHECK: return %2
-}
-
 // CHECK-LABEL: testRiscAddTransDistr
 func @testRiscAddTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
   %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
