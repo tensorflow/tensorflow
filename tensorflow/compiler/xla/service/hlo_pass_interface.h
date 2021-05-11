@@ -64,7 +64,7 @@ class HloModulePass : public HloPassInterface {
   // the Shape requires changes to the layout for the given Backend.
   //
   // TODO(b/129084868): Make this Backend dependent instead of requiring
-  // deriving from the pass and overriding this function.
+  // deriving from the pass the and overriding this function.
   virtual void UpdateLayout(Shape* shape) {}
 };
 

@@ -171,11 +171,7 @@ void HloShapeMatcher::DescribeTo(std::ostream* os) const {
 bool HloShapeAndLayoutMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
-  auto compare = Shape::Equal();
-  if (minor_to_major_only_) {
-    compare.MinorToMajorOnlyInLayout();
-  }
-  if (compare(instruction->shape(), shape_)) {
+  if (ShapeUtil::Equal(instruction->shape(), shape_)) {
     return true;
   }
   *listener << instruction->ToString() << " has incorrect shape (expected: "
