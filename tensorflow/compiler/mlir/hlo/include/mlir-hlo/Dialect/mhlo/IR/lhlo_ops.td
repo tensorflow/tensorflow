@@ -844,13 +844,27 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []> {
    );
 }
 
-def LHLO_ConvOp : LHLO_Op<"convolution", []>, BASE_HLO_ConvOp {
+def LHLO_ConvOp : LHLO_Op<"convolution", []> {
+  let summary = "Convolution operator";
+  let description = [{
+    Computes a convolution of the kind used in neural networks.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
        Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output),
     ConvolutionAttributes.attributes);
+
+  code extraClassDeclaration = [{
+    bool hasWindowReversal() {
+      auto reversal = window_reversalAttr();
+      return reversal && llvm::any_of(reversal.getBoolValues(),
+                                      [](bool v) { return v; });
+    }
+  }];
 }
 
 def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]> {

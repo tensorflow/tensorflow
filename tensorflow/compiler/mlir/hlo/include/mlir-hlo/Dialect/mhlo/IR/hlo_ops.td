@@ -1383,7 +1383,13 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
+  let summary = "Convolution operator";
+  let description = [{
+    Computes a convolution of the kind used in neural networks.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
   let arguments = !con(
     (ins
        HLO_Tensor:$lhs,
@@ -1392,6 +1398,14 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+
+  code extraClassDeclaration = [{
+    bool hasWindowReversal() {
+      auto reversal = window_reversalAttr();
+      return reversal && llvm::any_of(reversal.getBoolValues(),
+                                      [](bool v) { return v; });
+    }
+  }];
 }
 
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
