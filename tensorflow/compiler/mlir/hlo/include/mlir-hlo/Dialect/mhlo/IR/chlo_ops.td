@@ -30,6 +30,7 @@ limitations under the License.
 #define CHLO_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
@@ -752,6 +753,56 @@ def HLOClient_MinimumBroadcastShapesOp :
 
   let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
 
+}
+
+def HLOClient_RankSpecializationClusterOp
+    : HLOClient_Op<"rank_specialization_cluster", [
+    SingleBlockImplicitTerminator<"RankSpecializationClusterYieldOp">,
+    RecursiveSideEffects]> {
+
+  let summary = "Cluster of operations that will be rank-specialized together.";
+
+  let description = [{
+    Groups compatible element-wise operatons together so that they can be
+    rank-specialized together. The operation takes and yields a variadic number
+    of (unranked) tensor operands. Its body region holds one block with one
+    block argument per input tensor of the same type. All operations in this
+    block must only operate on these block arguments. Results are returned
+    through the `rank_specialization_cluster_yield` operation.
+
+    Example:
+
+    ```
+    %0 = "chlo.rank_specialization_cluster"(%arg0, %arg1, %arg2) ({
+    ^bb0(%arg0_ : tensor<*xf32>, %arg1_ : tensor<*xf32>, %arg2_ : tensor<*xf32>):
+      %1 = chlo.broadcast_multiply %arg0_, %arg1_
+          : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %2 = chlo.broadcast_add %1, %arg2_
+          : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      "chlo.rank_specialization_cluster_yield"(%2) : (tensor<*xf32>) -> ()
+    }) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
+  }];
+
+  let arguments = (ins Variadic<HLO_Tensor>:$operands);
+  let results = (outs Variadic<HLO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$body);
+}
+
+def HLOClient_RankSpecializationClusterYieldOp
+    : HLOClient_Op<"rank_specialization_cluster_yield", [NoSideEffect,
+    ReturnLike, Terminator, HasParent<"RankSpecializationClusterOp">]> {
+
+  let summary = "Yield operation for `rank_specialization_cluster`";
+  let description = [{
+    This operation yields the results from within the
+    `chlo.rank_specialization_cluster` operation's region. The operation takes
+    an arbitrary number of operands and produces no results. The operand number
+    and types must match the number and types of the parent
+    `rank_specialization_cluster` operation's results.
+  }];
+
+  let arguments = (ins Variadic<HLO_Tensor>:$results);
 }
 
 #endif  // CHLO_OPS

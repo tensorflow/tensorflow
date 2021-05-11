@@ -418,6 +418,31 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// RankSpecializationClusterOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(RankSpecializationClusterOp op) {
+  if (op.body().getArgumentTypes() != op.getOperandTypes())
+    return op.emitOpError() << "block argument types must match operand types";
+
+  // All operands of nested ops must be defined in the body or declared by the
+  // cluster.
+  Block* body = op.getBody();
+  for (Operation& nested : body->without_terminator()) {
+    if (!llvm::all_of(nested.getOpOperands(), [&](OpOperand& operand) {
+          Operation* def = operand.get().getDefiningOp();
+          if (def != nullptr && def->getBlock() == body) return true;
+          return llvm::is_contained(body->getArguments(), operand.get());
+        })) {
+      return op.emitOpError()
+             << "nested ops must not depend on implicit operands";
+    }
+  }
+
+  return success();
+}
+
 }  // namespace chlo
 }  // namespace mlir
 
