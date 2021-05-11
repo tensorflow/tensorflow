@@ -74,7 +74,6 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 928 + 100);
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(2), interpreter.outputs_size());
-    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), interpreter.tensors_size());
 
     TfLiteTensor* input = interpreter.input(0);
     TF_LITE_MICRO_EXPECT_NE(nullptr, input);
@@ -247,81 +246,6 @@ TF_LITE_MICRO_TEST(TestKernelMemoryPlanning) {
       TF_LITE_MICRO_EXPECT_EQ(expected_median, median->data.uint8[0]);
       TfLiteTensor* invoke_count = interpreter.output(1);
       TF_LITE_MICRO_EXPECT_EQ(2, invoke_count->data.i32[0]);
-    }
-  }
-}
-
-TF_LITE_MICRO_TEST(TestVariableTensorReset) {
-  const tflite::Model* model = tflite::testing::GetComplexMockModel();
-  TF_LITE_MICRO_EXPECT_NE(nullptr, model);
-
-  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
-
-  constexpr size_t allocator_buffer_size =
-      3072 /* optimal arena size at the time of writting. */ +
-      16 /* alignment */ + 100 /* some headroom */;
-  uint8_t allocator_buffer[allocator_buffer_size];
-  tflite::MicroInterpreter interpreter(model, op_resolver, allocator_buffer,
-                                       allocator_buffer_size,
-                                       tflite::GetMicroErrorReporter());
-  TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 2096 + 100);
-  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
-  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.outputs_size());
-
-  // Assign hard-code values:
-  for (size_t i = 0; i < interpreter.tensors_size(); ++i) {
-    TfLiteTensor* cur_tensor = interpreter.tensor(i);
-    int buffer_length = tflite::ElementCount(*cur_tensor->dims);
-    // Assign all buffers to non-zero values. Variable tensors will be assigned
-    // 2 here and will be verified that they have been reset after the API call.
-    int buffer_value = cur_tensor->is_variable ? 2 : 1;
-    switch (cur_tensor->type) {
-      case kTfLiteInt32: {
-        int32_t* buffer = tflite::GetTensorData<int32_t>(cur_tensor);
-        for (int j = 0; j < buffer_length; ++j) {
-          buffer[j] = static_cast<int32_t>(buffer_value);
-        }
-        break;
-      }
-      case kTfLiteUInt8: {
-        uint8_t* buffer = tflite::GetTensorData<uint8_t>(cur_tensor);
-        for (int j = 0; j < buffer_length; ++j) {
-          buffer[j] = static_cast<uint8_t>(buffer_value);
-        }
-        break;
-      }
-      default:
-        TF_LITE_MICRO_FAIL("Unsupported dtype");
-    }
-  }
-
-  interpreter.ResetVariableTensors();
-
-  // Ensure only variable tensors have been reset to zero:
-  for (size_t i = 0; i < interpreter.tensors_size(); ++i) {
-    TfLiteTensor* cur_tensor = interpreter.tensor(i);
-    int buffer_length = tflite::ElementCount(*cur_tensor->dims);
-    // Variable tensors should be zero (not the value assigned in the for loop
-    // above).
-    int buffer_value = cur_tensor->is_variable ? 0 : 1;
-    switch (cur_tensor->type) {
-      case kTfLiteInt32: {
-        int32_t* buffer = tflite::GetTensorData<int32_t>(cur_tensor);
-        for (int j = 0; j < buffer_length; ++j) {
-          TF_LITE_MICRO_EXPECT_EQ(buffer_value, buffer[j]);
-        }
-        break;
-      }
-      case kTfLiteUInt8: {
-        uint8_t* buffer = tflite::GetTensorData<uint8_t>(cur_tensor);
-        for (int j = 0; j < buffer_length; ++j) {
-          TF_LITE_MICRO_EXPECT_EQ(buffer_value, buffer[j]);
-        }
-        break;
-      }
-      default:
-        TF_LITE_MICRO_FAIL("Unsupported dtype");
     }
   }
 }
@@ -508,7 +432,6 @@ TF_LITE_MICRO_TEST(TestInterpreterMultipleInputs) {
 
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(3), interpreter.inputs_size());
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.outputs_size());
-    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), interpreter.tensors_size());
 
     TfLiteTensor* input = interpreter.input(0);
     TF_LITE_MICRO_EXPECT_NE(nullptr, input);
