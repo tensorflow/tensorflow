@@ -331,7 +331,7 @@ class QuantizationDebugger:
     """
     # order of `fields` is the order of fields in csv.
     fields = ['op_name', 'tensor_idx'] + list(self._layer_debug_metrics.keys(
-    )) + ['scales', 'zero_points', 'tensor_name']
+    )) + ['scale', 'zero_point', 'tensor_name']
     writer = csv.DictWriter(file, fields)
     writer.writeheader()
     for name, metrics in self.layer_statistics.items():
@@ -340,7 +340,7 @@ class QuantizationDebugger:
        data['tensor_idx']) = self._get_operand_name_and_index(name)
       data['op_name'] = self._defining_op[data['tensor_idx']]
       details = self._quant_interpreter._get_tensor_details(data['tensor_idx'])  # pylint: disable=protected-access
-      data['scales'], data['zero_points'] = (
-          details['quantization_parameters']['scales'],
-          details['quantization_parameters']['zero_points'])
+      data['scale'], data['zero_point'] = (
+          details['quantization_parameters']['scales'][0],
+          details['quantization_parameters']['zero_points'][0])
       writer.writerow(data)
