@@ -99,7 +99,7 @@ cc_test(
     srcs = ["error_reporter_test.cc"],
     deps = [
         ":api",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -110,7 +110,7 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite/schema:schema_conversion_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -126,7 +126,7 @@ cc_test(
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -138,6 +138,6 @@ cc_test(
         ":api",
         "//tensorflow/lite:string",
         "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
