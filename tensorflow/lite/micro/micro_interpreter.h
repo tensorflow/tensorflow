@@ -68,18 +68,6 @@ class MicroInterpreter {
   // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
-  size_t tensors_size() const { return context_.tensors_size; }
-  TfLiteTensor* tensor(size_t tensor_index);
-  template <class T>
-  T* typed_tensor(int tensor_index) {
-    if (TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
-        return GetTensorData<T>(tensor_ptr);
-      }
-    }
-    return nullptr;
-  }
-
   TfLiteTensor* input(size_t index);
   size_t inputs_size() const { return subgraph_->inputs()->Length(); }
   const flatbuffers::Vector<int32_t>& inputs() const {

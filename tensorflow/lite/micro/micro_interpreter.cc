@@ -305,18 +305,6 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
   return output_tensors_[index];
 }
 
-TfLiteTensor* MicroInterpreter::tensor(size_t index) {
-  const size_t length = tensors_size();
-  if (index >= length) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Tensor index %d out of range (length is %d)", index,
-                         length);
-    return nullptr;
-  }
-  return allocator_.AllocatePersistentTfLiteTensor(model_, eval_tensors_,
-                                                   index);
-}
-
 TfLiteStatus MicroInterpreter::ResetVariableTensors() {
   for (size_t i = 0; i < subgraph_->tensors()->size(); ++i) {
     auto* tensor = subgraph_->tensors()->Get(i);
