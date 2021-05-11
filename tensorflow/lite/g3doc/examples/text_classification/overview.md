@@ -1,6 +1,13 @@
 # Text classification
 
-Use a pre-trained model to category a paragraph into predefined groups.
+Use a TensorFlow Lite model to category a paragraph into predefined groups.
+
+*Quick tips*:
+
+*   To integrate an existing model, try
+    [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/nl_classifier).
+*   To customize a model, try
+    [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
 
 ## Get started
 

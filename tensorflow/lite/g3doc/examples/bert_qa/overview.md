@@ -1,7 +1,14 @@
 # BERT Question and Answer
 
-Use a pre-trained model to answer questions based on the content of a given
+Use a TensorFlow Lite model to answer questions based on the content of a given
 passage.
+
+*Quick tips*:
+
+*   To integrate an existing model, try
+    [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/bert_question_answerer).
+*   To customize a model, try
+    [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
 
 ## Get started
 
