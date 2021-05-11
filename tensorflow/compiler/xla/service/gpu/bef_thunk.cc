@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
+#include "tfrt/bef/bef_buffer.h"
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"
 #include "tfrt/core_runtime/core_runtime.h"
 #include "tfrt/gpu/gpu_types.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tfrt/host_context/chain.h"
 #include "tfrt/host_context/execution_context.h"
 #include "tfrt/host_context/host_context.h"
-#include "tfrt/support/aligned_buffer.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -55,7 +55,7 @@ StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
     return tensorflow::errors::Internal("Failed to translate MLIR to BEF.");
   }
 
-  auto buffer = tfrt::AlignedBuffer<8>(bef.data(), bef.data() + bef.size());
+  auto buffer = tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
   // TODO(hanbinyoon): Programmatically get the function name after b/186927461.
   return absl::make_unique<tfrt::gpu::Program>(std::move(buffer),
                                                "main_sync_region", host);
