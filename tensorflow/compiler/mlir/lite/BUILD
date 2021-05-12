@@ -25,8 +25,10 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
-        "//tensorflow/compiler/mlir/...",
         "//third_party/iree/...",
+        "//tensorflow/compiler/mlir/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 

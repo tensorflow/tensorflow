@@ -25,6 +25,8 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/python/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 

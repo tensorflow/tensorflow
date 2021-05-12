@@ -24,11 +24,13 @@ package_group(
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 
