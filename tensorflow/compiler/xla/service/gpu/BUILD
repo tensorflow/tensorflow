@@ -40,7 +40,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -2127,14 +2127,26 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "xla_thunks_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
-        ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),
-        ("-gen-struct-attr-decls", "ir/xla_thunks_structs.h.inc"),
-        ("-gen-struct-attr-defs", "ir/xla_thunks_structs.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "ir/xla_thunks_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "ir/xla_thunks_ops.cc.inc",
+        ),
+        (
+            ["-gen-struct-attr-decls"],
+            "ir/xla_thunks_structs.h.inc",
+        ),
+        (
+            ["-gen-struct-attr-defs"],
+            "ir/xla_thunks_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/xla_thunks_ops.td",
