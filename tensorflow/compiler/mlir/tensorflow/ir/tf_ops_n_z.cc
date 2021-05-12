@@ -768,14 +768,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-//===----------------------------------------------------------------------===//
-// RiscAdd
-//===----------------------------------------------------------------------===//
-
-void RiscAddOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RiscAddTransDistr>(context);
-}
 
 //===----------------------------------------------------------------------===//
 // RightShiftOp

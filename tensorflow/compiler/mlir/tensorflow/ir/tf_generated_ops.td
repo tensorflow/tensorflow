@@ -6888,6 +6888,8 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBro
   let results = (outs
     TF_BoolTensor:$z
   );
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_LogicalNotOp : TF_Op<"LogicalNot", [Involution, NoSideEffect, SameOperandsAndResultType]> {
@@ -12704,7 +12706,6 @@ Both input and output have a range `(-inf, inf)`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let hasCanonicalizer = 1;
 }
 
 def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {

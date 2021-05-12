@@ -525,13 +525,3 @@ def ModTransDistr : Pat<(TF_ModOp (TF_TransposeOp $tensor0, $perm0),
                           (TF_TransposeOp (TF_ModOp $tensor0, $tensor1),
                                           $perm0),
                           [(PermutationsAreEqual $perm0, $perm1)]>;
-
-//===----------------------------------------------------------------------===//
-// RiscAdd op patterns.
-//===----------------------------------------------------------------------===//
-
-def RiscAddTransDistr : Pat<(TF_RiscAddOp (TF_TransposeOp $tensor0, $perm0),
-                                      (TF_TransposeOp $tensor1, $perm1)),
-                          (TF_TransposeOp (TF_RiscAddOp $tensor0, $tensor1),
-                                          $perm0),
-                          [(PermutationsAreEqual $perm0, $perm1)]>;
