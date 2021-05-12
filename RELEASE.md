@@ -44,9 +44,8 @@
     *   `tf.distribute.experimental.ParameterServerStrategy` now supports
         training with Keras `Model.fit` when used with `DatasetCreator`.
 * PluggableDevice
-    * Third-party devices can now connect to TensorFlow
-      [modularly](https://github.com/tensorflow/community/blob/master/rfcs/20190305-modular-tensorflow.md)
-      through [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md).
+    * Third-party devices can now connect to TensorFlow as plug-ins through
+      [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md).
       and [PluggableDevice](https://github.com/tensorflow/community/blob/master/rfcs/20200624-pluggable-device-for-tensorflow.md) interface.
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
