@@ -1528,7 +1528,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertUnpackOp(rewriter, op, tf_unpack_op.value(), axis_i32);
 
   if (!results) return failure();
@@ -1556,7 +1556,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
     axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
   }
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tf_split_op.getResult(0),
                      tf_split_op.value(), num_split, axis);
 
@@ -1592,7 +1592,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
                       tf_splitv_op.value(), size_split, axis);
 
