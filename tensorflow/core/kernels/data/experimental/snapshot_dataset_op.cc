@@ -201,8 +201,6 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Reader
 
   explicit Reader(const Params& params, int64 start_index);
 
-  ~Reader() override;
-
   Status Initialize(IteratorContext* ctx) override;
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -222,7 +220,7 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Reader
 
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
-  DatasetBase* input_ TF_GUARDED_BY(mu_);
+  DatasetBase* input_ TF_GUARDED_BY(mu_) = nullptr;
 
   std::unique_ptr<InstantiatedCapturedFunction> instantiated_reader_func_
       TF_GUARDED_BY(mu_);
@@ -468,7 +466,11 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::GetNextInternal(
     bool* end_of_sequence) {
   mutex_lock l(mu_);
   if (iterator_ == nullptr) {
-    TF_RETURN_IF_ERROR(InitializeIterator(ctx, nullptr));
+    Status s = InitializeIterator(ctx, nullptr);
+    if (!s.ok()) {
+      iterator_.reset();
+      return s;
+    }
   }
   index_++;
   return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -547,8 +549,6 @@ SnapshotDatasetV2Op::Dataset::Iterator::Reader::Reader(const Params& params,
                                                        int64 start_index)
     : DatasetIterator<Dataset>(params), start_index_(start_index) {}
 
-SnapshotDatasetV2Op::Dataset::Iterator::Reader::~Reader() { input_->Unref(); }
-
 Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
     IteratorContext* ctx) {
   mutex_lock l(mu_);
@@ -596,10 +596,6 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
         "reader_func returns more than one argument.");
   }
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(reader_output[0], &input_));
-
-  // We need to take a reference here as we will use the input_ and
-  // its iterator.
-  input_->Ref();
 
   return input_->MakeIterator(ctx, this, prefix(), &input_impl_);
 }
