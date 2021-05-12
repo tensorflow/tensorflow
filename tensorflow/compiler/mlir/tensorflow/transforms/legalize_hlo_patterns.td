@@ -229,6 +229,9 @@ def : Pat<(HLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
 class FloatValueEquals<string val> : Constraint<CPred<
   "$0.isa<SplatElementsAttr>() && "
   "$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isExactlyValue(" # val # ")">>;
+def FloatValueGreaterThanZero : Constraint<CPred<
+  "$0.isa<SplatElementsAttr>() && "
+  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative()">>;
 def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
   "!$0 || $0.getValue() == \"FLOAT\"">>;
@@ -315,3 +318,35 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type),
 (FloatOrDefaultCompare $compare_type1),
 (FloatOrDefaultCompare $compare_type2)]>;
+
+// Converts a soup of HLOs representing floor_mod with a constant to
+// tf.FloorMod. The pattern matched executes the following computation:
+//
+// cst = value that is > 0
+// rem = remainder(arg0, cst)
+// for i in 0 to len(arg1):
+//    if (rem[i] < 0 && rem[i] != 0)
+//       rem[i] += cst
+// return rem
+def : Pat<
+(HLO_SelectOp
+  (HLO_AndOp
+    (HLO_CompareOp:$rltz
+      (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
+      (HLO_ConstOp $cst1),
+      HLO_COMPARISON_DIRECTION_LT,
+      $compare_type),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+  (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
+  $rem3),
+(TF_FloorModOp $arg, (TF_ConstOp $cst3)),
+[(FloatValueGreaterThanZero $cst),
+(FloatValueEquals<"0.0"> $cst1),
+(FloatValueEquals<"0.0"> $cst2),
+(FloatValueGreaterThanZero $cst3),
+(SameValue $cst, $cst3),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(SameValue $rem, $rem3),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type3)]>;
