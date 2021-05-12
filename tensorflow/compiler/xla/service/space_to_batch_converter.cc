@@ -111,6 +111,9 @@ class ConvolutionVisitor {
   // Propagate space-to-batch on a broadcast instruction.
   void PropagateOnBroadcast(HloInstruction* consumer, HloInstruction* producer);
 
+  // Returns false if the opcode should definitely not be propagated upon.
+  bool IsOpcodeNonPropagatable(HloInstruction* consumer);
+
   // This function checks if the HLO instrution supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
                                  HloInstruction* producer);
@@ -228,6 +231,11 @@ class ConvolutionVisitor {
   HloInstruction* DoesConvolutionFeedReduceWindowOrSelectAndScatter(
       HloInstruction* instr, int64 depth);
 
+  // Returns true if instr feeds an unpropagatable op before it feeds 'depth'
+  // number of convolutions.
+  bool DoesConvolutionFeedUnpropagatableOp(
+      HloInstruction* instr, int64 depth = kUnpropagatableOpSearchDepth);
+
   // Checks that the space-to-batched shape has not rendered the new spatial
   // dimension to be smaller than the window's size.
   bool IsSpaceToBatchedSpaceSizeSuitable(HloInstruction* instr);
@@ -269,6 +277,13 @@ class ConvolutionVisitor {
 
   // Depth for searching reduce window
   static constexpr int64 kReduceWindowSearchDepth = 10;
+
+  // Depth for searching unpropagatable op.
+  static constexpr int64 kUnpropagatableOpSearchDepth = 3;
+
+  // Cache for <instruction, depth> ==> unpropagatablilty decision.
+  absl::flat_hash_map<std::pair<HloInstruction*, int64>, bool>
+      unpropagatability_cache_;
 
   // Controller for various knobs.
   SpaceToBatchController ctrl_;
@@ -724,6 +739,13 @@ ConvolutionVisitor::DecreaseSpatialSizeOnSpaceToBatchedShape(
 
 StatusOr<bool> ConvolutionVisitor::Run() {
   for (auto conv : conv_visitor_list_) {
+    // If we expect to see an unpropagatable op, space-to-batch may not be
+    // beneficial.
+    if (DoesConvolutionFeedUnpropagatableOp(conv)) {
+      VLOG(1) << "Giving up on conv " << conv->ToString()
+              << " because it feeds an unpropagatable op";
+      convs_to_visit_.erase(conv);
+    }
     if (convs_to_visit_.count(conv) > 0) {
       TF_CHECK_OK(PerformSpaceToBatchOnConvolution(conv));
     }
@@ -1318,8 +1340,23 @@ bool ConvolutionVisitor::IsBroadcastPropagatable(HloInstruction* broadcast,
   return !absl::c_linear_search(broadcast_dims, space_dim);
 }
 
+bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
+  // We can add more non-propagatable opcodes as needed.
+  switch (consumer->opcode()) {
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kReshape:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
                                                    HloInstruction* producer) {
+  if (IsOpcodeNonPropagatable(consumer)) {
+    return false;
+  }
+
   if (IsTrivialElementwise(consumer)) {
     for (int64 i = 0; i < consumer->operand_count(); ++i) {
       if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
@@ -2929,6 +2966,40 @@ ConvolutionVisitor::DoesConvolutionFeedReduceWindowOrSelectAndScatter(
     }
   }
   return nullptr;
+}
+
+bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
+    HloInstruction* instr, int64 depth) {
+  auto key = std::make_pair(instr, depth);
+  if (unpropagatability_cache_.contains(key)) {
+    return unpropagatability_cache_[key];
+  }
+
+  if (depth == 0 || instr->user_count() == 0) {
+    unpropagatability_cache_[key] = false;
+    return false;
+  }
+
+  for (auto user : instr->users()) {
+    if (IsOpcodeNonPropagatable(user)) {
+      unpropagatability_cache_[key] = true;
+      return true;
+    }
+
+    int64 depth_to_use = depth;
+    // When we see a convolution, we reduce the depth to look further for.
+    if (user->opcode() == HloOpcode::kConvolution) {
+      depth_to_use--;
+    }
+
+    if (DoesConvolutionFeedUnpropagatableOp(user, depth_to_use)) {
+      unpropagatability_cache_[key] = true;
+      return true;
+    }
+  }
+
+  unpropagatability_cache_[key] = false;
+  return false;
 }
 
 bool ConvolutionVisitor::IsSpaceToBatchedSpaceSizeSuitable(
