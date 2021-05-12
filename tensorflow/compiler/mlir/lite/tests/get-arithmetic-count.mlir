@@ -74,3 +74,27 @@ func @testDivBroadcast(%arg0: tensor<10x10x10xf32>, %arg1: tensor<10xf32>) -> te
   %0 = "tfl.div"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<10x10x10xf32>, tensor<10xf32>) -> tensor<10x10x10xf32>
   return %0 : tensor<10x10x10xf32>
 }
+
+func @testLogistic(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  // CHECK: _arithmetic_count = 6400 : i64
+  %0 = "tfl.logistic"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+}
+
+func @testLogSoftmax(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  // CHECK: _arithmetic_count = 6400 : i64
+  %0 = "tfl.log_softmax"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+}
+
+func @testSoftmax(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  // CHECK: _arithmetic_count = 6400 : i64
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+}
+
+func @testTanh(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  // CHECK: _arithmetic_count = 6400 : i64
+  %0 = "tfl.tanh"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+}
