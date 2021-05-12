@@ -89,8 +89,8 @@ class ConfigTest(test.TestCase):
         repr(feature_config),
         'FeatureConfig(table=TableConfig(vocabulary_size=2, dim=4, '
         'initializer=None, optimizer=None, combiner=\'sum\', name=\'table\'), '
-        'max_sequence_length=0, name=\'feature\')'
-    )
+        'max_sequence_length=0, validate_weights_and_indices=True, '
+        'name=\'feature\')')
 
 
 class TPUEmbeddingConfigurationTest(test.TestCase):

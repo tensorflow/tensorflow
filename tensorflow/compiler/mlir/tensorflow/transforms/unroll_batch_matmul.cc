@@ -50,11 +50,12 @@ struct UnrollBatchMatMulPass
 };
 
 void UnrollBatchMatMulPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(&getContext());
+                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
+                  ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

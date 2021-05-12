@@ -7,7 +7,7 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(

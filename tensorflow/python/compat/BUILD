@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -44,6 +44,10 @@ tf_py_test(
     deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variable_scope",
     ],
 )
 

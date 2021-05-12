@@ -48,6 +48,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                         NestedComputer compute_nested);
 
  protected:
+  llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
+      const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) override;
+
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;

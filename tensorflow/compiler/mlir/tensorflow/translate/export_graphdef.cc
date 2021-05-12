@@ -80,6 +80,7 @@ namespace {
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 constexpr char kEntryFuncAttr[] = "tf.entry_function";
+constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
@@ -176,13 +177,32 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
-  TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes",
-                                       arg.getType().cast<mlir::ShapedType>(),
-                                       node_def->mutable_attr()));
+  mlir::TensorType arg_type = arg.getType().cast<mlir::TensorType>();
+  if (auto resource_type =
+          arg_type.getElementType().dyn_cast<mlir::TF::ResourceType>()) {
+    llvm::ArrayRef<mlir::TensorType> subtypes = resource_type.getSubtypes();
+    if (!subtypes.empty()) {
+      AttrValue handle_dtypes_attr;
+      AttrValue handle_shapes_attr;
+      for (mlir::TensorType subtype : subtypes) {
+        DataType dtype;
+        TF_RETURN_IF_ERROR(ConvertToDataType(subtype.getElementType(), &dtype));
+        handle_dtypes_attr.mutable_list()->add_type(dtype);
+
+        SetTensorShapeProto(subtype,
+                            handle_shapes_attr.mutable_list()->add_shape());
+      }
+
+      (*node_def->mutable_attr())["_handle_dtypes"] = handle_dtypes_attr;
+      (*node_def->mutable_attr())["_handle_shapes"] = handle_shapes_attr;
+    }
+  }
+
+  TF_RETURN_IF_ERROR(
+      SetShapeAttribute("_output_shapes", arg_type, node_def->mutable_attr()));
 
   DataType dtype;
-  TF_RETURN_IF_ERROR(ConvertToDataType(
-      arg.getType().cast<mlir::TensorType>().getElementType(), &dtype));
+  TF_RETURN_IF_ERROR(ConvertToDataType(arg_type.getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -197,7 +217,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
       func.getArgAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr,
+                                                            kAliasingAttr};
   TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
                                        /*remove_ref_type=*/false,
                                        node_def->mutable_attr()));

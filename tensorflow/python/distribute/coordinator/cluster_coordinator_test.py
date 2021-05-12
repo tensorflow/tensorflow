@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -914,7 +915,7 @@ class StrategyIntegrationTest(test.TestCase):
       # Invoking `run` without `coordinator.schedule` again should error.
       self.strategy.run(replica_fn)
 
-    all_results = [(2, 0), (2, 0)]
+    all_results = [(2, 0)] * self.strategy.num_replicas_in_sync
     expected_result = []
     for i in range(self.strategy.num_replicas_in_sync):
       expected_result.append(all_results[i])
@@ -978,17 +979,13 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(result.fetch(), expected_result)
 
   def testRunAndReduceWithAssignAdd(self):
-    if self.strategy.num_replicas_in_sync > 1:
-      self.skipTest(
-          'Skipping test since assign_add performed multiple times per replica.'
-          'It should assign_add variable only once.'
-      )
-
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
-      v1 = variables.Variable(initial_value=0.)
+      v1 = variables.Variable(
+          initial_value=0.,
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
       expected_result = (4. * self.strategy.num_replicas_in_sync,
                          2. * self.strategy.num_replicas_in_sync)
@@ -1021,6 +1018,32 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(result.fetch(), expected_result)
     self.assertEqual(v1, 6.)
 
+  def testVariableAggregation(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(
+          initial_value=1.,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+      @def_function.function
+      def worker_fn():
+
+        def replica_fn():
+          value = math_ops.cast(
+              distribution_strategy_context.get_replica_context()
+              .replica_id_in_sync_group + 1, v.dtype)
+          v.assign(value)
+
+        self.strategy.run(replica_fn)
+
+      self.coordinator.schedule(worker_fn)
+      self.coordinator.join()
+      expected_result = 0.
+      for i in range(self.strategy.num_replicas_in_sync):
+        expected_result = expected_result + i + 1
+      self.assertEqual(v, expected_result)
+
   def testDistributeDataset(self):
 
     def per_worker_dataset_fn():
@@ -1046,8 +1069,13 @@ class StrategyIntegrationTest(test.TestCase):
   def testDistributeDatasetsFromFunction(self):
 
     def per_worker_dataset_fn():
+
+      def input_worker_device_fn(input_context):
+        self.assertIsNotNone(input_context)
+        return dataset_ops.DatasetV2.range(1, 11).batch(1)
+
       return self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 11).batch(1))
+          input_worker_device_fn)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1067,7 +1095,7 @@ class StrategyIntegrationTest(test.TestCase):
   def testAsyncScheduleWithDistributedDataset(self):
 
     def input_fn():
-      dataset = dataset_ops.DatasetV2.from_tensor_slices([2.] * 24).batch(
+      dataset = dataset_ops.DatasetV2.from_tensor_slices([2.]).repeat().batch(
           self.strategy.num_replicas_in_sync)
       return self.strategy.experimental_distribute_dataset(dataset)
 
@@ -1122,7 +1150,8 @@ class StrategyIntegrationTest(test.TestCase):
         self._map_fn_tracing_count += 1
         return x + 10
 
-      dataset = dataset_ops.DatasetV2.range(0, 10).batch(2).map(map_fn)
+      dataset = dataset_ops.DatasetV2.range(0, 10).batch(
+          self.strategy.num_replicas_in_sync).map(map_fn)
       return self.strategy.experimental_distribute_dataset(dataset)
 
     @def_function.function
@@ -1134,7 +1163,7 @@ class StrategyIntegrationTest(test.TestCase):
         worker_fn, args=(iter(distributed_dataset),))
 
     expected_result = array_ops.split(
-        math_ops.range(10., 12.),
+        math_ops.range(10., 10. + self.strategy.num_replicas_in_sync),
         num_or_size_splits=self.strategy.num_replicas_in_sync,
         axis=0)
 

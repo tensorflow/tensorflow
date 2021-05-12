@@ -26,6 +26,7 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util
@@ -189,6 +190,17 @@ class V2StrategyTest(test.TestCase, parameterized.TestCase):
       combinations.combine(strategy=strategy_combinations.tpu_strategies))
   def testTPU(self, strategy):
     self.assertIsInstance(strategy, tpu_strategy.TPUStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.parameter_server_strategy_3worker_2ps_cpu,
+          strategy_combinations.parameter_server_strategy_1worker_2ps_cpu,
+          strategy_combinations.parameter_server_strategy_3worker_2ps_1gpu,
+          strategy_combinations.parameter_server_strategy_1worker_2ps_1gpu,
+      ]))
+  def testParameterServer(self, strategy):
+    self.assertIsInstance(
+        strategy, parameter_server_strategy_v2.ParameterServerStrategyV2)
 
 
 if __name__ == "__main__":

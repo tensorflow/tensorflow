@@ -33,14 +33,24 @@ namespace builtin {
 namespace elementwise {
 namespace {
 
-constexpr char kAbsName[] = "Abs";
-constexpr char kSinName[] = "Sin";
-constexpr char kCosName[] = "Cos";
-constexpr char kLogName[] = "Log";
-constexpr char kSqrtName[] = "Sqrt";
-constexpr char kRsqrtName[] = "Rsqrt";
-constexpr char kSquareName[] = "Square";
-constexpr char kNotName[] = "Not";
+// TODO(b/170332730): Avoid this by removing the use of const char* as a
+// template argument (a lambda can be used instead).
+#if defined(_MSC_VER)
+// Required due to MSVC2017 compiler bug related to templates with constexpr
+// arguments.
+#define TFLITE_CONST const
+#else
+#define TFLITE_CONST constexpr
+#endif  // defined(_MSC_VER)
+
+TFLITE_CONST char kAbsName[] = "Abs";
+TFLITE_CONST char kSinName[] = "Sin";
+TFLITE_CONST char kCosName[] = "Cos";
+TFLITE_CONST char kLogName[] = "Log";
+TFLITE_CONST char kSqrtName[] = "Sqrt";
+TFLITE_CONST char kRsqrtName[] = "Rsqrt";
+TFLITE_CONST char kSquareName[] = "Square";
+TFLITE_CONST char kNotName[] = "Not";
 
 struct OpData {
   int32_t multiplier;
@@ -92,7 +102,11 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (!is_supported_type(input->type)) {
     TF_LITE_UNSUPPORTED_TYPE(context, input->type, op_name);
   }
-  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+  // For int16 type input, we support both quantized and non-quantized
+  // evaluation.
+  if (input->type == kTfLiteInt8 ||
+      (input->type == kTfLiteInt16 &&
+       input->quantization.type != kTfLiteNoQuantization)) {
     TfLiteTensor* output = GetOutput(context, node, 0);
     auto* op_data = static_cast<OpData*>(node->user_data);
     TF_LITE_ENSURE_EQ(context, input->quantization.type,
@@ -154,6 +168,24 @@ inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+// Non-quantized evaluation of Abs op when input is int16.
+inline TfLiteStatus AbsInt16EvalImpl(TfLiteContext* context, TfLiteNode* node,
+                                     TfLiteType expected_type) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
+  const int64_t num_elements = NumElements(input);
+  const int16_t* in_data = GetTensorData<int16_t>(input);
+  int16_t* out_data = GetTensorData<int16_t>(output);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    out_data[i] = static_cast<int16_t>(
+        std::abs<int32_t>(static_cast<int32_t>(in_data[i])));
+  }
+  return kTfLiteOk;
+}
+
 template <typename T>
 inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              std::function<T(T)> func,
@@ -204,14 +236,17 @@ TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteType type = GetInput(context, node, 0)->type;
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteType type = input->type;
   switch (type) {
     case kTfLiteFloat32:
       return EvalImpl<float>(context, node, std::abs<float>, type);
     case kTfLiteInt8:
       return AbsEvalQuantized<int8_t>(context, node, type);
     case kTfLiteInt16:
-      return AbsEvalQuantized<int16_t>(context, node, type);
+      return input->quantization.type == kTfLiteNoQuantization
+                 ? AbsInt16EvalImpl(context, node, type)
+                 : AbsEvalQuantized<int16_t>(context, node, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));

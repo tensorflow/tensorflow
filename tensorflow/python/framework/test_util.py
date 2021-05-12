@@ -128,7 +128,20 @@ def _get_object_count_by_type(exclude=()):
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
+  """Returns the name of a GPU device if available or a empty string.
+
+  This method should only be used in tests written with `tf.test.TestCase`.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_gpu_support():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device(tf.test.gpu_device_name()):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  """
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU":
       return compat.as_str(x.name)
@@ -325,7 +338,8 @@ def GpuSupportsHalfMatMulAndConv():
 
 
 def IsMklEnabled():
-  return _pywrap_util_port.IsMklEnabled()
+  return (_pywrap_util_port.IsMklEnabled() or
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "False").lower() in ["true", "1"])
 
 
 def InstallStackTraceHandler():
@@ -932,6 +946,13 @@ def assert_no_garbage_created(f):
     result = f(self, **kwargs)
     gc.collect()
     new_garbage = len(gc.garbage)
+    if new_garbage > previous_garbage:
+
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        # Known false positive for ast.fix_missing_locations.
+        if getattr(obj, "__module__", "") == "ast":
+          new_garbage -= 3
+
     if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
@@ -1810,7 +1831,7 @@ def _disable_test(execute_func):
         if execute_func:
           return func(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)

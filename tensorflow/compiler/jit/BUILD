@@ -151,6 +151,7 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        ":xla_device_no_jit_rewrite_registration",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",

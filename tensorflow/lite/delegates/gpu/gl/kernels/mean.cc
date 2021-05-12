@@ -170,6 +170,71 @@ void GenerateTrivialMean(const NodeShader::GenerationContext& ctx,
   };
 }
 
+// Tiled implementation.
+
+constexpr uint3 kTileSize = {8, 8, 1};
+
+inline bool UseTiledImpl(const NodeShader::GenerationContext& ctx) {
+  const int h = ctx.input_shapes[0][1];
+  const int w = ctx.input_shapes[0][2];
+  const int c = ctx.input_shapes[0][3];
+  return h % kTileSize.y == 0 && w % kTileSize.x == 0 && c % 4 == 0 &&
+         (h / kTileSize.y) * (w / kTileSize.x) * c * sizeof(float) <=
+             32768;  // required min value for GL_MAX_COMPUTE_SHARED_MEMORY_SIZE
+}
+
+void GenerateTiledMean(const NodeShader::GenerationContext& ctx,
+                       GeneratedCode* generated_code) {
+  const int h = ctx.input_shapes[0][1];
+  const int w = ctx.input_shapes[0][2];
+  const int s = DivideRoundUp(ctx.input_shapes[0][3], 4);
+
+  std::vector<Variable> parameters = {
+      {"input_data_0_h", h},
+      {"input_data_0_w", w},
+      {"tile_size_h", kTileSize.y},
+      {"tile_size_w", kTileSize.x},
+  };
+
+  std::vector<Variable> shared_variables = {
+      {"tile_sum",
+       std::vector<float4>((w / kTileSize.x) * (h / kTileSize.y) * s)}};
+
+  std::string source = R"(
+  ivec2 tile_size = ivec2($tile_size_w$, $tile_size_h$);
+  ivec2 num_tiles = ivec2($input_data_0_w$, $input_data_0_h$) / tile_size;
+
+  highp vec4 partial_sum = vec4(0.0);
+  for (int x = gid.x * tile_size.x; x < (gid.x + 1) * tile_size.x; ++x) {
+    for (int y = gid.y * tile_size.y; y < (gid.y + 1) * tile_size.y; ++y) {
+      partial_sum += $input_data_0[x, y, gid.z]$;
+    }
+  }
+  $tile_sum$[num_tiles.x * num_tiles.y * gid.z + num_tiles.x * gid.y + gid.x] = partial_sum;
+
+  memoryBarrierShared(); barrier();
+
+  if (gid.x == 0 && gid.y == 0) {
+    highp vec4 sum = vec4(0.0);
+    for (int i = 0; i < num_tiles.x * num_tiles.y; ++i) {
+      sum += $tile_sum$[num_tiles.x * num_tiles.y * gid.z + i];
+    }
+    highp vec4 mean = sum / float($input_data_0_w$ * $input_data_0_h$);
+    $output_data_0[0, 0, gid.z] = mean$;
+  }
+)";
+  *generated_code = {
+      /*parameters=*/std::move(parameters),
+      /*objects=*/{},
+      /*shared_variables=*/std::move(shared_variables),
+      /*workload=*/uint3(w, h, s),
+      /*workgroup=*/kTileSize,
+      /*source_code=*/std::move(source),
+      /*input=*/IOStructure::ONLY_DEFINITIONS,
+      /*output=*/IOStructure::ONLY_DEFINITIONS,
+  };
+}
+
 class Mean : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
@@ -190,6 +255,8 @@ class Mean : public NodeShader {
 
     if (UseSubgroupBasedImpl(*ctx.gpu_info)) {
       GenerateSubgroupBasedMean(ctx, generated_code);
+    } else if (UseTiledImpl(ctx)) {
+      GenerateTiledMean(ctx, generated_code);
     } else {
       GenerateTrivialMean(ctx, generated_code);
     }

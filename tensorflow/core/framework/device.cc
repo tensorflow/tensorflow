@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device.h"
 
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/op_segment.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -66,6 +67,9 @@ bool Device::IsRemoteCallAllowed() const {
     return true;
   }
   if (type == "GPU") {
+    return true;
+  }
+  if (DeviceFactory::IsPluggableDevice(type)) {
     return true;
   }
   return false;

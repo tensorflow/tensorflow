@@ -702,8 +702,9 @@ TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
   if (per_channel) {
     return SymmetricQuantizeTensorPerChannel(model, tensor, per_axis_index,
                                              error_reporter);
-  } else if (HasMinMax(tensor)) {
-    // Quantize using recorded min/max values.
+  } else if (HasMinMax(tensor) && (tensor->quantization->min.size() == 1) &&
+             (tensor->quantization->max.size() == 1)) {
+    // Quantize using recorded min/max values if per-tensor.
     return SymmetricQuantizeTensorFromMinMax(model, tensor, error_reporter);
   } else {
     // Quantize using min/max from buffer.

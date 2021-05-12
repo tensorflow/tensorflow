@@ -122,7 +122,7 @@ class Loader(object):
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir,
-               ckpt_options, filters):
+               ckpt_options, save_options, filters):
     meta_graph = saved_model_proto.meta_graphs[0]
     self._asset_file_def = meta_graph.asset_file_def
     self._operation_attributes = {
@@ -133,6 +133,7 @@ class Loader(object):
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
     self._checkpoint_options = ckpt_options
+    self._save_options = save_options
 
     # Stores user-defined node_filters argument.
     self._node_filters = filters
@@ -160,13 +161,14 @@ class Loader(object):
       self._concrete_functions[name] = _WrapperFunction(concrete_function)
 
     self._load_all()
-    self._restore_checkpoint()
 
-    for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
-        init_op = node._initialize()  # pylint: disable=protected-access
-        if not context.executing_eagerly():
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    if not save_options.experimental_skip_checkpoint:
+      self._restore_checkpoint()
+      for node in self._nodes:
+        if isinstance(node, tracking.CapturableResource):
+          init_op = node._initialize()  # pylint: disable=protected-access
+          if not context.executing_eagerly():
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""
@@ -459,21 +461,6 @@ class Loader(object):
                    for node_id in range(len(self._proto.nodes))]
     self._node_setters = node_setters
 
-  @property
-  def _expect_partial_checkpoint(self):
-    """Whether to expect that some objects aren't loaded.
-
-    This should be set to True in subclasses of the Loader class which generate
-    a trackable object with an object graph that is different from the graph
-    in the SavedModel. Setting this property to True suppresses the warnings
-    that are printed out when there are unused parts of the checkpoint or
-    object.
-
-    Returns:
-      boolean
-    """
-    return False
-
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
@@ -482,12 +469,13 @@ class Loader(object):
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
-    if self._expect_partial_checkpoint:
+    if self._save_options.allow_partial_checkpoint:
       load_status = saver.restore(variables_path,
                                   self._checkpoint_options).expect_partial()
+      load_status.assert_nontrivial_match()
     else:
       load_status = saver.restore(variables_path, self._checkpoint_options)
-    load_status.assert_existing_objects_matched()
+      load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
     if not context.executing_eagerly():
@@ -903,7 +891,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     with ops.init_scope():
       try:
         loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
-                            ckpt_options, filters)
+                            ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
             str(err) + "\n If trying to load on a different device from the "

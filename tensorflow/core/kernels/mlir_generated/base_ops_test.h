@@ -60,6 +60,7 @@ struct OpsTestConfig {
   // Only used for gpu_unary_ops_test.
   bool expect_buffer_reuse = true;
   bool expect_strictly_equal = false;
+  bool supress_tolerance = false;
   // Negative atol/rtol will make ExpectClose use the default.
   double atol = -1;
   double rtol = -1;
@@ -68,6 +69,11 @@ struct OpsTestConfig {
   OpsTestConfig ExpectStrictlyEqual() {
     OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
+    return config;
+  }
+  OpsTestConfig SuppressTolerance() {
+    OpsTestConfig config = *this;
+    config.supress_tolerance = true;
     return config;
   }
   OpsTestConfig NoBufferReuse() {

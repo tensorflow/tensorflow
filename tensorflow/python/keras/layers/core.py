@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Core Keras layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Core Keras layers."""
 
 import copy
 import functools
@@ -34,6 +30,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -43,16 +40,21 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -193,6 +195,9 @@ class Dropout(Layer):
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
+    if isinstance(rate, (int, float)) and not 0 <= rate <= 1:
+      raise ValueError(f'Invalid value {rate} received for '
+                       f'`rate`, expected a value between 0 and 1.')
     self.rate = rate
     if isinstance(rate, (int, float)) and not rate:
       keras_temporary_dropout_rate.get_cell().set(True)
@@ -737,6 +742,8 @@ class RepeatVector(Layer):
   def __init__(self, n, **kwargs):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
+    if not isinstance(n, int):
+      raise TypeError(f'Expected an integer value for `n`, got {type(n)}.')
     self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
@@ -964,7 +971,7 @@ class Lambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):
@@ -1087,7 +1094,7 @@ class Dense(Layer):
   where `activation` is the element-wise activation function
   passed as the `activation` argument, `kernel` is a weights matrix
   created by the layer, and `bias` is a bias vector created by the layer
-  (only applicable if `use_bias` is `True`). These are all attributes of 
+  (only applicable if `use_bias` is `True`). These are all attributes of
   `Dense`.
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
@@ -1163,6 +1170,9 @@ class Dense(Layer):
         activity_regularizer=activity_regularizer, **kwargs)
 
     self.units = int(units) if not isinstance(units, int) else units
+    if self.units < 0:
+      raise ValueError(f'Received an invalid value for `units`, expected '
+                       f'a positive integer, got {units}.')
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)
@@ -1209,12 +1219,51 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    return core_ops.dense(
-        inputs,
-        self.kernel,
-        self.bias,
-        self.activation,
-        dtype=self._compute_dtype_object)
+    if inputs.dtype.base_dtype != self._compute_dtype_object.base_dtype:
+      inputs = math_ops.cast(inputs, dtype=self._compute_dtype_object)
+
+    rank = inputs.shape.rank
+    if rank == 2 or rank is None:
+      # We use embedding_lookup_sparse as a more efficient matmul operation for
+      # large sparse input tensors. The op will result in a sparse gradient, as
+      # opposed to sparse_ops.sparse_tensor_dense_matmul which results in dense
+      # gradients. This can lead to sigfinicant speedups, see b/171762937.
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        # We need to fill empty rows, as the op assumes at least one id per row.
+        inputs, _ = sparse_ops.sparse_fill_empty_rows(inputs, 0)
+        # We need to do some munging of our input to use the embedding lookup as
+        # a matrix multiply. We split our input matrix into separate ids and
+        # weights tensors. The values of the ids tensor should be the column
+        # indices of our input matrix and the values of the weights tensor
+        # can continue to the actual matrix weights.
+        # The column arrangement of ids and weights
+        # will be summed over and does not matter. See the documentation for
+        # sparse_ops.sparse_tensor_dense_matmul a more detailed explanation
+        # of the inputs to both ops.
+        ids = sparse_tensor.SparseTensor(
+            indices=inputs.indices,
+            values=inputs.indices[:, 1],
+            dense_shape=inputs.dense_shape)
+        weights = inputs
+        outputs = embedding_ops.embedding_lookup_sparse_v2(
+            self.kernel, ids, weights, combiner='sum')
+      else:
+        outputs = gen_math_ops.MatMul(a=inputs, b=self.kernel)
+    # Broadcast kernel to inputs.
+    else:
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
+      # Reshape the output back to the original ndim of the input.
+      if not context.executing_eagerly():
+        shape = inputs.shape.as_list()
+        output_shape = shape[:-1] + [self.kernel.shape[-1]]
+        outputs.set_shape(output_shape)
+
+    if self.use_bias:
+      outputs = nn_ops.bias_add(outputs, self.bias)
+
+    if self.activation is not None:
+      outputs = self.activation(outputs)
+    return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1222,32 +1271,23 @@ class Dense(Layer):
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
-          % input_shape)
+          % (input_shape,))
     return input_shape[:-1].concatenate(self.units)
 
   def get_config(self):
     config = super(Dense, self).get_config()
     config.update({
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     })
     return config
 
@@ -1410,7 +1450,7 @@ class TFOpLambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def get_config(self):
     if not self.symbol:
@@ -1544,9 +1584,12 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
     else:
       return self.NOT_SUPPORTED
 
-for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
-                   array_ops.boolean_mask,
-                   array_ops.boolean_mask_v2]:
+for slicing_op in [
+    array_ops._slice_helper,  # pylint: disable=protected-access
+    array_ops.boolean_mask,
+    array_ops.boolean_mask_v2,
+    ragged_getitem.ragged_tensor_getitem
+]:
   TFSlicingOpDispatcher(slicing_op).register(slicing_op)
 
 

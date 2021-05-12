@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset.h"
 
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

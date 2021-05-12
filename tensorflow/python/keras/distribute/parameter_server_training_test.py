@@ -15,15 +15,12 @@
 # ==============================================================================
 """Tests for ClusterCoordinator and Keras models."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import random
 import tempfile
 
 from absl.testing import parameterized
-
+import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -181,7 +178,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     distributed_dataset = self.coordinator.create_per_worker_dataset(dataset_fn)
     distributed_iterator = iter(distributed_dataset)
     for _ in range(4):
-      accuracy.reset_states()
+      accuracy.reset_state()
       for _ in range(7):
         self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
       self.coordinator.join()
@@ -228,6 +225,58 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     self.assertIn(prediction1, ("yes", "no"))
 
 
+class KPLCreatedInDatasetsFromFunctionTest(test.TestCase,
+                                           parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(KPLCreatedInDatasetsFromFunctionTest, cls).setUpClass()
+    cls.coordinator = coordinator_lib.ClusterCoordinator(
+        parameter_server_strategy_v2.ParameterServerStrategyV2(
+            multi_worker_testing_utils.make_parameter_server_cluster(3, 2)))
+
+  def testKPLCreatedInDatasetsFromFunction(self):
+
+    filepath = os.path.join(self.get_temp_dir(), "vocab")
+    with open(filepath, "w") as f:
+      f.write("\n".join(["earth", "wind", "and", "fire"]))
+
+    def per_worker_dataset_fn():
+
+      def dataset_fn(input_context):
+        del input_context
+        lookup_layer = string_lookup.StringLookup(
+            num_oov_indices=1, vocabulary=filepath)
+        x = np.array([["earth", "wind", "and", "fire"],
+                      ["fire", "and", "earth", "michigan"]])
+        y = np.array([0, 1])
+        map_fn = lambda x, y: (lookup_layer(x), y)
+        return dataset_ops.DatasetV2.from_tensor_slices(
+            (x, y)).shuffle(10).repeat().batch(2).map(map_fn)
+
+      return self.coordinator.strategy.distribute_datasets_from_function(
+          dataset_fn)
+
+    per_worker_distribute_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    per_worker_iter = iter(per_worker_distribute_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+
+      def replica_fn(data):
+        return data
+
+      return self.coordinator.strategy.run(replica_fn, args=(next(iterator),))
+
+    result = []
+    for _ in range(10):
+      result.append(
+          self.coordinator.schedule(worker_fn, args=(per_worker_iter,)))
+
+    self.coordinator.join()
+
+
 class ShardedVariableTest(test.TestCase):
 
   @classmethod
@@ -236,6 +285,22 @@ class ShardedVariableTest(test.TestCase):
     cls.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
         variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+
+  def assert_list_all_equal(self, list1, list2):
+    """Used in lieu of `assertAllEqual`.
+
+    This is used to replace standard `assertAllEqual` for the cases where
+    `list1` and `list2` contain `AggregatingVariable`. Lists with
+    `AggregatingVariable` are not convertible to numpy array via `np.array`
+    calls as numpy would raise `ValueError: setting an array element with a
+    sequence.`
+
+    Args:
+      list1: The first list to compare equality.
+      list2: The second list to compare equality.
+    """
+    for lhs, rhs in zip(list1, list2):
+      self.assertEqual(lhs, rhs)
 
   def test_keras_layer_setattr(self):
 
@@ -255,10 +320,11 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(layer.non_trainable_weights, 2)
     self.assertEqual(layer.non_trainable_weights[0], [2])
     self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
@@ -287,10 +353,11 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(layer.non_trainable_weights, 2)
     self.assertEqual(layer.non_trainable_weights[0], [2.])
     self.assertEqual(layer.non_trainable_weights[1], [3.])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))

@@ -23,6 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -33,9 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -146,6 +146,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return Status(
         error::FAILED_PRECONDITION,
         strings::StrCat(DebugString(), " does not yet support serialization."));
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
   }
 
  protected:
@@ -288,13 +293,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
-      if (!task_thread_manager_ && !cancelled_) {
-        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        task_thread_manager_ =
-            ctx->StartThread("task-thread-manager",
-                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
-      }
-
+      EnsureThreadsStarted(ctx);
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) &&
@@ -415,6 +414,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
+    void EnsureThreadsStarted(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!task_thread_manager_ && !cancelled_) {
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        task_thread_manager_ =
+            ctx->StartThread("task-thread-manager",
+                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
+      }
+    }
+
     // Periodically refresh the task list.
     // Maintain one thread fetching elements for each task.
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
@@ -506,11 +515,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatResponse resp;
       Status s = dispatcher_->ClientHeartbeat(req, resp);
       if (!s.ok()) {
-        LOG(WARNING) << "Failed to heartbeat to dispatcher from job client id "
-                     << job_client_id_
-                     << ". Dispatcher address: " << dataset()->address_
-                     << ". Error: " << s;
-        return;
+        if (errors::IsAborted(s) || errors::IsUnavailable(s) ||
+            errors::IsCancelled(s)) {
+          LOG(WARNING)
+              << "Failed to heartbeat to dispatcher from job client id "
+              << job_client_id_
+              << ". Dispatcher address: " << dataset()->address_
+              << ". Error: " << s;
+          return;
+        }
+        mutex_lock l(mu_);
+        status_ = s;
+        get_next_cv_.notify_all();
       }
       mutex_lock l(mu_);
       UpdateJobFinished(resp.job_finished());

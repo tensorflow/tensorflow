@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "TypesProtos";
 option java_multiple_files = true;
@@ -79,6 +80,7 @@ enum DataType {
 // listed here are a subset of the types in the variant type registry,
 // corresponding to commonly used variants which must occasionally be
 // special-cased.
+// TODO(b/174224459): Merge with FullTypeDef.
 enum SpecializedType {
   // Invalid/unknown specialized type.
   ST_INVALID = 0;

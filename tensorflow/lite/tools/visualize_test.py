@@ -50,12 +50,8 @@ class VisualizeTest(test_util.TensorFlowTestCase):
     model_filename = os.path.join(tmp_dir, 'model.tflite')
     with open(model_filename, 'wb') as model_file:
       model_file.write(model)
-    html_filename = os.path.join(tmp_dir, 'visualization.html')
 
-    visualize.CreateHtmlFile(model_filename, html_filename)
-
-    with open(html_filename, 'r') as html_file:
-      html_text = html_file.read()
+    html_text = visualize.create_html(model_filename)
 
     # It's hard to test debug output without doing a full HTML parse,
     # but at least sanity check that expected identifiers are present.

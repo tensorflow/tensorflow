@@ -69,6 +69,11 @@ createLegalizeTrigonometricToApproximationPass();
 
 std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
 
+/// Rank specialization passes.
+///   - Find compatible operations and group them together in one rank
+///     specialization region.
+std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
+
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();

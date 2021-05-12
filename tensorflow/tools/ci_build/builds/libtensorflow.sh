@@ -52,15 +52,14 @@ function build_libtensorflow_tarball() {
 
   TARBALL_SUFFIX="${1}"
   if [ "$(uname)" == "Darwin" ]; then
-    BAZEL_OPTS="${BAZEL_OPTS} --config=release_macos_linux"
+    BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_macos"
   elif [ "${TF_NEED_CUDA}" == "1" ]; then
     BAZEL_OPTS="${BAZEL_OPTS} --config=release_gpu_linux"
   else
     BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_linux"
   fi
-  bazel clean --expunge
-  export PYTHON_BIN_PATH=$(which python3.8)
-  yes "" | "$PYTHON_BIN_PATH" configure.py
+  export PYTHON_BIN_PATH="$(which python3.8)"
+  BAZEL_OPTS="${BAZEL_OPTS} --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH}"
 
   # Remove this test call when
   # https://github.com/bazelbuild/bazel/issues/2352

@@ -1,3 +1,7 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 
 package(
@@ -202,6 +206,7 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
@@ -300,6 +305,7 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathTransforms",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Pass",
@@ -307,6 +313,8 @@ cc_library(
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SparseTensor",
+        "@llvm-project//mlir:SparseTensorTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
@@ -331,6 +339,7 @@ cc_library(
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",

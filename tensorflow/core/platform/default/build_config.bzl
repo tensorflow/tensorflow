@@ -625,7 +625,10 @@ def tf_protos_grappler():
     )
 
 def tf_additional_device_tracer_srcs():
-    return ["device_tracer.cc"]
+    return [
+        "device_tracer_cuda.cc",
+        "device_tracer_rocm.cc",
+    ]
 
 def tf_additional_cupti_utils_cuda_deps():
     return []
@@ -659,9 +662,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [
-            "//tensorflow/core/platform/cloud:gcs_file_system",
-        ],
         clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
@@ -671,7 +671,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:no_hdfs_support"): [],
         clean_dep("//tensorflow:with_tpu_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
@@ -680,9 +679,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
-        ],
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
@@ -798,9 +794,10 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    # TODO(b/...): The TF XLA build fails when adding a dependency on
-    # @llvm/llvm-project/llvm:aarch64_target.
-    return otherwise
+    return select({
+        "//tensorflow:linux_aarch64": then,
+        "//conditions:default": otherwise,
+    })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({

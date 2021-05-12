@@ -17,16 +17,18 @@ package(
     default_visibility = [
         ":friends",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/tfr/...",
+        "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 
@@ -151,7 +153,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
@@ -220,7 +222,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
     ],
 )

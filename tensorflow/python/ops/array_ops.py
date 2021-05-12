@@ -27,6 +27,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -430,7 +431,7 @@ def expand_dims_v2(input, axis, name=None):
     inserted at the index specified by `axis`.
 
   Raises:
-    ValueError: If `axis` is not specified.
+    TypeError: If `axis` is not specified.
     InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)
@@ -2964,7 +2965,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
             tensor_shape.TensorShape(shape))
-      except (TypeError, ValueError):
+      except (TypeError, ValueError, errors.UnimplementedError):
         # Happens when shape is a list with tensor elements
         shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
     if not shape._shape_tuple():

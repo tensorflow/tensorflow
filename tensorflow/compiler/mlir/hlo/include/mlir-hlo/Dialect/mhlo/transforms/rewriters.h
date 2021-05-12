@@ -24,8 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class OwningRewritePatternList;
-
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -59,7 +57,11 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          TypeConverter &typeConverter,
                                           OwningRewritePatternList *patterns);
+
+// Converter to signless intergers to be used with linalg conversion patterns.
+std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
@@ -96,6 +98,10 @@ void PopulateTrigonometricToApproximationPatterns(
 void PopulateMoveUpDynamicBroadcastsForFusionLegality(ConversionTarget *target);
 
 void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
+/// Populate rank specialization clustering patterns.
+void PopulateRankSpecializationClusterPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace mhlo

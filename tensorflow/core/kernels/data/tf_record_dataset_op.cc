@@ -15,9 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -44,7 +44,8 @@ constexpr int64 kCloudTpuBlockSize = 127LL << 20;  // 127MB.
 constexpr int64 kS3BlockSize = kCloudTpuBlockSize;
 
 bool is_cloud_tpu_gcs_fs() {
-#if defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)
+#if (defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)) || \
+    defined(LIBTPU_ON_GCE)
   return true;
 #endif
   return false;

@@ -32,6 +32,16 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // -----
 
+// CHECK-LABEL: func @mixed_types_allgather
+func @mixed_types_allgather(%a0: memref<1x1xf32>, %a1:memref<1x1xi32>) {
+  "lmhlo.all_gather"(%a0, %a1, %a0, %a1) {all_gather_dimension = 0 : i64,
+    constrain_layout = false, replica_groups = dense<0> : tensor<1x1xi64>,
+    use_global_device_ids = false} : (memref<1x1xf32>, memref<1x1xi32>, memref<1x1xf32>, memref<1x1xi32>) -> ()
+  return
+}
+
+// -----
+
 func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
   // expected-error@+1 {{replica id #1 seen more than once}}
   "lmhlo.all_gather"(%input0, %output)
@@ -48,7 +58,7 @@ func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
   "lmhlo.all_to_all"(%input0, %output)
     {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
      replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
-     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+     use_global_device_ids = false} : (memref<2xf32>, memref<8xf32>) -> ()
   return
 }
 
@@ -59,7 +69,7 @@ func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
   "lmhlo.all_to_all"(%input0, %output)
     {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
      replica_groups = dense<0> : tensor<1xi64>,
-     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+     use_global_device_ids = false} : (memref<2xf32>, memref<8xf32>) -> ()
   return
 }
 
@@ -457,12 +467,12 @@ func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf
 // CHECK-LABEL: func @fusion_memref
 func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: memref<10xf32>, %out: memref<10xf32>) -> () {
   "lmhlo.fusion"() ( {
-    %0 = tensor_load %input1 : memref<10xf32>
-    %1 = tensor_load %input2 : memref<10xf32>
+    %0 = memref.tensor_load %input1 : memref<10xf32>
+    %1 = memref.tensor_load %input2 : memref<10xf32>
     %2 = "mhlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-    %3 = tensor_load %input3 : memref<10xf32>
+    %3 = memref.tensor_load %input3 : memref<10xf32>
     %4 = "mhlo.multiply"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-    tensor_store %4, %out : memref<10xf32>
+    memref.tensor_store %4, %out : memref<10xf32>
     "lmhlo.terminator"() : () -> ()
   } ) : () -> ()
   return
@@ -1149,5 +1159,22 @@ func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
       results_to_target_results = [1, 3]
     }
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_complex_abs_call(%input:memref<2xcomplex<f32>>, %result:memref<2xcomplex<f32>>) -> () {
+  // expected-error @+1 {{requires output type to be the same as the element type of the input}}
+  "lmhlo.abs"(%input, %result)
+      : (memref<2xcomplex<f32>>, memref<2xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_float_abs_call(%input:memref<2xf32>, %result:memref<2xf64>) -> () {
+  // expected-error @+1 {{requires all operands to have the same type}}
+  "lmhlo.abs"(%input, %result) : (memref<2xf32>, memref<2xf64>) -> ()
   return
 }

@@ -3,8 +3,12 @@ load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
-    default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen:friends",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+    ],
+    licenses = ["notice"],
 )
 
 gentbl(

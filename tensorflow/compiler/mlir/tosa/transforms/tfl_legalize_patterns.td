@@ -20,9 +20,6 @@ include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "mlir/Dialect/Tosa/IR/TosaOps.td"
 
-// Nullary ops patterns.
-def : Pat<(ConstantOp $value), (Tosa_ConstOp $value)>;
-
 // Unary ops patterns.
 def : Pat<(TFL_AbsOp $arg), (Tosa_AbsOp $arg)>;
 def : Pat<(TFL_CeilOp $arg), (Tosa_CeilOp $arg)>;
@@ -46,10 +43,3 @@ def : Pat<(TFL_PowOp $l, $r), (Tosa_PowOp $l, $r)>;
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TFL_GatherOp $params,
-                        $indices,
-                        $axis,
-                        ConstantAttr<I32Attr, "0">:$batch_dims),
-          (Tosa_GatherOp $indices,
-                           $params,
-                           $axis)>;

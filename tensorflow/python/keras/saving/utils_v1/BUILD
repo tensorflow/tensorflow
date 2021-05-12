@@ -22,10 +22,8 @@ package(
     default_visibility = [
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "utils_v1",
@@ -49,6 +47,5 @@ py_library(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "@six_archive//:six",
     ],
 )

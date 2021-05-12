@@ -236,6 +236,7 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # to bypass this check and allow for deeper directory structures.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
+
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
@@ -267,6 +268,8 @@ tensorflow/lite/micro/kernels/circular_buffer_test.cc \
 tensorflow/lite/micro/kernels/comparisons_test.cc \
 tensorflow/lite/micro/kernels/concatenation_test.cc \
 tensorflow/lite/micro/kernels/conv_test.cc \
+tensorflow/lite/micro/kernels/cumsum_test.cc \
+tensorflow/lite/micro/kernels/depth_to_space_test.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
@@ -276,12 +279,17 @@ tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/expand_dims_test.cc \
 tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
+tensorflow/lite/micro/kernels/floor_div_test.cc \
+tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
+tensorflow/lite/micro/kernels/gather_nd_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
 tensorflow/lite/micro/kernels/leaky_relu_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
+tensorflow/lite/micro/kernels/log_softmax_test.cc \
 tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
 tensorflow/lite/micro/kernels/mul_test.cc \
 tensorflow/lite/micro/kernels/neg_test.cc \
@@ -293,6 +301,7 @@ tensorflow/lite/micro/kernels/quantization_util_test.cc \
 tensorflow/lite/micro/kernels/quantize_test.cc \
 tensorflow/lite/micro/kernels/reduce_test.cc \
 tensorflow/lite/micro/kernels/reshape_test.cc \
+tensorflow/lite/micro/kernels/resize_bilinear_test.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
 tensorflow/lite/micro/kernels/round_test.cc \
 tensorflow/lite/micro/kernels/shape_test.cc \
@@ -324,6 +333,8 @@ tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
 tensorflow/lite/micro/kernels/conv_common.cc \
+tensorflow/lite/micro/kernels/cumsum.cc \
+tensorflow/lite/micro/kernels/depth_to_space.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
@@ -335,15 +346,20 @@ tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/expand_dims.cc \
 tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/floor.cc \
+tensorflow/lite/micro/kernels/floor_div.cc \
+tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
+tensorflow/lite/micro/kernels/gather_nd.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
 tensorflow/lite/micro/kernels/l2norm.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d.cc \
 tensorflow/lite/micro/kernels/leaky_relu.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
+tensorflow/lite/micro/kernels/log_softmax.cc \
 tensorflow/lite/micro/kernels/maximum_minimum.cc \
 tensorflow/lite/micro/kernels/mul.cc \
 tensorflow/lite/micro/kernels/neg.cc \
@@ -355,6 +371,7 @@ tensorflow/lite/micro/kernels/quantize.cc \
 tensorflow/lite/micro/kernels/quantize_common.cc \
 tensorflow/lite/micro/kernels/reduce.cc \
 tensorflow/lite/micro/kernels/reshape.cc \
+tensorflow/lite/micro/kernels/resize_bilinear.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
 tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
@@ -417,6 +434,8 @@ tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/concatenation.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
+tensorflow/lite/kernels/internal/reference/cumsum.h \
+tensorflow/lite/kernels/internal/reference/depth_to_space.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
@@ -424,6 +443,8 @@ tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
+tensorflow/lite/kernels/internal/reference/floor_div.h \
+tensorflow/lite/kernels/internal/reference/floor_mod.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
@@ -439,6 +460,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/leaky_relu.h \
+tensorflow/lite/kernels/internal/reference/log_softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
@@ -449,6 +471,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_bilinear.h \
 tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
@@ -561,7 +584,10 @@ ifneq ($(DISABLE_DOWNLOADS), true)
   $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
   $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
   $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-  $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
+  RESULT := $(shell $(MAKEFILE_DIR)/person_detection_int8_download.sh ${MAKEFILE_DIR}/downloads $(CO_PROCESSOR))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Something went wrong with the person detection int8 model download: $(RESULT))
+  endif
 endif
 
 # The target-specific makefile must have a name that is exactly
@@ -588,6 +614,14 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
 endif
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # Check that OPTIMIZED_KERNEL_DIR is valid to avoid unexpected fallback to
+	# reference kernels. See http://b/183546742 for more context.
+  PATH_TO_OPTIMIZED_KERNELS := tensorflow/lite/micro/kernels/$(OPTIMIZED_KERNEL_DIR)
+  RESULT := $(shell $(MAKEFILE_DIR)/check_optimized_kernel_dir.sh $(PATH_TO_OPTIMIZED_KERNELS))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Incorrect OPTIMIZED_KERNEL_DIR: $(RESULT))
+  endif
+
   include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
   # Specialize for the optimized kernels
   MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
@@ -802,6 +836,8 @@ $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET)
 
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+
+
 
 ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)

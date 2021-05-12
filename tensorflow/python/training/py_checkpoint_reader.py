@@ -42,7 +42,8 @@ def error_translator(e):
     raise errors_impl.InvalidArgumentError(None, None, error_message)
   elif 'Unable to open table file' in error_message:
     raise errors_impl.DataLossError(None, None, error_message)
-  elif 'Failed to find the saved tensor slices' in error_message:
+  elif 'Failed to find the saved tensor slices' in error_message or (
+      'not convertible to numpy dtype' in error_message):
     raise errors_impl.InternalError(None, None, error_message)
   else:
     raise errors_impl.OpError(None, None, error_message, errors_impl.UNKNOWN)

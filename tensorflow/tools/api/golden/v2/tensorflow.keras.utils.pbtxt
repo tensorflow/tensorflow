@@ -28,6 +28,10 @@ tf_module {
     name: "custom_object_scope"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "deserialize_keras_object"
     argspec: "args=[\'identifier\', \'module_objects\', \'custom_objects\', \'printable_module_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'object\'], "

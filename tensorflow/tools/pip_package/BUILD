@@ -2,7 +2,7 @@
 #  Tools for building the TensorFlow pip package.
 
 load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
@@ -58,7 +58,7 @@ transitive_hdrs(
         "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
-        "//tensorflow/python:python_op_gen",
+        "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python:tf_session_helper",
         "//third_party/eigen3",
     ] + if_cuda([
@@ -100,7 +100,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
-    "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/lite/tools:visualize",
@@ -114,23 +113,23 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python/training/experimental:loss_scale",
     "//tensorflow/python/training/experimental:loss_scale_optimizer",
-    "//tensorflow/python:memory_checker",
-    "//tensorflow/python:meta_graph_testdata",
+    "//tensorflow/python/framework:meta_graph_testdata",
     "//tensorflow/python/data/benchmarks:benchmark_base",
-    "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
-    "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
-    "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/data/kernel_tests:tf_record_test_base",
+    "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:combinations",
+    "//tensorflow/python/keras/layers/preprocessing/benchmarks:feature_column_benchmark",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
+    "//tensorflow/python/keras/distribute:dataset_creator_model_fit_test_base",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
@@ -150,6 +149,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:example_parser_configuration",
     "//tensorflow/python:image_grad_test_base",
+    "//tensorflow/python:memory_checker",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
@@ -232,13 +232,7 @@ filegroup(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "@aws//:LICENSE",
-            "@aws-c-common//:LICENSE",
-            "@aws-c-event-stream//:LICENSE",
-            "@aws-checksums//:LICENSE",
-        ],
+        "//conditions:default": [],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -262,9 +256,8 @@ filegroup(
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_not_system_lib(
+    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
             "@absl_py//absl:LICENSE",

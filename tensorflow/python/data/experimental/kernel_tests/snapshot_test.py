@@ -413,6 +413,19 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
         num_runs_per_fingerprint=1,
         num_snapshot_shards_per_run=multiprocessing.cpu_count())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatAndPrefetch(self):
+    """This test reproduces github.com/tensorflow/tensorflow/issues/48903."""
+    dataset = dataset_ops.Dataset.from_tensor_slices(np.random.rand(16, 32))
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    dataset = dataset.shuffle(buffer_size=16)
+    dataset = dataset.batch(16)
+    dataset = dataset.repeat()
+    dataset = dataset.prefetch(1)
+    next_element = self.getNext(dataset)
+    for _ in range(30):
+      self.evaluate(next_element())
+
 
 class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
                          parameterized.TestCase):
@@ -797,13 +810,13 @@ class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
               snapshot.COMPRESSION_SNAPPY
           ])))
   def testReadSnapshotParallelAfterWrite(self, compression):
-    self.setUpTFRecord(10, 4000)
+    self.setUpTFRecord(5, 500)
     filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
-        for f in range(0, 10)
-        for r in range(0, 4000)
+        for f in range(0, 5)
+        for r in range(0, 500)
     ]
 
     tmpdir = self.snapshot_dir

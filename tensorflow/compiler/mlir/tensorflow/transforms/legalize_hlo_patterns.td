@@ -229,6 +229,9 @@ def : Pat<(HLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
 class FloatValueEquals<string val> : Constraint<CPred<
   "$0.isa<SplatElementsAttr>() && "
   "$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isExactlyValue(" # val # ")">>;
+def FloatValueGreaterThanZero : Constraint<CPred<
+  "$0.isa<SplatElementsAttr>() && "
+  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative()">>;
 def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
   "!$0 || $0.getValue() == \"FLOAT\"">>;
@@ -281,3 +284,123 @@ def : Pat<(HLO_SelectOp
            (FloatOrDefaultCompare $compare_type0),
            (FloatOrDefaultCompare $compare_type1),
            (FloatOrDefaultCompare $compare_type2)]>;
+
+// Converts a soup of HLOs representing floor_mod to tf.FloorMod.
+// The pattern matched executes the following computation:
+//
+// rem = remainder(arg0, arg1)
+// for i in 0 to len(arg1):
+//    if ((rem[i] < 0 != arg0[i] < 0) && arg0[i] != 0)
+//       rem[i] += arg1[i]
+// return rem
+def : Pat<
+(HLO_SelectOp
+  (HLO_AndOp
+    (HLO_CompareOp
+      (HLO_CompareOp:$rltz
+        (HLO_RemOp:$rem $arg, $arg1),
+        (HLO_ConstOp $cst),
+        HLO_COMPARISON_DIRECTION_LT,
+        $compare_type),
+      (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_COMPARISON_DIRECTION_LT, $compare_type1),
+      HLO_COMPARISON_DIRECTION_NE,
+      $compare_type2),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+  (HLO_AddOp $rem2, $arg1),
+  $rem3),
+(TF_FloorModOp $arg, $arg1),
+[(FloatValueEquals<"0.0"> $cst),
+(FloatValueEquals<"0.0"> $cst1),
+(FloatValueEquals<"0.0"> $cst2),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(SameValue $rem, $rem3),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type1),
+(FloatOrDefaultCompare $compare_type2)]>;
+
+// Converts a soup of HLOs representing floor_mod with a constant to
+// tf.FloorMod. The pattern matched executes the following computation:
+//
+// cst = value that is > 0
+// rem = remainder(arg0, cst)
+// for i in 0 to len(arg1):
+//    if (rem[i] < 0 && rem[i] != 0)
+//       rem[i] += cst
+// return rem
+def : Pat<
+(HLO_SelectOp
+  (HLO_AndOp
+    (HLO_CompareOp:$rltz
+      (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
+      (HLO_ConstOp $cst1),
+      HLO_COMPARISON_DIRECTION_LT,
+      $compare_type),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+  (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
+  $rem3),
+(TF_FloorModOp $arg, (TF_ConstOp $cst3)),
+[(FloatValueGreaterThanZero $cst),
+(FloatValueEquals<"0.0"> $cst1),
+(FloatValueEquals<"0.0"> $cst2),
+(FloatValueGreaterThanZero $cst3),
+(SameValue $cst, $cst3),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(SameValue $rem, $rem3),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type3)]>;
+
+// Converts a soup of HLOs representing floor_div to tf.FloorDiv.
+// The pattern matched executes the following computation:
+//
+// rem = remainder(arg0, arg1)
+// for i in 0 to len(arg1):
+//    rem[i] = arg0[i] - rem[i] / arg1[i]
+//    if (rem[i] != 0 && sign(arg1[i]) != sign(rem[i]))
+//       rem[i] -= 1.0
+// return round_nearest_afz(rem)
+// As a dag this looks like the following:
+//                       round
+//                         |
+//              -------- select
+//              |          |    \
+//             &&          +    div
+//           /   |        / \
+//        !=    !=       div -1
+//       / |   / |      / |
+//    rem 0.0 sn sn1    -  $1
+//   / |      |  |    / |
+// $0 $1     $1 rem  $0 rem
+// Note that named operators like 'sn' and 'sn1' are different values produced by
+// the same function in this case the sign function. Named values like 'div'
+// refer to the same value produced by the same function, in this case division.
+// Mathematical symbols do not indicate a re-use of the value.
+def : Pat<
+(HLO_RoundOp
+  (HLO_SelectOp
+    (HLO_AndOp
+      (HLO_CompareOp
+        (HLO_RemOp:$rem $arg0, $arg1),
+        (HLO_ConstOp $cst),
+        HLO_COMPARISON_DIRECTION_NE,
+        $compare_type),
+      (HLO_CompareOp
+        (HLO_SignOp $arg1),
+        (HLO_SignOp $rem1),
+        HLO_COMPARISON_DIRECTION_NE,
+        $compare_type1)),
+    (HLO_AddOp
+      (HLO_DivOp:$div
+        (HLO_SubOp $arg0, $rem2),
+        $arg1b),
+      (HLO_ConstOp $cst_neg1)),
+    $div1)),
+(TF_FloorDivOp $arg0, $arg1),
+[(FloatValueEquals<"0.0"> $cst),
+(FloatValueEquals<"-1.0"> $cst_neg1),
+(SameValue $div, $div1),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type1)]>;

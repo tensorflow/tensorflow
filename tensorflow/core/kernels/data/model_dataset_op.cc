@@ -140,29 +140,19 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     ~Iterator() override { cancellation_manager_->StartCancel(); }
 
     Status Initialize(IteratorContext* ctx) override {
-      IteratorContext::Params params(ctx);
-      params.model = model_;
-      return dataset()->input_->MakeIterator(IteratorContext(std::move(params)),
+      return dataset()->input_->MakeIterator(IteratorContext(CreateParams(ctx)),
                                              this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      IteratorContext::Params params(ctx);
-      {
+      if (!ctx->model()) {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsureOptimizationLoopThreadStarted(ctx));
-        params.model = model_;
-        int64 now_nanos = EnvTime::NowNanos();
-        RecordInput(now_nanos);
       }
-      Status s = input_impl_->GetNext(IteratorContext(std::move(params)),
-                                      out_tensors, end_of_sequence);
-      int64 now_nanos = EnvTime::NowNanos();
-      mutex_lock l(mu_);
-      RecordOutput(now_nanos);
-      return s;
+      return input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
+                                  out_tensors, end_of_sequence);
     }
 
    protected:
@@ -174,19 +164,13 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return Status::OK();
+      return SaveInput(ctx, writer, input_impl_);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      IteratorContext::Params params(ctx);
-      params.model = model_;
-      mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(IteratorContext(std::move(params)),
-                                      reader, input_impl_));
-      return Status::OK();
+      return RestoreInput(IteratorContext(CreateParams(ctx)), reader,
+                          input_impl_);
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -194,6 +178,14 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    IteratorContext::Params CreateParams(IteratorContext* ctx) {
+      IteratorContext::Params params(ctx);
+      if (!ctx->model()) {
+        params.model = model_;
+      }
+      return params;
+    }
+
     Status EnsureOptimizationLoopThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
@@ -209,26 +201,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    void RecordInput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (last_output_time_ != 0) {
-        DCHECK_LE(last_output_time_, time_nanos);
-        input_time_ += time_nanos - last_output_time_;
-        num_input_events_++;
-      }
-    }
-
-    void RecordOutput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      last_output_time_ = time_nanos;
-    }
-
-    double SelfInputTime() const TF_SHARED_LOCKS_REQUIRED(mu_) {
-      if (num_input_events_ == 0) {
-        return 0;
-      }
-      return static_cast<double>(input_time_) /
-             static_cast<double>(num_input_events_);
-    }
-
     mutex mu_;
     std::shared_ptr<model::Model> model_;
     // Controls cancellation of `model_thread_`. Must be ordered before
@@ -236,9 +208,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_;
-    int64 num_input_events_ TF_GUARDED_BY(mu_) = 0;
-    int64 input_time_ TF_GUARDED_BY(mu_) = 0;
-    int64 last_output_time_ TF_GUARDED_BY(mu_) = 0;
     const int64 cpu_budget_;
     const int64 ram_budget_;
   };

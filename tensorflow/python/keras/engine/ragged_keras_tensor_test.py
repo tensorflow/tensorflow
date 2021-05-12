@@ -14,11 +14,8 @@
 # ==============================================================================
 """RaggedKerasTensor tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,6 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras.engine import training
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -91,6 +89,24 @@ class RaggedKerasTensorTest(keras_parameterized.TestCase):
 
     x = ragged_factory_ops.constant([[3, 4], [1, 2], [3, 5]])
     self.assertAllEqual(model(x), x / x)
+
+  def test_getitem(self):
+    # Test slicing / getitem
+    inp = layers.Input(shape=(None, 2), ragged=True)
+    out = inp[:, :2]
+    model = training.Model(inp, out)
+
+    x = ragged_tensor.RaggedTensor.from_row_lengths(
+        math_ops.cast(np.random.randn(6, 2), dtype=dtypes.float32), [3, 1, 2])
+    expected = x[:, :2]
+
+    self.assertAllEqual(model(x), expected)
+
+    # Test that models w/ slicing are correctly serialized/deserialized
+    config = model.get_config()
+    model = training.Model.from_config(config)
+
+    self.assertAllEqual(model(x), expected)
 
   @parameterized.parameters(
       {'property_name': 'values'},

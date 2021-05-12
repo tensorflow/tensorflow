@@ -33,12 +33,13 @@ limitations under the License.
 #define DEBUG_TYPE PASS_NAME
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
   void runOnFunction() override;
@@ -118,6 +119,7 @@ DECL_CONVERT_OP(ResizeBilinear);
 DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherV2);
+DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
@@ -132,6 +134,9 @@ DECL_CONVERT_OP(StopGradient);
 DECL_CONVERT_OP(ReverseV2);
 DECL_CONVERT_OP(FakeQuantWithMinMaxArgs);
 DECL_CONVERT_OP(FakeQuantWithMinMaxVars);
+DECL_CONVERT_OP(LeftShift);
+DECL_CONVERT_OP(RightShift);
+DECL_CONVERT_OP(OneHot);
 #undef DECL_CONVERT_OP
 
 LogicalResult ConvertTFReluOp::matchAndRewrite(
@@ -1227,8 +1232,9 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits());
+  llvm::Optional<Value> result =
+      convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                       tf_softmax_op.logits(), /*beta=*/1.0);
 
   if (!result) return failure();
 
@@ -1495,12 +1501,9 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   assert(inputs.size() >= 2);
 
-  IntegerAttr axis_attr;
-  {
-    auto tmpAttr = tf_pack_op.axisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    axis_attr = tmpAttr;
-  }
+  IntegerAttr axis_attr = tf_pack_op.axisAttr();
+  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+
   int32_t axis_i32 = axis_attr.getInt();
 
   llvm::Optional<Value> result =
@@ -1666,7 +1669,9 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   if (!output_type) return failure();
 
   llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"));
+      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"),
+      tf_resize_op.align_cornersAttr().getValue(),
+      tf_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -1684,8 +1689,11 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("NEAREST"));
+  llvm::Optional<Value> result =
+      convertResizeOp(rewriter, op, output_type, tf_resize_op.images(),
+                      StringRef("NEAREST_NEIGHBOR"),
+                      tf_resize_op.align_cornersAttr().getValue(),
+                      tf_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -1722,17 +1730,17 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_gather_op = cast<TF::GatherOp>(op);
 
-  RankedTensorType output_type =
-      tf_gather_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!output_type) return failure();
+  // tf.Gather is equivalent to tf.GatherV2 with batch_dims = 0, axis = 0
+  int32_t batch_dims = 0;
+  int32_t axis = 0;
 
-  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(0);
+  llvm::Optional<Value> result = convertGatherOp(
+      rewriter, op, tf_gather_op.getResult(), tf_gather_op.params(),
+      tf_gather_op.indices(), batch_dims, axis);
 
-  // TODO: batchdim_attr handling to be implemented with a revised
-  // defintion of the TOSA operator.
-  rewriter.replaceOpWithNewOp<tosa::GatherOp>(
-      op, output_type, tf_gather_op.params(), tf_gather_op.indices(),
-      axis_attr);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
 
   return success();
 }
@@ -1741,28 +1749,37 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_gather_op = cast<TF::GatherV2Op>(op);
 
-  RankedTensorType output_type =
-      tf_gather_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!output_type) return failure();
-
-  // Axis is a tensor in TF. Convert to I64Attr for TOSA
+  // Axis is a tensor.  Pull out the one integer value.
   ElementsAttr axis_elem;
   if (!matchPattern(tf_gather_op.axis(), m_Constant(&axis_elem)))
     return failure();
-  assert(axis_elem.getType().getRank() == 0 && "expected 0D tensor");
+  assert(axis_elem.getNumElements() == 1);
 
-  IntegerAttr batchdim_attr;
-  {
-    auto tmpAttr = tf_gather_op.batch_dimsAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    batchdim_attr = tmpAttr;
-  }
+  int32_t axis = axis_elem.getValue<IntegerAttr>(0).getInt();
+  int32_t batch_dims = tf_gather_op.batch_dimsAttr().getInt();
 
-  // TODO: batchdim_attr handling to be implemented with a revised
-  // defintion of the TOSA operator.
-  rewriter.replaceOpWithNewOp<tosa::GatherOp>(
-      op, output_type, tf_gather_op.params(), tf_gather_op.indices(),
-      rewriter.getI32IntegerAttr(axis_elem.getValue<IntegerAttr>({}).getInt()));
+  llvm::Optional<Value> result = convertGatherOp(
+      rewriter, op, tf_gather_op.getResult(), tf_gather_op.params(),
+      tf_gather_op.indices(), batch_dims, axis);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
+LogicalResult ConvertTFGatherNdOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_gathernd_op = cast<TF::GatherNdOp>(op);
+
+  llvm::Optional<Value> result =
+      convertGatherNdOp(rewriter, op, tf_gathernd_op.getResult(),
+                        tf_gathernd_op.params(), tf_gathernd_op.indices());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
 
   return success();
 }
@@ -1905,9 +1922,55 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
       tf_leakyrelu_op.getResult().getType().dyn_cast<RankedTensorType>();
   if (!output_type) return failure();
 
-  // TODO: add lowering with MUL + SELECT
+  // Implement LeakyRelu as element-wise:
+  //   out = x > 0 ? x : alpha * x
+  //
+  // In TOSA ops:
+  //
+  //   const_zero = constant(0)
+  //   a1 = mul(x, alpha)
+  //   a2 = greater_equal(x, const_zero)
+  //   out = select(a2, x, a1)
+  //
+  // If alpha can be constrained to 0.0 <= alpha <= 1.0, then
+  // an alternative simpler lowering could be implemented with:
+  //
+  //   max(mul(x, alapha), x)
+  //
+  // But this alternative is not robust unless alpha meets those constraints.
 
-  return failure();
+  if (!output_type.getElementType().isF32()) {
+    op->emitOpError("ConvertTFLeakyReluOp: only support F32");
+    return failure();
+  }
+
+  FloatAttr tmpAttr = tf_leakyrelu_op.alphaAttr();
+  // There is disagreement between the MLIR .td defaults and TF
+  // documentation on 0.2 vs 0.3, but 0.2 will be used here.
+  double alpha = 0.2;
+
+  if (tmpAttr) {
+    alpha = tmpAttr.getValueAsDouble();
+  }
+
+  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+
+  auto a1_mul = rewriter.create<tosa::MulOp>(
+      op->getLoc(), output_type, tf_leakyrelu_op.features(),
+      getTosaConstTensorSingleF32(rewriter, op, alpha), 0);
+
+  auto a2_ge = rewriter.create<tosa::GreaterEqualOp>(
+      op->getLoc(),
+      RankedTensorType::get(output_type.getShape(), rewriter.getI1Type()),
+      tf_leakyrelu_op.features(), const_zero);
+
+  auto a3_select = rewriter.create<tosa::SelectOp>(
+      op->getLoc(), output_type, a2_ge, tf_leakyrelu_op.features(),
+      a1_mul.getResult());
+
+  rewriter.replaceOp(op, {a3_select.getResult()});
+
+  return success();
 }
 
 LogicalResult ConvertTFNegOp::matchAndRewrite(Operation* op,
@@ -2029,13 +2092,76 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLeftShiftOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_left_shift_op = cast<TF::LeftShiftOp>(op);
+
+  RankedTensorType output_type =
+      tf_left_shift_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) return failure();
+
+  rewriter.replaceOpWithNewOp<tosa::LogicalLeftShiftOp>(
+      op, output_type, tf_left_shift_op.x(), tf_left_shift_op.y());
+
+  return success();
+}
+
+LogicalResult ConvertTFRightShiftOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  // Performs a logical shift for unsigned integer types, and an arithmetic
+  // shift for signed integer types.
+  auto tf_right_shift_op = cast<TF::RightShiftOp>(op);
+
+  RankedTensorType output_type =
+      tf_right_shift_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) return failure();
+
+  Type output_element_type = output_type.getElementType();
+
+  bool is_signed = false;
+  if (!output_element_type.isUnsignedInteger()) is_signed = true;
+
+  if (is_signed) {
+    rewriter.replaceOpWithNewOp<tosa::ArithmeticRightShiftOp>(
+        op, output_type, tf_right_shift_op.x(), tf_right_shift_op.y(), false);
+  } else {
+    rewriter.replaceOpWithNewOp<tosa::LogicalRightShiftOp>(
+        op, output_type, tf_right_shift_op.x(), tf_right_shift_op.y());
+  }
+
+  return success();
+}
+
+LogicalResult ConvertTFOneHotOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_one_hot_op = cast<TF::OneHotOp>(op);
+
+  ElementsAttr depth_elems;
+  if (!matchPattern(tf_one_hot_op.depth(), m_Constant(&depth_elems)))
+    return failure();
+  int32_t depth = depth_elems.getValue<IntegerAttr>({}).getInt();
+
+  IntegerAttr axisAttr = tf_one_hot_op.axisAttr();
+  int32_t axis = axisAttr.getInt();
+
+  llvm::Optional<Value> result = convertOneHotOp(
+      rewriter, op, tf_one_hot_op.getResult(), tf_one_hot_op.indices(),
+      tf_one_hot_op.on_value(), tf_one_hot_op.off_value(), depth, axis);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
   patterns.insert<ConvertTFMatMulOp>(ctx);
   patterns.insert<ConvertTFReluOp>(ctx);
   patterns.insert<ConvertTFRelu6Op>(ctx);
@@ -2098,6 +2224,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFResizeNearestNeighborOp>(ctx);
   patterns.insert<ConvertTFGatherOp>(ctx);
   patterns.insert<ConvertTFGatherV2Op>(ctx);
+  patterns.insert<ConvertTFGatherNdOp>(ctx);
   patterns.insert<ConvertTFSelectV2Op>(ctx);
   patterns.insert<ConvertTFSpaceToDepthOp>(ctx);
   patterns.insert<ConvertTFDepthToSpaceOp>(ctx);
@@ -2112,6 +2239,9 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFReverseV2Op>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxArgsOp>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxVarsOp>(ctx);
+  patterns.insert<ConvertTFLeftShiftOp>(ctx);
+  patterns.insert<ConvertTFRightShiftOp>(ctx);
+  patterns.insert<ConvertTFOneHotOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

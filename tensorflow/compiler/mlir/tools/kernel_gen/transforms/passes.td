@@ -49,10 +49,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform hlo operations on values to buffer based "
-                "ones.";
-  let constructor = "transforms::CreateHloBufferizePass()";
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
@@ -125,6 +125,31 @@ def FuseInnerParallelLoopsPass
     Directs parallel loop fusion to the inner loops. This cannot be done with
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
+  }];
+}
+
+def ShapeSimplification
+    : FunctionPass<"kernelgen-shape-simplification"> {
+  let summary = "Simplify shape ops";
+  let constructor = "transforms::CreateShapeSimplification()";
+}
+
+def VectorizationPass : FunctionPass<"vectorization"> {
+  let summary = "Pass to create vectorized operations for CPU.";
+  let constructor = "transforms::CreateVectorizationPass()";
+  let description = [{
+    Takes linalg loops on buffers and vectorizes the loads/stores and operations
+    in between. This is intended for the CPU backend.
+  }];
+}
+
+def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
+  let summary = "Pass to remove dead code in VectorizationPass.";
+  let constructor = "transforms::CreateVectorizationCleanupPass()";
+  let description = [{
+    VectorizationPass creates some memory transfers that are unneeded but cannot
+    be safely removed by current generic infrastructure. This removes the
+    specific operations.
   }];
 }
 

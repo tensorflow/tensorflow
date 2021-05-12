@@ -44,7 +44,9 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
@@ -188,9 +190,10 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
-  // which are broadcastable shapes up to five dimension or have same shapes.
+  // which are broadcastable shapes up to four dimensions or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type) || IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type) ||
+      IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -565,6 +568,15 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a + b; });
 }
 
+int64_t AddOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatenationOp
 //===----------------------------------------------------------------------===//
@@ -786,6 +798,33 @@ static LogicalResult Verify(CustomOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CustomTfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CustomTfOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange ranges,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  CustomTfOpAdaptor op(operands, attr, ranges);
+
+  if (op.getRegions().empty()) return success();
+  auto *real_op = &op.body().front().front();
+  if (llvm::isa<TF::FakeQuantWithMinMaxArgsOp, TF::FakeQuantWithMinMaxVarsOp,
+                TF::FakeQuantWithMinMaxVarsPerChannelOp>(real_op)) {
+    Value input = *operands.begin();
+    inferredReturnTypes.assign({input.getType()});
+  }
+  return success();
+}
+
+bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.empty()) return true;
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
@@ -938,6 +977,15 @@ void FullyConnectedOp::getCanonicalizationPatterns(
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
+int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // Conv2DOp
 //===----------------------------------------------------------------------===//
@@ -1051,6 +1099,15 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   return true;
 }
 
+int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // DepthwiseConv2DO
 //===----------------------------------------------------------------------===//
@@ -1060,6 +1117,15 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
+}
+
+int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1272,6 +1338,15 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a * b; });
 }
 
+int64_t MulOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
@@ -1282,6 +1357,15 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a / b; },
       [](APInt a, APInt b) { return a.sdiv(b); });
+}
+
+int64_t DivOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1802,6 +1886,15 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
       [](APInt a, APInt b) { return a - b; });
+}
+
+int64_t SubOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2414,6 +2507,29 @@ OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
+  auto input_type = input().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return nullptr;
+
+  ArrayRef<int64_t> shape = input_type.getShape();
+  auto result_type = getType().cast<ShapedType>();
+  if (result_type.getElementType().isInteger(64)) {
+    return DenseElementsAttr::get<int64_t>(result_type, shape);
+  } else if (result_type.getElementType().isInteger(32)) {
+    SmallVector<int32_t, 4> shape_i32;
+    shape_i32.reserve(shape.size());
+    for (int64_t dim : shape) {
+      shape_i32.push_back(dim);
+    }
+    return DenseElementsAttr::get<int32_t>(result_type, shape_i32);
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // SqrtOp
 //===----------------------------------------------------------------------===//
 
@@ -2499,9 +2615,28 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
-
   // Return the held attribute value.
   return value();
+}
+
+namespace {
+struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
+  using OpRewritePattern<ConstOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstOp const_op,
+                                PatternRewriter &rewriter) const override {
+    if (!ConstantOp::isBuildableWith(const_op.value(), const_op.getType()))
+      return failure();
+    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+    return success();
+  }
+};
+
+}  // namespace
+
+void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<FoldPseudoConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2720,6 +2855,31 @@ static LogicalResult Verify(TransposeConvOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(StridedSliceOp op) {
+  auto ranked_input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return success();
+  int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  uint32_t ellipsis_mask = op.ellipsis_mask();
+  uint32_t new_axis_mask = op.new_axis_mask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  if (num_input_dims + num_added_axis > 5) return failure();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
@@ -2841,6 +3001,44 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+/// Given the region at `index`, or the parent operation if `index` is None,
+/// return the successor regions. These are the regions that may be selected
+/// during the flow of control. `operands` is a set of optional attributes that
+/// correspond to a constant value for each operand, or null if that operand is
+/// not a constant.
+void IfOp::getSuccessorRegions(Optional<unsigned> index,
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<RegionSuccessor> &regions) {
+  // The `then` and the `else` region branch back to the parent operation.
+  if (index.hasValue()) {
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+
+  // Don't consider the else region if it is empty.
+  Region *else_reg = &else_region();
+  if (else_reg->empty()) else_reg = nullptr;
+
+  // Otherwise, the successor is dependent on the condition.
+  bool condition;
+  if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
+    condition = cond_attr.getValue().isOneValue();
+  } else {
+    // If the condition isn't constant, both regions may be executed.
+    regions.push_back(RegionSuccessor(&then_region()));
+    // If the else region does not exist, it is not a viable successor.
+    if (else_reg) regions.push_back(RegionSuccessor(else_reg));
+    return;
+  }
+
+  // Add the successor regions using the condition.
+  regions.push_back(RegionSuccessor(condition ? &then_region() : else_reg));
 }
 
 //===----------------------------------------------------------------------===//

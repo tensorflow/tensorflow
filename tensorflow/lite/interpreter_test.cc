@@ -1148,6 +1148,12 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 }
 
+TEST_F(InterpreterTest, SetNumThreadsSucceedsWithZero) {
+  ASSERT_EQ(interpreter_.SetNumThreads(0), kTfLiteOk);
+  // num_threads == 0 has the same effect as num_threads == 1.
+  EXPECT_EQ(interpreter_.subgraph(0)->context()->recommended_num_threads, 1);
+}
+
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {
   // Count the number of calls to ClearCaches for the backend context.
   void ClearCaches() override { ++num_calls; }

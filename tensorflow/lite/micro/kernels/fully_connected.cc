@@ -109,19 +109,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
 
-    case kTfLiteUInt8: {
-      tflite::reference_ops::FullyConnected(
-          FullyConnectedParamsQuantized(data),
-          tflite::micro::GetTensorShape(input),
-          tflite::micro::GetTensorData<uint8_t>(input),
-          tflite::micro::GetTensorShape(filter),
-          tflite::micro::GetTensorData<uint8_t>(filter),
-          tflite::micro::GetTensorShape(bias),
-          tflite::micro::GetTensorData<int32_t>(bias),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<uint8_t>(output));
-      break;
-    }
     default: {
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                          TfLiteTypeGetName(input->type), input->type);

@@ -62,8 +62,6 @@ upper_tabs:
         path: /lite/guide
 
       - heading: "Get started"
-      - title: "Overview"
-        path: /lite/guide/get_started
       - title: "Android quickstart"
         path: /lite/guide/android
       - title: "iOS quickstart"
@@ -177,13 +175,10 @@ upper_tabs:
         path: /lite/guide/build_android
       - title: "Build for iOS"
         path: /lite/guide/build_ios
-      - title: "Build for ARM64"
-        path: /lite/guide/build_arm64
-      - title: "Build for Raspberry Pi"
-        path: /lite/guide/build_rpi
+      - title: "Build for ARM"
+        path: /lite/guide/build_arm
       - title: "Build with CMake"
         path: /lite/guide/build_cmake
-        status: experimental
         section:
         - title: "Cross compilation for ARM"
           path: /lite/guide/build_cmake_arm
@@ -198,7 +193,7 @@ upper_tabs:
       - title: "Overview"
         path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
-        path: /lite/microcontrollers/get_started
+        path: /lite/microcontrollers/get_started_low_level
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
       - title: "Build and convert models"
@@ -239,8 +234,11 @@ upper_tabs:
         path: /lite/api_docs/
       - heading: "Python"
       - include: /lite/api_docs/python/tf/lite/_toc.yaml
+      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
+      - heading: "Swift"
+      - include: /lite/api_docs/swift/_toc.yaml
       - heading: "C++"
       - title: "Overview"
         path: /lite/api_docs/cc/

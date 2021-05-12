@@ -275,9 +275,9 @@ def _axis_gather(params, indices, axis):
 
   if indices.shape.rank is None:
     raise ValueError('rank(indices) must be known statically')
-  if (isinstance(params, ragged_tensor.RaggedTensor) and
-      params.uniform_row_length is None):
-    raise ValueError('axis may not be a ragged dimension')
+
+  # Note: there is no checking of indices. If there is some index
+  # out of bounds, the results may be nonsensical.
 
   assert axis == 1
   # If params.shape=[P1...PN] and indices.shape=[I1...IM], then:

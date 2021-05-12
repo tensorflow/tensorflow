@@ -234,6 +234,10 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
+  if (gpu_info.IsMali()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+  }
+
   std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:

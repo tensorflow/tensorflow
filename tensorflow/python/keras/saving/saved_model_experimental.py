@@ -13,18 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Deprecated experimental Keras SavedModel implementation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import warnings
 
-import six
-
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
@@ -233,7 +228,7 @@ def _get_var_list(model):
 
 
 def create_placeholder(spec):
-  return K.placeholder(shape=spec.shape, dtype=spec.dtype, name=spec.name)
+  return backend.placeholder(shape=spec.shape, dtype=spec.dtype, name=spec.name)
 
 
 def _export_mode(
@@ -263,7 +258,7 @@ def _export_mode(
         'Model does not have an optimizer. Cannot export mode %s' % mode)
 
   model_graph = ops.get_default_graph()
-  with ops.Graph().as_default() as g, K.learning_phase_scope(
+  with ops.Graph().as_default() as g, backend.learning_phase_scope(
       mode == mode_keys.ModeKeys.TRAIN):
 
     if input_signature is None:
@@ -348,7 +343,7 @@ def _create_signature_def_map(model, mode):
   local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
   vars_to_add = set()
   if metrics is not None:
-    for key, value in six.iteritems(metrics):
+    for key, value in metrics.items():
       if isinstance(value, metrics_lib.Metric):
         vars_to_add.update(value.variables)
         # Convert Metric instances to (value_tensor, update_op) tuple.
@@ -441,8 +436,7 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
 def _get_or_create_variables_dir(export_dir):
   """Return variables sub-directory, or create one if it doesn't exist."""
   variables_dir = _get_variables_dir(export_dir)
-  if not file_io.file_exists(variables_dir):
-    file_io.recursive_create_dir(variables_dir)
+  file_io.recursive_create_dir(variables_dir)
   return variables_dir
 
 
@@ -464,8 +458,7 @@ def _get_or_create_assets_dir(export_dir):
   """Return assets sub-directory, or create one if it doesn't exist."""
   assets_destination_dir = _get_assets_dir(export_dir)
 
-  if not file_io.file_exists(assets_destination_dir):
-    file_io.recursive_create_dir(assets_destination_dir)
+  file_io.recursive_create_dir(assets_destination_dir)
 
   return assets_destination_dir
 
@@ -475,4 +468,3 @@ def _get_assets_dir(export_dir):
   return os.path.join(
       compat.as_text(export_dir),
       compat.as_text(constants.ASSETS_DIRECTORY))
-

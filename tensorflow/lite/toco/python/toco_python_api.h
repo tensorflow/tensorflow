@@ -45,6 +45,7 @@ PyObject* TocoGetPotentiallySupportedOps();
 // model.
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
+                            int input_data_type, int output_data_type,
                             bool enable_numeric_verify = false);
 
 // Sparsifies model to encode sparse tensors with proper format. Throws error if

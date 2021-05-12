@@ -54,7 +54,7 @@ bool IsFloatTensor(const SubGraphT* subgraph, int32_t tensor_idx) {
 operator_property::OperatorProperty GetOperatorProperty(
     const std::unordered_set<string>& operator_names, const ModelT* model,
     int subgraph_index, int op_idx, const string& operator_name,
-    const TensorType& activations_type) {
+    const TensorType& activations_type, bool disable_per_channel = false) {
   operator_property::OperatorProperty property =
       operator_property::GetOperatorProperty(model, subgraph_index, op_idx);
   const SubGraphT* subgraph = model->subgraphs[subgraph_index].get();
@@ -71,6 +71,13 @@ operator_property::OperatorProperty GetOperatorProperty(
     property.quantizable =
         property.quantizable &&
         (operator_names.find(operator_name) != operator_names.end());
+  }
+  if (disable_per_channel) {
+    for (auto& input : property.inputs) {
+      if (input.second.per_axis) {
+        input.second.per_axis = false;
+      }
+    }
   }
   return property;
 }
@@ -697,8 +704,7 @@ TfLiteStatus QuantizeOpInput(
         return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
                                                      error_reporter);
       } else {
-        // Only 8, 16, 32, 10 are supported.
-        // TODO(jianlijianli): extend this to support arbitrary bits.
+        // Currently supports only 8, 16, 32, 10 bits.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "Unable to quantize buffer or min/max value for input %d "
@@ -881,9 +887,9 @@ TfLiteStatus QuantizeOpOutput(
   return kTfLiteOk;
 }
 
-TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
-                                        TensorType activations_type,
-                                        ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeIntermediateTensors(ModelT* model,
+                                         TensorType activations_type,
+                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -948,7 +954,7 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
   return kTfLiteOk;
 }
 
-// Quantize tensros that have shared range. For example, in LSTM, the output
+// Quantize tensors that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
 // We have to model this explicitly because the output is modeled as an extra
@@ -969,14 +975,13 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
           if (input.empty()) {
             continue;
           }
-          // Currently only support pair of twos.
-          // TODO(b/174534943): extend to arbitrary number of tensors.
+          // Currently only support two values. The first one for input and
+          // the second one for output.
           if (input.size() != 2) {
             return kTfLiteError;
           }
           const int index_1 = input[0];
           const int index_2 = input[1];
-          // TODO(jianlijianli): model input/output.
           TensorT* tensor_1 = subgraph->tensors[op->inputs[index_1]].get();
           TensorT* tensor_2 = subgraph->tensors[op->outputs[index_2]].get();
           const float min_of_min = std::min(tensor_1->quantization->min[0],
@@ -1015,7 +1020,8 @@ TfLiteStatus QuantizeWeightsInputOutput(
     ModelT* model, bool allow_float,
     const std::unordered_set<string>& operator_names,
     const std::unordered_set<string>& real_value_op_set,
-    const TensorType& activations_type, ErrorReporter* error_reporter) {
+    const TensorType& activations_type, bool disable_per_channel,
+    ErrorReporter* error_reporter) {
   // Flag to track unsupported ops.
   bool quantization_not_supported = false;
 
@@ -1028,9 +1034,9 @@ TfLiteStatus QuantizeWeightsInputOutput(
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
-      operator_property::OperatorProperty property =
-          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
-                              operator_name, activations_type);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, model, subgraph_idx, op_idx, operator_name,
+          activations_type, disable_per_channel);
       if (!IsRealValueOp(real_value_op_set, operator_name)) {
         continue;
       }
@@ -1084,6 +1090,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                             const std::unordered_set<string>& operator_names,
                             const std::unordered_set<string>& real_value_op_set,
                             const TensorType& activations_type,
+                            bool disable_per_channel,
                             ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -1093,9 +1100,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
-      operator_property::OperatorProperty property =
-          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
-                              operator_name, activations_type);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, model, subgraph_idx, op_idx, operator_name,
+          activations_type, disable_per_channel);
       if (!property.quantizable ||
           !IsRealValueOp(real_value_op_set, operator_name)) {
         continue;
@@ -1170,16 +1177,17 @@ std::unordered_set<string> GetAllOperatorOutputs(ModelT* model) {
 TfLiteStatus FillQuantizationParams(
     ModelT* model, const std::unordered_set<string>& operator_names,
     const std::unordered_set<string>& real_value_op_set,
-    const TensorType& activations_type, ErrorReporter* error_reporter) {
+    const TensorType& activations_type, bool disable_per_channel,
+    ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
-      operator_property::OperatorProperty property =
-          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
-                              operator_name, activations_type);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, model, subgraph_idx, op_idx, operator_name,
+          activations_type, disable_per_channel);
       if (!IsRealValueOp(real_value_op_set, operator_name)) {
         continue;
       }
@@ -1280,16 +1288,17 @@ TfLiteStatus FillQuantizationParams(
 TfLiteStatus EnsureBiasScaleCompatibility(
     ModelT* model, const std::unordered_set<string>& operator_names,
     const std::unordered_set<string>& real_value_op_set,
-    const TensorType& activations_type, ErrorReporter* error_reporter) {
+    const TensorType& activations_type, bool disable_per_channel,
+    ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
-      operator_property::OperatorProperty property =
-          GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
-                              operator_name, activations_type);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, model, subgraph_idx, op_idx, operator_name,
+          activations_type, disable_per_channel);
       if (!IsRealValueOp(real_value_op_set, operator_name)) {
         continue;
       }
@@ -1426,26 +1435,28 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activations_type,
+                           bool disable_per_channel,
                            ErrorReporter* error_reporter) {
   auto real_value_op_set =
       PopulateRealValueOpSet(model, operator_names, activations_type);
+  TF_LITE_ENSURE_STATUS(FillQuantizationParams(
+      model, operator_names, real_value_op_set, activations_type,
+      disable_per_channel, error_reporter));
+  TF_LITE_ENSURE_STATUS(EnsureBiasScaleCompatibility(
+      model, operator_names, real_value_op_set, activations_type,
+      disable_per_channel, error_reporter));
   TF_LITE_ENSURE_STATUS(
-      FillQuantizationParams(model, operator_names, real_value_op_set,
-                             activations_type, error_reporter));
-  TF_LITE_ENSURE_STATUS(
-      EnsureBiasScaleCompatibility(model, operator_names, real_value_op_set,
-                                   activations_type, error_reporter));
-  TF_LITE_ENSURE_STATUS(
-      QuantizeIntemediateTensors(model, activations_type, error_reporter));
+      QuantizeIntermediateTensors(model, activations_type, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeSharedRange(model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeWeightsInputOutput(
       model, allow_float, operator_names, real_value_op_set, activations_type,
-      error_reporter));
+      disable_per_channel, error_reporter));
   TF_LITE_ENSURE_STATUS(ApplyConstraints(model, operator_names,
                                          real_value_op_set, activations_type,
                                          error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, real_value_op_set,
-                                       activations_type, error_reporter));
+                                       activations_type, disable_per_channel,
+                                       error_reporter));
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(SetInputAndOutputTypes(
       model, input_type, output_type, activations_type, error_reporter));
@@ -1457,6 +1468,18 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   return kTfLiteOk;
 }
 
+// Assumes that the operators in the model have been topologically sorted.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           const std::unordered_set<string>& operator_names,
+                           const TensorType& activations_type,
+                           ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       operator_names, activations_type,
+                       /*disable_per_channel=*/false, error_reporter);
+}
+
 TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
                                        ModelT* model,
                                        const TensorType& input_type,
@@ -1466,7 +1489,17 @@ TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
                                        ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
                        GetAllOperatorOutputs(model), activations_type,
-                       error_reporter);
+                       /*disable_per_channel=*/false, error_reporter);
+}
+
+TfLiteStatus QuantizeModelAllOperators(
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
+    const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    bool disable_per_channel, ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       GetAllOperatorOutputs(model), activations_type,
+                       disable_per_channel, error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,

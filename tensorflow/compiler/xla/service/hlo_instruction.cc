@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <algorithm>
+#include <iostream>
 #include <ostream>
 #include <set>
 #include <string>
@@ -417,11 +418,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
       TF_RET_CHECK(proto.dimensions_size() == 1)
           << "AllGather cannot have more than 1 all-gather dimensions";
-      TF_RET_CHECK(all_operands().size() == 1)
-          << "AllGather must have a single operand";
       int64 all_gather_dimension = proto.dimensions(0);
       instruction = CreateAllGather(
-          shape, operands(0), all_gather_dimension,
+          shape, all_operands(), all_gather_dimension,
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
           proto.constrain_layout(), channel_id, proto.use_global_device_ids());
@@ -475,26 +474,69 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
-      std::vector<std::pair<int64, int64>> source_target_pairs(
+      TF_RET_CHECK(proto.operand_ids().size() == 1 ||
+                   proto.operand_ids().size() == 4);
+      std::vector<std::pair<int64_t, int64_t>> source_target_pairs(
           proto.source_target_pairs_size());
-      absl::optional<int64> channel_id;
+      absl::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      for (int i = 0; i < source_target_pairs.size(); i++) {
+      for (int i = 0; i < source_target_pairs.size(); ++i) {
         source_target_pairs[i].first = proto.source_target_pairs(i).source();
         source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
-
-      if (opcode == HloOpcode::kCollectivePermute) {
-        instruction = CreateCollectivePermute(shape, operands(0),
-                                              source_target_pairs, channel_id);
-      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-        instruction = CreateCollectivePermuteStart(
-            shape, operands(0), source_target_pairs, channel_id);
+      if (proto.dynamic_slice_sizes_size() == 0) {
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction = CreateCollectivePermute(
+              shape, operands(0), source_target_pairs, channel_id);
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = CreateCollectivePermuteStart(
+              shape, operands(0), source_target_pairs, channel_id);
+        } else {
+          LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
+                     << "but got " << HloOpcodeString(opcode);
+        }
       } else {
-        LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                   << "but got " << HloOpcodeString(opcode);
+        std::vector<std::vector<int64_t>> slice_sizes;
+        HloInstruction* input = operands(0);
+        if (input->shape().IsTuple() &&
+            input->shape().tuple_shapes_size() > 1) {
+          slice_sizes.resize(input->shape().tuple_shapes_size());
+        } else {
+          slice_sizes.resize(1);
+        }
+        int proto_index = 0;
+        if (input->shape().IsTuple()) {
+          for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+            slice_sizes[i].resize(
+                input->shape().tuple_shapes(i).dimensions_size());
+            for (int j = 0;
+                 j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
+              CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+              slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
+              proto_index += 1;
+            }
+          }
+        } else {
+          slice_sizes[0].resize(input->shape().dimensions_size());
+          for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+            slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
+            proto_index += 1;
+          }
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction = CreateCollectivePermute(
+              shape, operands(0), operands(1), operands(2), operands(3),
+              source_target_pairs, slice_sizes, channel_id);
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = CreateCollectivePermuteStart(
+              shape, operands(0), operands(1), operands(2), operands(3),
+              source_target_pairs, slice_sizes, channel_id);
+        } else {
+          LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
+                     << "but got " << HloOpcodeString(opcode);
+        }
       }
       break;
     }
@@ -1041,11 +1083,12 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
-    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    bool constrain_layout, const absl::optional<int64>& channel_id,
+    bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
-      shape, operand, all_gather_dimension, replica_groups, constrain_layout,
+      shape, operands, all_gather_dimension, replica_groups, constrain_layout,
       channel_id, use_global_device_ids);
 }
 
@@ -1072,21 +1115,46 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs,
-    const absl::optional<int64>& channel_id) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const absl::optional<int64_t>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape, operand, source_target_pairs,
       channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermute(
+    const Shape& shape, HloInstruction* input, HloInstruction* output,
+    HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    absl::Span<const std::vector<int64_t>> slice_sizes,
+    const absl::optional<int64_t>& channel_id) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      HloOpcode::kCollectivePermute, shape, input, output, input_start_indices,
+      output_start_indices, source_target_pairs, slice_sizes, channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs,
-    const absl::optional<int64>& channel_id) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const absl::optional<int64_t>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape, operand, source_target_pairs,
       channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermuteStart(
+    const Shape& shape, HloInstruction* input, HloInstruction* output,
+    HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    absl::Span<const std::vector<int64_t>> slice_sizes,
+    const absl::optional<int64_t>& channel_id) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      HloOpcode::kCollectivePermuteStart, shape, input, output,
+      input_start_indices, output_start_indices, source_target_pairs,
+      slice_sizes, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId(
@@ -1530,6 +1598,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
       return true;
     case HloOpcode::kAllReduce:
       return channel_id().has_value() ||
@@ -2791,13 +2861,29 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
   return operands;
 }
 
+namespace {
+
+bool IsSequentialCall(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kWhile:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
   std::vector<string> extra = options.print_extra_attributes()
                                   ? ExtraAttributesToStringImpl(options)
                                   : std::vector<string>();
 
-  if (options.print_subcomputation_mode() ==
+  const auto subcomputation_mode = options.print_subcomputation_mode();
+  if (subcomputation_mode ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
       extra.push_back(StrCat(
@@ -2855,8 +2941,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                               PrintNameInternal(computation->name(), options));
                   })));
     }
-  } else if (options.print_subcomputation_mode() ==
-             HloPrintOptions::PrintSubcomputationMode::kFullBodies) {
+  } else if ((subcomputation_mode ==
+              HloPrintOptions::PrintSubcomputationMode::kFullBodies) ||
+             (subcomputation_mode == HloPrintOptions::PrintSubcomputationMode::
+                                         kNonSequentialBodies &&
+              !IsSequentialCall(opcode()))) {
     HloPrintOptions new_options = options;
     new_options.set_is_in_nested_computation(true);
     switch (opcode()) {
@@ -4239,6 +4328,12 @@ int64 HloInstruction::slice_sizes(int64 dimension) const {
 
 const std::vector<int64>& HloInstruction::dynamic_slice_sizes() const {
   return Cast<HloDynamicSliceInstruction>(this)->dynamic_slice_sizes();
+}
+
+const std::vector<std::vector<int64_t>>&
+HloInstruction::dynamic_slice_sizes_list() const {
+  return Cast<HloCollectivePermuteInstruction>(this)
+      ->dynamic_slice_sizes_list();
 }
 
 const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {

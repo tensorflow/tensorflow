@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -936,6 +936,14 @@ class OpKernelContext {
   bool output_required(int index) const {
     return !params_->outputs_required_array ||
            params_->outputs_required_array[index];
+  }
+
+  // If output_expects_forwarding returns true, the OpKernel's Compute() method
+  // should not allocate the output with allocate_output but instead needs to
+  // use forward_input.
+  bool output_expects_forwarding(int index) const {
+    return params_->forward_from_array != nullptr &&
+           params_->forward_from_array[index] >= 0;
   }
 
   // Allocation of tensors during kernel execution inside the Compute

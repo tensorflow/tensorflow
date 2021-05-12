@@ -74,10 +74,8 @@ namespace data {
 
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  public:
-  // Creates and returns a OptimizeDatasetOp::Dataset in output, given the
-  // default optimizations and those that are enabled, disabled. This method is
-  // used to create the dataset without explicitly using the
-  // OptimizeDatasetOp.
+  // Executes the logic of the OptimizeDatasetOp directly (as opposed to through
+  // executing the OptimizeDatasetOp op kernel).
   static void MakeDatasetFromOptions(
       OpKernelContext* ctx, DatasetBase* input,
       const std::vector<tstring>& optimizations_enabled,

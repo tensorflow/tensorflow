@@ -17,7 +17,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -768,6 +768,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -980,6 +981,43 @@ xla_test(
     ],
 )
 
+# Run dot tests with dot canonicalization after the layout assignment pass.
+xla_test(
+    name = "dot_operation_test_canonicalization_after_layout",
+    srcs = ["dot_operation_test.cc"],
+    args = [
+        "--xla_tpu_order_dot_after_layout=true",
+    ],
+    disabled_backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
@@ -1159,6 +1197,7 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1224,6 +1263,7 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
+    tags = ["no_rocm"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2024,6 +2064,47 @@ xla_test(
 )
 
 xla_test(
+    name = "replicated_io_feed_test",
+    srcs = ["replicated_io_feed_test.cc"],
+    backend_tags = {
+        # This test is tagged "manual" because it requires multiple GPUs, and
+        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
+        # unless they're also tagged "guitar".
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+        ],
+    },
+    backends = ["gpu"],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
     deps = [
@@ -2104,6 +2185,7 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

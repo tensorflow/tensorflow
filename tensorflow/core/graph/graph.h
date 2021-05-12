@@ -42,6 +42,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -98,6 +100,9 @@ class Node {
   // TODO(irving): Replace with NodeInfo.
   const NodeDef& def() const;
   const OpDef& op_def() const;
+
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  NodeDef* mutable_def();
 
   // input and output types
   int32 num_inputs() const;
@@ -251,6 +256,10 @@ class Node {
     return stack_trace_;
   }
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
  private:
   friend class Graph;
   Node();
@@ -267,10 +276,6 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
-
-  // Called after an attr has changed. Decides whether we need to update some
-  // property of the node (stored in props_).
-  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const std::string& name);
 
@@ -658,6 +663,9 @@ class Graph {
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
+
   void CheckDeviceNameIndex(int index) {
     DCHECK_GE(index, 0);
     DCHECK_LT(index, static_cast<int>(device_names_.size()));
@@ -719,6 +727,10 @@ class Graph {
     return construction_context_;
   }
 
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  void NodeType(StringPiece name, FullTypeDef** result);
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -744,6 +756,29 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
+
+  // Types table.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_set<TypeRef, TypeHasher> types_;
+
+  // Experimental.
+  // Map from node node names to their outputs' FullType. Typically, the values
+  // in this map are identical to those in types_, but that is not enforced or
+  // guaranteed.
+  //
+  // The full type specification combines a Tensor's dtype, tensor_shape,
+  // variant_val, etc. into a unified representation.
+  // This definition may only contain concrete types (for example,
+  // Tensor<TypeVar<'T'>> is not a valid node type).
+  //
+  // Presently, FullType duplicates any information found in `dtype`. When set,
+  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
+  // with FullType.
+  //
+  // For example, if a TensorProto has `dtype=DT_INT32`, then
+  // `full_type=FT_TENSOR[FT_INT32]`.
+  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
+  std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
   int64 num_nodes_ = 0;

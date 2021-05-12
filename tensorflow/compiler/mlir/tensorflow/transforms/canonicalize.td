@@ -319,6 +319,15 @@ def MulTransDistr : Pat<(TF_MulOp (TF_TransposeOp $tensor0, $perm0),
                           (TF_TransposeOp (TF_MulOp $tensor0, $tensor1),
                                           $perm0),
                           [(PermutationsAreEqual $perm0, $perm1)]>;
+//===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV2Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis),
+  (TF_QuantizeAndDequantizeV4Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis)>;
 
 //===----------------------------------------------------------------------===//
 // RealDiv op patterns.

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras text vectorization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 
@@ -158,7 +154,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": None,
-              "output_mode": text_vectorization.BINARY
+              "output_mode": text_vectorization.MULTI_HOT
           },
           "expected_output": [[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0],
                               [0, 0, 0, 0, 1], [0, 0, 0, 0, 1], [0, 0, 0, 1, 0],
@@ -177,7 +173,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": text_vectorization.SPLIT_ON_WHITESPACE,
-              "output_mode": text_vectorization.BINARY
+              "output_mode": text_vectorization.MULTI_HOT
           },
           "expected_output": [[0, 1, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1],
                               [1, 1, 0, 0, 0]],
@@ -232,7 +228,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": None,
-              "output_mode": text_vectorization.TFIDF
+              "output_mode": text_vectorization.TF_IDF
           },
           "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
                               [0, 0, 0, 1.466337, 0], [0, 0, 0, 0, 1.7917595],
@@ -252,7 +248,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": text_vectorization.SPLIT_ON_WHITESPACE,
-              "output_mode": text_vectorization.TFIDF
+              "output_mode": text_vectorization.TF_IDF
           },
           "expected_output": [[0., 0.847298, 0.847298, 0., 0.],
                               [0., 0., 0., 1.098612, 0.],
@@ -444,7 +440,7 @@ class TextVectorizationPreprocessingTest(
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
         split=None,
         ngrams=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     # We are testing that model.summary() can be called without erroring out.
@@ -951,7 +947,7 @@ class TextVectorizationOutputTest(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
@@ -978,7 +974,7 @@ class TextVectorizationOutputTest(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
@@ -1005,7 +1001,7 @@ class TextVectorizationOutputTest(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer.set_vocabulary(vocab_data)
@@ -1035,7 +1031,7 @@ class TextVectorizationOutputTest(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer.adapt(vocab_data)
@@ -1064,7 +1060,7 @@ class TextVectorizationOutputTest(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer._set_state_variables(state_variables)
@@ -1096,7 +1092,7 @@ class TextVectorizationOutputTest(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -1127,7 +1123,7 @@ class TextVectorizationOutputTest(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.build(input_data.shape)
     layer.set_vocabulary(vocab_data)
@@ -1146,7 +1142,7 @@ class TextVectorizationOutputTest(
         max_tokens=None,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.adapt(vocab_data)
     _ = layer(input_data)
@@ -1163,7 +1159,7 @@ class TextVectorizationOutputTest(
         max_tokens=None,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.adapt(["earth", "wind"])
     _ = layer(input_data)
@@ -1245,7 +1241,7 @@ class TextVectorizationOutputTest(
         max_tokens=6,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1276,7 +1272,7 @@ class TextVectorizationOutputTest(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1306,7 +1302,7 @@ class TextVectorizationOutputTest(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1342,19 +1338,19 @@ class TextVectorizationModelBuildingTest(
       }, {
           "testcase_name": "binary_hard_max",
           "pad_to_max_tokens": True,
-          "output_mode": text_vectorization.BINARY
+          "output_mode": text_vectorization.MULTI_HOT
       }, {
           "testcase_name": "binary_soft_max",
           "pad_to_max_tokens": False,
-          "output_mode": text_vectorization.BINARY
+          "output_mode": text_vectorization.MULTI_HOT
       }, {
           "testcase_name": "tfidf_hard_max",
           "pad_to_max_tokens": True,
-          "output_mode": text_vectorization.TFIDF
+          "output_mode": text_vectorization.TF_IDF
       }, {
           "testcase_name": "tfidf_soft_max",
           "pad_to_max_tokens": False,
-          "output_mode": text_vectorization.TFIDF
+          "output_mode": text_vectorization.TF_IDF
       })
   def test_end_to_end_bagged_modeling(self, output_mode, pad_to_max_tokens):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -1369,7 +1365,7 @@ class TextVectorizationModelBuildingTest(
         split=None,
         output_mode=output_mode,
         pad_to_max_tokens=pad_to_max_tokens)
-    if output_mode == text_vectorization.TFIDF:
+    if output_mode == text_vectorization.TF_IDF:
       layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     else:
       layer.set_vocabulary(vocab_data)
@@ -1432,9 +1428,9 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     with self.assertRaisesRegex(
-        ValueError, "`idf_weights` must be set if output_mode is TFIDF"):
+        ValueError, "`idf_weights` must be set if output_mode is TF_IDF"):
       layer.set_vocabulary(vocab_data)
 
   def test_idf_weights_length_mismatch_fails(self):
@@ -1444,7 +1440,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     with self.assertRaisesRegex(
         ValueError, "`idf_weights` must be the same length as vocab"):
       layer.set_vocabulary(vocab_data, idf_weights)
@@ -1456,7 +1452,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY)
+        output_mode=text_vectorization.MULTI_HOT)
     with self.assertRaisesRegex(ValueError,
                                 "`idf_weights` should only be set if"):
       layer.set_vocabulary(vocab_data, idf_weights)
@@ -1615,7 +1611,7 @@ class TextVectorizationSavingTest(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
 
     int_data = layer(input_data)

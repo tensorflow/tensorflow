@@ -545,6 +545,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     // Only one scale factor per batch is typically necessary. See optimized
     // implementation for why we need to allocate for the height of the inputs
     // flattened to 2D.
+    TF_LITE_ENSURE(context, channels_in != 0);
     const int height = NumElements(input) / channels_in;
     int scaling_dims[1] = {height};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
@@ -587,6 +588,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       input_offsets->type = kTfLiteInt32;
       input_offsets->allocation_type = kTfLiteArenaRw;
       // See above comment for the need to allocate for height of inputs.
+      TF_LITE_ENSURE(context, channels_in != 0);
       const int height = NumElements(input) / channels_in;
       const int input_offset_dims[1] = {height};
       if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1,
@@ -654,10 +656,10 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;
-  op_params.stride_width = params->stride_width;
-  op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
   op_params.input_offset = input_offset;
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
@@ -886,8 +888,9 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
-  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
   TfLiteTensor* quantized_input_tensor;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, data->input_quantized_index,
@@ -934,10 +937,10 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
-  op_params.dilation_width_factor = 1;
-  op_params.dilation_height_factor = 1;
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
   switch (effective_kernel_type) {
@@ -989,8 +992,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
-  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
 
   const float* input_ptr = GetTensorData<float>(input);
   TfLiteTensor* quantized_input_tensor;

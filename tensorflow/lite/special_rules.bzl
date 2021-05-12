@@ -30,6 +30,12 @@ def internal_visibility_allowlist():
         "//visibility:public",
     ]
 
+def op_resolver_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
+
+    This is a no-op outside of Google."""
+    return []
+
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []

@@ -11,7 +11,7 @@ package(
         "//learning/pathways/data_parallel/jax:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -108,6 +108,7 @@ py_test(
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_test_lib",
     ] + xla_py_test_deps(),
 )
 
@@ -261,7 +262,9 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":lru_cache",
         ":py_client",
+        ":python_ref_manager",
         ":pytree",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
@@ -276,6 +279,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -319,6 +323,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -401,7 +406,6 @@ cc_library(
     ],
 )
 
-# TODO(phawkins): this library is really part of JAX. Find a better home for it.
 cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
@@ -414,27 +418,13 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":absl_casters",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "py_traceback",
-    srcs = ["py_traceback.cc"],
-    hdrs = ["py_traceback.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":traceback",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
@@ -456,10 +446,12 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:profiler_client",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],
@@ -510,12 +502,11 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "xla_extension",
+    pytype_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
         ":dlpack",
         ":jax_jit",
@@ -525,7 +516,7 @@ pybind_extension(
         ":py_client",
         ":pytree",
         ":python_ref_manager",
-        ":py_traceback",
+        ":traceback",
         ":outfeed_receiver_py",
         ":types",
         ":xla_compiler",
@@ -543,6 +534,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:gpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tpu_client",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
@@ -557,6 +549,31 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//tensorflow:with_tpu_support": [
+            "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "lru_cache",
+    hdrs = ["lru_cache.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "lru_cache_test",
+    srcs = ["lru_cache_test.cc"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:logging",
+    ],
 )

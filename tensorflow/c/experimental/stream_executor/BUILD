@@ -11,7 +11,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -60,7 +60,10 @@ cc_library(
         "stream_executor.h",
         "stream_executor_internal.h",
     ],
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
+    ],
     deps = [
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
@@ -91,5 +94,8 @@ cc_library(
     srcs = ["stream_executor_test_util.cc"],
     hdrs = ["stream_executor_test_util.h"],
     visibility = ["//tensorflow:internal"],
-    deps = [":stream_executor_hdrs"],
+    deps = [
+        ":stream_executor_hdrs",
+        "//tensorflow/c:tf_status",
+    ],
 )

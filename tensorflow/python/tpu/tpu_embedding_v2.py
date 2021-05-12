@@ -341,6 +341,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
+    self._verify_batch_size_on_enqueue = True
 
   def build(self, per_replica_batch_size: Optional[int] = None):
     """Create the underlying variables and initializes the TPU for embeddings.
@@ -1092,7 +1093,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
-  def _raise_error_for_inputs_not_on_cpu(self, features):
+  def _raise_error_for_inputs_not_on_cpu(self, flat_inputs, flat_paths):
     """Checks all tensors in features to see are placed on the CPU."""
 
     def check_device(path, device_string):
@@ -1108,14 +1109,18 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
-    for path, input_tensor in nest.flatten_with_joined_string_paths(
-        features, expand_composites=True):
-      if (input_tensor.op.type == "Identity" and
-          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
-        for tensor in input_tensor.op.inputs[0].op.inputs:
-          check_device(path, tensor.device)
+    for input_tensor, input_path in zip(flat_inputs, flat_paths):
+      if nest.is_sequence_or_composite(input_tensor):
+        input_tensors = nest.flatten(input_tensor, expand_composites=True)
       else:
-        check_device(path, input_tensor.device)
+        input_tensors = [input_tensor]
+      for t in input_tensors:
+        if (t.op.type == "Identity" and
+            t.op.inputs[0].op.type == "TPUReplicatedInput"):
+          for tensor in t.op.inputs[0].op.inputs:
+            check_device(input_path, tensor.device)
+        else:
+          check_device(input_path, t.device)
 
   def enqueue(
       self,
@@ -1232,20 +1237,27 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
 
-    # Should we also get batch_size from weights if they exist?
-    # Since features is assumed to be batched at the per replica batch size
-    # the returned batch size here is per replica an not global.
-    batch_size = self._get_batch_size(features, in_tpu_context)
-    if batch_size is None and not self._built:
-      raise RuntimeError("Unable to determine batch size from input features."
-                         "Please call build() with global batch size to "
-                         "initialize the TPU for embeddings.")
-    if batch_size is not None:
-      self._maybe_build(batch_size)
-      if self._batch_size != batch_size:
-        raise ValueError("Multiple calls to enqueue with different batch sizes "
-                         "{} and {}.".format(self._batch_size,
-                                             batch_size))
+    if not self._verify_batch_size_on_enqueue:
+      if not self._batch_size or not self._built:
+        raise ValueError(
+            "Configured not to check batch size on each enqueue() call; please "
+            "ensure build() was called with global batch size to initialize "
+            "the TPU for embeddings.")
+    else:
+      # Should we also get batch_size from weights if they exist?
+      # Since features is assumed to be batched at the per replica batch size
+      # the returned batch size here is per replica an not global.
+      batch_size = self._get_batch_size(features, in_tpu_context)
+      if batch_size is None and not self._built:
+        raise RuntimeError("Unable to determine batch size from input features."
+                           "Please call build() with global batch size to "
+                           "initialize the TPU for embeddings.")
+      if batch_size is not None:
+        self._maybe_build(batch_size)
+        if self._batch_size != batch_size:
+          raise ValueError("Multiple calls to enqueue with different batch "
+                           "sizes {} and {}.".format(self._batch_size,
+                                                     batch_size))
 
     nest.assert_same_structure(self._feature_config, features)
 
@@ -1255,8 +1267,9 @@ class TPUEmbedding(tracking.AutoTrackable):
       nest.assert_same_structure(self._feature_config, weights)
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
+    flat_paths, _ = zip(*flat_features)
 
-    self._raise_error_for_inputs_not_on_cpu(features)
+    self._raise_error_for_inputs_not_on_cpu(flat_inputs, flat_paths)
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
       self._raise_error_for_non_direct_inputs(features)
@@ -1618,8 +1631,22 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
                 inp.indices, array_ops.gather(table, truncated_inp.values),
                 dense_output_shape))
       else:
-        outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
-            table, inp, sparse_weights=weight, combiner=feature.table.combiner))
+        inp_rank = inp.dense_shape.get_shape()[0]
+        if (not feature.validate_weights_and_indices and
+            inp_rank is not None and inp_rank <= 2):
+          outputs.append(
+              embedding_ops.embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sp_weights=weight,
+                  combiner=feature.table.combiner))
+        else:
+          outputs.append(
+              embedding_ops.safe_embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sparse_weights=weight,
+                  combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
       if feature.max_sequence_length > 0:

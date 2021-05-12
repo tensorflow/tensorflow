@@ -216,6 +216,16 @@ bool AllRegularInputsEqual(const NodeDef& node) {
   return true;
 }
 
+// Replace a node with NoOp and reset shape inference results for it..
+void ReplaceWithNoOp(NodeDef* node, const GraphOptimizerContext& ctx) {
+  ctx.node_map->RemoveInputs(node->name());
+  ctx.graph_properties->ClearInputProperties(node->name());
+  ctx.graph_properties->ClearOutputProperties(node->name());
+  EraseRegularNodeAttributes(node);
+  node->set_op("NoOp");
+  node->clear_input();
+}
+
 // Graph optimizer context extension specific to ArithmeticOptimizer.
 struct ArithmeticOptimizerContext {
   explicit ArithmeticOptimizerContext(SetVector<NodeDef*>* nodes_to_simplify)
@@ -243,19 +253,37 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
   }
 
   // Update consumers of node to take new_input as input instead.
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
-    const string& node_name = node->name();
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
+  Status UpdateConsumers(NodeDef* node, const string& new_input) {
+    const auto consumers = ctx().node_map->GetOutputs(node->name());
+    if (consumers.empty()) return Status::OK();
+    const TensorId new_tensor = ParseTensorName(new_input);
     for (NodeDef* consumer : consumers) {
+      if (consumer->name() == new_tensor.node()) continue;
+      bool updated = false;
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name &&
-            consumer->name() != NodeName(new_input)) {
-          consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
+        const TensorId input_tensor = ParseTensorName(consumer->input(i));
+        if (input_tensor.node() == node->name()) {
+          if (new_tensor.index() < 0 && input_tensor.index() >= 0) {
+            // Overwriting a data input with a control input will make the graph
+            // invalid.
+            return errors::InvalidArgument(
+                "Cannot override data input ", input_tensor.ToString(),
+                " with control input ", new_tensor.ToString());
+          }
+          consumer->set_input(i, input_tensor.index() < 0
+                                     ? absl::StrCat("^", new_tensor.node())
+                                     : new_input);
+          ctx().node_map->UpdateInput(consumer->name(), node->name(),
+                                      new_input);
+          updated = true;
         }
       }
-      AddToOptimizationQueue(consumer);
+      if (updated) {
+        DedupControlInputs(consumer);
+        AddToOptimizationQueue(consumer);
+      }
     }
+    return Status::OK();
   }
 
   // TODO(ezhulenev): remove this method from ArithmeticOptimizer when all
@@ -1657,7 +1685,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       // Handle split nodes by looking forwards in the graph.
       const auto& outputs = ctx().node_map->GetOutputs(node.name());
       for (NodeDef* output : outputs) {
-        if (IsControlInput(output->input(0))) continue;
+        if (output->input_size() == 0 || IsControlInput(output->input(0))) {
+          continue;
+        }
         TensorId tensor_id = ParseTensorName(output->input(0));
         if (tensor_id.node() == node.name()) {
           tails->insert(ChainLink(output, tensor_id.index()));
@@ -1752,7 +1782,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       if (concat_port == first_input) {
         // Update the consumers of concat to consume the end of the chain
         // instead.
-        UpdateConsumers(concat_node, concat_input);
+        TF_RETURN_IF_ERROR(UpdateConsumers(concat_node, concat_input));
         // Reuse nodes in the first chain to process output of concat.
         tail->set_input(0, concat_name);
         ctx().node_map->UpdateInput(tail->name(), tail_input, concat_name);
@@ -1804,10 +1834,10 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     // Connect all consumers of the tail nodes directly to the
     // output port of Split from which the chain started.
     for (const auto& link : tails) {
-      UpdateConsumers(link.node,
-                      link.port_origin == 0
-                          ? split_name
-                          : strings::StrCat(split_name, ":", link.port_origin));
+      TF_RETURN_IF_ERROR(UpdateConsumers(
+          link.node, link.port_origin == 0
+                         ? split_name
+                         : strings::StrCat(split_name, ":", link.port_origin)));
     }
     return Status::OK();
   }
@@ -1967,30 +1997,71 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
   ~RemoveRedundantReshapeOrBroadcastTo() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return (IsReshape(*node) || IsBroadcastTo(*node)) &&
-           !IsInPreserveSet(*node);
+    return IsReshape(*node) || IsBroadcastTo(*node);
   }
 
+  // TODO(rmlarsen): Handle unary ops with multiple outputs.
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-
-    // 1. Bypass reshape followed by reshape.
-    if (IsReshape(*node) && IsReshape(*input) && !IsInPreserveSet(*input)) {
-      ForwardControlDependencies(node, {input});
-      node->set_input(0, input->input(0));
-      ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));
-      *simplified_node_name = node->name();
-      AddToOptimizationQueue(node);
+    // 1. If the reshape is a no-op, forward its input to its consumers, unless
+    // it anchors a control dependency since we want to make sure that control
+    // dependency is triggered.
+    if (!IsInPreserveSet(*node) && InputMatchesTargetShape(*node) &&
+        !HasControlInputs(*node)) {
+      *simplified_node_name = node->input(0);
       return Status::OK();
     }
 
-    // 2. If the reshape is a no-op, forward its input to its consumers, unless
-    // it anchors a control dependency since we want to make sure that control
-    // dependency is triggered.
-    if (InputMatchesTargetShape(*node) && !HasControlInputs(*node)) {
-      *simplified_node_name = node->input(0);
-      return Status::OK();
+    // 2. Bypass reshape followed by reshape, possibly separated by a simple
+    // chain of unary elementwise ops that are not outputs.
+    if (IsReshape(*node)) {
+      bool skip = false;
+      gtl::InlinedVector<const NodeDef*, 4> nodes_in_chain;
+      const auto predicate_fn = [this, node, &skip,
+                                 &nodes_in_chain](const NodeDef& input) {
+        nodes_in_chain.push_back(&input);
+        if ((input.name() != node->name() &&
+             NumNonControlOutputs(input, *ctx().node_map) > 1) ||
+            IsInPreserveSet(input) || ModifiesFrameInfo(input)) {
+          skip = true;
+          return false;
+        }
+        return IsUnaryElementWise(input);
+      };
+
+      // Walk up the input chain until we find a node that is not unary
+      // element-wise. If it is another Reshape node, we can bypass it.
+      NodeDef* tail =
+          GetTailOfChain(*node, *ctx().node_map,
+                         /*follow_control_input*/ false, predicate_fn);
+
+      if (!skip && tail != nullptr && !IsInPreserveSet(*tail)) {
+        NodeDef* reshape_to_bypass;
+        TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &reshape_to_bypass));
+        if (reshape_to_bypass == nullptr ||
+            (!IsReshape(*reshape_to_bypass) ||
+             NumNonControlOutputs(*reshape_to_bypass, *ctx().node_map) > 1 ||
+             IsInPreserveSet(*reshape_to_bypass))) {
+          return Status::OK();
+        }
+        // Clearing invalid shape inference results of nodes in chain.
+        for (const NodeDef* node_in_chain : nodes_in_chain) {
+          ctx().graph_properties->ClearInputProperties(node_in_chain->name());
+          if (node_in_chain != node) {
+            ctx().graph_properties->ClearOutputProperties(
+                node_in_chain->name());
+          }
+        }
+        // We now have
+        //    reshape_to_bypass -> tail -> ... -> node
+        // where tail maybe equal to node.
+        TF_RETURN_IF_ERROR(
+            UpdateConsumers(reshape_to_bypass, reshape_to_bypass->input(0)));
+        ForwardControlDependencies(tail, {reshape_to_bypass});
+        // Change the bypassed reshape to NoOp.
+        ReplaceWithNoOp(reshape_to_bypass, ctx());
+        *simplified_node_name = node->name();
+        return Status::OK();
+      }
     }
 
     return Status::OK();
@@ -2001,7 +2072,6 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
   bool InputMatchesTargetShape(const NodeDef& reshape) {
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
-
     if (!GetTensorProperties(reshape.name(), &reshape_props).ok() ||
         !GetTensorProperties(reshape.input(0), &input_props).ok()) {
       return false;
@@ -2046,6 +2116,12 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
     NodeDef* producer;
+
+    if (consumer->input_size() < 1) {
+      return errors::FailedPrecondition("Node ", simplified_node_name,
+                                        " lacks inputs");
+    }
+
     TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
     const bool producer_is_cast = IsCastLike(*producer);
     const bool can_optimize =
@@ -2156,95 +2232,6 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   bool IsFixedSizeType(DataType dtype) {
     return dtype != DT_STRING && dtype != DT_VARIANT && dtype != DT_RESOURCE &&
            !kQuantizedTypes.Contains(dtype);
-  }
-};
-
-// Reorder reshapes around a single unary element-wise op, i.e.:
-//    input -> reshape A -> unary -> reshape B -> output
-// becomes
-//    input -> unary -> reshape A -> reshape B -> output
-//
-// A later pass (RemoveRedundantReshapeOrBroadcastTo) removes both reshapes
-class ReorderReshapeAroundUnary : public ArithmeticOptimizerStage {
- public:
-  explicit ReorderReshapeAroundUnary(const GraphOptimizerContext& ctx,
-                                     const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("ReorderReshapeAroundUnary", ctx, ctx_ext) {}
-
-  ~ReorderReshapeAroundUnary() override = default;
-
-  bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
-  }
-
-  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    // Check that we have a chain of (reshape -> unary -> reshape)
-    NodeDef* reshape_b = node;
-    if (!IsReshape(*reshape_b) || IsInPreserveSet(*reshape_b)) {
-      return Status::OK();
-    }
-
-    NodeDef* unary;
-    TF_RETURN_IF_ERROR(GetInputNode(reshape_b->input(0), &unary));
-    if (!IsUnaryElementWise(*unary) || IsInPreserveSet(*unary)) {
-      return Status::OK();
-    }
-
-    NodeDef* reshape_a;
-    TF_RETURN_IF_ERROR(GetInputNode(unary->input(0), &reshape_a));
-    if (!IsReshape(*reshape_a) || IsInPreserveSet(*reshape_a)) {
-      return Status::OK();
-    }
-
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(reshape_a->input(0), &input));
-
-    const string new_reshape_name =
-        OptimizedNodeName(ParseNodeScopeAndName(reshape_a->name()));
-    if (ctx().node_map->NodeExists(new_reshape_name)) {
-      return Status::OK();
-    }
-
-    // Attach unary to the input, bypassing reshape_a
-    unary->set_input(0, reshape_a->input(0));
-    ctx().node_map->UpdateInput(unary->name(), reshape_a->name(),
-                                reshape_a->input(0));
-    // Invalidate node properties since the shape of unary will be different
-    ctx().graph_properties->ClearOutputProperties(unary->name());
-    ctx().graph_properties->ClearInputProperties(unary->name());
-
-    ForwardControlDependencies(unary, {reshape_a});
-
-    // Create a copy of reshape_a and insert it after unary
-    NodeDef* new_reshape =
-        CopyReshapeAndInsertAfter(reshape_a, unary, new_reshape_name);
-    AddToOptimizationQueue(new_reshape);
-
-    *simplified_node_name = node->name();
-    return Status::OK();
-  }
-
- private:
-  NodeDef* CopyReshapeAndInsertAfter(const NodeDef* reshape, NodeDef* unary,
-                                     const string& new_reshape_name) {
-    // Copy the attributes of the original reshape
-    NodeDef* new_reshape = AddEmptyNode(new_reshape_name);
-    new_reshape->set_op("Reshape");
-    new_reshape->set_device(reshape->device());
-    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "T"), "T", new_reshape);
-    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "Tshape"), "Tshape",
-                      new_reshape);
-
-    // Forward the consumers of unary to reshape
-    UpdateConsumers(unary, new_reshape->name());
-
-    // Add unary and the original shape as inputs
-    new_reshape->add_input(unary->name());
-    ctx().node_map->AddOutput(unary->name(), new_reshape->name());
-    new_reshape->add_input(reshape->input(1));
-    ctx().node_map->AddOutput(reshape->input(1), new_reshape->name());
-
-    return new_reshape;
   }
 };
 
@@ -2537,6 +2524,11 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
+    if (!node || node->input_size() < 2) {
+      // Invalid node
+      return false;
+    }
+
     return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 
@@ -2683,6 +2675,210 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
     }
 
     return true;
+  }
+};
+
+// Image upsampling often produces an unnecessary reshape that is difficult to
+// eliminate in other stages. This stage reduces the number of dimensions
+// involved allowing the reshape to be removed.
+//
+// For example, given
+//   B,W,H,C -> Reshape(B,W,1,H,1,C) -> Tile(1,1,2,1,2,1) -> Reshape(B,2W,2H,C)
+// this pass converts the sequence to
+//   B,W,H,C -> Reshape(B,W,H,C) -> Tile(1,1,2,2) -> Reshape(B,2W,2H,C)
+//
+// The first reshape is now redundant and can be removed in a later pass.
+//
+// Note: This only optimizes the simple (but extremely common) case of 2D
+// upsampling.
+//
+// TODO(kkiningh): Generalize to more complex upsampling patterns.
+class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
+ public:
+  explicit ReduceUpsamplingDims(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReduceUpsamplingDims", ctx, ctx_ext) {}
+  ~ReduceUpsamplingDims() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsReshape(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* tile;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &tile));
+    if (!IsTile(*tile) || IsInPreserveSet(*tile)) {
+      return Status::OK();
+    }
+
+    if (NumNonControlOutputs(*tile, *ctx().node_map) != 1) {
+      // Optimization is only worthwile when there is a single output from Tile.
+      // Otherwise, we need to insert addtional Reshape ops that can't be easily
+      // removed.
+      return Status::OK();
+    }
+
+    NodeDef* reshape;
+    TF_RETURN_IF_ERROR(GetInputNode(tile->input(0), &reshape));
+    if (!IsReshape(*reshape) || IsInPreserveSet(*reshape)) {
+      return Status::OK();
+    }
+
+    NodeDef* multiples;
+    TF_RETURN_IF_ERROR(GetInputNode(tile->input(1), &multiples));
+
+    NodeDef* shape;
+    TF_RETURN_IF_ERROR(GetInputNode(reshape->input(1), &shape));
+
+    // Avoid optimizing the same nodes twice
+    const NodeScopeAndName scope_and_name = ParseNodeScopeAndName(node->name());
+    const string new_reshape_name =
+        OptimizedNodeName(scope_and_name, "Reshape");
+    const string new_tile_name = OptimizedNodeName(scope_and_name, "Tile");
+    const string new_multiples_name =
+        OptimizedNodeName(scope_and_name, "Multiples");
+    const string new_shape_name = OptimizedNodeName(scope_and_name, "Shape");
+    if (ctx().node_map->NodeExists(new_reshape_name) ||
+        ctx().node_map->NodeExists(new_tile_name) ||
+        ctx().node_map->NodeExists(new_shape_name) ||
+        ctx().node_map->NodeExists(new_multiples_name)) {
+      return Status::OK();
+    }
+
+    // Compuate updated multiples/shape values.
+    AttrValue new_multiples_attr;
+    if (!CreateUpdatedMultiplesProto(multiples,
+                                     new_multiples_attr.mutable_tensor())) {
+      return Status::OK();
+    }
+    AttrValue new_shape_attr;
+    if (!CreateUpdatedShapeProto(shape, new_shape_attr.mutable_tensor())) {
+      return Status::OK();
+    }
+
+    // At this point the graph is validated and can be updated
+    // Note: We can assume shape/multiples are DT_INT32 ony at this point since
+    // they're checked in CreateUpdated*Proto()
+
+    // 1. Create the constant nodes used by the new Reshape/Tile nodes
+    NodeDef* new_multiples = AddEmptyNode(new_multiples_name);
+    new_multiples->set_op("Const");
+    SetDataTypeToAttr(DT_INT32, "dtype", new_multiples);
+    new_multiples->mutable_attr()->insert({"value", new_multiples_attr});
+    new_multiples->set_device(multiples->device());
+
+    NodeDef* new_shape = AddEmptyNode(new_shape_name);
+    new_shape->set_op("Const");
+    SetDataTypeToAttr(DT_INT32, "dtype", new_shape);
+    new_shape->mutable_attr()->insert({"value", new_shape_attr});
+    new_shape->set_device(shape->device());
+
+    // 2. Create the new Reshape/Tile nodes
+    NodeDef* new_reshape = AddEmptyNode(new_reshape_name);
+    CopyReshapeWithInput(reshape, new_reshape, /*input=*/reshape->input(0),
+                         /*shape=*/new_shape->name());
+    NodeDef* new_tile = AddEmptyNode(new_tile_name);
+    CopyTileWithInput(tile, new_tile, /*input=*/new_reshape->name(),
+                      /*multiples=*/new_multiples->name());
+
+    // 3. Update consumer of original Tile node and add control
+    node->set_input(0, new_tile->name());
+    ctx().node_map->UpdateInput(node->name(), tile->name(), new_tile->name());
+
+    ForwardControlDependencies(new_tile, {tile});
+    ForwardControlDependencies(new_multiples, {multiples});
+    ForwardControlDependencies(new_reshape, {reshape});
+    ForwardControlDependencies(new_shape, {shape});
+
+    *simplified_node_name = node->name();
+    return Status::OK();
+  }
+
+ private:
+  bool CreateUpdatedMultiplesProto(const NodeDef* node, TensorProto* proto) {
+    Tensor multiples;
+    if (!GetTensorFromConstNode(node->name(), &multiples)) {
+      return false;
+    }
+
+    // Dimensions should be [X, Y, N, 1, M, 1]
+    if (multiples.dtype() != DT_INT32 || multiples.NumElements() != 6) {
+      return false;
+    }
+
+    const auto& multiples_values = multiples.flat<int32>();
+    if (multiples_values(3) != 1 || multiples_values(5) != 1) {
+      return false;
+    }
+
+    // Convert to [X, Y, N, M]
+    Tensor new_multiples(DT_INT32, {4});
+    new_multiples.flat<int32>()(0) = multiples_values(0);
+    new_multiples.flat<int32>()(1) = multiples_values(1);
+    new_multiples.flat<int32>()(2) = multiples_values(2);
+    new_multiples.flat<int32>()(3) = multiples_values(4);
+
+    new_multiples.AsProtoTensorContent(proto);
+    return true;
+  }
+
+  bool CreateUpdatedShapeProto(const NodeDef* node, TensorProto* proto) {
+    Tensor shape;
+    if (!GetTensorFromConstNode(node->name(), &shape)) {
+      return false;
+    }
+
+    // Dimensions should be [B, W, 1, H, 1, C]
+    if (shape.dtype() != DT_INT32 || shape.NumElements() != 6) {
+      return false;
+    }
+
+    const auto& shape_values = shape.flat<int32>();
+    if (shape_values(2) != 1 || shape_values(4) != 1) {
+      return false;
+    }
+
+    // Convert to [B, W, H, C]
+    Tensor new_shape(DT_INT32, {4});
+    new_shape.flat<int32>()(0) = shape_values(0);
+    new_shape.flat<int32>()(1) = shape_values(1);
+    new_shape.flat<int32>()(2) = shape_values(3);
+    new_shape.flat<int32>()(3) = shape_values(5);
+
+    new_shape.AsProtoTensorContent(proto);
+    return true;
+  }
+
+  void CopyReshapeWithInput(const NodeDef* reshape, NodeDef* new_reshape,
+                            const string& input, const string& shape) {
+    new_reshape->set_op("Reshape");
+    new_reshape->set_device(reshape->device());
+    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "T"), "T", new_reshape);
+    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "Tshape"), "Tshape",
+                      new_reshape);
+
+    new_reshape->add_input(input);
+    ctx().node_map->AddOutput(NodeName(input), new_reshape->name());
+    new_reshape->add_input(shape);
+    ctx().node_map->AddOutput(NodeName(shape), new_reshape->name());
+
+    AddToOptimizationQueue(new_reshape);
+  }
+
+  void CopyTileWithInput(const NodeDef* tile, NodeDef* new_tile,
+                         const string& input, const string& multiples) {
+    new_tile->set_op("Tile");
+    new_tile->set_device(tile->device());
+    SetDataTypeToAttr(GetDataTypeFromAttr(*tile, "T"), "T", new_tile);
+    SetDataTypeToAttr(GetDataTypeFromAttr(*tile, "Tmultiples"), "Tmultiples",
+                      new_tile);
+
+    new_tile->add_input(input);
+    ctx().node_map->AddOutput(NodeName(input), new_tile->name());
+    new_tile->add_input(multiples);
+    ctx().node_map->AddOutput(NodeName(multiples), new_tile->name());
+
+    AddToOptimizationQueue(new_tile);
   }
 };
 
@@ -3321,7 +3517,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       ctx().node_map->UpdateInput(reduction_node->name(),
                                   inner_function->name(), inner_input->name());
       inner_function->set_input(0, reduction_node->name());
-      UpdateConsumers(reduction_node, inner_function->name());
+      TF_RETURN_IF_ERROR(
+          UpdateConsumers(reduction_node, inner_function->name()));
       ctx().node_map->UpdateInput(inner_function->name(), inner_input->name(),
                                   reduction_node->name());
       if (!is_non_decreasing) {
@@ -3341,21 +3538,6 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       AddToOptimizationQueue(inner_input);
     }
     return Status::OK();
-  }
-
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
-    const string& node_name = node->name();
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
-    for (NodeDef* consumer : consumers) {
-      for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name &&
-            consumer->name() != NodeName(new_input)) {
-          consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
-        }
-      }
-      AddToOptimizationQueue(consumer);
-    }
   }
 
  private:
@@ -4100,22 +4282,22 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
-  if (options_.remove_redundant_reshape)
+  if (options_.replace_pack_with_tile_reshape)
+    pipeline.AddStage<ReplacePackWithTileReshape>(ctx, ctx_ext);
+  if (options_.replace_mul_with_tile && can_use_shapes)
+    pipeline.AddStage<ReplaceMulWithBroadcastByTile>(ctx, ctx_ext);
+  if (options_.reduce_upsampling_dims)
+    pipeline.AddStage<ReduceUpsamplingDims>(ctx, ctx_ext);
+  if (options_.remove_redundant_reshape && can_use_shapes)
     pipeline.AddStage<RemoveRedundantReshapeOrBroadcastTo>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
-  if (options_.replace_pack_with_tile_reshape)
-    pipeline.AddStage<ReplacePackWithTileReshape>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)
     pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
-  if (options_.replace_mul_with_tile)
-    pipeline.AddStage<ReplaceMulWithBroadcastByTile>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_like_and_value_preserving)
     pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
-  if (options_.reorder_reshape_around_unary)
-    pipeline.AddStage<ReorderReshapeAroundUnary>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
@@ -4229,8 +4411,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Perform the optimizations.
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps(can_use_shapes));
-
-  optimized_graph->Swap(optimized_graph_);
+  *optimized_graph = std::move(*optimized_graph_);
   return Status::OK();
 }
 

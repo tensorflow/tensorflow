@@ -21,7 +21,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(
@@ -549,6 +549,9 @@ tf_cc_test(
     name = "collective_rma_distributed_test",
     size = "small",
     srcs = ["collective_rma_distributed_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/187863739): Fix failure and remove.
+    ],
     deps = [
         ":collective_rma_distributed",
         ":device_resolver_distributed",
@@ -814,6 +817,6 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )

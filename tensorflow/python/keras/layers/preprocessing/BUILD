@@ -12,7 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -213,7 +213,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_functional_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -438,7 +437,10 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    tpu_tags = ["no_oss"],
+    tpu_tags = [
+        "no_oss",
+        "noguitar",  # TODO(b/183957207)
+    ],
     deps = [
         ":image_preprocessing",
         ":preprocessing_test_utils",
@@ -532,6 +534,7 @@ tf_py_test(
     size = "medium",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
@@ -589,9 +592,9 @@ cuda_py_test(
 
 tf_py_test(
     name = "normalization_test",
-    size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "broken",  # b/170974360
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
@@ -610,6 +613,7 @@ tf_py_test(
     size = "medium",
     srcs = ["integer_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":integer_lookup",
         ":preprocessing_test_utils",

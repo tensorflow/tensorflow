@@ -627,6 +627,9 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
         ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
         errors::InvalidArgument("Input shape should be a vector, got shape: ",
                                 shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, shape_tensor.NumElements() > 0,
+                errors::InvalidArgument("Shape tensor must not be empty, got ",
+                                        shape_tensor.DebugString()));
     int32 num_batches = shape_tensor.flat<int32>()(0);
 
     int32 samples_per_batch = 1;

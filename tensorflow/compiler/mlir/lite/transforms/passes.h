@@ -17,14 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 
 #include <memory>
-
-#include "llvm/ADT/ArrayRef.h"
+#include <string>
 
 namespace mlir {
 class FuncOp;
 class ModuleOp;
 template <typename T>
 class OperationPass;
+class Type;
 
 namespace TFL {
 class QuantizationSpecs;
@@ -61,10 +61,13 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops);
 
+// Creates an instance of the TensorFlow Lite optimize op order pass.
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass();
+
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
-    llvm::ArrayRef<std::string> trim_funcs_allowlist);
+    const std::vector<std::string>& trim_funcs_allowlist);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareCompositeFunctions
 // pass.
@@ -75,6 +78,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass();
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
+
+std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
+    mlir::Type input_type, mlir::Type output_type);
 
 // Creates an instance of the TensorFlow Lite dialect pass to add default
 // quantization parameters.
@@ -95,7 +101,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
+    const std::vector<std::string>& target_ops);
+
+// Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
 
 // Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
 // given.
@@ -117,6 +127,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
 // Creates a pass which is responsible for initializing Tensorflow variables
 // as Tensorflow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
+
+// Creates get arithmetic count pass, which will calculate the arithmetic count
+// for each ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
 }  // namespace TFL
 
 }  // namespace mlir

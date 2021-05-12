@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
@@ -44,6 +45,22 @@ class HloClientDialect : public Dialect {
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 
+}  // namespace chlo
+}  // namespace mlir
+
+namespace mlir {
+namespace chlo {
+namespace OpTrait {
+
+template <typename ConcreteType>
+class BroadcastingElementwise
+    : public mlir::OpTrait::TraitBase<ConcreteType, BroadcastingElementwise> {};
+
+template <typename ConcreteType>
+class Broadcasting
+    : public mlir::OpTrait::TraitBase<ConcreteType, Broadcasting> {};
+
+}  // namespace OpTrait
 }  // namespace chlo
 }  // namespace mlir
 
