@@ -66,3 +66,22 @@ func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
       : (tensor<*xi1>, tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+// -----
+
+// Unary CHLO operation.
+// CHECK-LABEL: @tan
+// CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
+func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]]) ( {
+  // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>)
+  // CHECK:   %[[TMP0:.*]] = chlo.tan %[[ARG_]]
+  // CHECK:   %[[TMP1:.*]] = chlo.tan %[[TMP0]]
+  // CHECK:   %[[TMP2:.*]] = chlo.tan %[[TMP1]]
+  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP2]])
+  // CHECK: return %[[RES]]
+  %0 = chlo.tan %arg : tensor<*xf32> -> tensor<*xf32>
+  %1 = chlo.tan %0 : tensor<*xf32> -> tensor<*xf32>
+  %2 = chlo.tan %1 : tensor<*xf32> -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+}

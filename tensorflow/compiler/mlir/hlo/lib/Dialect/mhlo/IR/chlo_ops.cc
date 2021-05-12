@@ -16,7 +16,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 #include "llvm/ADT/APFloat.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"

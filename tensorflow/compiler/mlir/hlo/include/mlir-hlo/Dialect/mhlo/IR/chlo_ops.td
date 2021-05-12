@@ -422,13 +422,27 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    traits # [InferFusibilityOpInterface, NoSideEffect,
-    SameOperandsAndResultShape]> {
+    traits # [InferFusibilityOpInterface, NoSideEffect, Elementwise,
+    SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+
+  let extraClassDeclaration = [{
+    static LogicalResult inferReturnTypeComponents(MLIRContext* context,
+        Optional<Location> location, ValueRange operands,
+        DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+          &reifiedReturnShapes);
+    }
   }];
 }
 
