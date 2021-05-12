@@ -393,10 +393,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     return dataset
 
-  def _apply_options(self):
-    """Apply options, such as optimization configuration, to the dataset."""
-    return _FinalizeDataset(self._apply_debug_options())  # pylint: disable=protected-access
-
   def __iter__(self):
     """Creates an iterator for elements of this dataset.
 
@@ -5028,18 +5024,6 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     else:
       self._options_attr = options
     self._options_attr._set_mutable(False)
-
-
-class _FinalizeDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts on the options set on the input dataset."""
-
-  def __init__(self, input_dataset):
-    self._input_dataset = input_dataset
-    with ops.colocate_with(input_dataset._variant_tensor):
-      variant_tensor = gen_dataset_ops.finalize_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
-    super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
 def normalize_to_dense(dataset):

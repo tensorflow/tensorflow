@@ -131,7 +131,7 @@ class Loader(object):
     self._export_dir = export_dir
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
-            meta_graph.graph_def.library, wrapper_function=_WrapperFunction))
+            meta_graph.graph_def.library))
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
@@ -154,6 +154,11 @@ class Loader(object):
     # Get a list of all integer node ids to load, or None if all nodes should be
     # loaded. This list includes ids of child nodes.
     self._filtered_nodes = self._retrieve_all_filtered_nodes()
+
+    for name, concrete_function in self._concrete_functions.items():
+      # Wrap all the concrete function so that they are capable of dealing with
+      # both in replica and cross replica cases.
+      self._concrete_functions[name] = _WrapperFunction(concrete_function)
 
     self._load_all()
     self._restore_checkpoint()
@@ -530,8 +535,6 @@ class Loader(object):
         "variable": lambda: self._recreate_variable(proto.variable),
         "constant": lambda: self._recreate_constant(proto.constant),
         "resource": lambda: self._recreate_resource(proto.resource),
-        "captured_tensor": functools.partial(
-            self._get_tensor_from_fn, proto.captured_tensor),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -612,11 +615,6 @@ class Loader(object):
     else:
       imported_constant = constant_op.constant(ndarray)
     return imported_constant, setattr
-
-  def _get_tensor_from_fn(self, proto):
-    outer_graph = self._concrete_functions[proto.concrete_function].graph
-    captured_tensor = outer_graph.get_tensor_by_name(proto.name)
-    return captured_tensor, setattr
 
   def _recreate_resource(self, proto):
     return _RestoredResource(device=proto.device), _setattr_and_track

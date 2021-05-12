@@ -83,6 +83,12 @@ class VariableSynchronization(enum.Enum):
   * `ON_READ`: Indicates that the variable will be aggregated across devices
     when it is read (eg. when checkpointing or when evaluating an op that uses
     the variable).
+
+    Example:
+  >>> temp_grad=[tf.Variable([0.], trainable=False,
+  ...                      synchronization=tf.VariableSynchronization.ON_READ,
+  ...                      aggregation=tf.VariableAggregation.MEAN
+  ...                      )]
   """
   AUTO = 0
   NONE = 1

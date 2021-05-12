@@ -72,7 +72,7 @@ REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
-XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);
+REGISTER_XLA_OP(Name("Reciprocal"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Log, xla::Log(x));
 REGISTER_XLA_OP(Name("Log1p"), MlirXlaOpKernel);
 
@@ -90,7 +90,7 @@ REGISTER_XLA_OP(Name("Rsqrt"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, xla::Sign(x));
+REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
@@ -119,7 +119,7 @@ REGISTER_XLA_OP(Name("Sqrt"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Square, x* x);
 XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
 REGISTER_XLA_OP(Name("Tanh"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Real, xla::Real(x));
+REGISTER_XLA_OP(Name("Real"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Imag"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));

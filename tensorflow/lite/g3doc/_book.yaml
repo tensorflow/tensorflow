@@ -234,6 +234,7 @@ upper_tabs:
         path: /lite/api_docs/
       - heading: "Python"
       - include: /lite/api_docs/python/tf/lite/_toc.yaml
+      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
       - heading: "Swift"

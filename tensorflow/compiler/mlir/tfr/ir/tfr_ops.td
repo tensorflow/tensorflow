@@ -474,4 +474,127 @@ def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
+//===----------------------------------------------------------------------===//
+// Quantization related operations
+//===----------------------------------------------------------------------===//
+
+def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
+  let description = [{
+   The `quant_act_range` returns the a pair of integers to indicate the fixed
+   range for the fused activation `act` with the quantization defined by the
+   `scale` and `zero point`. Currently, the allowed activations are
+   `NONE`, `RELU`, `RELU6` and `RELU_N1_TO_1`.
+
+    Example:
+
+    ```mlir
+    %3, %4 = tfr.quant_act_range(%2, %1, %0) :
+        (tfr.attr, float, i64) -> (tfr.tensor, tfr.tensor)
+    ```
+  }];
+
+  let arguments = (ins
+      TFR_AttrType:$act,
+      F32:$scale,
+      I64:$zp);
+
+  let results = (outs TFR_TensorType:$min, TFR_TensorType:$max);
+
+  let assemblyFormat = [{
+    `(` $act `,` $scale `,` $zp `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
+  let description = [{
+   The `quant_rescale` rescales the elements of the integer tensor by the the
+   floating-point rescale factor. This op needs to be legalized to the preferred
+   operations of the backends.
+
+    Example:
+
+    ```mlir
+    %3 = tfr.quant_rescale(%2, %1, %0) :
+        (tfr.tensor, tfr.tensor, i64) -> (tfr.tensor)
+    ```
+  }];
+
+  let arguments = (ins
+      TFR_TensorType:$input,
+      TFR_TensorType:$scale,
+      I64:$zp);
+
+  let results = (outs TFR_TensorType:$output);
+
+  let assemblyFormat = [{
+    `(` $input `,` $scale `,` $zp `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [NoSideEffect]> {
+  let description = [{
+   The `quant_raw_data` removes the quantization parameter from the intput
+   tensor.
+
+    Example:
+
+    ```mlir
+    %3 = tfr.quant_raw_data(%0) : (tfr.tensor) -> (tfr.tensor)
+    ```
+  }];
+
+  let arguments = (ins TFR_TensorType:$input);
+
+  let results = (outs TFR_TensorType:$output);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type($input, results)
+  }];
+}
+
+def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
+  let description = [{
+   The `quant_qparam` returns the quantization parameter of the input
+   tensors.
+
+    Example:
+
+    ```mlir
+    %3 = tfr.quant_qparam(%0) : (tfr.tensor) -> (float, tfr.tensor)
+    ```
+  }];
+
+  let arguments = (ins TFR_TensorType:$input);
+
+  let results = (outs TFR_TensorType:$scale, TFR_TensorType:$zp);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type($input, results)
+  }];
+}
+
+
+def TFR_TFRQuantScaleFactorOp : TFR_Op<"quant_scale_factor", [NoSideEffect]> {
+  let description = [{
+   The `quant_scale_factor` computes the effective scale factor according to the
+   output scale and input scales.
+
+    Example:
+
+    ```mlir
+    %3 = tfr.quant_scale_factor(%0) : (f32, tfr.tensor_list) -> (tfr.tensor)
+    ```
+  }];
+
+  let arguments = (ins
+      F32:$out_scale,
+      TFR_TensorListType:$in_scales);
+
+  let results = (outs TFR_TensorType:$scale_factor);
+
+  let assemblyFormat = [{
+    `(` $out_scale `,` $in_scales `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // DIALECT_TFR_OPS_

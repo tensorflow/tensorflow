@@ -120,6 +120,7 @@ struct ComputeOpAndFuncBufferizePass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<SubTensorOp, SubTensorInsertOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
@@ -184,8 +185,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
+                                 SelectOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     populateTensorBufferizePatterns(converter, patterns);

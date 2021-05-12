@@ -491,82 +491,70 @@ func @reshape_1D_0D(%arg0: tensor<1xi32>) -> tensor<i32> {
 
 // -----
 
-// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1)>
-// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2)>
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1], [2]]
 
 // -----
 
-// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
-// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
 // CHECK-LABEL: func @reshape_4D_2D
 func @reshape_4D_2D(%arg0: tensor<12x42x1x1xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42x1x1xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
-// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1)>
-// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3)>
 // CHECK-LABEL: func @reshape_2D_4D
 func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
   return %0 : tensor<12x1x42x1xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1], [2, 3]]
 
 // -----
 
-// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @reshape_3D_4D
 func @reshape_3D_4D(%arg0: tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32>
   return %0 : tensor<1x784x1x1xf32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]]]
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]]
 
 // -----
 
-// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @reshape_4D_3D
 func @reshape_4D_3D(%arg0: tensor<1x8x10x3xf32>) -> tensor<1x240x1xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x8x10x3xf32>) -> tensor<1x240x1xf32>
   return %0 : tensor<1x240x1xf32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]]]
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]
 
 // -----
 
-// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @reshape1_4D_4D
 func @reshape1_4D_4D(%arg0: tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32>
   return %0 : tensor<1x4x1x512xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
 
 // -----
 
-// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @reshape2_4D_4D
 func @reshape2_4D_4D(%arg0: tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32>
   return %0 : tensor<4x1024x1x1xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
-// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
 
 // -----
 
@@ -638,10 +626,8 @@ func @reshape_collapse_single_dim
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x28x28x1xf32>) -> tensor<1x784xf32>
   return %0 : tensor<1x784xf32>
 }
-//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
-//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
 // CHECK-LABEL: func @reshape_collapse_single_dim
-//       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]], #[[MAP1]]]
+//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
@@ -649,11 +635,8 @@ func @reshape_collapse(%arg0: tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32> {
     %0 = "mhlo.reshape"(%arg0) : (tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32>
     return %0 : tensor<2x4x3xf32>
 }
-//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
-//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2)>
-//   CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d3)>
 // CHECK-LABEL: func @reshape_collapse
-//       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2], [3]]
 
 // -----
 
@@ -661,10 +644,8 @@ func @reshape_expand(%arg0: tensor<2x8xf32>) -> tensor<2x4x2xf32> {
     %0 = "mhlo.reshape"(%arg0) : (tensor<2x8xf32>) -> tensor<2x4x2xf32>
     return %0 : tensor<2x4x2xf32>
 }
-//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0)>
-//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d1, d2)>
 // CHECK-LABEL: func @reshape_expand
-//       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]], #[[MAP1]]]
+//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2]]
 
 // -----
 
@@ -672,9 +653,8 @@ func @reshape_single_expand(%arg0 : tensor<8xf32>) -> tensor<1x4x2xf32> {
     %0 = "mhlo.reshape"(%arg0) : (tensor<8xf32>) -> tensor<1x4x2xf32>
     return %0 : tensor<1x4x2xf32>
 }
-//       CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @reshape_single_expand
-//       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]]]
+//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]]
 
 // -----
 
@@ -683,12 +663,8 @@ func @reshape_multiple_collapse
     %0 = "mhlo.reshape"(%arg0) : (tensor<1x2x2x5x3x2xf32>) -> tensor<1x4x5x6xf32>
     return %0 : tensor<1x4x5x6xf32>
 }
-//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0)>
-//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2)>
-//   CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d3)>
-//   CHECK-DAG: #[[MAP3:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d4, d5)>
 // CHECK-LABEL: func @reshape_multiple_collapse
-//       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP3]]]
+//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2], [3], [4, 5]]
 
 // -----
 
@@ -1870,10 +1846,6 @@ func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
     window_strides = dense<1> : tensor<2xi64>} : (tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>) -> tensor<2x3x4x6xf32>
   return %0 : tensor<2x3x4x6xf32>
 }
-// CHECK-DAG:  #[[MAP0:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (d0)>
-// CHECK-DAG:  #[[MAP1:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (d1)>
-// CHECK-DAG:  #[[MAP2:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (d2)>
-// CHECK-DAG:  #[[MAP3:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (d3, d4)>
 // CHECK:      func @depthwise_conv
 // CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
@@ -1885,7 +1857,7 @@ func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
 // CHECK-SAME:      ins(%[[IN]], %[[FILTER]] : tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>)
 // CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
 // CHECK:        %{{.+}} = linalg.tensor_reshape %[[OUT]]
-// CHECK-SAME:     [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP3]]]
+// CHECK-SAME:     [0], [1], [2], [3, 4]
 // CHECK-SAME:     : tensor<2x3x4x2x3xf32> into tensor<2x3x4x6xf32>
 
 // -----
@@ -1911,16 +1883,15 @@ func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
     window_strides = dense<2> : tensor<2xi64>} : (tensor<1x113x113x96xf32>, tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32>
   return %0 : tensor<1x56x56x96xf32>
 }
-// CHECK-DAG:   #[[MAP0:.+]] = affine_map<(d0, d1, d2, d3) -> (d0)>
-// CHECK-DAG:   #[[MAP1:.+]] = affine_map<(d0, d1, d2, d3) -> (d1)>
-// CHECK-DAG:   #[[MAP2:.+]] = affine_map<(d0, d1, d2, d3) -> (d2, d3)>
 // CHECK:       func @depthwise_conv_multiplier_1
 // CHECK-SAME:    %[[IN:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[FILTER:[a-zA-Z0-9_]*]]
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 56, 56, 96] : tensor<1x56x56x96xf32>
 // CHECK:         %[[CST:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[CST]]) : tensor<1x56x56x96xf32>, f32 -> tensor<1x56x56x96xf32>
-// CHECK:         %[[RESHAPED_FILTER:.+]] = linalg.tensor_reshape %[[FILTER]] [#[[MAP0]], #[[MAP1]], #[[MAP2]]] : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
+// CHECK:         %[[RESHAPED_FILTER:.+]] = linalg.tensor_reshape %[[FILTER]]
+// CHECK-SAME:     [0], [1], [2, 3]
+// CHECK-SAME:     : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
 // CHECK:         %{{.+}} = linalg.depthwise_conv_2d_input_nhwc_filter_hwc
 // CHECK-SAME:      {strides = dense<2> : tensor<2xi64>}
 // CHECK-SAME:       ins(%[[IN]], %[[RESHAPED_FILTER]] : tensor<1x113x113x96xf32>, tensor<3x3x96xf32>)
