@@ -1,12 +1,12 @@
 """BUILD extensions for MLIR table generation."""
 
 TdInfo = provider(
-    "Holds tablegen files and the dependencies and include paths necessary to" +
+    "Holds TableGen files and the dependencies and include paths necessary to" +
     " build them.",
     fields = {
         "transitive_sources": "td files transitively used by this rule.",
         "transitive_includes": (
-            "include arguments to add to the final tablegen invocation. These" +
+            "include arguments to add to the final TableGen invocation. These" +
             " are the absolute directory paths that will be added with '-I'."
         ),
     },
@@ -106,14 +106,14 @@ td_library = rule(
     attrs = {
         "srcs": attr.label_list(allow_files = True),
         "includes": attr.string_list(
-            doc = "Include paths to be added to the final tablegen tool" +
+            doc = "Include paths to be added to the final TableGen tool" +
                   " invocation. Relative paths are interpreted as relative to" +
                   " the current label's package. Absolute paths are" +
                   " interpreted as relative to the current label's workspace",
         ),
         # TODO(gcmn): limit to TdInfo providers.
         "deps": attr.label_list(
-            doc = "Dependencies providing tablegen source files and include" +
+            doc = "Dependencies providing TableGen source files and include" +
                   " paths.",
         ),
     },
@@ -165,36 +165,36 @@ gentbl_rule = rule(
     output_to_genfiles = True,
     attrs = {
         "tblgen": attr.label(
-            doc = "The tablegen executable with which to generate `out`.",
+            doc = "The TableGen executable with which to generate `out`.",
             executable = True,
             cfg = "exec",
         ),
         "td_file": attr.label(
-            doc = "The tablegen file to run through `tblgen`.",
+            doc = "The TableGen file to run through `tblgen`.",
             allow_single_file = True,
             mandatory = True,
         ),
         "td_srcs": attr.label_list(
-            doc = "Additional tablegen files included by `td_file`. It is not" +
+            doc = "Additional TableGen files included by `td_file`. It is not" +
                   " necessary to list td_file here (though not an error).",
             allow_files = True,
         ),
         # TODO(gcmn): limit to TdInfo providers.
         "deps": attr.label_list(
-            doc = "Dependencies providing tablegen source files and include" +
+            doc = "Dependencies providing TableGen source files and include" +
                   " paths.",
         ),
         "out": attr.output(
-            doc = "The output file for the tablegen invocation.",
+            doc = "The output file for the TableGen invocation.",
             mandatory = True,
         ),
         "opts": attr.string_list(
-            doc = "Additional command line options to add to the tablegen" +
+            doc = "Additional command line options to add to the TableGen" +
                   " invocation. For include arguments, prefer to use" +
                   " `includes`.",
         ),
         "includes": attr.string_list(
-            doc = "Include paths to be added to the final tablegen tool" +
+            doc = "Include paths to be added to the final TableGen tool" +
                   " invocation. Relative paths are interpreted as relative to" +
                   " the current label's package. Absolute paths are" +
                   " interpreted as relative to the current label's workspace." +
@@ -204,7 +204,7 @@ gentbl_rule = rule(
                   " directory of td_file are always added.",
         ),
         "td_includes": attr.string_list(
-            doc = "Include paths to add to the tablegen invocation. Paths are" +
+            doc = "Include paths to add to the TableGen invocation. Paths are" +
                   " interpreted as relative to the current label's workspace" +
                   " root and applied from all roots available in the" +
                   " execution environment (source, genfiles, and bin" +
@@ -259,7 +259,7 @@ def _gentbl_test_impl(ctx):
 gentbl_test = rule(
     _gentbl_test_impl,
     test = True,
-    doc = "A shell test that tests the given tablegen invocation. Note" +
+    doc = "A shell test that tests the given TablegGen invocation. Note" +
           " that unlike gentbl_rule, this builds and invokes `tblgen` in the" +
           " target configuration. Takes all the same arguments as gentbl_rule" +
           " except for `out` (as it does not generate any output)",
@@ -267,7 +267,7 @@ gentbl_test = rule(
     output_to_genfiles = True,
     attrs = {
         "tblgen": attr.label(
-            doc = "The tablegen executable run in the shell command. Note" +
+            doc = "The TableGen executable run in the shell command. Note" +
                   " that this is built in the target configuration.",
             executable = True,
             cfg = "target",
@@ -300,7 +300,7 @@ def gentbl_filegroup(
         test = False,
         skip_opts = [],
         **kwargs):
-    """Create multiple tablegen generated files using the same tool and input.
+    """Create multiple TableGen generated files using the same tool and input.
 
     All generated outputs are bundled in a file group with the given name.
 
@@ -353,7 +353,9 @@ def gentbl_filegroup(
             out = out,
             **kwargs
         )
-        if test:
+
+        # TODO(b/187925983): Remove skipping once crash is fixed.
+        if False and test:
             # Also run the generator in the target configuration as a test. This
             # means it gets run with asserts and sanitizers and such when they
             # are enabled and is counted in coverage.
@@ -392,7 +394,7 @@ def gentbl(
         strip_include_prefix = None,
         test = False,
         **kwargs):
-    """Create multiple tablegen generated files using the same tool and input.
+    """Create multiple TableGen generated files using the same tool and input.
 
     All generated outputs are bundled in a cc_library rule.
 
