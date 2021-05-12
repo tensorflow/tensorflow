@@ -1667,7 +1667,17 @@ func @DontConvertMul12ToIdentity(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: ConvertMul1WithBroadcastToIdentity
+// If the broadcast doesn't change the dimensions (i.e. constant is smaller than input)
+func @ConvertMul1WithBroadcastToIdentity(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2xf32>
+  %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+  // CHECK: return %arg0
+}
+
 // CHECK-LABEL: DontConvertMul1WithBroadcastToIdentity
+// If the broadcast changes the dimensions (i.e. constant is larger than input)
 func @DontConvertMul1WithBroadcastToIdentity(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
   %cst = constant dense<1.0> : tensor<2x2xf32>
   %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>

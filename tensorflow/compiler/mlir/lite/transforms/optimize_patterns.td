@@ -786,11 +786,11 @@ class AllElementsAreF32<string val> : Constraint<CPred<
 
 // Optimize X*1 to X
 def OptimizeMul1ToIdentity : Pat<
-  (TFL_MulOp $input,
+  (TFL_MulOp:$result $input,
              (ConstantOp $constant),
              TFL_AF_None),
   (replaceWithValue $input),
-  [(HaveSameType $input, $constant),
+  [(HaveSameType $input, $result),
    (AllElementsAreF32<"1.0f"> $constant)]>;
 
 class AllElementsAreBool<string val> : Constraint<CPred<
