@@ -3,10 +3,10 @@
 FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/4.1/
+ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/4.2/
 ARG ROCM_BUILD_NAME=xenial
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-4.1.0
+ARG ROCM_PATH=/opt/rocm-4.2.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
