@@ -194,7 +194,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter}
+   * Initializes an {@code Interpreter}.
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
@@ -205,7 +205,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   * Initializes an {@code Interpreter} and specifies the number of threads used for inference.
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param numThreads: number of threads to use for inference
@@ -218,7 +218,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   * Initializes an {@code Interpreter} and specifies options for customizing interpreter behavior.
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param options: a set of options for customizing interpreter behavior
@@ -550,7 +550,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Gets the list of SignatureDefs inputs for method {@code methodName}
+   * Gets the list of SignatureDefs inputs for method {@code methodName}.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
@@ -560,7 +560,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Gets the list of SignatureDefs outputs for method {@code methodName}
+   * Gets the list of SignatureDefs outputs for method {@code methodName}.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
