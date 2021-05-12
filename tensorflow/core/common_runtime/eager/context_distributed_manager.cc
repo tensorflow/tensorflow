@@ -491,9 +491,9 @@ tensorflow::Status UpdateContextWithServerDef(
         &new_remote_device_mgr));
     remote_device_mgr = new_remote_device_mgr.get();
   } else {
-    context->ClearCachesAndDefaultExecutor();
-    // TODO(b/143914772): Potential memory leak if rendezvous has pending
+    // NOTE(b/143914772): Potential memory leak if rendezvous has pending
     // tensors for removed / replaced workers.
+    context->ClearCachesAndDefaultExecutor();
 
     remote_device_mgr = context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
