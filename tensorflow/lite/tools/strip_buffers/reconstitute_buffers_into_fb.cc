@@ -52,6 +52,10 @@ int Main(int argc, char* argv[]) {
   auto input_model =
       FlatBufferModel::BuildFromFile(input_flatbuffer_path.c_str());
 
+  if (!FlatbufferHasStrippedWeights(input_model->GetModel())) {
+    LOG(ERROR) << "The weights are already available in the input model!";
+    return 0;
+  }
   // Reconstitute flatbuffer with appropriate random constant tensors
   FlatBufferBuilder builder(/*initial_size=*/10240);
   if (ReconstituteConstantTensorsIntoFlatbuffer(input_model->GetModel(),
