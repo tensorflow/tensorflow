@@ -81,6 +81,7 @@ DECL_CONVERT_OP(RealDiv);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(AvgPool);
 DECL_CONVERT_OP(MaxPool);
+DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Rank);
 DECL_CONVERT_OP(Shape);
@@ -105,6 +106,7 @@ DECL_CONVERT_OP(FusedBatchNormV3);
 DECL_CONVERT_OP(BiasAdd);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
+DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Transpose);
 DECL_CONVERT_OP(Tile);
@@ -630,6 +632,27 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<tosa::MaxPool2dOp>(
       op, output_type, tf_maxpool_op.input(), kernel, stride, pad);
+  return success();
+}
+
+LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_concatv2_op = cast<TF::ConcatV2Op>(op);
+  SmallVector<Value, 8> values(tf_concatv2_op.values());
+
+  ElementsAttr axis_elems;
+  if (!matchPattern(tf_concatv2_op.axis(), m_Constant(&axis_elems)))
+    return failure();
+
+  int32_t axis = axis_elems.getValue<IntegerAttr>({}).getInt();
+
+  llvm::Optional<Value> result =
+      convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
   return success();
 }
 
@@ -1209,8 +1232,9 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits());
+  llvm::Optional<Value> result =
+      convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                       tf_softmax_op.logits(), /*beta=*/1.0);
 
   if (!result) return failure();
 
@@ -1465,6 +1489,29 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<tosa::TransposeOp>(
       op, output_type, tf_transpose_op.x(), tf_transpose_op.perm());
+
+  return success();
+}
+
+LogicalResult ConvertTFPackOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_pack_op = cast<TF::PackOp>(op);
+
+  SmallVector<Value, 8> inputs(tf_pack_op.values());
+
+  assert(inputs.size() >= 2);
+
+  IntegerAttr axis_attr = tf_pack_op.axisAttr();
+  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+
+  int32_t axis_i32 = axis_attr.getInt();
+
+  llvm::Optional<Value> result =
+      convertPackOp(rewriter, op, tf_pack_op.getResult(), inputs, axis_i32);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
 
   return success();
 }
@@ -2139,6 +2186,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFArgMaxOp>(ctx);
   patterns.insert<ConvertTFAvgPoolOp>(ctx);
   patterns.insert<ConvertTFMaxPoolOp>(ctx);
+  patterns.insert<ConvertTFConcatV2Op>(ctx);
   patterns.insert<ConvertTFReshapeOp>(ctx);
   patterns.insert<ConvertTFRankOp>(ctx);
   patterns.insert<ConvertTFShapeOp>(ctx);
@@ -2163,6 +2211,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFBiasAddOp>(ctx);
   patterns.insert<ConvertTFSplitOp>(ctx);
   patterns.insert<ConvertTFSplitVOp>(ctx);
+  patterns.insert<ConvertTFPackOp>(ctx);
   patterns.insert<ConvertTFUnpackOp>(ctx);
   patterns.insert<ConvertTFTransposeOp>(ctx);
   patterns.insert<ConvertTFTileOp>(ctx);
