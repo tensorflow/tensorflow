@@ -3,7 +3,11 @@
 | Status        | Proposed                                                    |
 :-------------- |:----------------------------------------------------------- |
 | **RFC #3**    |                                                             |
-| **Author(s)** | Vijay Pawar (vpawar@cadence.com)                            |
+| **Author(s)** | Bhanu Prakash Bandaru Venkata (bhanup@cadence.com)          |
+|               | Mayur Jagtap (mayurj@cadence.com)                           |
+|               | Niranjan Yadla (nyadla@cadence.com)                         |
+|               | Raj Pawate (pawateb@cadence.com)                            |
+|               | Vijay Pawar (vpawar@cadence.com)                            |
 | **Sponsor**   | Pete Warden (petewarden@google.com)                         |
 | **Updated**   | 2021-05-12                                                  |
 
@@ -25,3 +29,22 @@ Following updates in TFLM memory allocation scheme would really make it efficien
 - Provide a query API to get input, output, scratch and persistent memory requirements of the network at init time.
 - Allow scratch and persistent buffers to be separate and respective buffer pointers would be passed to MicroInterpreter.
 - Allow input and output buffers to be allocated by application / upper layer and respective buffer pointers would be passed to MicroInterpreter.
+
+A query API can be something like below:
+```
+tflite::void GetMemRequirements(const Model* model, 
+                                int32_t* inp_sz,
+                                int32_t* out_sz,
+                                int32_t* persist_sz,
+                                int32_t* scratch_sz);
+```
+Application / upper layer would allocate buffers of sizes returned by above API.  The MicroInterpreter constructor should have a variant which accepts separate pointers for input, output, scratch and persist buffers as below.
+```
+MicroInterpreter(const Model* model, 
+                 const MicroOpResolver& op_resolver,
+                 uint8_t* p_inp, 
+                 uint8_t* p_out,
+                 uint8_t* p_persist, 
+                 uint8_t* p_scratch,  
+                 ErrorReporter* error_reporter,
+                 tflite::Profiler* profiler = nullptr);
