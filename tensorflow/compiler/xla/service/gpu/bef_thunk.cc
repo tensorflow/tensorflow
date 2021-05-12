@@ -44,7 +44,10 @@ StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
     mlir::Operation* op, tfrt::HostContext* host) {
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(op->getContext()));
-  if (tensorflow::LhloGpuOpToTfrtCudaModule(op, module.get()).failed()) {
+  const std::string func_name = "main";
+  // TODO(hanbinyoon): Merge with the async lhlo->tfrt_gpu lowering pipeline.
+  if (tensorflow::LhloGpuOpToTfrtCudaModule(op, module.get(), func_name)
+          .failed()) {
     return tensorflow::errors::Internal(
         "Failed to lower lmhlo_gpu op to tfrt_gpu dialect.");
   }
@@ -56,9 +59,8 @@ StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
   }
 
   auto buffer = tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
-  // TODO(hanbinyoon): Programmatically get the function name after b/186927461.
-  return absl::make_unique<tfrt::gpu::Program>(std::move(buffer),
-                                               "main_sync_region", host);
+  return absl::make_unique<tfrt::gpu::Program>(std::move(buffer), func_name,
+                                               host);
 }
 #endif  // BEF_THUNKS
 
