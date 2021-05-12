@@ -158,6 +158,52 @@ def deserialize(config, custom_objects=None):
 
   Returns:
       Layer instance (may be Model, Sequential, Network, Layer...)
+
+  Example:
+  ```python
+  config = {
+    'class_name': 'Sequential',
+    'config': {
+      'layers': [
+        {
+          'class_name': 'InputLayer',
+          'config': {
+            'batch_input_shape': (None, 16),
+            'dtype': 'float32',
+            'name': 'input_1',
+            'ragged': False,
+            'sparse': False
+          }
+        },{
+          'class_name': 'Dense',
+          'config': {
+            'activation': 'relu',
+            'activity_regularizer': None,
+            'bias_constraint': None,
+            'bias_initializer': {
+              'class_name': 'Zeros',
+              'config': {}
+            },
+            'bias_regularizer': None,
+            'dtype': 'float32',
+            'kernel_constraint': None,
+            'kernel_initializer': {
+              'class_name': 'GlorotUniform',
+              'config': {'seed': None}
+            },
+            'kernel_regularizer': None,
+            'name': 'dense',
+            'trainable': True,
+            'units': 32,
+            'use_bias': True
+          }
+        }
+      ],
+      'name': 'sequential'
+    }
+  }
+  model = tf.keras.layers.deserialize(config)
+  ```
   """
   populate_deserializable_objects()
   return generic_utils.deserialize_keras_object(
