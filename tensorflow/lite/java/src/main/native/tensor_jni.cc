@@ -83,6 +83,10 @@ size_t ElementByteSize(TfLiteType data_type) {
       static_assert(sizeof(jint) == 4,
                     "Interal error: Java int not compatible with kTfLiteInt");
       return 4;
+    case kTfLiteInt16:
+      static_assert(sizeof(jshort) == 2,
+                    "Interal error: Java int not compatible with kTfLiteShort");
+      return 2;
     case kTfLiteUInt8:
     case kTfLiteInt8:
       static_assert(sizeof(jbyte) == 1,
@@ -127,6 +131,12 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       jintArray int_array = static_cast<jintArray>(array);
       jint* int_dst = static_cast<jint*>(dst);
       env->GetIntArrayRegion(int_array, 0, num_elements, int_dst);
+      return to_copy;
+    }
+    case kTfLiteInt16: {
+      jshortArray short_array = static_cast<jshortArray>(array);
+      jshort* short_dst = static_cast<jshort*>(dst);
+      env->GetShortArrayRegion(short_array, 0, num_elements, short_dst);
       return to_copy;
     }
     case kTfLiteInt64: {
@@ -183,6 +193,12 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
     case kTfLiteInt32: {
       jintArray int_array = static_cast<jintArray>(dst);
       env->SetIntArrayRegion(int_array, 0, len, static_cast<const jint*>(src));
+      return size;
+    }
+    case kTfLiteInt16: {
+      jshortArray short_array = static_cast<jshortArray>(dst);
+      env->SetShortArrayRegion(short_array, 0, len,
+                               static_cast<const jshort*>(src));
       return size;
     }
     case kTfLiteInt64: {
@@ -365,6 +381,7 @@ void WriteScalar(JNIEnv* env, jobject src, TfLiteType type, void* dst,
   }
     CASE(kTfLiteFloat32, jfloat, "floatValue", "()F", Float);
     CASE(kTfLiteInt32, jint, "intValue", "()I", Int);
+    CASE(kTfLiteInt16, jshort, "shortValue", "()S", Short);
     CASE(kTfLiteInt64, jlong, "longValue", "()J", Long);
     CASE(kTfLiteInt8, jbyte, "byteValue", "()B", Byte);
     CASE(kTfLiteUInt8, jbyte, "byteValue", "()B", Byte);
