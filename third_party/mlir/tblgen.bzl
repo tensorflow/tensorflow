@@ -153,6 +153,7 @@ def _gentbl_rule_impl(ctx):
         inputs = trans_srcs,
         executable = ctx.executable.tblgen,
         arguments = [args],
+        mnemonic = "TdGenerate",  # Kythe extractor hook.
     )
 
     return [DefaultInfo()]
