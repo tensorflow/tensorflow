@@ -865,6 +865,12 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
                                       [](bool v) { return v; });
     }
   }];
+
+ let assemblyFormat = [{
+    `(`operands`)`
+       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers)
+       attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]> {
