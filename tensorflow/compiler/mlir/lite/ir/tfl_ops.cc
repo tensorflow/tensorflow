@@ -568,6 +568,15 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a + b; });
 }
 
+int64_t AddOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatenationOp
 //===----------------------------------------------------------------------===//
@@ -968,6 +977,15 @@ void FullyConnectedOp::getCanonicalizationPatterns(
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
+int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // Conv2DOp
 //===----------------------------------------------------------------------===//
@@ -1084,9 +1102,8 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
 int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
   int64_t count;
   if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
-          op, &count)) {
+          op, &count))
     return count;
-  }
 
   return -1;
 }
@@ -1100,6 +1117,15 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
+}
+
+int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1312,6 +1338,15 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a * b; });
 }
 
+int64_t MulOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
@@ -1322,6 +1357,15 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a / b; },
       [](APInt a, APInt b) { return a.sdiv(b); });
+}
+
+int64_t DivOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1842,6 +1886,15 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
       [](APInt a, APInt b) { return a - b; });
+}
+
+int64_t SubOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                      &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
