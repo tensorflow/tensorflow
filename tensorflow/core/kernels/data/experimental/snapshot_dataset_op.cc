@@ -201,8 +201,6 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Reader
 
   explicit Reader(const Params& params, int64 start_index);
 
-  ~Reader() override;
-
   Status Initialize(IteratorContext* ctx) override;
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
