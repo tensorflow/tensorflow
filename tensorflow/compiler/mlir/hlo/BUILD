@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
+load("//third_party/mlir:tblgen.bzl", "gentbl", "gentbl_filegroup", "td_library")
 
 # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -227,6 +227,28 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_filegroup(
+    name = "hlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-dialect-doc", "g3doc/hlo_ops.md"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_filegroup(
+    name = "lhlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-dialect-doc", "g3doc/lhlo_ops.md"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
