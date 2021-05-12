@@ -1039,22 +1039,22 @@ def serialize(learning_rate_schedule):
     A dict-like, JSON-compatible representation of the object's config.
 
   Example:
-    ```python
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-      0.1,
-      decay_steps=100000,
-      decay_rate=0.96,
-      staircase=True)
+  ```python
+  lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+    0.1,
+    decay_steps=100000,
+    decay_rate=0.96,
+    staircase=True)
 
-    config = tf.keras.optimizers.schedules.serialize(lr_schedule)
-    config
-    {'class_name': 'ExponentialDecay',
-     'config': {'decay_rate': 0.96,
-        'decay_steps': 100000,
-        'initial_learning_rate': 0.1,
-        'name': None,
-        'staircase': True}}
-    ```
+  config = tf.keras.optimizers.schedules.serialize(lr_schedule)
+  config
+  {'class_name': 'ExponentialDecay',
+   'config': {'decay_rate': 0.96,
+      'decay_steps': 100000,
+      'initial_learning_rate': 0.1,
+      'name': None,
+      'staircase': True}}
+  ```
   """
   return generic_utils.serialize_keras_object(learning_rate_schedule)
 
@@ -1074,17 +1074,17 @@ def deserialize(config, custom_objects=None):
     A `LearningRateSchedule` object.
 
   Example:
-    ```python
-    config = {
-      'class_name': 'PolynomialDecay',
-      'config': {'cycle': False,
-        'decay_steps': 10000,
-        'end_learning_rate': 0.01,
-        'initial_learning_rate': 0.1,
-        'name': None,
-        'power': 0.5}}
-    lr_schedule = tf.keras.optimizers.schedules.deserialize(config)
-    ```    
+  ```python
+  config = {
+    'class_name': 'PolynomialDecay',
+    'config': {'cycle': False,
+      'decay_steps': 10000,
+      'end_learning_rate': 0.01,
+      'initial_learning_rate': 0.1,
+      'name': None,
+      'power': 0.5}}
+  lr_schedule = tf.keras.optimizers.schedules.deserialize(config)
+  ```    
   """
   return generic_utils.deserialize_keras_object(
       config,
