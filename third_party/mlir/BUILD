@@ -4499,10 +4499,6 @@ cc_binary(
     name = "mlir-lsp-server",
     srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
     includes = ["include"],
-    visibility = [
-        ":friends",
-        "//devtools/cider/extensions/mlird:__pkg__",
-    ],
     deps = [
         ":AllPassesAndDialects",
         ":IR",
