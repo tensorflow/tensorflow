@@ -2063,7 +2063,6 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
       cc_major < 5) {
-    // TODO(cheshire): Let's instead delegate to an algo-less version.
     return port::InternalError(absl::StrCat(
         "sm_", cc_major, " does not support explicit gemm algorithms."));
   }
