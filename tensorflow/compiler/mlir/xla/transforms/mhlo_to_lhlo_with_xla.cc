@@ -464,11 +464,6 @@ Status WalkTuplePostOrder(Value v,
   return visitor(v);
 }
 
-// This function removes all uses of a fused region argument, and rewire those
-// uses to a `tensor_load %memref`, where %memref is caller argument.
-//
-// It also flattens all input/output tuples into more region arguments /
-// results.
 StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     const HloInstruction* root, const Shape& shape,
     xla::ShapeIndex* shape_index, OpBuilder* b, Location loc) {
@@ -497,6 +492,22 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
   return load.getResult();
 }
 
+// Emit a lmhlo.fusion based on XLA HLO fusion. Structurally they are not neatly
+// equivalent. Specifically, XLA HLO fusion:
+//     fused_computation {
+//       %p0 = parameter(0)
+//       %p1 = parameter(1)
+//       ...
+//       ROOT %ret = ...
+//     }
+// will be converted to
+//     lmhlo.fusion() {  // no explicit operands
+//       // capturing outside buffers
+//       %p0 = tensor_load(%arg0) : memref<...> -> tensor<...>
+//       %p1 = tensor_load(%arg1) : memref<...> -> tensor<...>
+//       ...
+//       tensor_store ..., %ret // store a tensor to a memref
+//     }
 StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     const HloInstruction* instr) {
   Location loc = getLocation(instr);
@@ -1629,6 +1640,8 @@ Status LhloDialectEmitter::Initialize() {
                                 builder_.getFunctionType({}, {}));
 
   {
+    // This is an optional attribute used by the XLA backend. If the resulting
+    // LMHLO doesn't go through XLA, this is not needed.
     const Shape& shape = computation_.root_instruction()->shape();
     func_op->setAttr(
         "result_xla_shape",
@@ -1694,6 +1707,11 @@ Status LhloDialectEmitter::Initialize() {
       continue;
     }
 
+    // There are optional attributes to help the program run through XLA. XLA
+    // defines ExecutionInput and ExecutionOutput structures to carry
+    // input-output type and buffer information, therefore any information they
+    // need (mainly the type structure, potentially containing tuples) to be
+    // preserved. They are not needed if the generated LMHLO is not sent to XLA.
     NamedAttrList arg_attr_list;
     mlir::Type arg_type;
     if (AllocationShouldLowerToTypedArg(alloc)) {
@@ -1728,6 +1746,10 @@ Status LhloDialectEmitter::Initialize() {
                               alloc->param_shape_index().end())));
       }
     }
+    // Optional: an attribute for optimization. If a kernel uses this
+    // allocation, but the allocation has lmhlo.constant_name, then the kernel
+    // will instead use the global value indicated by the name for potentially
+    // more optimizations (e.g. constant propagation).
     if (alloc->is_constant()) {
       arg_attr_list.set(
           "lmhlo.constant_name",
