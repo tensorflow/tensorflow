@@ -281,6 +281,9 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
     if (failed(image_warping.RewriteFunc())) {
       return signalPassFailure();
     }
+  } else {
+      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
+      return signalPassFailure();
   }
 }
 
@@ -305,6 +308,9 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     if (failed(max_unpooling.RewriteFunc())) {
       return signalPassFailure();
     }
+  } else {
+      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
+      return signalPassFailure();
   }
 }
 
@@ -323,6 +329,9 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
     func.addEntryBlock();
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
+      return signalPassFailure();
+  } else {
+      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
       return signalPassFailure();
   }
 }

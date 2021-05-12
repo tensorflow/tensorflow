@@ -2804,6 +2804,38 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertLen(input_details, 1)
     self.assertEqual('Placeholder', input_details[0]['name'])
 
+  def testMLIRExperimentalImplements(self):
+    """Tests the experimental_implements feature during MLIR conversion."""
+    with ops.Graph().as_default():
+  
+      @def_function.function(experimental_implements='embedding_matmul')
+      def op_to_be_replaced(params, ids):
+        return constant_op.constant([0,1,2], dtype=dtypes.float32)
+  
+      @def_function.function()
+      def model(params, ids):
+        return op_to_be_replaced(params, ids)
+  
+      params = array_ops.placeholder(shape=(5,2), dtype=dtypes.float32)
+      ids = array_ops.placeholder(shape=(3), dtype=dtypes.int32)
+      ccf = model.get_concrete_function(params,ids)
+  
+      converter = lite.TFLiteConverterV2.from_concrete_functions([ccf])
+      tflite_model = converter.convert()
+  
+    interpreter = lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+  
+    interpreter.set_tensor(input_details[0]['index'], np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]]).astype(np.float32))
+    interpreter.set_tensor(input_details[1]['index'], np.array(([0, 3, 4])).astype(np.int32))
+  
+    interpreter.invoke()
+  
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    # If the above replacement with embedding_matmul did not occur, it will have returned the origin [0,1,2]
+    self.assertAllEqual(output_data,[[1, 2], [7, 8], [9, 10]])
 
 class ImportOpsUtilTest(LiteTest):
 
