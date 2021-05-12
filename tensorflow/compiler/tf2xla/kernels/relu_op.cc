@@ -37,16 +37,7 @@ namespace tensorflow {
 namespace {
 
 REGISTER_XLA_OP(Name("Relu"), MlirXlaOpKernel);
-
-class Relu6Op : public XlaOpKernel {
- public:
-  explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Clamp the scalar input between 0 and 6.
-  void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetOutput(0, xla::Relu6(ctx->Input(0)));
-  }
-};
-REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
+REGISTER_XLA_OP(Name("Relu6"), MlirXlaOpKernel);
 
 class LeakyReluOp : public XlaOpKernel {
  public:

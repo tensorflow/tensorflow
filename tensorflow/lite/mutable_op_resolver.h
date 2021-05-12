@@ -104,6 +104,8 @@ class MutableOpResolver : public OpResolver {
   void ChainOpResolver(const OpResolver* other);
 
  private:
+  bool MayContainUserDefinedOps() const override;
+
   typedef std::pair<tflite::BuiltinOperator, int> BuiltinOperatorKey;
   typedef std::pair<std::string, int> CustomOperatorKey;
 

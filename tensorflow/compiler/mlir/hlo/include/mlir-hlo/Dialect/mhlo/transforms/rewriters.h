@@ -100,6 +100,10 @@ void PopulateMoveUpDynamicBroadcastsForFusionLegality(ConversionTarget *target);
 void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
+/// Populate rank specialization clustering patterns.
+void PopulateRankSpecializationClusterPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
 }  // namespace mhlo
 
 namespace chlo {

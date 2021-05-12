@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 
 from google.protobuf import text_format
@@ -43,6 +44,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -883,6 +885,31 @@ class SavingOptionsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
+
+  def test_save_invalid_custom_gradients(self):
+    # The full custom gradients test is in load_test.py. This test just makes
+    # sure that a warning is logged when the user has disabled custom gradients
+    # and saves a model with invalid custom gradients.
+
+    @custom_gradient.custom_gradient
+    def invalid(x):
+      def grad(dy):
+        raise NotImplementedError
+      return x, grad
+
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        invalid, input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(experimental_custom_gradients=None)
+
+    with self.assertLogs(level="WARNING") as logs:
+      save.save(root, save_dir, root.f, options=options)
+    self.assertIn(
+        "Your model contains untraceable custom gradients. This "
+        "warning may become an error in the future. Please set the option "
+        "tf.saved_model.SaveOption(experimental_custom_gradients=True) to get "
+        "the full error message.", "".join(logs.output))
 
 
 class AssetTests(test.TestCase):

@@ -750,7 +750,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           gen_math_ops.floor_mod,
           np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([1, 4]),
           np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([4, 1]),
-          expected=np.array([[0, -1, -1 * int_max, -1], [0, 0, 0, 0], 
+
+          expected=np.array([[0, -1, -1 * int_max, -1], [0, 0, 0, 0],
                              [0, 0, 0, 0], [int_max - 1, int_max - 1, 1, 0]],
                             dtype=dtype))
       self._testBinary(

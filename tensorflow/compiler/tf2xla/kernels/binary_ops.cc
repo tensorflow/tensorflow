@@ -201,10 +201,7 @@ XLA_MAKE_BINARY(
     xla::Mul((lhs * lhs) * lhs,
              xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
              extend_dimensions));
-XLA_MAKE_BINARY(
-    SqrtGrad,
-    xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
-             lhs, extend_dimensions));
+REGISTER_XLA_OP(Name("SqrtGrad"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
@@ -234,18 +231,7 @@ REGISTER_XLA_OP(Name("TanhGrad"), MlirXlaOpKernel);
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
 
-xla::XlaOp SquaredDifferenceImpl(DataType dtype, xla::XlaOp x, xla::XlaOp y,
-                                 const std::vector<int64>& extend_dimensions) {
-  auto difference = xla::Sub(x, y, extend_dimensions);
-  if (DataTypeIsComplex(dtype)) {
-    return xla::Conj(difference) * difference;
-  } else {
-    return xla::Square(difference);
-  }
-}
-XLA_MAKE_BINARY(SquaredDifference,
-                SquaredDifferenceImpl(input_type(0), lhs, rhs,
-                                      extend_dimensions));
+REGISTER_XLA_OP(Name("SquaredDifference"), MlirXlaOpKernel);
 
 xla::XlaOp IgammaImpl(xla::XlaOp x, xla::XlaOp y,
                       const BCast& broadcast_helper) {

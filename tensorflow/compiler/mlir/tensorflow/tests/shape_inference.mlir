@@ -1211,4 +1211,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = "module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
   }
+
+  // Test that ref shapes are also refined but element type retained for
+  // passthrough ops.
+  // CHECK-LABEL: func @identity_ref
+  func @identity_ref(%arg0: tensor<312x500x!tf.f32ref>) {
+    // CHECK: (tensor<312x500x!tf.f32ref>) -> tensor<312x500xf32>
+    %15 = "tf.Identity"(%arg0) : (tensor<312x500x!tf.f32ref>) -> tensor<*xf32>
+    return
+  }
 }

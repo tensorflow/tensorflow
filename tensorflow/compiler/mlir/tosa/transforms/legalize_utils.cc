@@ -28,19 +28,21 @@ namespace tosa {
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    RankedTensorType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, bool double_round) {
+                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   bool scale32) {
   int32_t multiplier;
   int32_t shift;
 
-  // We currently only support 32-bit quantized multiplier.
-  computeMultiplierAndShift(scale, multiplier, shift, 32);
+  int32_t scale_width = scale32 ? 32 : 16;
+
+  computeMultiplierAndShift(scale, multiplier, shift, scale_width);
 
   auto rescale_op = rewriter.create<tosa::RescaleOp>(
       op->getLoc(), output_type, input_val,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getI32ArrayAttr({multiplier}), rewriter.getI32ArrayAttr({shift}),
-      rewriter.getBoolAttr(true), rewriter.getBoolAttr(double_round),
+      rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false));
 
   return rescale_op.getResult();
@@ -57,7 +59,7 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
       RankedTensorType::get(input_type.getShape(), rewriter.getI32Type());
 
   return buildRescale(rewriter, op, output_type, input_val, input_scale,
-                      input_zp, 0, false);
+                      input_zp, 0, false, true);
 }
 
 // Creates TOSA rescale op with int32 input
@@ -72,7 +74,7 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
 
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, true);
+                      output_zp, true, true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.
@@ -90,6 +92,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   int64_t output_zp = output_qtype.getZeroPoint();
   double output_scale = output_qtype.getScale();
 
+  bool scale32 = isScale32(output_qtype);
+  int32_t scale_width = scale32 ? 32 : 16;
+
   if (auto weight_per_tensor_qtype =
           weight_type.getElementType()
               .dyn_cast<mlir::quant::UniformQuantizedType>()) {
@@ -101,14 +106,13 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     double op_tensor_scale = (input_scale * weight_scale) / output_scale;
 
-    // We currently only support 32-bit quantized multiplier.
-    computeMultiplierAndShift(op_tensor_scale, multiplier, shift, 32);
+    computeMultiplierAndShift(op_tensor_scale, multiplier, shift, scale_width);
 
     auto rescale_op = rewriter.create<tosa::RescaleOp>(
         op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
         rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr({multiplier}),
-        rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(true),
+        rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
@@ -138,8 +142,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
       double op_channel_scale = (input_scale * weight_scale) / output_scale;
 
-      // We currently only support 32-bit quantized multiplier.
-      computeMultiplierAndShift(op_channel_scale, multiplier, shift, 32);
+      computeMultiplierAndShift(op_channel_scale, multiplier, shift,
+                                scale_width);
 
       multiplier_arr.push_back(multiplier);
       shift_arr.push_back(shift);
@@ -149,7 +153,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
         rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr(multiplier_arr),
-        rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(true),
+        rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
@@ -160,17 +164,22 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   }
 }
 
-// Create a 513 entry TOSA constant tensor suitable for the Table operator based
-// on the values from an int32_t func(int32_t) lambda function.
-Value getTosa1DConstTensorTable(PatternRewriter& rewriter, Operation* op,
-                                std::function<int32_t(int32_t)> func) {
+// Create a 8-bit TOSA TABLE constant tensor
+// Follow PopulateLookupTable() tensorflow/lite/kernels/activations.cc
+Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
+                            double input_scale, int32_t input_zp,
+                            double output_scale, int32_t output_zp,
+                            std::function<double(double)> func) {
   llvm::SmallVector<int16_t, 4> table_vec;
+  table_vec.reserve(256);
 
   for (int32_t i = -256; i <= 256; i++) {
-    int32_t value = func(i);
-    // Table entry is int16_t; clamp to expressible range.
+    double dequantized = input_scale * (i - input_zp);
+    double transformed = func(dequantized);
+    int32_t rescaled = std::llround(transformed / output_scale);
+    int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table_vec.push_back(
-        static_cast<int16_t>(std::min(std::max(value, -32768), 32767)));
+        static_cast<int16_t>(std::min(std::max(quantized, -32768), 32767)));
   }
 
   auto element_qtype =
@@ -185,6 +194,102 @@ Value getTosa1DConstTensorTable(PatternRewriter& rewriter, Operation* op,
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
   return const_op.getResult();
+}
+
+// Create a 16-bit TOSA TABLE constant tensor
+// Only used for 16-bit softmax now
+// Follow gen_lut() tensorflow/lite/kernels/internal/common.h
+Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
+                             std::function<double(double)> func, double min,
+                             double max) {
+  llvm::SmallVector<int16_t, 513> table_vec;
+
+  double step = (max - min) / 512.0f;
+  double half_step = step / 2.0f;
+  for (int32_t i = 0; i <= 512; i++) {
+    int32_t sample_val = std::llround(func(min + (i * step)) * 32768.0);
+    double midpoint_interp_val =
+        std::round(((func(min + (i + 1) * step) * 32768.0) +
+                    std::round(func(min + (i * step)) * 32768.0)) /
+                   2.0);
+    double midpoint_val =
+        std::round(func(min + (i * step) + half_step) * 32768.0);
+    double midpoint_err = midpoint_interp_val - midpoint_val;
+    int32_t bias = std::llround(midpoint_err / 2.0);
+
+    table_vec.push_back(static_cast<int16_t>(
+        std::min(std::max(sample_val - bias, -32768), 32767)));
+  }
+
+  int32_t max_val = std::llround(func(max) * 32768.0);
+  table_vec.push_back(
+      static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
+                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
+  auto const_type = RankedTensorType::get({513}, element_qtype);
+  auto storage_type =
+      RankedTensorType::get({513}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(
+      storage_type, llvm::makeArrayRef<int16_t>(table_vec));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
+// Create a 32-bit TOSA TABLE constant tensor
+// Output is restricted to [-1.0, 1.0] as s0.31 format
+void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
+                            double input_scale, int32_t input_zp,
+                            std::function<double(double)> func,
+                            Value& upper_const, Value& lower_const) {
+  std::array<int16_t, 513> upper_table_array, lower_table_array;
+
+  double output_inv_scale = static_cast<double>(1L << 31);
+
+  for (int32_t i = -256; i <= 256; i++) {
+    double dequantized = input_scale * (i - input_zp);
+    double transformed = func(dequantized);
+    double truncated = std::min(std::max(transformed, -1.0), 1.0);
+    int64_t rescaled =
+        static_cast<int64_t>(std::round(truncated * output_inv_scale));
+
+    // 2^31 is not representable in int32_t, so store as 2^31 - 1 instead
+    if (rescaled == static_cast<int64_t>(1L << 31)) {
+      rescaled = static_cast<int64_t>(1L << 31) - 1;
+    }
+
+    int32_t upper = (rescaled >> 16) & 0xFFFF;
+    // TABLE output is signed 16 bits with range [-32768, 32767]
+    // Lower 16 bits are unsigned and ranges [0, 65536]
+    // Need to adjust value with offset 0x8000 in table generation
+    // Legalization should add this back before recovering 32-bit value
+    int32_t lower = (rescaled & 0xFFFF) - 0x8000;
+
+    upper_table_array[i + 256] = upper;
+    lower_table_array[i + 256] = lower;
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
+                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
+  auto const_type = RankedTensorType::get({513}, element_qtype);
+  auto storage_type =
+      RankedTensorType::get({513}, element_qtype.getStorageType());
+
+  auto upper_const_attr = DenseElementsAttr::get(
+      storage_type, llvm::makeArrayRef<int16_t>(upper_table_array));
+  auto lower_const_attr = DenseElementsAttr::get(
+      storage_type, llvm::makeArrayRef<int16_t>(lower_table_array));
+
+  upper_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, upper_const_attr)
+          .getResult();
+  lower_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, lower_const_attr)
+          .getResult();
 }
 
 // Create a 32-bit float constant operator from a float
@@ -387,11 +492,10 @@ template Value get1DConstTensor<TFL::ConstOp, int64_t>(
 // Same as get1DConstTensor, but int48 is not native c++ type, needs additional
 // interface
 Value get1DConstTensorInt48(PatternRewriter& rewriter, Operation* op,
-                            SmallVector<int64_t, 8> arr) {
+                            ArrayRef<APInt>& arr) {
   auto const_type = RankedTensorType::get({static_cast<int32_t>(arr.size())},
                                           rewriter.getIntegerType(48));
-  auto const_attr =
-      DenseElementsAttr::get(const_type, llvm::makeArrayRef<int64_t>(arr));
+  auto const_attr = DenseElementsAttr::get(const_type, arr);
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -433,6 +537,11 @@ Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
   }
 
   return input;
+}
+
+// Check if scale32 mode is used for given output_element_type
+bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
+  return (output_element_type.getStorageTypeIntegralWidth() == 8);
 }
 
 }  // namespace tosa

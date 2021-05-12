@@ -944,12 +944,13 @@ bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
       return false;
     }
   }
-  if (str_util::StrContains(n.op_def().name(), "PyFunc")) {
+  std::string lower = str_util::Lowercase(n.op_def().name());
+  if (str_util::StrContains(lower, "pyfunc") ||
+      str_util::StrContains(lower, "queue") ||
+      str_util::StrContains(lower, "rpc")) {
     return false;
   }
-  if (str_util::StrContains(str_util::Lowercase(n.op_def().name()), "grpc")) {
-    return false;
-  }
+
   return true;
 }
 

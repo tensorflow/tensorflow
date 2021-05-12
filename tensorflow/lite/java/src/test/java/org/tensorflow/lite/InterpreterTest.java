@@ -471,12 +471,10 @@ public final class InterpreterTest {
   @Test
   public void testNullOutputs() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    try {
-      interpreter.run(new float[2][8][8][3], null);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected failure.
-    }
+    float[] input = {1.f};
+    interpreter.run(input, null);
+    float output = interpreter.getOutputTensor(0).asReadOnlyBuffer().getFloat(0);
+    assertThat(output).isEqualTo(3.f);
     interpreter.close();
   }
 
@@ -722,6 +720,31 @@ public final class InterpreterTest {
 
       interpreter.runForMultipleInputsOutputs(inputs, outputs);
 
+      FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testDynamicShapesWithEmptyOutputs() {
+    try (Interpreter interpreter = new Interpreter(DYNAMIC_SHAPES_MODEL_BUFFER)) {
+      ByteBuffer input0 =
+          ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input1 =
+          ByteBuffer.allocateDirect(1 * 90 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input2 = ByteBuffer.allocateDirect(1 * 4).order(ByteOrder.nativeOrder());
+      Object[] inputs = {input0, input1, input2};
+
+      fill(input0.asFloatBuffer(), 2.0f);
+      fill(input1.asFloatBuffer(), 0.5f);
+      fill(input2.asFloatBuffer(), 1.0f);
+
+      // Use an empty output map; the output data will be retrieved directly from the tensor.
+      Map<Integer, Object> outputs = new HashMap<>();
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
+
+      FloatBuffer output = FloatBuffer.allocate(8 * 1 * 1024);
+      output.put(interpreter.getOutputTensor(0).asReadOnlyBuffer().asFloatBuffer());
       FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
       assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }

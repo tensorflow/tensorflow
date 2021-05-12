@@ -158,5 +158,30 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllClose(target_dist, bincount, atol=1e-2)
 
+  @parameterized.parameters(
+      ("float32", "float64"),
+      ("float64", "float32"),
+      ("float64", "float64"),
+      ("float64", None),
+  )
+  def testOtherDtypes(self, target_dtype, init_dtype):
+    target_dist = np.array([0.5, 0.5], dtype=target_dtype)
+
+    if init_dtype is None:
+      init_dist = None
+    else:
+      init_dist = np.array([0.5, 0.5], dtype=init_dtype)
+
+    dataset = dataset_ops.Dataset.range(10)
+    resampler = resampling.rejection_resample(
+        class_func=lambda x: x % 2,
+        target_dist=target_dist,
+        initial_dist=init_dist)
+
+    dataset = dataset.apply(resampler)
+    get_next = self.getNext(dataset)
+    self.evaluate(get_next())
+
+
 if __name__ == "__main__":
   test.main()

@@ -568,6 +568,13 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a + b; });
 }
 
+int64_t AddOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatenationOp
 //===----------------------------------------------------------------------===//
@@ -968,6 +975,15 @@ void FullyConnectedOp::getCanonicalizationPatterns(
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
+int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // Conv2DOp
 //===----------------------------------------------------------------------===//
@@ -1084,9 +1100,8 @@ bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
 int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
   int64_t count;
   if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
-          op, &count)) {
+          op, &count))
     return count;
-  }
 
   return -1;
 }
@@ -1100,6 +1115,15 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
+}
+
+int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetArithmeticCountForConvAndFullyconnectedOp(
+          op, &count))
+    return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1312,6 +1336,13 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
       [](APInt a, APInt b) { return a * b; });
 }
 
+int64_t MulOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) return count;
+
+  return -1;
+}
+
 //===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
@@ -1322,6 +1353,13 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a / b; },
       [](APInt a, APInt b) { return a.sdiv(b); });
+}
+
+int64_t DivOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1842,6 +1880,13 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
       [](APInt a, APInt b) { return a - b; });
+}
+
+int64_t SubOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) return count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3133,6 +3178,70 @@ LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
   for (auto op : ops) op->moveBefore(while_op);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// LogisticOp
+//===----------------------------------------------------------------------===//
+
+int64_t LogisticOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  // As a very rough ballpark, the cost of evaluating a math function
+  // such as tanh or logistic is about 32 multiplications, and about as
+  // many additions/subtractions. (Just a power-of-two order-of-magnitude
+  // from looking at actual implementations that we use in runtime/code).
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count))
+    return 64 * count;
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// LogSoftmaxOp
+//===----------------------------------------------------------------------===//
+
+int64_t LogSoftmaxOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  // As a very rough ballpark, the cost of evaluating a math function
+  // such as tanh or logistic is about 32 multiplications, and about as
+  // many additions/subtractions. (Just a power-of-two order-of-magnitude
+  // from looking at actual implementations that we use in runtime/code).
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count))
+    return 64 * count;
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// SoftmaxOp
+//===----------------------------------------------------------------------===//
+
+int64_t SoftmaxOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  // As a very rough ballpark, the cost of evaluating a math function
+  // such as tanh or logistic is about 32 multiplications, and about as
+  // many additions/subtractions. (Just a power-of-two order-of-magnitude
+  // from looking at actual implementations that we use in runtime/code).
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count))
+    return 64 * count;
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// TanhOp
+//===----------------------------------------------------------------------===//
+
+int64_t TanhOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  // As a very rough ballpark, the cost of evaluating a math function
+  // such as tanh or logistic is about 32 multiplications, and about as
+  // many additions/subtractions. (Just a power-of-two order-of-magnitude
+  // from looking at actual implementations that we use in runtime/code).
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count))
+    return 64 * count;
+
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//

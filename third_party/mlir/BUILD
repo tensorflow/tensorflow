@@ -366,6 +366,22 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPISparseTensor",
+    srcs = [
+        "lib/CAPI/Dialect/SparseTensor.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/SparseTensor.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":SparseTensor",
+        ":Support",
+    ],
+)
+
+cc_library(
     name = "CAPIConversion",
     srcs = ["lib/CAPI/Conversion/Passes.cpp"],
     hdrs = ["include/mlir-c/Conversion.h"],
@@ -436,15 +452,6 @@ cc_library(
 # Sources of Python bindings.
 #----------------------------------------------------------------------------##
 
-cc_library(
-    name = "MLIRBindingsPythonExtension",
-    hdrs = ["include/mlir-c/Bindings/Python/Interop.h"],
-    deps = [
-        ":CAPIIR",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
 exports_files(
     [
         "lib/Bindings/Python/LinalgPasses.cpp",
@@ -455,12 +462,29 @@ exports_files(
 )
 
 cc_library(
+    name = "MLIRBindingsPythonHeadersAndDeps",
+    includes = [
+        "include",
+        "lib/Bindings/Python",
+    ],
+    textual_hdrs = glob([
+        "lib/Bindings/Python/*.h",
+        "include/mlir-c/Bindings/Python/*.h",
+        "include/mlir/Bindings/Python/*.h",
+    ]),
+    deps = [
+        ":CAPIIR",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
     name = "MLIRBindingsPythonCore",
     srcs = glob(
         include = ["lib/Bindings/Python/*.cpp"],
         exclude = ["lib/Bindings/Python/MainModule.cpp"],
     ),
-    hdrs = glob(["lib/Bindings/Python/*.h"]),
     # These flags are needed for pybind11 to work.
     copts = [
         "-fexceptions",
@@ -470,10 +494,6 @@ cc_library(
         # Cannot use header_modules (parse_headers feature fails).
         "-use_header_modules",
     ],
-    includes = [
-        "include",
-        "lib/Bindings/Python",
-    ],
     deps = [
         ":CAPIAsync",
         ":CAPIDebug",
@@ -482,7 +502,8 @@ cc_library(
         ":CAPIIR",
         ":CAPILinalg",
         ":CAPIRegistration",
-        ":MLIRBindingsPythonExtension",
+        ":CAPISparseTensor",
+        ":MLIRBindingsPythonHeadersAndDeps",
         "//third_party/pybind11",
         "//third_party/python_runtime:headers",
         "@llvm-project//llvm:Support",
@@ -508,7 +529,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
-    deps = [":MLIRBindingsPythonCore"],
+    deps = [
+        ":MLIRBindingsPythonCore",
+        ":MLIRBindingsPythonHeadersAndDeps",
+    ],
 )
 
 # Dynamlic library with the MLIR Conversions Python extension.
@@ -521,6 +545,7 @@ cc_binary(
     linkstatic = 0,
     deps = [
         ":CAPIConversion",
+        ":MLIRBindingsPythonHeadersAndDeps",
         "//third_party/pybind11",
         "//third_party/python_runtime:headers",
     ],
@@ -536,6 +561,7 @@ cc_binary(
     linkstatic = 0,
     deps = [
         ":CAPITransforms",
+        ":MLIRBindingsPythonHeadersAndDeps",
         "//third_party/pybind11",
         "//third_party/python_runtime:headers",
     ],
@@ -551,6 +577,7 @@ cc_binary(
     linkstatic = 0,
     deps = [
         ":CAPILinalg",
+        ":MLIRBindingsPythonHeadersAndDeps",
         "//third_party/pybind11",
         "//third_party/python_runtime:headers",
     ],
@@ -1283,6 +1310,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":SparseTensorAttrDefsIncGen",
         ":SparseTensorOpsIncGen",
+        ":StandardOps",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4471,10 +4499,6 @@ cc_binary(
     name = "mlir-lsp-server",
     srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
     includes = ["include"],
-    visibility = [
-        ":friends",
-        "//devtools/cider/extensions/mlird:__pkg__",
-    ],
     deps = [
         ":AllPassesAndDialects",
         ":IR",

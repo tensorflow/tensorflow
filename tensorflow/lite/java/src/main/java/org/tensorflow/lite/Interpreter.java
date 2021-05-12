@@ -319,11 +319,14 @@ public final class Interpreter implements AutoCloseable {
    * @param output a multidimensional array of output data, or a {@link java.nio.Buffer} of
    *     primitive types including int, float, long, and byte. When a {@link java.nio.Buffer} is
    *     used, the caller must ensure that it is set the appropriate write position. A null value is
-   *     allowed only if the caller is using a {@link Delegate} that allows buffer handle interop,
-   *     and such a buffer has been bound to the output {@link Tensor}. See {@link
-   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}.
-   * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
-   *     error occurs when running the inference.
+   *     allowed, and is useful for certain cases, e.g., if the caller is using a {@link Delegate}
+   *     that allows buffer handle interop, and such a buffer has been bound to the output {@link
+   *     Tensor} (see also {@link Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if
+   *     the graph has dynamically shaped outputs and the caller must query the output {@link
+   *     Tensor} shape after inference has been invoked, fetching the data directly from the output
+   *     tensor (via {@link Tensor#readOnlyBuffer()}).
+   * @throws IllegalArgumentException if {@code input} is null or empty, or if an error occurs when
+   *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
    */
@@ -366,9 +369,14 @@ public final class Interpreter implements AutoCloseable {
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
    *     java.nio.Buffer}s of primitive types including int, float, long, and byte. It only needs to
    *     keep entries for the outputs to be used. When a {@link java.nio.Buffer} is used, the caller
-   *     must ensure that it is set the appropriate write position.
-   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} is null or empty, or if
-   *     error occurs when running the inference.
+   *     must ensure that it is set the appropriate write position. The map may be empty for cases
+   *     where either buffer handles are used for output tensor data (see {@link
+   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or cases where the outputs are
+   *     dynamically shaped and the caller must query the output {@link Tensor} shape after
+   *     inference has been invoked, fetching the data directly from the output tensor (via {@link
+   *     Tensor#readOnlyBuffer()}).
+   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
+   *     null, or if an error occurs when running inference.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
@@ -382,13 +390,15 @@ public final class Interpreter implements AutoCloseable {
    * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
    * data types.
    *
-   * @param inputs A Map of inputs from input name in the signatureDef to an input object.
-   * @param outputs a map mapping from output name in SignatureDef to output data.
-   * @param methodName The exported method name identifying the SignatureDef.
-   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} or {@code methodName} is
-   *     null or empty, or if error occurs when running the inference.
-   *
    * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @param inputs A map from input name in the SignatureDef to an input object.
+   * @param outputs A map from output name in SignatureDef to output data. This may be empty if the
+   *     caller wishes to query the {@link Tensor} data directly after inference (e.g., if the
+   *     output shape is dynamic, or output buffer handles are used).
+   * @param methodName The exported method name identifying the SignatureDef.
+   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} or
+   *     {@code methodName} is null, or if an error occurs when running inference.
    */
   public void runSignature(
       @NonNull Map<String, Object> inputs,
@@ -407,12 +417,13 @@ public final class Interpreter implements AutoCloseable {
     wrapper.runSignature(inputs, outputs, methodName);
   }
 
-  /* Same as {@link Interpreter#runSignature(Object, Object, String)} but doesn't require
-   * passing a methodName, assuming the model has one SignatureDef. If the model has more than
-   * one SignatureDef it will throw an exception.
+  /**
+   * Same as {@link Interpreter#runSignature(Object, Object, String)} but doesn't require passing a
+   * methodName, assuming the model has one SignatureDef. If the model has more than one
+   * SignatureDef it will throw an exception.
    *
-   * * <p>WARNING: This is an experimental API and subject to change.
-   * */
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
   public void runSignature(
       @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs) {
     checkNotClosed();
@@ -422,7 +433,7 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Expicitly updates allocations for all tensors, if necessary.
    *
-   * <p>This will propagate shapes and memory allocations for all dependent tensors using the input
+   * <p>This will propagate shapes and memory allocations for dependent tensors using the input
    * tensor shape(s) as given.
    *
    * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
@@ -438,6 +449,9 @@ public final class Interpreter implements AutoCloseable {
    * interpreter.run(input, output)
    * // Process outputs...
    * }</pre>
+   *
+   * <p>Note: Some graphs have dynamically shaped outputs, in which case the output shape may not
+   * fully propagate until inference is executed.
    *
    * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
    */

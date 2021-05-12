@@ -247,10 +247,12 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
-  if (definition_.precision == CalculationsPrecision::F16) {
-    if (gpu_info.IsPowerVR() || gpu_info.IsMali()) {
-      compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
-    }
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+  }
+  if (gpu_info.IsMali()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl20);
@@ -1211,7 +1213,13 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       if (dst_depth == 1 || dst_depth == 3) {
         conv_params.block_size = int4(2, 2, 1, 1);
       } else {
-        conv_params.block_size = int4(2, 1, 1, 2);
+        conv_params.block_size = int4(2, 1, 1, 1);
+        if (definition.precision == CalculationsPrecision::F32 &&
+            gpu_info.mali_info.IsValhall()) {
+          conv_params.block_size.y = 2;
+        } else {
+          conv_params.block_size.w = 2;
+        }
       }
     } else if (block_size == 2) {
       conv_params.block_size = int4(2, 1, 1, 1);

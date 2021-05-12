@@ -60,6 +60,7 @@ message SavedObject {
     SavedBareConcreteFunction bare_concrete_function = 8;
     SavedConstant constant = 9;
     SavedResource resource = 10;
+    CapturedTensor captured_tensor = 12;
   }
 
   map<string, SaveableObject> saveable_objects = 11;
@@ -102,14 +103,19 @@ message SavedFunction {
   FunctionSpec function_spec = 2;
 }
 
+message CapturedTensor {
+  // Name of captured tensor
+  string name = 1;
+
+  // Name of concrete function which contains the computed graph tensor.
+  string concrete_function = 2;
+}
+
 // Stores low-level information about a concrete function. Referenced in either
 // a SavedFunction or a SavedBareConcreteFunction.
 message SavedConcreteFunction {
-  // Bound inputs to the function. The SavedObjects identified by the node ids
-  // given here are appended as extra inputs to the caller-supplied inputs.
-  // The only types of SavedObjects valid here are SavedVariable, SavedResource
-  // and SavedAsset.
   repeated int32 bound_inputs = 2;
+
   // Input in canonicalized form that was received to create this concrete
   // function.
   StructuredValue canonicalized_input_signature = 3;

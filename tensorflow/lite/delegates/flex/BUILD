@@ -28,9 +28,32 @@ cc_library(
     hdrs = ["buffer_map.h"],
     copts = tf_opts_nortti_if_lite_protos(),
     deps = [
-        ":util",
+        ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/c:c_api_internal",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+cc_library(
+    name = "buffer_map_util",
+    srcs = ["buffer_map_util.cc"],
+    hdrs = ["buffer_map_util.h"],
+    copts = tf_opts_nortti_if_lite_protos(),
+    deps = [
+        ":util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
@@ -43,6 +66,7 @@ cc_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:status",
         ],
     }),
 )
@@ -350,6 +374,7 @@ cc_library(
     srcs = ["tflite_subgraph_execute.cc"],
     copts = tf_opts_nortti_if_android(),
     deps = [
+        ":buffer_map_util",
         ":subgraph_resource",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",

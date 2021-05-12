@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
+load("//third_party/mlir:tblgen.bzl", "gentbl", "gentbl_filegroup", "td_library")
 
 # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -24,11 +24,13 @@ package_group(
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 
@@ -228,6 +230,28 @@ gentbl(
     deps = [":hlo_ops_td_files"],
 )
 
+gentbl_filegroup(
+    name = "hlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-dialect-doc", "g3doc/hlo_ops.md"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_filegroup(
+    name = "lhlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-dialect-doc", "g3doc/lhlo_ops.md"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
 cc_library(
     name = "hlo_ops_common",
     srcs = ["lib/Dialect/mhlo/IR/hlo_ops_common.cc"],
@@ -409,6 +433,7 @@ cc_library(
         ":infer_fusibility_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
@@ -675,6 +700,28 @@ cc_library(
     deps = [
         ":hlo",
         ":map_chlo_to_hlo_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "rank_specialization",
+    srcs = ["lib/Dialect/mhlo/transforms/rank_specialization.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -1066,6 +1113,7 @@ cc_library(
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":move_up_dynamic_broadcasts_for_fusion",
+        ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
         ":transform_unranked_hlo",

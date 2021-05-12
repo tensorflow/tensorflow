@@ -492,10 +492,22 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     TraceMeMetadata GetTraceMeMetadata() const override {
       int64 parallelism = -1;
+      int64 results_ready = -1;
+      int64 active_elements = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
         parallelism = num_parallel_calls_->value;
+        results_ready = 0;
+        active_elements = 0;
+        for (int i = 0; i < current_elements_.size(); ++i) {
+          if (current_elements_[i]) {
+            results_ready += current_elements_[i]->results.size();
+            if (current_elements_[i]->active) {
+              active_elements++;
+            }
+          }
+        }
         mu_->unlock();
       }
       auto result = dataset()->traceme_metadata_;
@@ -504,6 +516,16 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "results_ready", results_ready == -1
+                               ? kTraceInfoUnavailable
+                               : strings::Printf("%lld", static_cast<long long>(
+                                                             results_ready))));
+      result.push_back(std::make_pair(
+          "active_elements",
+          results_ready == -1 ? kTraceInfoUnavailable
+                              : strings::Printf("%lld", static_cast<long long>(
+                                                            active_elements))));
       return result;
     }
 
