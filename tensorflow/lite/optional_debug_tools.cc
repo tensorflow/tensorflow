@@ -193,9 +193,22 @@ class ModelTensorMemoryInfo {
   MemoryArenaInfo mmap_info_;
 };
 
+template <typename T>
+void PrintTotalBytesOfTensors(const Subgraph& subgraph, const T& tensor_ids,
+                              const std::string& prefix = " -> ") {
+  size_t total = 0;
+  for (const auto id : tensor_ids) {
+    const TfLiteTensor* tensor = subgraph.tensor(id);
+    if (tensor == nullptr) continue;
+    total += tensor->bytes;
+  }
+  printf("%s%zuB (%.2fMB)\n", prefix.c_str(), total,
+         static_cast<float>(total) / (1 << 20));
+}
+
 void PrintIntVector(const std::vector<int>& v,
-                    bool collapse_consecutives = false,
-                    bool add_newline = true) {
+                    bool collapse_consecutives = true,
+                    bool add_newline = false) {
   if (v.empty()) {
     printf("(null)");
     if (add_newline) {
@@ -233,8 +246,8 @@ void PrintIntVector(const std::vector<int>& v,
 }
 
 void PrintTfLiteIntVector(const TfLiteIntArray* v,
-                          bool collapse_consecutives = false,
-                          bool add_newline = true) {
+                          bool collapse_consecutives = true,
+                          bool add_newline = false) {
   std::vector<int> tmp;
   if (!v || v->size <= 0) {
     PrintIntVector(tmp, collapse_consecutives, add_newline);
@@ -339,8 +352,11 @@ void PrintInterpreterState(Interpreter* interpreter) {
            i, subgraph.tensors_size(), subgraph.nodes_size());
     printf("%zu Inputs: ", subgraph.inputs().size());
     PrintIntVector(subgraph.inputs());
+    PrintTotalBytesOfTensors(subgraph, subgraph.inputs());
+
     printf("%zu Outputs: ", subgraph.outputs().size());
     PrintIntVector(subgraph.outputs());
+    PrintTotalBytesOfTensors(subgraph, subgraph.outputs());
     printf("\n");
 
     // Collect info about tensor memory allocation.
@@ -363,8 +379,7 @@ void PrintInterpreterState(Interpreter* interpreter) {
              TruncateString(TensorTypeName(tensor->type), 15).c_str(),
              TruncateString(AllocTypeName(tensor->allocation_type), 18).c_str(),
              tensor->bytes, (static_cast<float>(tensor->bytes) / (1 << 20)));
-      PrintTfLiteIntVector(tensor->dims, /*collapse_consecutives*/ false,
-                           /*add_newline*/ false);
+      PrintTfLiteIntVector(tensor->dims, /*collapse_consecutives*/ false);
       const int64_t start_offset =
           tensor_mem_info.GetOffsetFromArenaStart(*tensor);
       const int64_t end_offset =
@@ -405,11 +420,15 @@ void PrintInterpreterState(Interpreter* interpreter) {
       const TfLiteRegistration& reg = node_and_reg->second;
 
       std::string delegated_status;
+      bool is_node_delegated = false;
+      TfLiteIntArray empty_int_array;
+      empty_int_array.size = 0;
       if (node.delegate == nullptr) {
         if (replaced_node_bits[node_index]) {
           delegated_status = "(delegated by node ";
           delegated_status.append(std::to_string(replaced_by_node[node_index]));
           delegated_status.append(")");
+          is_node_delegated = true;
         } else {
           delegated_status = "(not delegated)";
         }
@@ -423,24 +442,44 @@ void PrintInterpreterState(Interpreter* interpreter) {
                reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code],
                delegated_status.c_str());
       }
-      printf("  Input Tensors:");
+      printf("  %d Input Tensors:",
+             node.inputs != nullptr ? node.inputs->size : 0);
       PrintTfLiteIntVector(
-          node.inputs, /*collapse_consecutives=*/(node.delegate != nullptr));
-      printf("  Output Tensors:");
+          node.inputs,
+          /*collapse_consecutives=*/(node.delegate != nullptr));
+      PrintTotalBytesOfTensors(
+          subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
+                                      : TfLiteIntArrayView(node.inputs));
+
+      printf("  %d Output Tensors:",
+             node.outputs != nullptr ? node.outputs->size : 0);
       PrintTfLiteIntVector(node.outputs);
+      PrintTotalBytesOfTensors(
+          subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
+                                      : TfLiteIntArrayView(node.outputs));
+
       if (node.intermediates && node.intermediates->size) {
-        printf("  Intermediate Tensors:");
+        printf("  %d Intermediate Tensors:", node.intermediates->size);
         PrintTfLiteIntVector(node.intermediates);
+        PrintTotalBytesOfTensors(subgraph,
+                                 is_node_delegated
+                                     ? TfLiteIntArrayView(&empty_int_array)
+                                     : TfLiteIntArrayView(node.intermediates));
       }
+
       if (node.temporaries && node.temporaries->size) {
-        printf("  Temporary Tensors:");
+        printf("  %d Temporary Tensors:", node.temporaries->size);
         PrintTfLiteIntVector(node.temporaries);
+        PrintTotalBytesOfTensors(
+            subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
+                                        : TfLiteIntArrayView(node.temporaries));
       }
     }
 
     printf("\nExecution plan as the list of %zu nodes invoked in-order: ",
            subgraph.execution_plan().size());
-    PrintIntVector(subgraph.execution_plan(), /*collapse_consecutives=*/true);
+    PrintIntVector(subgraph.execution_plan(), /*collapse_consecutives=*/true,
+                   /*add_newline=*/true);
     if (has_delegate_applied) {
       printf("Among these nodes in the execution plan:\n");
       for (int node_id : subgraph.execution_plan()) {
@@ -450,13 +489,14 @@ void PrintInterpreterState(Interpreter* interpreter) {
         auto* const delegate = node.delegate;
         if (delegate == nullptr) continue;
         const char* delegate_name = node_and_reg->second.custom_name;
-        printf(
-            "  Node %d is a %s node (%p), which has delegated nodes: ", node_id,
-            delegate_name == nullptr ? "[n/a]" : delegate_name, delegate);
-        PrintTfLiteIntVector(
-            static_cast<TfLiteDelegateParams*>(node.builtin_data)
-                ->nodes_to_replace,
-            /*collapse_consecutives=*/true);
+        auto* delegate_params =
+            static_cast<TfLiteDelegateParams*>(node.builtin_data);
+        printf("  Node %d is a %s node (%p), which has delegated %d nodes: ",
+               node_id, delegate_name == nullptr ? "[n/a]" : delegate_name,
+               delegate, delegate_params->nodes_to_replace->size);
+        PrintTfLiteIntVector(delegate_params->nodes_to_replace,
+                             /*collapse_consecutives=*/true,
+                             /*add_newline=*/true);
       }
     }
 
