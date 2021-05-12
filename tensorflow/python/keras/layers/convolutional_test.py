@@ -536,12 +536,6 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
         test.is_gpu_available(cuda_only=True)):
       self._run_test(kwargs, expected_output_shape)
 
-  def test_conv1dtranspose_invalid_output_shapes(self):
-    kwargs = {'filters': 2, 'kernel_size': 10}
-    with self.assertRaises(ValueError):
-      layer = keras.layers.Conv1DTranspose(**kwargs)
-      layer.build((None, 5, 2))
-
 
 @keras_parameterized.run_all_keras_modes
 class Conv3DTransposeTest(keras_parameterized.TestCase):
