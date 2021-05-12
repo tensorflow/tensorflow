@@ -2496,7 +2496,7 @@ name=None))
         `reduce_func`. Mutually exclusive with `window_size`.
 
     Returns:
-      A `tf.data.Dataset`
+      A `Dataset`.
 
     Raises:
       ValueError: if neither or both of {`window_size`, `window_size_func`} are
@@ -2583,8 +2583,7 @@ name=None))
         batch.
 
     Returns:
-      A `Dataset` transformation function, which can be passed to
-      `tf.data.Dataset.apply`.
+      A `Dataset`.
 
     Raises:
       ValueError: if `len(bucket_batch_sizes) != len(bucket_boundaries) + 1`.
@@ -2699,8 +2698,7 @@ name=None))
         structure of `initial_state`.
 
     Returns:
-      A `Dataset` transformation function, which can be passed to
-      `tf.data.Dataset.apply`.
+      A `Dataset`.
     """
 
     return _ScanDataset(self, initial_state=initial_state, scan_func=scan_func)
