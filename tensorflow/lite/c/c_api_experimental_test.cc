@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 
 using testing::HasSubstr;
+using tflite::delegates::test_utils::SimpleDelegate;
 using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
