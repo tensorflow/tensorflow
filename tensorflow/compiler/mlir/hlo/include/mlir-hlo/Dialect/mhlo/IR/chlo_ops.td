@@ -694,11 +694,12 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<
-    "broadcast_select",
-    [NoSideEffect,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>]> {
+def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
+    NoSideEffect,
+    HLOClient_Broadcasting,
+    HLOClient_BroadcastingElementwise,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
+    "inferReturnTypeComponents"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
