@@ -61,6 +61,17 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
+  let cppNamespace = "::mlir::chlo::OpTrait";
+}
+
+def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
+}
+
+def HLOClient_BroadcastingElementwise
+    : HLOClient_NativeOpTrait<"BroadcastingElementwise"> {
+}
+
 //===----------------------------------------------------------------------===//
 // CHLO binary elementwise op definitions.
 // From the client perspective, each of these support both explicit rank
@@ -78,6 +89,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 
 class HLOClient_BroadcastBinaryElementwiseOp<
   string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
+      HLOClient_BroadcastingElementwise, HLOClient_Broadcasting,
       DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
       "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let arguments = (ins

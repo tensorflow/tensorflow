@@ -48,6 +48,22 @@ class HloClientDialect : public Dialect {
 }  // namespace chlo
 }  // namespace mlir
 
+namespace mlir {
+namespace chlo {
+namespace OpTrait {
+
+template <typename ConcreteType>
+class BroadcastingElementwise
+    : public mlir::OpTrait::TraitBase<ConcreteType, BroadcastingElementwise> {};
+
+template <typename ConcreteType>
+class Broadcasting
+    : public mlir::OpTrait::TraitBase<ConcreteType, Broadcasting> {};
+
+}  // namespace OpTrait
+}  // namespace chlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc"
 
