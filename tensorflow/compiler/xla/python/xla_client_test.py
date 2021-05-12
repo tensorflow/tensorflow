@@ -21,6 +21,7 @@ import threading
 import unittest
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -169,6 +170,16 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
+
+    def testFingerprint(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      fingerprint = executable.fingerprint
+      if self.backend.platform == "tpu" and not cloud_tpu:
+        logging.info("fingerprint: %s", fingerprint)
+        self.assertNotEmpty(fingerprint)
+      else:
+        self.assertIsNone(fingerprint)
 
   tests.append(ComputationPrinting)
 

@@ -374,6 +374,7 @@ class Executable:
     arguments: Sequence[List[DeviceArray]]) -> List[List[DeviceArray]]: ...
   def hlo_modules(self) -> List[HloModule]: ...
   traceback: Traceback
+  fingerprint: Optional[bytes]
 
 def buffer_to_dlpack_managed_tensor(
     buffer: Buffer,
