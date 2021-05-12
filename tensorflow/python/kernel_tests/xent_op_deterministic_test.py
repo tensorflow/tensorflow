@@ -24,51 +24,23 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests import xent_op_test_base
 from tensorflow.python.ops import nn_ops
 # The following import is required to register the gradient function.
 from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
-  """Test d9m-unimplemented exceptions from SoftmaxCrossEntropyWithLogits.
+# TODO:
+# look at possible improvements in base tests
 
-  Test that tf.errors.UnimplementedError is thrown or not thrown, as
-  appropriate, by the GPU code-paths for SoftmaxCrossEntropyWithLogits when
-  deterministic ops are enabled.
-
-  This test assumes that xent_op_test.py runs all the same test cases when
-  deterministic ops are not enabled and will therefore detect erroneous
-  exception throwing in those cases.
-  """
-
-  @test_util.run_cuda_only
-  @test_util.run_in_graph_and_eager_modes
-  def testExceptionThrowing(self):
-    with self.session(force_gpu=True):
-      for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-        labels = constant_op.constant([[0.2, 0.4], [0.1, 0.2]], dtype=dtype)
-        logits = constant_op.constant([[0.3, 0.5], [0.5, 0.6]], dtype=dtype)
-        with self.assertRaisesRegex(
-            errors_impl.UnimplementedError,
-            "Deterministic GPU implementation of " +
-            "SoftmaxCrossEntropyWithLogits not available."):
-          result = nn_ops.softmax_cross_entropy_with_logits_v2(
-              labels=labels, logits=logits)
-          self.evaluate(result)
-
-
-class SoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
+class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
   """Test that SoftmaxCrossEntropyWithLogits operates reproducibly.
 
-  Note that the deterministic functionality currently tested by this class is
-  always activated (not enabled by TF_DETERMINISTIC_OPS), so this class does not
-  currently need to inherit from a base op test class derived from
-  xent_op_test.py (to ensure that the op still functions correctly when
-  determinism is enabled).
+  Inheriting from xent_op_test_base.XentTestBase ensures that regular op
+  functionality is correct when the deterministic code-path is selected.
   """
 
   def _randomFloats(self, shape, dtype, normalized_rows=False):
@@ -83,9 +55,14 @@ class SoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
     return constant_op.constant(a)
 
-  def _generateInputs(self, dtype, seed=123):
+  def _generateInputs(self, dtype, seed=123, forward_not_backward=False):
     batch_size = 1024
-    classes_count = 1000
+    if forward_not_backward and dtype == np.float16:
+      # Generate more noise to expose the internal float32 implementation.
+      # This is associated with significantly slower test cases (esp. on CPU).
+      classes_count = 20000
+    else:
+      classes_count = 3000
     shape = (batch_size, classes_count)
     np.random.seed(seed)
     labels = self._randomFloats(shape, dtype, normalized_rows=True)
@@ -94,39 +71,48 @@ class SoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
-    with self.session(), test_util.force_cpu():
-      for dtype in [np.float16, np.float32, np.float64]:
-        for trial in range(5):
-          seed = 123 + trial
-          labels, logits = self._generateInputs(dtype, seed=seed)
-          result_a = nn_ops.softmax_cross_entropy_with_logits_v2(
-              labels=labels, logits=logits)
-          result_b = nn_ops.softmax_cross_entropy_with_logits_v2(
-              labels=labels, logits=logits)
-          self.assertAllEqual(result_a, result_b)
+    for use_gpu in [False, True]:
+      if use_gpu and not test_util.is_gpu_available():
+        continue
+      with self.session(), test_util.device(use_gpu):
+        # Even in eager mode, the above line will be able to pin ops to CPU.
+        for dtype in [np.float16, np.float32, np.float64]:
+          for trial in range(5):
+            seed = 123 + trial
+            labels, logits = self._generateInputs(
+                dtype, seed=seed, forward_not_backward=True)
+            result_a = nn_ops.softmax_cross_entropy_with_logits_v2(
+                labels=labels, logits=logits)
+            result_b = nn_ops.softmax_cross_entropy_with_logits_v2(
+                labels=labels, logits=logits)
+            self.assertAllEqual(result_a, result_b)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
-    with self.session(), test_util.force_cpu():
-      for dtype in [np.float16, np.float32, np.float64]:
-        labels, logits = self._generateInputs(dtype, seed=456)
-        output_shape = labels.shape[0]
+    for use_gpu in [False, True]:
+      if use_gpu and not test_util.is_gpu_available():
+        continue
+      with self.session(), test_util.device(use_gpu):
+        # Even in eager mode, the above line will be able to pin ops to CPU.
+        for dtype in [np.float16, np.float32, np.float64]:
+          labels, logits = self._generateInputs(dtype, seed=456)
+          output_shape = labels.shape[0]
 
-        def gradients(seed=789):
-          np.random.seed(seed)
-          upstream_gradients = self._randomFloats(output_shape, dtype)
-          with backprop.GradientTape(persistent=True) as tape:
-            tape.watch(logits)
-            op_output = nn_ops.softmax_cross_entropy_with_logits_v2(
-                labels=labels, logits=logits)
-            gradient_injector_output = op_output * upstream_gradients
-          return tape.gradient(gradient_injector_output, logits)
+          def gradients(seed=789):
+            np.random.seed(seed)
+            upstream_gradients = self._randomFloats(output_shape, dtype)
+            with backprop.GradientTape(persistent=True) as tape:
+              tape.watch(logits)
+              op_output = nn_ops.softmax_cross_entropy_with_logits_v2(
+                  labels=labels, logits=logits)
+              gradient_injector_output = op_output * upstream_gradients
+            return tape.gradient(gradient_injector_output, logits)
 
-        for trial in range(5):
-          seed = 456 + trial
-          result_a = gradients(seed=seed)
-          result_b = gradients(seed=seed)
-          self.assertAllEqual(result_a, result_b)
+          for trial in range(5):
+            seed = 456 + trial
+            result_a = gradients(seed=seed)
+            result_b = gradients(seed=seed)
+            self.assertAllEqual(result_a, result_b)
 
 
 if __name__ == "__main__":
