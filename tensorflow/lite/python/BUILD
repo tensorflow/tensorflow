@@ -479,6 +479,14 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "convert_phase",
+    srcs = ["convert_phase.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+pytype_strict_library(
     name = "metrics_nonportable",
     srcs = ["metrics_nonportable.py"],
     srcs_version = "PY3",
