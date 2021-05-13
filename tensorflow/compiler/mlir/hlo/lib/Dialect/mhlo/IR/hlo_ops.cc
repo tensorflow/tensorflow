@@ -2498,6 +2498,29 @@ struct logical_not {
   }
 };
 
+template <typename FloatOrInt>
+struct sign {
+  APFloat compute(const APFloat& f) {
+    if (f.isZero() || f.isNaN()) return f;
+    double value = f.isNegative() ? -1.0 : 1.0;
+    APFloat val(value);
+    bool unused;
+    val.convert(f.getSemantics(), APFloat::rmNearestTiesToEven, &unused);
+    return val;
+  }
+
+  APInt compute(const APInt& i) {
+    APInt r = i;
+    if (r == 0) return r;
+    if (r.isNegative()) {
+      return APInt(r.getBitWidth(), -1, /*isSigned=*/true);
+    }
+    return APInt(r.getBitWidth(), 1, /*isSigned=*/true);
+  }
+
+  FloatOrInt operator()(const FloatOrInt& fi) { return compute(fi); }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -2522,6 +2545,7 @@ struct logical_not {
   }
 
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER(SignOp, sign);
 UNARY_FOLDER_INT(NotOp, logical_not);
 UNARY_FOLDER_FLOAT(RoundOp, round);
 

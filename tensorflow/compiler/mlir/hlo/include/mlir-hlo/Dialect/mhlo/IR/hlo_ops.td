@@ -396,6 +396,7 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {

@@ -679,6 +679,46 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   return %arg0 : tensor<i64>
 }
 
+// CHECK-LABEL: fold_sign_posi
+func @fold_sign_posi() -> tensor<i32> {
+  // CHECK: %0 = mhlo.constant dense<1> : tensor<i32>
+  %0 = mhlo.constant dense<2> : tensor<i32>
+  %1 = "mhlo.sign"(%0) : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
+// CHECK-LABEL: fold_sign_negi
+func @fold_sign_negi() -> tensor<i32> {
+  // CHECK: %0 = mhlo.constant dense<-1> : tensor<i32>
+  %0 = mhlo.constant dense<-2> : tensor<i32>
+  %1 = "mhlo.sign"(%0) : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
+// CHECK-LABEL: fold_sign_posf
+func @fold_sign_posf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<1.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
+// CHECK-LABEL: fold_sign_negf
+func @fold_sign_negf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<-1.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<-2.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
+// CHECK-LABEL: fold_sign_negzf
+func @fold_sign_negzf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<-0.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
 // CHECK-LABEL: fold_compare_same_eq
 func @fold_compare_same_eq(%arg0: tensor<i64>) -> tensor<i1> {
   // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
