@@ -85,7 +85,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   void SetStream(void* stream) override {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-    cuda_stream_ = reinterpret_cast<CUstream>(stream);
+    cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
 #endif
   }
 
