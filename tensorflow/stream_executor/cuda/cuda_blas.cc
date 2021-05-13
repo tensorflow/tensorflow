@@ -529,14 +529,15 @@ int GetDataTypeSizeBytes(blas::DataType ty) {
 }  // namespace
 
 template <typename FuncT, typename... Args>
-bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                                  bool pointer_mode_host, bool err_on_failure,
-                                  cublasMath_t math_type, Args... args) {
+port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                                          bool pointer_mode_host,
+                                          cublasMath_t math_type,
+                                          Args... args) {
   absl::MutexLock lock(&mu_);
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
-    return false;
+    return port::InternalError("Failed setting stream");
   }
 
 #if CUDA_VERSION >= 9000
@@ -548,7 +549,7 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   if (math_type == CUBLAS_TENSOR_OP_MATH) {
 #endif
     if (!math_mode.Init(math_type)) {
-      return false;
+      return port::InternalError("Failed initializing math mode");
     }
   }
 #endif
@@ -557,13 +558,13 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   ScopedCublasPointerMode pointer_mode{blas_};
   if (!pointer_mode.Init(pointer_mode_host ? CUBLAS_POINTER_MODE_HOST
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
-    return false;
+    return port::InternalError("Failed setting error mode");
   }
   cublasStatus_t ret = cublas_func(blas_, args...);
-  if ((err_on_failure || VLOG_IS_ON(3)) && ret != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to run cuBLAS routine: " << ToString(ret);
+  if (ret == CUBLAS_STATUS_SUCCESS) {
+    return port::Status::OK();
   }
-  return ret == CUBLAS_STATUS_SUCCESS;
+  return port::InternalError(ToString(ret));
 }
 
 // cublas_func may be overloaded, so we need to figure out which one we really
@@ -1805,28 +1806,26 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           "(need at least CUDA 7.5)");
 #endif
 
-      return DoBlasInternalImplStatus(
-          cublasSgemmEx, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, static_cast<const float *>(alpha),
-          a.opaque(), SE_CUDA_DATA_HALF, lda, b.opaque(), SE_CUDA_DATA_HALF,
-          ldb, static_cast<const float *>(beta), c->opaque(), SE_CUDA_DATA_HALF,
-          ldc);
+      return DoBlasInternalImpl(
+          cublasSgemmEx, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+          static_cast<const float *>(alpha), a.opaque(), SE_CUDA_DATA_HALF, lda,
+          b.opaque(), SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
+          c->opaque(), SE_CUDA_DATA_HALF, ldc);
     }
     case dnn::kFloat:
-      return DoBlasInternalImplStatus(
-          cublasSgemm, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, static_cast<const float *>(alpha),
+      return DoBlasInternalImpl(
+          cublasSgemm, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+          static_cast<const float *>(alpha),
           static_cast<const float *>(a.opaque()), lda,
           static_cast<const float *>(b.opaque()), ldb,
           static_cast<const float *>(beta), static_cast<float *>(c->opaque()),
           ldc);
     case dnn::kDouble:
-      return DoBlasInternalImplStatus(
-          cublasDgemm, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k,
+      return DoBlasInternalImpl(
+          cublasDgemm, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
           static_cast<const double *>(alpha),
           static_cast<const double *>(a.opaque()), lda,
           static_cast<const double *>(b.opaque()), ldb,
@@ -1837,11 +1836,10 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           GpuComplexValue(*static_cast<const std::complex<float> *>(alpha));
       GpuComplexType cb_beta =
           GpuComplexValue(*static_cast<const std::complex<float> *>(beta));
-      return DoBlasInternalImplStatus(
-          cublasCgemm, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, &cb_alpha,
-          static_cast<const GpuComplexType *>(a.opaque()), lda,
+      return DoBlasInternalImpl(
+          cublasCgemm, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+          &cb_alpha, static_cast<const GpuComplexType *>(a.opaque()), lda,
           static_cast<const GpuComplexType *>(b.opaque()), ldb, &cb_beta,
           static_cast<GpuComplexType *>(c->opaque()), ldc);
     }
@@ -1850,11 +1848,10 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           GpuComplexValue(*static_cast<const std::complex<double> *>(alpha));
       GpuDoubleComplexType cb_beta =
           GpuComplexValue(*static_cast<const std::complex<double> *>(beta));
-      return DoBlasInternalImplStatus(
-          cublasZgemm, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure= */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, &cb_alpha,
-          static_cast<const GpuDoubleComplexType *>(a.opaque()), lda,
+      return DoBlasInternalImpl(
+          cublasZgemm, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+          &cb_alpha, static_cast<const GpuDoubleComplexType *>(a.opaque()), lda,
           static_cast<const GpuDoubleComplexType *>(b.opaque()), ldb, &cb_beta,
           static_cast<GpuDoubleComplexType *>(c->opaque()), ldc);
     }
@@ -2131,17 +2128,15 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
   // If 'alpha' and 'beta' are host scalars and CompT is Eigen::half, we
   // essentially reinterpet_cast to __half, which is safe because Eigen::half
   // inherits from __half.
-  bool result = DoBlasInternalImpl(
-      AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true,
-      /*err_on_failure=*/false, math_type,
-
+  port::Status st = DoBlasInternalImpl(
+      AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true, math_type,
       CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, alpha,
       a.opaque(), cuda_in_type, lda, b.opaque(), cuda_in_type, ldb, beta,
       c->opaque(), GetCUDADataType(type_c), ldc,
       CUDAComputationType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm));
 
-  if (timer != nullptr && result) {
+  if (timer != nullptr && st.ok()) {
     // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
     // state.
     if (!timer->Stop(AsGpuStream(stream))) {
@@ -2152,10 +2147,7 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
   }
-  if (!result) {
-    return port::InternalError("cuBLAS invocation failed");
-  }
-  return port::Status::OK();
+  return st;
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
@@ -2340,18 +2332,11 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
         const_cast<const CUDA_T **>(GpuMemory(b)));
     void **c_void_ptrs =
         reinterpret_cast<void **>(const_cast<CUDA_T **>(GpuMemory(c)));
-    bool ok;
-    ok = DoBlasInternalImpl(
+    return DoBlasInternalImpl(
         AS_LAMBDA(cublasGemmBatchedEx), stream, true /* = pointer_mode_host */,
-        true /* = err_on_failure */, math_type, CUDABlasTranspose(transa),
-        CUDABlasTranspose(transb), m, n, k, &alpha, a_void_ptrs, data_type, lda,
-        b_void_ptrs, data_type, ldb, &beta, c_void_ptrs, data_type, ldc,
-        batch_count, compute_type, algo);
-    if (ok) {
-      return port::Status::OK();
-    }
-    return port::Status(port::error::INTERNAL,
-                        "failed BLAS call, see log for details");
+        math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+        k, &alpha, a_void_ptrs, data_type, lda, b_void_ptrs, data_type, ldb,
+        &beta, c_void_ptrs, data_type, ldc, batch_count, compute_type, algo);
   }
 #endif
   // either CUDA_VERSION < 9.1 or SM < 5.0
@@ -2495,11 +2480,11 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
           cc_major >= 5) {
         cublasGemmAlgo_t algo =
             (cc_major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
-        return DoBlasInternalImplStatus(
+        return DoBlasInternalImpl(
             AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
-            true /* = pointer_mode_host */, true /* = err_on_failure */,
-            math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m,
-            n, k, alpha, a.opaque(), CUDA_R_16F, lda, stride_a, b.opaque(),
+            true /* = pointer_mode_host */, math_type,
+            CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+            alpha, a.opaque(), CUDA_R_16F, lda, stride_a, b.opaque(),
             CUDA_R_16F, ldb, stride_b, beta, c->opaque(), CUDA_R_16F, ldc,
             stride_c, batch_count, CUDA_R_32F, algo);
       }
@@ -2512,10 +2497,10 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
             static_cast<const Eigen::half *>(b.opaque()) + batch * stride_b);
         auto *c_matrix = reinterpret_cast<__half *>(
             static_cast<Eigen::half *>(c->opaque()) + batch * stride_c);
-        TF_RETURN_IF_ERROR(DoBlasInternalImplStatus(
+        TF_RETURN_IF_ERROR(DoBlasInternalImpl(
             cublasSgemmEx, stream, true /* = pointer_mode_host */,
-            true /* = err_on_failure= */, CUBLAS_DEFAULT_MATH,
-            CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+            CUBLAS_DEFAULT_MATH, CUDABlasTranspose(transa),
+            CUDABlasTranspose(transb), m, n, k,
             static_cast<const float *>(alpha), a_matrix, SE_CUDA_DATA_HALF, lda,
             b_matrix, SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
             c_matrix, SE_CUDA_DATA_HALF, ldc));
@@ -2523,21 +2508,20 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
       return port::Status::OK();
     }
     case dnn::kFloat: {
-      return DoBlasInternalImplStatus(
+      return DoBlasInternalImpl(
           cublasSgemmStridedBatched, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure */, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, static_cast<const float *>(alpha),
+          math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+          k, static_cast<const float *>(alpha),
           static_cast<const float *>(a.opaque()), lda, stride_a,
           static_cast<const float *>(b.opaque()), ldb, stride_b,
           static_cast<const float *>(beta), static_cast<float *>(c->opaque()),
           ldc, stride_c, batch_count);
     }
     case dnn::kDouble:
-      return DoBlasInternalImplStatus(
+      return DoBlasInternalImpl(
           cublasDgemmStridedBatched, stream, true /* = pointer_mode_host */,
-          /*err_on_failure=*/true, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k,
-          static_cast<const double *>(alpha),
+          math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+          k, static_cast<const double *>(alpha),
           static_cast<const double *>(a.opaque()), lda, stride_a,
           static_cast<const double *>(b.opaque()), ldb, stride_b,
           static_cast<const double *>(beta), static_cast<double *>(c->opaque()),
@@ -2547,10 +2531,10 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
           GpuComplexValue(*static_cast<const std::complex<float> *>(alpha));
       GpuComplexType cb_beta =
           GpuComplexValue(*static_cast<const std::complex<float> *>(beta));
-      return DoBlasInternalImplStatus(
+      return DoBlasInternalImpl(
           cublasCgemmStridedBatched, stream, true /* = pointer_mode_host */,
-          /*err_on_failure=*/true, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, GpuComplex(&cb_alpha),
+          math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+          k, GpuComplex(&cb_alpha),
           static_cast<const GpuComplexType *>(a.opaque()), lda, stride_a,
           static_cast<const GpuComplexType *>(b.opaque()), ldb, stride_b,
           GpuComplex(&cb_beta), static_cast<GpuComplexType *>(c->opaque()), ldc,
@@ -2561,10 +2545,10 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
           GpuComplexValue(*static_cast<const std::complex<double> *>(alpha));
       GpuDoubleComplexType cb_beta =
           GpuComplexValue(*static_cast<const std::complex<double> *>(beta));
-      return DoBlasInternalImplStatus(
+      return DoBlasInternalImpl(
           cublasZgemmStridedBatched, stream, true /* = pointer_mode_host */,
-          /*err_on_failure=*/true, math_type, CUDABlasTranspose(transa),
-          CUDABlasTranspose(transb), m, n, k, GpuComplex(&cb_alpha),
+          math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+          k, GpuComplex(&cb_alpha),
           static_cast<const GpuDoubleComplexType *>(a.opaque()), lda, stride_a,
           static_cast<const GpuDoubleComplexType *>(b.opaque()), ldb, stride_b,
           GpuComplex(&cb_beta),
