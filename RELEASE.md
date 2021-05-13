@@ -35,6 +35,11 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   Updates to Preprocessing layers API for consistency and clarity:
+        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
+            to `None`. This matches the default masking behavior of `Hashing`
+            and `Embedding` layers. To keep existing behavior, pass
+            `mask_token=""` during layer creation.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
