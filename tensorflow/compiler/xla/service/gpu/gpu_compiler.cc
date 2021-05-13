@@ -662,8 +662,6 @@ static Status CompileModuleToLlvmIrImpl(
       GetMlirAllocationInfo(entry_function, &results->allocations,
                             &results->output_info, &results->output_shape));
 
-  CHECK(!results->allocations.empty());
-
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
       gpu_device_info, cuda_compute_capability, profile_index_map,
