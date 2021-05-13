@@ -287,6 +287,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
             adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
         adaptive_shared_batch_scheduler_options.batches_to_average_over =
             adaptive_batch_scheduler_options_->batches_to_average_over;
+        adaptive_shared_batch_scheduler_options.fifo_scheduling = true;
         std::unique_ptr<BatchResource> new_resource;
         TF_RETURN_IF_ERROR(BatchResource::Create(
             adaptive_shared_batch_scheduler_options, max_batch_size_,

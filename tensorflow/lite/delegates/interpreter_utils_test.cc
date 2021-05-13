@@ -29,6 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 
+using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
 using test_utils::TestFP16Delegation;
 

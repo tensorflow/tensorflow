@@ -482,12 +482,38 @@ func @reshape_0D_1D(%arg0: tensor<i32>) -> tensor<1xi32> {
 
 // -----
 
+func @reshape_0D_1D_unsigned(%arg0: tensor<ui32>) -> tensor<1xui32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<ui32>) -> tensor<1xui32>
+  return %0 : tensor<1xui32>
+}
+// CHECK-LABEL: func @reshape_0D_1D_unsigned
+// CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
+// CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<ui32> to tensor<i32>
+// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_reshape %[[ARG_SIGNLESS]] [] : tensor<i32> into tensor<1xi32>
+// CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<1xi32> to tensor<1xui32>
+// CHECK:         return %[[RET_UNSIGNED]] : tensor<1xui32>
+
+// -----
+
 // CHECK-LABEL: func @reshape_1D_0D
 func @reshape_1D_0D(%arg0: tensor<1xi32>) -> tensor<i32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1xi32>) -> tensor<i32>
   return %0 : tensor<i32>
 }
 // CHECK: linalg.tensor_reshape %{{.*}} [] : tensor<1xi32> into tensor<i32>
+
+// -----
+
+func @reshape_1D_0D_unsigned(%arg0: tensor<1xui32>) -> tensor<ui32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1xui32>) -> tensor<ui32>
+  return %0 : tensor<ui32>
+}
+// CHECK-LABEL: func @reshape_1D_0D_unsigned
+// CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
+// CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<1xui32> to tensor<1xi32>
+// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_reshape %[[ARG_SIGNLESS]] [] : tensor<1xi32> into tensor<i32>
+// CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<i32> to tensor<ui32>
+// CHECK:         return %[[RET_UNSIGNED]] : tensor<ui32>
 
 // -----
 

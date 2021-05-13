@@ -245,3 +245,53 @@ func @const_high_rank_tensor() -> tensor<2x3xi32> {
   return %0 : tensor<2x3xi32>
 }
 
+// -----
+
+// CHECK-LABEL: func @const_int_complex
+func @const_int_complex() -> tensor<2xcomplex<f32>> {
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_float_complex
+func @const_float_complex() -> tensor<2xcomplex<f64>> {
+  %cst = mhlo.constant dense<[0.0, 1.0]> : tensor<2xf32>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<2xf32>) -> tensor<2xcomplex<f64>>
+  return %0 : tensor<2xcomplex<f64>>
+}
+
+
+// -----
+
+// CHECK-LABEL: func @const_complex_int
+func @const_complex_int() -> tensor<i32> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_complex_float
+func @const_complex_float() -> tensor<f32> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_complex_complex
+func @const_complex_complex() -> tensor<complex<f64>> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<complex<f64>>
+  return %0 : tensor<complex<f64>>
+}

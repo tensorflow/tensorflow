@@ -55,6 +55,9 @@ TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
 std::string ReconstituteConstantTensorsIntoFlatbuffer(
     const absl::string_view input_flatbuffer);
 
+// Return true if the input model has been stripped before.
+bool FlatbufferHasStrippedWeights(const Model* input_model);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TOOLS_STRIP_BUFFERS_STRIPPING_LIB_H_

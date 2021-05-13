@@ -4,7 +4,7 @@
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
@@ -38,12 +38,15 @@ filegroup(
     compatible_with = get_compatible_with_cloud(),
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-pass-decls -name LegalizeTosa",
+            [
+                "-gen-pass-decls",
+                "-name=LegalizeTosa",
+            ],
             "transforms/passes.h.inc",
         ),
     ],
@@ -88,12 +91,12 @@ cc_library(
     alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_legalize_tf_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "transforms/tf_legalize_patterns.inc",
         ),
     ],
@@ -136,12 +139,12 @@ cc_library(
     alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_legalize_tfl_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "transforms/tfl_legalize_patterns.inc",
         ),
     ],

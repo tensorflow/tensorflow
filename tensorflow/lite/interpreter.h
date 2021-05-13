@@ -52,7 +52,7 @@ namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
 
 namespace test_utils {
-class TestDelegate;  // Class for friend declarations.
+class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
 
@@ -683,7 +683,7 @@ class Interpreter {
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
-  friend class tflite::delegates::test_utils::TestDelegate;
+  friend class tflite::delegates::test_utils::TestDelegation;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,

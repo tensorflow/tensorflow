@@ -61,7 +61,7 @@ XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
 REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Atanh, xla::Atanh(x));
 REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Cos, xla::Cos(x));
+REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
@@ -87,7 +87,7 @@ XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
 
 REGISTER_XLA_OP(Name("Rsqrt"), MlirXlaOpKernel);
 
-XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
+REGISTER_XLA_OP(Name("Sigmoid"), MlirXlaOpKernel);
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);

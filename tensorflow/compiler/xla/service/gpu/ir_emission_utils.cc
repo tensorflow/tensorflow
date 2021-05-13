@@ -834,11 +834,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
       *constant_name = constant_name_attr.getValue().str();
     }
   }
-  return func_op
-      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
-                                           "lmhlo.alloc")
-      .getValue()
-      .getSExtValue();
+  return func_arg.getArgNumber();
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(

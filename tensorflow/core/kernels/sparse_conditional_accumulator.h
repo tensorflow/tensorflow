@@ -56,15 +56,13 @@ class SparseConditionalAccumulator
             dtype, shape, name, reduction_type) {
     accum_idx_vec_ = nullptr;
     count_element_ = nullptr;
-    accum_val_ = nullptr;
-    accum_val_persistent_ = new PersistentTensor();
+    accum_val_ = new Tensor();
   }
 
   ~SparseConditionalAccumulator() override {
     if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
     if (count_element_ != nullptr) delete count_element_;
-    if (accum_val_persistent_ != nullptr) delete accum_val_persistent_;
-    // Do not delete accum_val_! Will be automatically garbage collected
+    if (accum_val_ != nullptr) delete accum_val_;
   };
 
  protected:
@@ -72,7 +70,6 @@ class SparseConditionalAccumulator
   std::vector<int>* count_element_ = nullptr;
 
   Tensor* accum_val_ = nullptr;
-  PersistentTensor* accum_val_persistent_ = nullptr;
 
   typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
                            Eigen::Unaligned>
@@ -173,9 +170,7 @@ class SparseConditionalAccumulator
 
     // Assign values to accum_val_tensor
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_)
-        .IgnoreError();
+    ctx->allocate_temp(dtype_, grad_val->shape(), accum_val_).IgnoreError();
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
@@ -252,15 +247,12 @@ class SparseConditionalAccumulator
     std::vector<int>* sum_counts = new std::vector<int>();
     sum_counts->reserve(sum_nnz);
 
-    Tensor* sum_tensor = nullptr;
-    PersistentTensor* tensor_sum_persistent = new PersistentTensor();
+    Tensor* sum_tensor = new Tensor();
 
     TensorShape sum_shape = grad_val->shape();
     sum_shape.set_dim(0, sum_nnz);
 
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_persistent(dtype_, sum_shape, tensor_sum_persistent,
-                                      &sum_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(dtype_, sum_shape, sum_tensor));
     auto sum_flat = sum_tensor->flat_outer_dims<T>();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     auto grad_flat = grad_val->flat_outer_dims<T>();
@@ -308,9 +300,8 @@ class SparseConditionalAccumulator
     if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
     accum_idx_vec_ = sum_indices_vec;
     // Values
+    delete accum_val_;
     accum_val_ = sum_tensor;
-    delete accum_val_persistent_;
-    accum_val_persistent_ = tensor_sum_persistent;
     // Counts
     if (count_element_ != nullptr) delete count_element_;
     count_element_ = sum_counts;

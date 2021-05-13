@@ -543,7 +543,8 @@ def TFL_AddOp : TFL_Op<"add", [
       CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
     NoSideEffect,
-    Commutative]> {
+    Commutative,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -572,7 +573,8 @@ def TFL_AddNOp : TFL_Op<"add_n", [
     Commutative,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    NoQuantizableResult,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -692,7 +694,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d",
            [NoSideEffect,
-            SameOperandsAndResultsScale]> {
+            SameOperandsAndResultsScale,
+            DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Average_pool_2d operator";
 
   let description = [{
@@ -959,7 +962,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 }
 
 def TFL_DepthwiseConv2DOp :
-    TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3> {
+    TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
+                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
@@ -1000,7 +1004,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
-    TFL_SparseOp]> {
+    TFL_SparseOp,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1452,7 +1457,8 @@ def TFL_DivOp : TFL_Op<"div", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
     NoSideEffect,
-    NoQuantizableResult]> {
+    NoQuantizableResult,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1909,7 +1915,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Logistic operator";
 
   let description = [{
@@ -1967,7 +1974,8 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     SameOperandsAndResultShape,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -2014,7 +2022,8 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     MaxPoolOperandAndResultConstraints,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Max Pool 2D op";
 
   let description = [{
@@ -2305,7 +2314,8 @@ def TFL_MulOp : TFL_Op<"mul", [
     Commutative,
     BinaryOpSameElementTypeConstraint,
     TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
-      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>]> {
+      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -2901,7 +2911,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankRange<0, 1, 4>,
     SameOperandsAndResultShape,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -2975,7 +2986,8 @@ def TFL_SubOp : TFL_Op<"sub", [
     BinaryOpSameElementTypeConstraint,
     TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
       CPred<"TFL::VerifySubOpShapeConstraints(llvm::cast<SubOp>($_op))">>,
-    NoSideEffect]> {
+    NoSideEffect,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Subtraction operator";
 
   let description = [{
@@ -3031,7 +3043,8 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{

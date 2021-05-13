@@ -1156,38 +1156,12 @@ class BlasSupport {
       int batch_count, ScratchAllocator *scratch_allocator) = 0;
 
   // Batched gemm with strides instead of pointer arrays.
-  virtual bool DoBlasGemmStridedBatched(
+  virtual port::Status DoBlasGemmStridedBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
-      int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
-      int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
-      int64 stride_c, int batch_count) = 0;
-  virtual bool DoBlasGemmStridedBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
-      int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
-      float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
-      int batch_count) = 0;
-  virtual bool DoBlasGemmStridedBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-      int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
-      double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
-      int batch_count) = 0;
-  virtual bool DoBlasGemmStridedBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
-      const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      int64 stride_c, int batch_count) = 0;
-  virtual bool DoBlasGemmStridedBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
-      const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      int64 stride_c, int batch_count) = 0;
+      uint64 n, uint64 k, DataType dtype, const void *alpha,
+      const DeviceMemoryBase &a, int lda, int64 stride_a,
+      const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,
+      DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count) = 0;
 
   // Computes a matrix-matrix product where one input matrix is Hermitian:
   //
@@ -2055,38 +2029,12 @@ class BlasSupport {
       int ldb, std::complex<double> beta,                                      \
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c,         \
       int ldc, int batch_count, ScratchAllocator *scratch_allocator) override; \
-  bool DoBlasGemmStridedBatched(                                               \
+  port::Status DoBlasGemmStridedBatched(                                       \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha,                               \
-      const DeviceMemory<Eigen::half> &a, int lda, int64 stride_a,             \
-      const DeviceMemory<Eigen::half> &b, int ldb, int64 stride_b, float beta, \
-      DeviceMemory<Eigen::half> *c, int ldc, int64 stride_c, int batch_count); \
-  bool DoBlasGemmStridedBatched(                                               \
-      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, \
-      int lda, int64 stride_a, const DeviceMemory<float> &b, int ldb,          \
-      int64 stride_b, float beta, DeviceMemory<float> *c, int ldc,             \
-      int64 stride_c, int batch_count);                                        \
-  bool DoBlasGemmStridedBatched(                                               \
-      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, double alpha,                              \
-      const DeviceMemory<double> &a, int lda, int64 stride_a,                  \
-      const DeviceMemory<double> &b, int ldb, int64 stride_b, double beta,     \
-      DeviceMemory<double> *c, int ldc, int64 stride_c, int batch_count);      \
-  bool DoBlasGemmStridedBatched(                                               \
-      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<float> alpha,                 \
-      const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,     \
-      const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,     \
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc, \
-      int64 stride_c, int batch_count);                                        \
-  bool DoBlasGemmStridedBatched(                                               \
-      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<double> alpha,                \
-      const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,    \
-      const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,    \
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c,        \
-      int ldc, int64 stride_c, int batch_count);                               \
+      uint64 m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha,   \
+      const DeviceMemoryBase &a, int lda, int64 stride_a,                      \
+      const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,    \
+      DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count);          \
   bool DoBlasHemm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
                   uint64 m, uint64 n, std::complex<float> alpha,               \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \

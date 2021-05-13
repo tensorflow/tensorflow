@@ -333,18 +333,18 @@ static LogicalResult Verify(TFRFuncOp func) {
 
 static ParseResult ParseFuncOp(OpAsmParser &parser, OperationState *result) {
   auto build_func_type = [](Builder &builder, ArrayRef<Type> arg_types,
-                            ArrayRef<Type> results, impl::VariadicFlag,
-                            std::string &) {
+                            ArrayRef<Type> results,
+                            function_like_impl::VariadicFlag, std::string &) {
     return builder.getFunctionType(arg_types, results);
   };
-  return impl::parseFunctionLikeOp(parser, *result, /*allowVariadic=*/false,
-                                   build_func_type);
+  return function_like_impl::parseFunctionLikeOp(
+      parser, *result, /*allowVariadic=*/false, build_func_type);
 }
 
 static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
   FunctionType fn_type = op.getType();
-  impl::printFunctionLikeOp(p, op, fn_type.getInputs(), /*isVariadic=*/false,
-                            fn_type.getResults());
+  function_like_impl::printFunctionLikeOp(
+      p, op, fn_type.getInputs(), /*isVariadic=*/false, fn_type.getResults());
 }
 
 }  // namespace TFR

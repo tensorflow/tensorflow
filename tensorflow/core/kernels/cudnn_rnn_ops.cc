@@ -437,15 +437,15 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   int output_index_;
 };
 
-// A helper to allocate persistent memory for Cudnn RNN models, which is
+// A helper to allocate memory for Cudnn RNN models, which is
 // expected to live between kernel invocations.
 // This class is not thread-safe.
-class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
+class CudnnRNNSpaceAllocator : public ScratchAllocator {
  public:
-  explicit CudnnRNNPersistentSpaceAllocator(OpKernelContext* context)
+  explicit CudnnRNNSpaceAllocator(OpKernelContext* context)
       : context_(context) {}
 
-  ~CudnnRNNPersistentSpaceAllocator() override {}
+  ~CudnnRNNSpaceAllocator() override {}
 
   int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
@@ -454,22 +454,22 @@ class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     if (total_byte_size_ != 0) {
       return Status(error::FAILED_PRECONDITION,
-                    "Persistent space allocator can only be called once");
+                    "Space allocator can only be called once");
     }
 
-    Status allocation_status = context_->allocate_persistent(
-        DT_UINT8, TensorShape({byte_size}), &handle_, nullptr);
+    Status allocation_status =
+        context_->allocate_temp(DT_UINT8, TensorShape({byte_size}), &tensor_);
     if (!allocation_status.ok()) {
       return ToExecutorStatus(allocation_status);
     }
     total_byte_size_ += byte_size;
-    return AsDeviceMemory<uint8>(handle_.AccessTensor(context_));
+    return AsDeviceMemory<uint8>(&tensor_);
   }
   int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64 total_byte_size_ = 0;
-  PersistentTensor handle_;
+  Tensor tensor_;
   OpKernelContext* context_;  // not owned
 };
 
@@ -557,7 +557,7 @@ struct CudnnRnnConfigComparator {
 // a hash table value in CudnnRNNForwardOp and CudnnRNNBackwardOp).
 struct RnnScratchSpace {
   std::unique_ptr<RnnDescriptor> rnn_desc;
-  std::unique_ptr<CudnnRNNPersistentSpaceAllocator> dropout_state_allocator;
+  std::unique_ptr<CudnnRNNSpaceAllocator> dropout_state_allocator;
 };
 
 // Extract and checks the forward input tensors, parameters, and shapes from the
@@ -1126,8 +1126,8 @@ class CudnnRNNKernelCommon : public OpKernel {
     auto key = std::make_pair(model_shapes, algo_config.algorithm());
     RnnScratchSpace& rnn_state = (*cache)[key];
     if (rnn_state.rnn_desc == nullptr || ResetRndGenState()) {
-      CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
-          new CudnnRNNPersistentSpaceAllocator(context);
+      CudnnRNNSpaceAllocator* dropout_state_allocator =
+          new CudnnRNNSpaceAllocator(context);
       rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
       Status status = CreateRnnDescriptor<T>(
           context, model_shapes, input_mode, algo_config,

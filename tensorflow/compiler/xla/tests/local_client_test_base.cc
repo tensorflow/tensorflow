@@ -191,7 +191,7 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const ExecutableRunOptions& run_options) {
   std::vector<const Shape*> argument_layouts(arguments.size());
   for (int i = 0; i < arguments.size(); ++i) {
-    argument_layouts[i] = &arguments[i]->on_host_shape();
+    argument_layouts[i] = &arguments[i]->on_device_shape();
   }
   TF_ASSIGN_OR_RETURN(
       auto executables,

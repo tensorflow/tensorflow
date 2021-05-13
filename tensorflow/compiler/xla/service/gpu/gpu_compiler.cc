@@ -1041,16 +1041,10 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape) {
-  std::vector<absl::optional<BufferAllocation>> maybe_allocations;
+  CHECK(allocations->empty());
+  allocations->reserve(func.getNumArguments());
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    auto allocation_index_attr =
-        func.getArgAttr(i, "lmhlo.alloc").dyn_cast_or_null<mlir::IntegerAttr>();
-    TF_RET_CHECK(allocation_index_attr);
-    int index = allocation_index_attr.getInt();
-    if (index >= maybe_allocations.size()) {
-      maybe_allocations.resize(index + 1);
-    }
     mlir::BlockArgument arg = func.getArgument(i);
 
     TF_RET_CHECK(arg.getType().isa<mlir::ShapedType>());
@@ -1058,22 +1052,12 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
     TF_ASSIGN_OR_RETURN(auto element_type_bytes,
                         GetElementTypeBytes(type.getElementType()));
     size_t size = type.getNumElements() * element_type_bytes;
-    maybe_allocations[index].emplace(index, size, 0);
-  }
-
-  allocations->reserve(maybe_allocations.size());
-  for (auto& maybe_alloc : maybe_allocations) {
-    if (maybe_alloc.has_value()) {
-      allocations->push_back(*maybe_alloc);
-    } else {
-      allocations->push_back(BufferAllocation(allocations->size(), 0, {}));
-    }
+    allocations->emplace_back(i, size, 0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.alloc" ||
-                   attr.first == "lmhlo.params" ||
+      TF_RET_CHECK(attr.first == "lmhlo.params" ||
                    attr.first == "lmhlo.param_shape_index" ||
                    attr.first == "lmhlo.constant_name" ||
                    attr.first == "lmhlo.must_alias" ||
@@ -1083,8 +1067,6 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
 
   std::vector<std::pair<ShapeIndex, Shape>> sub_shapes;
   for (int i = 0; i < func.getNumArguments(); i++) {
-    auto index =
-        func.getArgAttr(i, "lmhlo.alloc").cast<mlir::IntegerAttr>().getInt();
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
       xla::ShapeIndex shape_index;
       if (auto shape_index_attr =
@@ -1094,17 +1076,17 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
           shape_index.push_back(element.getSExtValue());
         }
       }
-      allocations->at(index).set_entry_computation_parameter(
+      allocations->at(i).set_entry_computation_parameter(
           param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
     // smooth migration to LMHLO. Remove it.
     if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(index).set_constant(true);
+      allocations->at(i).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(index).set_maybe_live_out(true);
+      allocations->at(i).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
@@ -1113,7 +1095,7 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
-      o.allocation_index = index;
+      o.allocation_index = i;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
         HloInputOutputAliasConfig::AliasKind kind =
             HloInputOutputAliasConfig::kMayAlias;

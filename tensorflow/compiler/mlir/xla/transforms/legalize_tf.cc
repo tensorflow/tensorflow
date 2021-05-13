@@ -3849,20 +3849,30 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     // The mean op needs to divide by the product of the reduced dimensions.
     if (std::is_same<OpTy, TF::MeanOp>::value) {
-      int64_t divisor_count = 1;
+      Value in_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+      Value divisor_count = rewriter.create<ConstantIndexOp>(loc, 1);
       for (size_t i = 0; i < input_shape.size(); ++i) {
         if (reduced_dimensions_bitmap[i]) {
-          if (TensorType::isDynamic(input_shape[i])) {
-            return failure();
-          }
-          divisor_count *= input_shape[i];
+          Value index = rewriter.create<ConstantIndexOp>(loc, i);
+          auto dim = rewriter.create<tensor::ExtractOp>(loc, in_shape, index);
+          divisor_count = rewriter.create<MulIOp>(loc, divisor_count, dim);
         }
       }
-      auto divisor = GetScalarConstOfType(reduce_element_type, loc,
-                                          divisor_count, &rewriter);
+      // HLO ops are only defined on tensors, so we cast the divisor from
+      // index -> i64 -> tensor<1xi64> -> tensor<i64> -> tensor<reduction type>
+      auto divisor_casted = rewriter.create<IndexCastOp>(
+          loc, rewriter.getI64Type(), divisor_count);
+      auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getI64Type(), ValueRange{divisor_casted});
+      auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
+          loc, RankedTensorType::get({}, rewriter.getI64Type()),
+          divisor_tensor);
+      auto divisor = rewriter.create<ConvertOp>(
+          loc, RankedTensorType::get({}, reduce_element_type),
+          divisor_reshaped);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      result = rewriter.create<chlo::BroadcastDivOp>(
-          loc, result, divisor.getResult(), broadcast_dims);
+      result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
+                                                     broadcast_dims);
     }
 
     result = rewriter.create<ConvertOp>(loc, result, element_type);
@@ -3870,7 +3880,24 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // Need to reshape back after the reduction if we're keeping the reduced
     // dimensions.
     if (op.keep_dims()) {
-      result = rewriter.create<ReshapeOp>(loc, op.getType(), result);
+      // Rebuild the result shape by replacing reduced dimensions with '1'.
+      Value in_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+      SmallVector<Value> shape_components;
+      Value one = rewriter.create<ConstantIndexOp>(loc, 1);
+      for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+        if (dim_is_reduced.value()) {
+          shape_components.push_back(one);
+        } else {
+          Value index =
+              rewriter.create<ConstantIndexOp>(loc, dim_is_reduced.index());
+          shape_components.push_back(
+              rewriter.create<tensor::ExtractOp>(loc, in_shape, index));
+        }
+      }
+      auto out_shape = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getIndexType(), shape_components);
+      result = rewriter.create<DynamicReshapeOp>(loc, op.getType(), result,
+                                                 out_shape);
     }
     rewriter.replaceOp(op, {result});
 

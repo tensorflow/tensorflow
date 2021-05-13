@@ -19,16 +19,22 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import callbacks as callbacks_lib
 from tensorflow.python.keras.distribute import dataset_creator_model_fit_test_base as test_base
 from tensorflow.python.keras.distribute import strategy_combinations
 
 
+# TODO(rchao): Add strategy_combinations.parameter_server_strategies to the
+# combination.
+# Currently all test cases under this class are duplicated in
+# DatasetCreatorModelEvaluateParameterServerStrategyOnlyTest below to avoid
+# timeout issue that happens when adding more combinations in
+# parameter_server_strategies.
 @ds_combinations.generate(
     combinations.combine(
         strategy=strategy_combinations.all_strategies +
-        strategy_combinations.multi_worker_mirrored_strategies +
-        ["ParameterServerStrategy"],
+        strategy_combinations.multi_worker_mirrored_strategies,
         mode="eager"))
 class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
@@ -58,9 +64,41 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
 
 @ds_combinations.generate(
-    combinations.combine(strategy=["ParameterServerStrategy"], mode="eager"))
+    combinations.combine(
+        strategy=strategy_combinations.parameter_server_strategies,
+        mode="eager"))
 class DatasetCreatorModelEvaluateParameterServerStrategyOnlyTest(
     test_base.DatasetCreatorModelFitTestBase):
+
+  def setUp(self):
+    super().setUp()
+    if test_util.is_xla_enabled():
+      self.skipTest("model.optimizer.iterations values is not as expected "
+                    "with XLA: b/184384487")
+
+  def testModelFit(self, strategy):
+    model = self._model_fit(strategy)
+    self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitWithLookupLayer(self, strategy):
+    model = self._model_fit(strategy, use_lookup_layer=True)
+    self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitWithNormalizationLayer(self, strategy):
+    model = self._model_fit(strategy, with_normalization_layer=True)
+    self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitWithStepsPerExecution(self, strategy):
+    model = self._model_fit(strategy, steps_per_execution=10)
+    self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitWithNoStepsPerEpoch(self, strategy):
+    with self.assertRaisesRegex(
+        ValueError, "When using a "
+        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
+        "`validation_steps` or `steps` argument must be provided in "
+        "`Model.fit` or `Model.evaluate`."):
+      self._model_fit(strategy, steps_per_epoch=None)
 
   def testModelEvaluate(self, strategy):
     self._model_evaluate(strategy)

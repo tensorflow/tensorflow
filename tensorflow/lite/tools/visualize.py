@@ -30,7 +30,14 @@ import re
 import sys
 import numpy as np
 
-from tensorflow.lite.python import schema_py_generated as schema_fb
+# pylint: disable=g-import-not-at-top
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join("tflite_runtime", "visualize")):
+  # This file is part of tensorflow package.
+  from tensorflow.lite.python import schema_py_generated as schema_fb
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -419,8 +426,8 @@ def CreateDictFromFlatbuffer(buffer_data):
   return FlatbufferToDict(model, preserve_as_numpy=False)
 
 
-def CreateHtmlFile(tflite_input, html_output):
-  """Given a tflite model in `tflite_input` file, produce html description."""
+def create_html(tflite_input):
+  """Returns html description with the given tflite model in `tflite_input` file."""
 
   # Convert the model into a JSON flatbuffer using flatc (build if doesn't
   # exist.
@@ -456,7 +463,7 @@ def CreateHtmlFile(tflite_input, html_output):
                               ("version", None)]
 
   # Update builtin code fields.
-  for idx, d in enumerate(data["operator_codes"]):
+  for d in data["operator_codes"]:
     d["builtin_code"] = max(d["builtin_code"], d["deprecated_builtin_code"])
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
@@ -507,8 +514,7 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  with open(html_output, "w") as output_file:
-    output_file.write(html)
+  return html
 
 
 def main(argv):
@@ -518,7 +524,9 @@ def main(argv):
   except IndexError:
     print("Usage: %s <input tflite> <output html>" % (argv[0]))
   else:
-    CreateHtmlFile(tflite_input, html_output)
+    html = create_html(tflite_input)
+    with open(html_output, "w") as output_file:
+      output_file.write(html)
 
 
 if __name__ == "__main__":

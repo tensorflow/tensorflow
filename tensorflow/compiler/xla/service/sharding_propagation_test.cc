@@ -899,6 +899,41 @@ ENTRY %conv {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ForwardConvolution3DSmallKernel) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %lhs = bf16[32,32,8,7,128]{4,3,2,1,0} parameter(0),
+    sharding={devices=[1,4,1,1,1]0,1,2,3 metadata={op_name="a"}}
+  %rhs = bf16[3,3,3,128,256]{4,3,2,1,0} parameter(1)
+  %convolution = bf16[16,16,8,3,256]{4,3,2,1,0}
+    convolution(bf16[32,32,8,7,128]{4,3,2,1,0} %lhs,
+    bf16[3,3,3,128,256]{4,3,2,1,0} %rhs),
+    window={size=3x3x3 stride=2x2x2 pad=1_1x1_1x0_0},
+    dim_labels=01b2f_012io->01b2f
+  ROOT %copy = bf16[16,16,8,3,256]{4,3,2,1,0} copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "convolution");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,4,1,1,1]0,1,2,3}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, TransposeForwardPass) {
   const char* const hlo_string = R"(
 HloModule module

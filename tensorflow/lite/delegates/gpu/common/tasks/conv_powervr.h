@@ -297,58 +297,38 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
 
 template <DataType T>
 void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
-  const int block_size = conv_params_.block_size.w;
-  const int dst_slices =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size);
-  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int flt_count =
+      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
+  DataType weights_type = conv_params_.weights_data_type;
 
-  const int elements_count = weights.shape.d * weights.shape.h *
-                             weights.shape.w * src_slices * dst_slices * 4;
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-
-  const int float4_size = f32_weights ? 16 : 8;
-
-  std::vector<uint8_t> data(float4_size * elements_count);
-
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(data.data());
-    if (conv_params_.AreWeightsBuffer()) {
-      RearrangeWeightsToODHWIOGroupI4O4(weights, conv_params_.block_size.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4DHWIOOGroupO4(weights, conv_params_.block_size.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    }
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(data.data());
-    if (conv_params_.AreWeightsBuffer()) {
-      RearrangeWeightsToODHWIOGroupI4O4(weights, conv_params_.block_size.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4DHWIOOGroupO4(weights, conv_params_.block_size.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    }
-  }
+  std::vector<uint8_t> weights_data(flt_count * SizeOf(weights_type));
+  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
+                   absl::MakeSpan(weights_data));
 
   if (conv_params_.AreWeightsBuffer()) {
     BufferDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_type = weights_type;
     desc.element_size = 4;
-    desc.size = float4_size * elements_count;
-    desc.data = std::move(data);
+    desc.size = weights_data.size();
+    desc.data = std::move(weights_data);
     args_.AddObject("weights",
                     absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    const int texture_width = dst_slices;
-    const int texture_height =
-        src_slices * weights.shape.d * weights.shape.h * weights.shape.w;
-    int sub_size = float4_size * texture_width * texture_height;
+    const int dst_slices =
+        AlignByN(DivideRoundUp(weights.shape.o, 4), conv_params_.block_size.w);
+    const int src_slices = DivideRoundUp(weights.shape.i, 4);
+    const int kernel_x = weights.shape.w;
+    const int kernel_y = weights.shape.h;
+    const int kernel_z = weights.shape.d;
+    int texture_width = dst_slices;
+    int texture_height = src_slices * kernel_x * kernel_y * kernel_z;
+    int sub_size = SizeOf(weights_type) * 4 * texture_width * texture_height;
     for (int i = 0; i < 4; ++i) {
       Texture2DDescriptor desc;
-      desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+      desc.element_type = weights_type;
       desc.size = int2(texture_width, texture_height);
       desc.data.resize(sub_size);
-      memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
       const std::string name = "weights" + std::to_string(i);
       args_.AddObject(name,
                       absl::make_unique<Texture2DDescriptor>(std::move(desc)));
