@@ -98,3 +98,23 @@ func @testTanh(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
   %0 = "tfl.tanh"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
   return %0 : tensor<10x10xf32>
 }
+
+func @testAddN(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>, %arg2: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  // CHECK: _arithmetic_count = 200 : i64
+  %0 = "tfl.add_n"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE"} : (tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+}
+
+func @testMaxPool2D(tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32> {
+^bb0(%arg0: tensor<1x10x10x3xf32>):
+  // CHECK: _arithmetic_count = 2700 : i64
+  %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32>
+  return %0 : tensor<1x10x10x3xf32>
+}
+
+func @testAveragePool2D(tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32> {
+^bb0(%arg0: tensor<1x10x10x3xf32>):
+  // CHECK: _arithmetic_count = 2700 : i64
+  %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32>
+  return %0 : tensor<1x10x10x3xf32>
+}

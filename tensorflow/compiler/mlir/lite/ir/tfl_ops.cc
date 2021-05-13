@@ -3245,6 +3245,49 @@ int64_t TanhOp::GetArithmeticCount(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// AddNOp
+//===----------------------------------------------------------------------===//
+
+int64_t AddNOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
+    // AddN cost is roughly the same cost as N-1 Adds.
+    const int64_t num_adds = op->getNumOperands() - 1;
+    return num_adds * count;
+  }
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// AveragePool2DOp
+//===----------------------------------------------------------------------===//
+
+int64_t AveragePool2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
+    auto avg_pool = llvm::dyn_cast<AveragePool2DOp>(op);
+    return avg_pool.filter_height() * avg_pool.filter_width() * count;
+  }
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// MaxPool2DOp
+//===----------------------------------------------------------------------===//
+
+int64_t MaxPool2DOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
+    auto max_pool = llvm::dyn_cast<MaxPool2DOp>(op);
+    return max_pool.filter_height() * max_pool.filter_width() * count;
+  }
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
