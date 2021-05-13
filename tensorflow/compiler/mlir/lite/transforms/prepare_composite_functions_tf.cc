@@ -282,8 +282,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
       return signalPassFailure();
     }
   } else {
-      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
-      return signalPassFailure();
+      func.emitWarning() << "Function was flagged with experimental_implements, but no handler picked it up";
   }
 }
 
@@ -309,8 +308,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
       return signalPassFailure();
     }
   } else {
-      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
-      return signalPassFailure();
+      func.emitWarning() << "Function was flagged with experimental_implements, but no handler picked it up";
   }
 }
 
@@ -331,8 +329,7 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
   } else {
-      func.emitError() << "Function was flagged with experimental_implements, but no handler picked it up";
-      return signalPassFailure();
+      func.emitWarning() << "Function was flagged with experimental_implements, but no handler picked it up";
   }
 }
 
