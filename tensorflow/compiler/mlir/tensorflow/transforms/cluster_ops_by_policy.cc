@@ -495,12 +495,14 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
       cluster.operations.emplace_back(op);
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Found " << root_clusters.size() << " clusters\n");
-
-  // Return found clusters through the output parameters.
   llvm::SmallVector<Cluster> clusters;
-  for (auto &kv : root_clusters)
-    clusters.emplace_back(std::move(kv.getSecond()));
+  for (auto &kv : root_clusters) {
+    Cluster &cluster = kv.getSecond();
+    // Skip degenerate clusters formed by a single basic block argument.
+    if (!cluster.operations.empty()) clusters.emplace_back(std::move(cluster));
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "Found " << clusters.size() << " clusters\n");
 
   return clusters;
 }
