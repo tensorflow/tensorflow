@@ -158,12 +158,6 @@ class LocallyConnected1DLayersTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(layer.kernel.constraint, k_constraint)
         self.assertEqual(layer.bias.constraint, b_constraint)
 
-  def test_locallyconnected1d_invalid_output_shapes(self):
-    kwargs = {'filters': 2, 'kernel_size': 10}
-    with self.assertRaises(ValueError):
-      layer = keras.layers.LocallyConnected1D(**kwargs)
-      layer.build((None, 5, 2))
-
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
@@ -270,12 +264,6 @@ class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
         layer.build((num_samples, num_row, num_col, stack_size))
         self.assertEqual(layer.kernel.constraint, k_constraint)
         self.assertEqual(layer.bias.constraint, b_constraint)
-
-  def test_locallyconnected2d_invalid_output_shapes(self):
-    kwargs = {'filters': 2, 'kernel_size': 10}
-    with self.assertRaises(ValueError):
-      layer = keras.layers.LocallyConnected2D(**kwargs)
-      layer.build((None, 5, 5, 2))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
