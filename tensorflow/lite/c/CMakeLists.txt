@@ -36,6 +36,30 @@ add_subdirectory(
 
 set(CMAKE_CXX_STANDARD 11)
 
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+  set(64_BIT FALSE)
+elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(64_BIT TRUE)
+endif()
+
+if (MSVC AND (NOT 64_BIT))
+  message("Disabling MSVC /O2 optimization")
+  set(CompFlags
+    CMAKE_CXX_FLAGS_RELEASE
+    CMAKE_CXX_FLAGS_MINSIZEREL
+    CMAKE_CXX_FLAGS_RELWITHDEBINFO
+    CMAKE_C_FLAGS_RELEASE
+    CMAKE_C_FLAGS_MINSIZEREL
+    CMAKE_C_FLAGS_RELWITHDEBINFO
+  )
+  foreach (CompFlag ${CompFlags})
+    string(REGEX REPLACE "(\/Ob. )" "" ${CompFlag} "${${CompFlag}}")
+    string(REPLACE "/O2" "/O1" ${CompFlag} "${${CompFlag}}")
+    list(REMOVE_DUPLICATES ${CompFlag})
+    set(${CompFlag} "${${CompFlag}}" CACHE INTERNAL "")
+  endforeach()
+endif()
+
 set(TFLITE_C_LIBTYPE STATIC)
 if (TFLITE_C_BUILD_SHARED_LIBS)
   set(TFLITE_C_LIBTYPE SHARED)
