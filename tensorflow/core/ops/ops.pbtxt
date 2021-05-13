@@ -6953,6 +6953,13 @@ op {
     }
   }
   attr {
+    name: "blank_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     default_value {
