@@ -120,7 +120,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -282,7 +282,7 @@ cc_test(
         ":eigen_support",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -397,7 +397,7 @@ cc_test(
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -447,7 +447,7 @@ cc_test(
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_gemm",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@ruy//ruy:matrix",
         # ruy:reference_mul provides the reference implementation
         # that this test compares against.
@@ -496,7 +496,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -507,7 +507,7 @@ cc_test(
     deps = [
         ":test_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2425,7 +2425,7 @@ cc_test(
         ":subgraph_test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2573,7 +2573,7 @@ cc_test(
         ":custom_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
