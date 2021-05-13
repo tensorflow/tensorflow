@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015-2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import os
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -31,7 +32,8 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+# The following import is required to register the gradient function.
+from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
@@ -40,6 +42,18 @@ class XentOpTestBase(test.TestCase):
   def _opDeterminismEnabled(self):
     deterministic_ops = os.getenv('TF_DETERMINISTIC_OPS', '0')
     return deterministic_ops == '1' or deterministic_ops == 'true'
+
+  def _coreOp(self, features, labels):
+    """ Run the core op under test.
+
+    Override this method in a child class for cases (e.g. determinism) where the
+    core op is no longer being used.
+    """
+    return gen_nn_ops.softmax_cross_entropy_with_logits(
+        features=features, labels=labels)
+
+  def _gpuNotAvailable(self):
+    return len(config.list_physical_devices('GPU')) == 0
 
   def _npXent(self, features, labels, dim=-1):
     if dim == -1:
@@ -59,13 +73,14 @@ class XentOpTestBase(test.TestCase):
                 np_features,
                 np_labels,
                 use_gpu=False,
-                with_placeholders=False):
+                with_placeholders=False,
+                test_backprop=True):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.cached_session(use_gpu=use_gpu) as sess:
       if with_placeholders:
         features_placeholder = array_ops.placeholder(np_features.dtype)
         labels_placeholder = array_ops.placeholder(np_labels.dtype)
-        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+        loss, backprop = self._coreOp(
             labels=labels_placeholder, features=features_placeholder)
         tf_loss, tf_backprop = sess.run([loss, backprop],
                                         feed_dict={
@@ -73,43 +88,48 @@ class XentOpTestBase(test.TestCase):
                                             features_placeholder: np_features
                                         })
       else:
-        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-            np_features, np_labels)
+        loss, backprop = self._coreOp(np_features, np_labels)
         tf_loss, tf_backprop = self.evaluate([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss, half_rtol=1e-2)
-    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+    if test_backprop:
+      self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testXentWrapper(self, np_features, np_labels, dim=-1, use_gpu=False):
     np_loss, _ = self._npXent(np_features, np_labels, dim=dim)
-    with self.cached_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(), test_util.device(use_gpu):
+      # Even in eager mode, the above line will be able to pin ops to CPU.
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=np_labels, logits=np_features, dim=dim)
       tf_loss = self.evaluate(loss)
-    print("np_loss:", np_loss)
-    print("tf_loss:", tf_loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
 
   # TODO(b/123860949): The values are constant folded for XLA, so placeholders
   # are needed.
-  def _testAll(self, features, labels, with_placeholders=False):
+  def _testAll(self, features, labels, with_placeholders=False,
+               test_backprop=True):
     self._testXent(
-        features, labels, use_gpu=False, with_placeholders=with_placeholders)
+        features, labels, use_gpu=False, with_placeholders=with_placeholders,
+        test_backprop=test_backprop)
     self._testXent(
-        features, labels, use_gpu=True, with_placeholders=with_placeholders)
+        features, labels, use_gpu=True, with_placeholders=with_placeholders,
+        test_backprop=test_backprop)
 
-  def _testSingleClass(self, use_gpu=False):
-    for dtype in np.float16, np.float32:
-      with self.cached_session(use_gpu=use_gpu) as sess:
-        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-            np.array([[1.], [-1.], [0.]]).astype(dtype),
-            np.array([[-1.], [0.], [1.]]).astype(dtype))
-        tf_loss, tf_backprop = self.evaluate([loss, backprop])
-      self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
-      self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
+  def _testSingleClass(self, test_backprop=True):
+    for use_gpu in [False, True]:
+      for dtype in np.float16, np.float32:
+        with self.cached_session(), test_util.device(use_gpu):
+          # Even in eager mode, the above line will be able to pin ops to CPU.
+          loss, backprop = self._coreOp(
+              np.array([[1.], [-1.], [0.]]).astype(dtype),
+              np.array([[-1.], [0.], [1.]]).astype(dtype))
+          tf_loss, tf_backprop = self.evaluate([loss, backprop])
+        self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
+        if test_backprop:
+          self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
 
   def testSingleClass(self):
-    self._testSingleClass(True)
-    self._testSingleClass(False)
+    """This method is structured to be easily overridden by a child class."""
+    self._testSingleClass()
 
   @test_util.run_deprecated_v1
   def testRankTooLarge(self):
@@ -119,8 +139,7 @@ class XentOpTestBase(test.TestCase):
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
       self.assertRaisesRegex(ValueError, "rank 2, but is rank 3",
-                             gen_nn_ops.softmax_cross_entropy_with_logits,
-                             np_features, np_labels)
+                             self._coreOp, np_features, np_labels)
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -158,7 +177,7 @@ class XentOpTestBase(test.TestCase):
     self.assertAllClose(
         np.array([1.3862, 1.9401]), np_loss, rtol=1.e-3, atol=1.e-3)
 
-  def testShapeBroadcast(self):
+  def testFeaturesBroadcast(self):
     np_f = np.array([[1., 2., 3., 4.],
                      [1., 2., 3., 4.]]).astype(np.float32)
     np_l = np.array([[0., 0., 0., 1.],
@@ -169,9 +188,9 @@ class XentOpTestBase(test.TestCase):
     tf_l = constant_op.constant(
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
     for use_gpu in [False, True]:
-      with self.cached_session(use_gpu=use_gpu) as sess:
-        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-            tf_f, tf_l)
+      with self.cached_session(), test_util.device(use_gpu):
+        # Even in eager mode, the above line will be able to pin ops to CPU.
+        loss, backprop = self._coreOp(tf_f, tf_l)
         tf_loss, tf_backprop = self.evaluate([loss, backprop])
       self.assertAllCloseAccordingToType(np_loss, tf_loss)
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
@@ -179,29 +198,31 @@ class XentOpTestBase(test.TestCase):
   # TODO(b/123860949): The values are constant folded for XLA, so placeholders
   # are needed.
   @test_util.run_deprecated_v1
-  def testFeatureBroadcast(self):
+  def _testLabelsBroadcast(self, test_backprop=True):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
         np.array([[0., 0., 0., 1.]]).astype(np.float16),
-        with_placeholders=True)
+        with_placeholders=True, test_backprop=test_backprop)
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
         np.array([[0.], [2.]]).astype(np.float16),
-        with_placeholders=True)
+        with_placeholders=True, test_backprop=test_backprop)
+
+  def testLabelsBroadcast(self):
+    """This method is structured to be easily overridden by a child class."""
+    self._testLabelsBroadcast()
 
   @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
-        gen_nn_ops.softmax_cross_entropy_with_logits(
-            [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
+        self._coreOp([[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
   @test_util.run_deprecated_v1
   def testNotMatrix(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
-        gen_nn_ops.softmax_cross_entropy_with_logits([0., 1., 2., 3.],
-                                                     [0., 1., 0., 1.])
+        self._coreOp([0., 1., 2., 3.], [0., 1., 0., 1.])
 
   def testHalf(self):
     self._testAll(
@@ -220,87 +241,95 @@ class XentOpTestBase(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    with self.cached_session() as sess:
-      l = constant_op.constant(
-          [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
-          shape=[3, 4],
-          dtype=dtypes.float64,
-          name="l")
-      f = constant_op.constant(
-          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
-          shape=[3, 4],
-          dtype=dtypes.float64,
-          name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits(
-          labels=l, logits=f, name="xent")
-      err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
+    for use_gpu in [False, True]:
+      if use_gpu and self._gpuNotAvailable():
+        continue
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        l = constant_op.constant(
+            [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
+            shape=[3, 4],
+            dtype=dtypes.float64,
+            name="l")
+        f = constant_op.constant(
+            [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+            shape=[3, 4],
+            dtype=dtypes.float64,
+            name="f")
+        x = nn_ops.softmax_cross_entropy_with_logits(
+            labels=l, logits=f, name="xent")
+        err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
 
-      # Check that no extra computation performed. When only first derivative is requested,
-      # second derivative must not be computed. So when there is no second derivative,
-      # there is no `BatchMatMul` op in the graph.
-      op_names = [
-          op.op_def.name for op in sess.graph.get_operations() if op.op_def
-      ]
-      self.assertNotIn("BatchMatMul", op_names)
-      self.assertNotIn("BatchMatMulV2", op_names)
-
-    print("cross entropy gradient err = ", err)
-    self.assertLess(err, 5e-8)
-
-  @test_util.run_deprecated_v1
-  def testGradientLabelWithV2(self):
-    with self.cached_session():
-      l = constant_op.constant(
-          [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
-          shape=[3, 4],
-          dtype=dtypes.float64,
-          name="l")
-      f = constant_op.constant(
-          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
-          shape=[3, 4],
-          dtype=dtypes.float64,
-          name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits_v2(
-          labels=l, logits=f, name="xent")
-      err = gradient_checker.compute_gradient_error(l, [3, 4], x, [3])
-
-    self.assertLess(err, 5e-8)
-
-  @test_util.run_deprecated_v1
-  def testSecondGradient(self):
-    with self.cached_session() as sess:
-      l = constant_op.constant(
-          [
-              0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3, 0.0,
-              0.5 / 3
-          ],
-          shape=[12],
-          dtype=dtypes.float64,
-          name="l")
-      f = constant_op.constant(
-          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
-          shape=[12],
-          dtype=dtypes.float64,
-          name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits(
-          labels=l, logits=f, name="xent")
-      loss = math_ops.reduce_sum(x)
-
-      gradients = gradients_impl.gradients(loss, [f])[0]
-
-      err = gradient_checker.compute_gradient_error(f, [12], gradients, [12])
-
-      if not self._opDeterminismEnabled():
-        # Check how second derivative is calculated.
-        # (it is equivalent to a `BatchMatMul` op being in the graph because of
-        # the implementation in SoftmaxCrossEntropyWithLogitsGrad)
+        # Check that no extra computation gets performed. When only the first
+        # derivative is requested, the second derivative must not be computed.
+        # So when there is no second derivative, there is no `BatchMatMul` op
+        # in the graph.
         op_names = [
             op.op_def.name for op in sess.graph.get_operations() if op.op_def
         ]
-        self.assertIn("BatchMatMulV2", op_names)
+        self.assertNotIn("BatchMatMul", op_names)
+        self.assertNotIn("BatchMatMulV2", op_names)
 
-    print("cross entropy hessian err = ", err)
-    self.assertLess(err, 5e-8)
+      self.assertLess(err, 5e-8)
+
+  @test_util.run_deprecated_v1
+  def testGradientLabelWithV2(self):
+    for use_gpu in [False, True]:
+      if use_gpu and self._gpuNotAvailable():
+        continue
+      with self.cached_session(use_gpu=use_gpu):
+        l = constant_op.constant(
+            [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
+            shape=[3, 4],
+            dtype=dtypes.float64,
+            name="l")
+        f = constant_op.constant(
+            [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+            shape=[3, 4],
+            dtype=dtypes.float64,
+            name="f")
+        x = nn_ops.softmax_cross_entropy_with_logits_v2(
+            labels=l, logits=f, name="xent")
+        err = gradient_checker.compute_gradient_error(l, [3, 4], x, [3])
+
+      self.assertLess(err, 5e-8)
+
+  @test_util.run_deprecated_v1
+  def testSecondGradient(self):
+    for use_gpu in [False, True]:
+      if use_gpu and self._gpuNotAvailable():
+        continue
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        l = constant_op.constant(
+            [
+                0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3,
+                0.0, 0.5 / 3
+            ],
+            shape=[12],
+            dtype=dtypes.float64,
+            name="l")
+        f = constant_op.constant(
+            [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+            shape=[12],
+            dtype=dtypes.float64,
+            name="f")
+        x = nn_ops.softmax_cross_entropy_with_logits(
+            labels=l, logits=f, name="xent")
+        loss = math_ops.reduce_sum(x)
+
+        gradients = gradients_impl.gradients(loss, [f])[0]
+
+        err = gradient_checker.compute_gradient_error(f, [12], gradients, [12])
+
+        if not self._opDeterminismEnabled():
+          # Check how second derivative is calculated.
+          # (it is equivalent to a `BatchMatMul` op being in the graph because of
+          # the implementation in SoftmaxCrossEntropyWithLogitsGrad)
+          op_names = [
+              op.op_def.name for op in sess.graph.get_operations() if op.op_def
+          ]
+          self.assertIn("BatchMatMulV2", op_names)
+
+      self.assertLess(err, 5e-8)
 
   def testWrapper(self):
     features = np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
