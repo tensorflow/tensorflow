@@ -67,7 +67,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   explicit GpuCudaMallocAsyncAllocator(PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
-                                       bool compute_stats = false);
+                                       bool compute_stats = true);
   ~GpuCudaMallocAsyncAllocator() override;
   string Name() override { return name_; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
