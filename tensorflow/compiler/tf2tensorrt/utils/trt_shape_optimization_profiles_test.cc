@@ -72,9 +72,11 @@ bool DimsEqual(const nvinfer1::Dims& a, const nvinfer1::Dims& b) {
   return true;
 }
 
-class TrtShapeOptimizationProfileTest : public ::testing::Test {
+class TrtShapeOptimizationProfileTest
+    : public ::testing::TestWithParam<ProfileStrategy> {
  protected:
-  void SetUp() override {
+  TrtShapeOptimizationProfileTest() {
+    strategy_ = GetParam();
     builder_ = TrtUniquePtrType<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(logger_));
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -110,6 +112,35 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
     network->markOutput(*output);
   }
 
+  void CheckProfile(const std::vector<nvinfer1::Dims3>& dimvec,
+                    TrtShapeOptimizationProfile* profile, bool has_prof,
+                    bool test_optimality) {
+    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
+    int idx = profile->GetProfileNumber(shape_vec);
+    ASSERT_EQ(idx >= 0, has_prof);
+    if (idx < 0) return;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
+    ASSERT_GE(prof_idx, 0);
+    for (int j = 0; j < dimvec.size(); j++) {
+      nvinfer1::Dims min = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kMIN);
+      nvinfer1::Dims max = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kMAX);
+      nvinfer1::Dims opt = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kOPT);
+
+      // This should always hold.
+      EXPECT_TRUE(DimsContained(dimvec[j], min, max));
+
+      if (test_optimality) {
+        // We shall have selected an optimal strategy.
+        EXPECT_TRUE(DimsEqual(dimvec[j], opt));
+      }
+    }
+#endif
+  }
+
   Logger logger_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
@@ -125,9 +156,19 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
       1U << static_cast<int>(
           nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
 #endif
+  ProfileStrategy strategy_;
 };
 
-TEST_F(TrtShapeOptimizationProfileTest, Static) {
+INSTANTIATE_TEST_CASE_P(
+    OptProfilesTestInstantiation, TrtShapeOptimizationProfileTest,
+    ::testing::Values(ProfileStrategy::kRange, ProfileStrategy::kOptimal,
+                      ProfileStrategy::kRangeOptimal,
+                      ProfileStrategy::kImplicitBatchModeCompatible));
+
+TEST_P(TrtShapeOptimizationProfileTest, Static) {
+  // Static mode does not depend on strategies, we test only once.
+  if (strategy_ != ProfileStrategy::kRange) return;
+
   // Network with static input shape.
   nvinfer1::Dims3 dims(8, 8, 10);
   DefineNetwork(network_.get(), dims);
@@ -157,7 +198,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
+TEST_P(TrtShapeOptimizationProfileTest, Dynamic) {
   // Network with dynamic input shapes.
   nvinfer1::Dims3 dims(-1, -1, 10);
   DefineNetwork(network_.get(), dims);
@@ -169,6 +210,9 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
       {nvinfer1::Dims3(16, 16, 10), nvinfer1::Dims3(16, 16, 10)},
   };
 
+  std::vector<nvinfer1::Dims3> unseen_shapes{nvinfer1::Dims3(5, 5, 10),
+                                             nvinfer1::Dims3(9, 9, 10)};
+
   // Simulate a profile collection phase.
   for (auto dim_vec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec, true);
@@ -176,7 +220,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   }
   std::vector<PartialTensorShape> input_partial_shapes;
   TF_CHECK_OK(GetNetworkInputShapes(network_.get(), &input_partial_shapes));
-  profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
+  profile.InitProfiles(input_partial_shapes, strategy_);
 
   // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
@@ -187,8 +231,21 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
 
+  int n_profiles_exp;
+  switch (strategy_) {
+    case (ProfileStrategy::kImplicitBatchModeCompatible):
+    case (ProfileStrategy::kOptimal):
+      n_profiles_exp = input_profiles.size();
+      break;
+    case (ProfileStrategy::kRange):
+      n_profiles_exp = 1;
+      break;
+    case (ProfileStrategy::kRangeOptimal):
+      n_profiles_exp = 1 + input_profiles.size();
+      break;
+  }
   // Each profile has an associated execution context.
-  EXPECT_EQ(exec_contexts_.size(), input_profiles.size());
+  EXPECT_EQ(exec_contexts_.size(), n_profiles_exp);
 
   profile.SetShapeTensorMask(network_.get());
 
@@ -196,29 +253,13 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   // Check if the profiles are assigned correctly.
   for (auto dimvec : input_profiles) {
-    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
-    int idx = profile.GetProfileNumber(shape_vec);
-    ASSERT_GE(idx, 0);
-    int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
-    ASSERT_GE(prof_idx, 0);
-
-    for (int j = 0; j < dimvec.size(); j++) {
-      nvinfer1::Dims min = engine->getProfileDimensions(
-          j, prof_idx, nvinfer1::OptProfileSelector::kMIN);
-      nvinfer1::Dims max = engine->getProfileDimensions(
-          j, prof_idx, nvinfer1::OptProfileSelector::kMAX);
-      nvinfer1::Dims opt = engine->getProfileDimensions(
-          j, prof_idx, nvinfer1::OptProfileSelector::kOPT);
-
-      // This should always hold.
-      EXPECT_TRUE(DimsContained(dimvec[j], min, max));
-
-      // The following test depends on the profile creation strategy, and needs
-      // to be updated (disabled) if the default trategy (defined by
-      // InitProfiles) changes.
-      EXPECT_TRUE(DimsEqual(dimvec[j], opt));
-    }
+    bool test_optimal_prof = strategy_ == ProfileStrategy::kOptimal ||
+                             strategy_ == ProfileStrategy::kRangeOptimal;
+    CheckProfile(dimvec, &profile, true, test_optimal_prof);
   }
+  bool has_prof = (strategy_ == ProfileStrategy::kRange ||
+                   strategy_ == ProfileStrategy::kRangeOptimal);
+  CheckProfile(unseen_shapes, &profile, has_prof, false);
 }
 #endif
 
