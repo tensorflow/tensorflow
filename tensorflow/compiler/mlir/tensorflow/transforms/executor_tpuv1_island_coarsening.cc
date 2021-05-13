@@ -115,106 +115,6 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
   return success();
 }
 
-// Sorts the operations in the block to enforce dominance.
-LogicalResult SortTopologically(Block& block) {
-  return SortTopologically(block.begin(), block.end());
-}
-
-// Looks at captured operands of `candidate_wrapped_op` to bring-in special TPU
-// ops such as tf.TPUReplicatedInput and tf.TPUPartitionedInput ops in the
-// island as well. These ops are brought in only if they do not already
-// have cluster (`_tpu_replicate` attribute) assigned to them.
-void AddSpecialTpuInputOps(Operation* candidate_wrapped_op,
-                           SmallVectorImpl<IslandOp>& islands,
-                           SmallPtrSetImpl<Operation*>& wrapped_ops) {
-  auto has_all_outputs_consumed_by_cluster = [&](IslandOp island) -> bool {
-    for (Value result : island->getResults()) {
-      for (auto user : result.getUsers()) {
-        if (!wrapped_ops.contains(user)) return false;
-      }
-    }
-    return true;
-  };
-
-  std::queue<Operation*> op_worklist;
-  op_worklist.push(candidate_wrapped_op);
-  while (!op_worklist.empty()) {
-    Operation* current_op = op_worklist.front();
-    op_worklist.pop();
-    for (Value operand : current_op->getOperands()) {
-      IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
-      if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-      Operation& wrapped_op = wrapper.GetBody().front();
-      if (!isa<TF::TPUReplicatedInputOp, TF::TPUPartitionedInputOp>(wrapped_op))
-        continue;
-      // Only inputs that do not have a cluster name assigned are considered for
-      // special handling. Otherwise, island coarsening logic should be able to
-      // handle it.
-      if (wrapped_op.hasAttrOfType<StringAttr>(kTpuReplicateAttr)) continue;
-      if (!has_all_outputs_consumed_by_cluster(wrapper)) continue;
-      if (wrapped_ops.contains(&wrapped_op)) continue;
-      op_worklist.push(&wrapped_op);
-      wrapped_ops.insert(&wrapped_op);
-      islands.push_back(wrapper);
-    }
-  }
-}
-
-// Looks at the results of `candidate_island` to bring-in special TPU
-// ops such as tf.TPUReplicatedOutput and tf.TPUPartitionedOutput ops in the
-// island as well. These ops are brought in only if they do not already have
-// cluster (`_tpu_replicate` attribute) assigned to them.
-// TODO(prakalps): Consider de-duping this with the AddSpecialTpuInputOps
-// function above.
-void AddSpecialTpuOutputOps(IslandOp candidate_island,
-                            SmallVectorImpl<IslandOp>& islands,
-                            SmallPtrSetImpl<Operation*>& wrapped_ops) {
-  auto only_has_inputs_from_cluster = [&](Operation* op) -> bool {
-    for (Value operand : op->getOperands()) {
-      IslandOp defining_island =
-          llvm::dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
-      if (!defining_island) return false;
-      Operation& defining_wrapped_op = defining_island.GetBody().front();
-      if (!wrapped_ops.contains(&defining_wrapped_op)) return false;
-    }
-    return true;
-  };
-
-  std::queue<IslandOp> island_worklist;
-  island_worklist.push(candidate_island);
-  while (!island_worklist.empty()) {
-    IslandOp current_island = island_worklist.front();
-    island_worklist.pop();
-    for (Value result : current_island.getResults()) {
-      for (OpOperand use : result.getUsers()) {
-        Operation* user = use.getOwner();
-        IslandOp wrapper = dyn_cast_or_null<IslandOp>(user->getParentOp());
-        if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-        if (!isa<TF::TPUReplicatedOutputOp, TF::TPUPartitionedOutputOp>(user))
-          continue;
-        // Only users that do not have a cluster name assigned are considered
-        // for special handling. Otherwise, island coarsening logic should be
-        // able to handle it.
-        if (user->hasAttrOfType<StringAttr>(kTpuReplicateAttr)) continue;
-        if (!only_has_inputs_from_cluster(user)) continue;
-        if (wrapped_ops.contains(user)) continue;
-        wrapped_ops.insert(user);
-        islands.push_back(wrapper);
-        island_worklist.push(wrapper);
-      }
-    }
-  }
-}
-
-// Looks at the inputs/outputs of `island` to bring in special TPU input/output
-// ops that may not have `_tpu_replicate` attribute.
-void AddSpecialTpuOps(IslandOp island, SmallVectorImpl<IslandOp>& islands,
-                      SmallPtrSetImpl<Operation*>& wrapped_ops) {
-  assert(island.WrapsSingleOp());
-  AddSpecialTpuInputOps(&island.GetBody().front(), islands, wrapped_ops);
-  AddSpecialTpuOutputOps(island, islands, wrapped_ops);
-}
-
 // Looks for an IslandOp that wraps a single operation tagged with the
 // _tpu_replicate attribute, and merges it with all the following operations in
 // the block. Sets the `changed` boolean to true if any island is merged.
@@ -231,6 +131,12 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   if (!island || !island.WrapsSingleOp()) return success();
   Operation& wrapped_op = island.GetBody().front();
 
+  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
+  // chains of these ops.
+  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
+    return failure();
+  }
+
   StringAttr cluster_name =
       wrapped_op.getAttrOfType<StringAttr>(kTpuReplicateAttr);
   if (!cluster_name)
@@ -241,11 +147,10 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
                           << *island.getOperation() << "\n");
 
-  // Collect the islands to merge together in this new cluster
+  // Collect the islands to merge together in this new cluster starting with the
+  // given island.
   SmallVector<IslandOp, 16> islands;
   SmallPtrSet<Operation*, 16> wrapped_ops;
-  IslandOp last_island_added;
-
   for (Operation& candidate_op : llvm::make_early_inc_range(
            llvm::make_range(op->getIterator(), op->getBlock()->end()))) {
     IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
@@ -253,11 +158,11 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     // Check if we have an operation with the expected attribute.
     Operation& candidate_wrapped_op = candidate_island.GetBody().front();
 
-    // The op might be a special TPU input/output op and may have been already
-    // added to the list of islands to be merged.
-    if (wrapped_ops.contains(&candidate_wrapped_op)) {
-      last_island_added = candidate_island;
-      continue;
+    // TODO(b/188046643): Conservatively fail until pass is extended to fuse
+    // chains of these ops.
+    if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(
+            candidate_wrapped_op)) {
+      return failure();
     }
 
     StringAttr candidate_cluster_name =
@@ -269,13 +174,32 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
         !is_op_calling_func_for_cluster(cluster_name, &candidate_wrapped_op))
       continue;
 
-    // Add the current op to the set of ops in this island. This helps to easily
-    // query if an op is within the same island cluster.
-    wrapped_ops.insert(&candidate_wrapped_op);
+    // Look at captured operands to bring-in ReplicatedInputOp in the
+    // island as well. Consider pulling in tf.Const, some optimizations can
+    // benefit from this.
+    for (Value operand : candidate_wrapped_op.getOperands()) {
+      IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
+      if (!wrapper || !wrapper.WrapsSingleOp()) continue;
+      Operation& wrapped_op = wrapper.GetBody().front();
+      if (!isa<TF::TPUReplicatedInputOp>(wrapped_op)) continue;
+      if (wrapped_ops.count(&wrapped_op)) continue;
+      wrapped_ops.insert(&wrapped_op);
+      islands.push_back(wrapper);
+    }
     islands.push_back(candidate_island);
-    last_island_added = candidate_island;
+    wrapped_ops.insert(&candidate_wrapped_op);
 
-    AddSpecialTpuOps(candidate_island, islands, wrapped_ops);
+    // Look at results to bring-in ReplicatedOutputOp in the island as well.
+    for (Value result : candidate_island.getResults()) {
+      for (OpOperand use : result.getUsers()) {
+        Operation* user = use.getOwner();
+        if (!isa<TF::TPUReplicatedOutputOp>(user)) continue;
+        assert(!wrapped_ops.count(user) &&
+               "unexpected already processed TPUReplicatedOutputOp");
+        wrapped_ops.insert(user);
+        islands.push_back(cast<IslandOp>(user->getParentOp()));
+      }
+    }
   }
 
   // If no other island was found to merge with the existing one, just
@@ -283,16 +207,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   if (islands.size() <= 1) return success();
 
   *changed = true;
-
-  // We create the merged island at the location of the first island that was
-  // merged (excluding special TPU input/output ops). Since the operands to the
-  // merged island can come from ops after the first island, we might violate
-  // dominance in the parent block. To ensure dominance we would topologically
-  // sort the islands at the end. We can do a bit better by only sorting ops
-  // between the first island and the last island that was added to the merged
-  // island. For this optimization, keep track of the first op after the last
-  // island that was added.
-  Operation* first_op_after = last_island_added->getNextNode();
+  auto first_op_after =
+      std::next(Block::iterator(islands.back().getOperation()));
 
   // Compute the result of the merged island, these are the values produced by
   // the islands that are merged if they have a use in an island not merged,
@@ -356,14 +272,9 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     island.erase();
   }
 
-  // Ensure dominance in new island by sorting the ops within it.
-  if (failed(SortTopologically(new_island.GetBody())))
-    return new_island.emitOpError()
-           << "Unable to ensure dominance among ops with cluster name "
-           << cluster_name;
   // Ensure dominance by sorting the range of islands that were merged.
   return SortTopologically(Block::iterator(new_island.getOperation()),
-                           Block::iterator(first_op_after));
+                           first_op_after);
 }
 
 void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
@@ -414,7 +325,8 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
                   MergeIsland(is_op_calling_func_for_cluster, &op, &changed))) {
             graph.emitError()
                 << "Merging island failed: the TPU cluster likely "
-                << "contains a cycle with non-TPU operations\n";
+                << "contains a cycle with non-TPU operations or has "
+                   "unsupported ops\n";
             signalPassFailure();
             return WalkResult::interrupt();
           }
