@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
 
@@ -264,8 +263,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass();
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
 // region before outlining.
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
-    llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
