@@ -459,8 +459,8 @@ def compute_average_loss(per_example_loss,
       num_replicas = ds.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
-      global_batch_size = math_ops.cast(global_batch_size, input_dtype)
 
+    global_batch_size = math_ops.cast(global_batch_size, input_dtype)
     return math_ops.reduce_sum(per_example_loss) / global_batch_size
 
 
