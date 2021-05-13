@@ -324,7 +324,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
+        if (!hints.Check(ModelHints::kNoWinogradOptimizations) &&
+            WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
                              input_shape, output_shape, attr, gpu_subgraph)
                 .ok()) {
           return absl::OkStatus();
