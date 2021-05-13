@@ -921,6 +921,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_test",
+    size = "small",
     srcs = ["dataset_creator_model_fit_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
@@ -947,11 +948,12 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_ps_only_test",
+    size = "small",
     srcs = ["dataset_creator_model_fit_ps_only_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "dataset_creator_model_fit_ps_only_test.py",
-    shard_count = 30,
+    shard_count = 21,
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
