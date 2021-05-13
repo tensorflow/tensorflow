@@ -23,10 +23,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include <vector>
-
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -336,13 +334,26 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output) {
-    output.setConstant(InitialValueF()());
+    auto cpu_device = ctx->eigen_cpu_device();
+    output.device(cpu_device) = output.constant(InitialValueF()());
     if (data.size() == 0) {
       return;
     }
+
+    // This functor will reduce `N` rows input to `num_segments` rows output.
     const int64 N = segment_ids.dimension(0);
     const int64 num_segments = output.dimension(0);
     ReductionF reduction;
+
+    // 'num_reductions' counts the rows actually reduced in output,
+    // the rows only filled with InitialValueF() will be excluded.
+    // It also determines the degree of maximum parallelism.
+    int64 num_reductions = 0;
+    // 'row_counter' records how many input rows will be reduced in each
+    // output row, the row only fills with InitialValueF() will keep 0.
+    // Length of non-zero elements is `num_reductions`.
+    std::vector<Index> row_counter(num_segments, 0);
+
     for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
       if (j < 0) {
@@ -352,8 +363,64 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
                       " = ", j, " is out of range [0, ", num_segments, ")"));
-      reduction(data.template chip<0>(i), output.template chip<0>(j));
+      if (row_counter[j] == 0) num_reductions++;
+      row_counter[j]++;
     }
+
+    // Nothing to reduce. All output values equal to `InitialValueF()`.
+    if (num_reductions == 0) return;
+
+    // Each output row may contain different size of reduction from inputs,
+    // balance the workload to a task group. Each task is output row index.
+    const int64 kMaxTaskBlock =
+        std::min(num_reductions, (int64)cpu_device.numThreads());
+    const int64 kAverTaskSize = (N + kMaxTaskBlock - 1) / kMaxTaskBlock;
+    // Add an extra length to task group because the 1st task is kept 0 as the
+    // start index of shard function.
+    std::vector<Index> task_group(kMaxTaskBlock + 1);
+    task_group[0] = 0;
+
+    // Compute the real size for each task and record the index.
+    int64 task_index = 0;
+    for (int64 i = 0, cur_size = 0; i < num_segments; i++) {
+      cur_size += row_counter[i];
+      // Add rows in current task, till it reaches estimated size.
+      if (cur_size < kAverTaskSize) {
+        continue;
+      } else {
+        task_index++;
+        cur_size = 0;
+        // Since shard function is in the range `begin <= i < end`, set upper
+        // bound to `i + 1`.
+        task_group[task_index] = i + 1;
+      }
+    }
+    OP_REQUIRES(ctx, task_index <= kMaxTaskBlock,
+                errors::InvalidArgument("Task group index(", task_index,
+                                        ") is out of bound(kMaxTaskBlock)"));
+    // In case the last task is not filled, set it ending at `num_segments`.
+    task_group[task_index] = num_segments;
+
+    auto reductionWorker = [&](int64 begin, int64 end) -> void {
+      for (int64 i = 0; i < N; i++) {
+        // Get the corresponding output index j of input i.
+        Index j = internal::SubtleMustCopy(segment_ids(i));
+        // If j is in work scope of this worker, do the reduction.
+        if (j >= internal::SubtleMustCopy(task_group[begin]) &&
+            j < internal::SubtleMustCopy(task_group[end])) {
+          reduction(data.template chip<0>(i), output.template chip<0>(j));
+        }
+      }
+    };
+
+    // Reduction functors includes Sum, Max, Min, etc. Simply consider it
+    // will cost 5 cycles per operation.
+    auto inner_dim = data.dimension(1);
+    const int64 compute_cycles = 5 * inner_dim * kAverTaskSize;
+    const int64 input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
+    const int64 output_bytes = sizeof(T) * inner_dim;
+    const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+    cpu_device.parallelFor(task_index, cost, reductionWorker);
   }
 };
 
