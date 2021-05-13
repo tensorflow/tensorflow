@@ -33,11 +33,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
-try:
-  import memory_profiler  # pylint:disable=g-import-not-at-top
-except ImportError:
-  memory_profiler = None
-
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class FalsePositivesTest(test.TestCase, parameterized.TestCase):
@@ -1779,105 +1774,6 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
       auc_obj(self.y_true_good, self.y_pred)
       auc_obj.reset_state()
       self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
-
-
-class ThresholdsTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.parameters([
-      metrics.TruePositives(),
-      metrics.TrueNegatives(),
-      metrics.FalsePositives(),
-      metrics.FalseNegatives(),
-      metrics.Precision(),
-      metrics.Recall(),
-      metrics.SensitivityAtSpecificity(0.5),
-      metrics.SpecificityAtSensitivity(0.5),
-      metrics.PrecisionAtRecall(0.5),
-      metrics.RecallAtPrecision(0.5),
-      metrics.AUC()])
-  def test_with_default_thresholds(self, metric_obj):
-    # By default, the thresholds will be evenly distributed if there are more
-    # than 1. In case there is only 1 thresholds, then we expect
-    # _evenly_distribute_thresholds to be false.
-    expected = len(metric_obj.thresholds) > 1
-    self.assertEqual(metric_obj._evenly_distribute_thresholds, expected)
-
-  @parameterized.parameters([
-      metrics.TruePositives,
-      metrics.TrueNegatives,
-      metrics.FalsePositives,
-      metrics.FalseNegatives,
-      metrics.Precision,
-      metrics.Recall])
-  def test_with_manual_thresholds(self, metric_cls):
-    even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
-    metric_obj = metric_cls(thresholds=even_thresholds)
-    self.assertTrue(metric_obj._evenly_distribute_thresholds)
-
-    uneven_thresholds = [0.0, 0.45, 1.0]
-    metric_obj = metric_cls(thresholds=uneven_thresholds)
-    self.assertFalse(metric_obj._evenly_distribute_thresholds)
-
-  def test_manual_thresholds_auc(self):
-    # The AUC metric handles manual thresholds input differently (it will add
-    # 0.0 and 1.0 for user).
-    even_thresholds = [0.25, 0.5, 0.75]
-    auc = metrics.AUC(thresholds=even_thresholds)
-    self.assertTrue(auc._evenly_distribute_thresholds)
-
-    # Test for save model
-    cloned = metrics.AUC.from_config(auc.get_config())
-    self.assertTrue(cloned._evenly_distribute_thresholds)
-
-    uneven_thresholds = [0.45,]
-    auc = metrics.AUC(thresholds=uneven_thresholds)
-    self.assertFalse(auc._evenly_distribute_thresholds)
-
-    cloned = metrics.AUC.from_config(auc.get_config())
-    self.assertFalse(cloned._evenly_distribute_thresholds)
-
-
-@combinations.generate(combinations.combine(mode=['eager']))
-class AUCMemoryTest(test.TestCase, parameterized.TestCase):
-  # This test is added to measure the memory footprint for
-  # metrics_utils._update_confusion_matrix_variables_optimized().
-
-  def test_memory_usage(self):
-    if memory_profiler is None:
-      self.skipTest('Skip test since memory_profiler is not available.')
-
-    self.y_true = np.random.randint(2, size=(1024, 1024))
-    self.y_pred = np.random.rand(1024, 1024)
-
-    memeory_usage_1 = memory_profiler.memory_usage((self.even_thresholds_auc))
-    memeory_usage_2 = memory_profiler.memory_usage((self.uneven_thresholds_auc))
-    # memory usage is a list of number which sampled when running the function.
-    # The pure memory consumption is approximately max(usage) - min(usage)
-    memeory_usage_1 = max(memeory_usage_1) - min(memeory_usage_1)
-    memeory_usage_2 = max(memeory_usage_2) - min(memeory_usage_2)
-
-    # Since we expect the new approach should have memory footprint as O(T + N)
-    # and old apporach has O(T * N). When N = 200 here, the ratio between 1 and
-    # 2 should be at least 50 (some room for other overhead).
-    self.assertLess(memeory_usage_1 * 50, memeory_usage_2)
-
-  def even_thresholds_auc(self):
-    auc = metrics.AUC(num_thresholds=200)
-    self.assertTrue(auc._evenly_distribute_thresholds)
-
-    auc(self.y_true, self.y_pred)
-
-  def uneven_thresholds_auc(self):
-    num_thresholds = 200
-    thresholds = [x / (num_thresholds - 1) for x in range(num_thresholds)]
-    thresholds[100] += 1 / 200
-    thresholds = thresholds[1:-1]
-
-    auc = metrics.AUC(thresholds=thresholds)
-    self.assertFalse(auc._evenly_distribute_thresholds)
-    self.assertEqual(auc.num_thresholds, num_thresholds)
-
-    auc(self.y_true, self.y_pred)
 
 
 if __name__ == '__main__':
