@@ -926,3 +926,10 @@ Would become the following ops (unimportant attribute, type are omitted):
 
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
+
+def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {
+  let summary = "Fold the tf.Identity op if the op has the same device as its operand";
+
+  let constructor = "TF::CreateTensorDeviceCopyConversionPass()";
+}
+
