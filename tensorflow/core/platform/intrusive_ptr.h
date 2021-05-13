@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_REFCOUNTED_SHARED_PTR_H_
 #define TENSORFLOW_CORE_PLATFORM_REFCOUNTED_SHARED_PTR_H_
 
+#include <algorithm>
 namespace tensorflow {
 namespace core {
 
@@ -31,29 +32,39 @@ class IntrusivePtr {
   // object needs to be externally managed.
   IntrusivePtr(T* h, bool add_ref) { reset(h, add_ref); }
   IntrusivePtr(const IntrusivePtr& o) { reset(o.handle_, /*add_ref=*/true); }
-  IntrusivePtr(IntrusivePtr&& o) {
-    reset(o.handle_, /*add_ref=*/false);
-    o.handle_ = nullptr;
-  }
+  IntrusivePtr(IntrusivePtr&& o) { *this = std::move(o); }
   IntrusivePtr() {}
   void reset(T* h, bool add_ref) {
-    if (handle_) handle_->Unref();
-    handle_ = h;
-    if (add_ref && handle_) handle_->Ref();
+    if (h != handle_) {
+      if (add_ref && h) h->Ref();
+      if (handle_) handle_->Unref();
+      handle_ = h;
+    }
   }
   IntrusivePtr& operator=(const IntrusivePtr& o) {
     reset(o.handle_, /*add_ref=*/true);
     return *this;
   }
   IntrusivePtr& operator=(IntrusivePtr&& o) {
-    reset(o.handle_, /*add_ref=*/false);
-    o.handle_ = nullptr;
+    if (handle_ != o.handle_) {
+      // Must clear o.handle_ before calling reset to capture the case where
+      // handle_->member == o. In this case, calling handle_->Unref first would
+      // delete o.handle_ so we clear it out first.
+      reset(o.detach(), /*add_ref=*/false);
+    }
     return *this;
   }
   bool operator==(const IntrusivePtr& o) const { return handle_ == o.handle_; }
   T* operator->() const { return handle_; }
   T& operator*() const { return *handle_; }
   T* get() const { return handle_; }
+  // Releases ownership of the pointer without unreffing. Caller is responsible
+  // for calling Unref on the returned pointer.
+  T* detach() {
+    T* handle = handle_;
+    handle_ = nullptr;
+    return handle;
+  }
 
   ~IntrusivePtr() {
     if (handle_) handle_->Unref();
