@@ -16,9 +16,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class DeviceMgr;
@@ -26,22 +28,16 @@ class DeviceMgr;
 // Implements DeviceResolverInterface in a single-task context.
 class DeviceResolverLocal : public DeviceResolverInterface {
  public:
-  DeviceResolverLocal(const DeviceMgr* dev_mgr) : dev_mgr_(dev_mgr) {}
+  explicit DeviceResolverLocal(const DeviceMgr* dev_mgr) : dev_mgr_(dev_mgr) {}
 
-  virtual ~DeviceResolverLocal() {}
+  Status GetDeviceAttributes(const string& device,
+                             DeviceAttributes* attributes) override;
 
-  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
-                                   const std::vector<string>& tasks,
-                                   std::vector<DeviceAttributes>* attributes,
-                                   const StatusCallback& done) override;
+  Status GetAllDeviceAttributes(
+      const string& task, std::vector<DeviceAttributes>* attributes) override;
 
-  void GetDeviceAttributesAsync(const string& device, const string& task,
-                                DeviceAttributes* attributes,
-                                const StatusCallback& done) override;
-
-  void ClearTask(const string& task) override {}
-
-  void ClearCache() override {}
+  Status UpdateDeviceAttributes(
+      const std::vector<DeviceAttributes>& attributes) override;
 
  protected:
   const DeviceMgr* dev_mgr_;

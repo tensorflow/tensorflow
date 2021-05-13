@@ -914,7 +914,7 @@ def random_positive_definite_matrix(shape,
     `Tensor` with desired shape and dtype.
   """
   dtype = dtypes.as_dtype(dtype)
-  if not tensor_util.is_tensor(shape):
+  if not tensor_util.is_tf_type(shape):
     shape = tensor_shape.TensorShape(shape)
     # Matrix must be square.
     shape.dims[-1].assert_is_compatible_with(shape.dims[-2])

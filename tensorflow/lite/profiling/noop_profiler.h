@@ -29,7 +29,7 @@ class NoopProfiler : public tflite::Profiler {
   NoopProfiler() {}
   explicit NoopProfiler(int max_profiling_buffer_entries) {}
 
-  uint32_t BeginEvent(const char*, EventType, uint32_t, uint32_t) override {
+  uint32_t BeginEvent(const char*, EventType, int64_t, int64_t) override {
     return 0;
   }
   void EndEvent(uint32_t) override {}

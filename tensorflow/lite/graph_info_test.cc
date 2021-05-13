@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-
 #include "tensorflow/lite/graph_info.h"
+
+#include <stddef.h>
+
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -34,6 +38,8 @@ class SimpleTestGraph : public GraphInfo {
  public:
   explicit SimpleTestGraph(int node_index_offset = 0)
       : node_index_offset_(node_index_offset) {
+    // 'node_index_offset' number of nodes are not present in the execution
+    // plan. (and hence not considered for partitioning)
     for (int i = 0; i < node_index_offset; ++i) AddNode({}, {});
   }
 
@@ -44,7 +50,8 @@ class SimpleTestGraph : public GraphInfo {
     }
   }
 
-  size_t num_nodes() const override {
+  size_t num_total_nodes() const override { return nodes_.size(); }
+  size_t num_execution_nodes() const override {
     return nodes_.size() - node_index_offset_;
   }
   const TfLiteNode& node(size_t index) const override {
@@ -59,12 +66,13 @@ class SimpleTestGraph : public GraphInfo {
   const std::vector<int>& outputs() const override { return outputs_; }
   const std::vector<int>& variables() const override { return variables_; }
 
-  void AddNode(const std::vector<int>& inputs,
-               const std::vector<int>& outputs) {
+  void AddNode(const std::vector<int>& inputs, const std::vector<int>& outputs,
+               bool might_have_side_effect = false) {
     nodes_.push_back(TfLiteNode());
     TfLiteNode& node = nodes_.back();
     node.inputs = ConvertVector(inputs);
     node.outputs = ConvertVector(outputs);
+    node.might_have_side_effect = might_have_side_effect;
   }
 
   void AddTensors(int count) { tensors_.resize(count + tensors_.size()); }
@@ -156,7 +164,7 @@ TEST(PartitionTest, Nodes1PartitionNodes0) {
   CheckPartitionSubgraphs(generated_subgraphs, {expected_subgraph});
 }
 
-TEST(PartitionTest, Nodes1PartitionNodes0WithOffset) {
+TEST(PartitionTest, Nodes1PartitionNodes0_WithOffset) {
   constexpr int node_index_offset = 17;
   SimpleTestGraph graph(node_index_offset);
   graph.AddTensors(2);
@@ -243,6 +251,33 @@ TEST(PartitionTest, Nodes2PartitionNodes1) {
                           {expected_subgraph0, expected_subgraph1});
 }
 
+// Same as above, but with node offset to ensure correct handling of original vs
+// execution plan indices.
+TEST(PartitionTest, Nodes2PartitionNodes1_WithOffset) {
+  constexpr int node_index_offset = 17;
+  SimpleTestGraph graph(node_index_offset);
+  graph.AddTensors(3);
+  graph.AddNode({0}, {1});
+  graph.AddNode({1}, {2});
+  graph.SetInputsAndOutputs({0}, {2});
+  std::vector<int> nodes_to_partition = {node_index_offset + 1};
+  std::vector<NodeSubset> generated_subgraphs;
+  PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
+
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
+  expected_subgraph0.nodes = {node_index_offset + 0};
+  expected_subgraph0.input_tensors = {0};
+  expected_subgraph0.output_tensors = {1};
+  NodeSubset expected_subgraph1;
+  expected_subgraph1.type = NodeSubset::kTfPartition;
+  expected_subgraph1.nodes = {node_index_offset + 1};
+  expected_subgraph1.input_tensors = {1};
+  expected_subgraph1.output_tensors = {2};
+  CheckPartitionSubgraphs(generated_subgraphs,
+                          {expected_subgraph0, expected_subgraph1});
+}
+
 // Test a 2 node graph where both nodes are fully partitioned.
 // Input: tensor(0) -> node(0) -> tensor(1) -> node(1) -> tensor(2),
 //    nodes_to_partition = [0, 1]
@@ -303,6 +338,50 @@ TEST(PartitionTest, Nodes3PartitionNodes2) {
   expected_subgraph2.nodes = {2};
   expected_subgraph2.input_tensors = {1, 2};
   expected_subgraph2.output_tensors = {3};
+  CheckPartitionSubgraphs(
+      generated_subgraphs,
+      {expected_subgraph0, expected_subgraph1, expected_subgraph2});
+}
+
+// Test correct partition for graph with control dependency.
+// Graph for test is like
+// varhandleOp -> ReadVariableOp -> Add -> AssignVariableOp
+//             |_________________________^    ^^
+//             |------------------------->ReadVariableOp -> (Output)
+// ^^ is control dependency, in this case we don't want to invoke the
+// last ReadVariableOp before AssignVariableOp finishes executing.
+// '>' and '^' represents data dependency.
+TEST(PartitionTest, Nodes4PartitionNodes3_WithControlDependency) {
+  SimpleTestGraph graph;
+  // Construct graph.
+  {
+    graph.AddTensors(5);
+    graph.AddNode({0}, {1}, true);
+    graph.AddNode({1}, {2}, true);
+    graph.AddNode({2}, {3}, false);
+    graph.AddNode({1, 3}, {}, true);
+    graph.AddNode({1}, {4}, true);
+  }
+  graph.SetInputsAndOutputs({0}, {4});
+  std::vector<int> nodes_to_partition = {0, 1, 3, 4};
+  std::vector<NodeSubset> generated_subgraphs;
+  PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
+
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
+  expected_subgraph0.nodes = {0, 1};
+  expected_subgraph0.input_tensors = {0};
+  expected_subgraph0.output_tensors = {1, 2};
+  NodeSubset expected_subgraph1;
+  expected_subgraph1.type = NodeSubset::kTfNonPartition;
+  expected_subgraph1.nodes = {2};
+  expected_subgraph1.input_tensors = {2};
+  expected_subgraph1.output_tensors = {3};
+  NodeSubset expected_subgraph2;
+  expected_subgraph2.type = NodeSubset::kTfPartition;
+  expected_subgraph2.nodes = {3, 4};
+  expected_subgraph2.input_tensors = {1, 3};
+  expected_subgraph2.output_tensors = {4};
   CheckPartitionSubgraphs(
       generated_subgraphs,
       {expected_subgraph0, expected_subgraph1, expected_subgraph2});

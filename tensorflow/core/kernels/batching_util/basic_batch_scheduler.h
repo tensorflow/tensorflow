@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BASIC_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -140,6 +141,39 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
   // (Keep them mirrored to the ones in SharedBatchScheduler::QueueOptions and
   // SharedBatchScheduler::Options.)
   struct Options {
+    // Options related with (underlying) shared batch scheduler.
+    // 'thread_pool_name' and 'num_batch_threads' are used to initialize
+    // a shared batch scheduler underlyingly iff 'shared_batch_scheduler' is
+    // nullptr.
+    //
+    // There are two ways to specify threading:
+    // 1) Have each session create its own pool.
+    // 2) Have multiple sessions share the same pool.
+    //
+    // In general, the number of threads should be tied to roughly the number of
+    // compute resources (CPU cores or accelerator cores) backing the threads.
+    // Sharing a thread pool helps alleviate potential over allocation of
+    // threads to limited compute resources.
+
+    // To have each session create its own thread pool (1) set
+    // thread_pool_name/num_batch_threads.
+
+    // To share a thread pool (2) create a scheduler and pass it in.
+
+    // The name to use for the pool of batch threads.
+    string thread_pool_name = {"batch_threads"};
+
+    // The number of threads to use to process batches.
+    // Must be >= 1, and should be tuned carefully.
+    int num_batch_threads = port::MaxParallelism();
+
+    // If specified, this scheduler will be used underlyingly to schedule
+    // batches. Note setting this means `thread_pool_name` and
+    // `num_batch_threads` are ignored.
+    std::shared_ptr<SharedBatchScheduler<TaskType>> shared_batch_scheduler =
+        nullptr;
+
+    // Options for queue.
     // The maximum size of each batch.
     //
     // The scheduler may form batches of any size between 1 and this number
@@ -162,12 +196,6 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // avoid latency spikes.
     int64 batch_timeout_micros = 0;
 
-    // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
-
-    // The number of threads to use to process batches.
-    // Must be >= 1, and should be tuned carefully.
-    int num_batch_threads = port::MaxParallelism();
 
     // The maximum allowable number of enqueued (accepted by Schedule() but
     // not yet being processed on a batch thread) tasks in terms of batches.
@@ -175,6 +203,61 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // See the class documentation above for guidelines on how to tune this
     // parameter.
     int max_enqueued_batches = 10;
+
+    // If true, an input task (i.e., input of `BasicBatchScheduler::Schedule`)
+    // with a large size (i.e., larger than the largest value of
+    // `allowed_batch_sizes`) will be split into multiple smaller batch tasks
+    // and possibly put into different batches for processing. If false, each
+    // input task is put into one batch as a whole for processing.
+    //
+    // API note:
+    // The value of this option doesn't affect processing output given the same
+    // input; it affects implementation details as stated below:
+    // 1. Improve batching efficiency by eliminating unnecessary padding in the
+    // following scenario: when an open batch has M slots while an input of size
+    // N is scheduled (M < N), the input can be split to fill remaining slots
+    // of an open batch as opposed to padding.
+    // 2.`max_batch_size` specifies the limit of input and
+    // `max_execution_batch_size` specifies the limit of a task to be processed.
+    // API user can give an input of size 128 when 'max_execution_batch_size'
+    // is 32 -> implementation can split input of 128 into 4 x 32, schedule
+    // concurrent processing, and then return concatenated results corresponding
+    // to 128.
+    bool enable_large_batch_splitting = false;
+
+    // `split_input_task_func` specifies how to split `input_task` into
+    // `output_tasks`.
+    //
+    // `input_task`: a unit of task to be split.
+    // `first_output_task_size`: task size of first output.
+    // `max_batch_size`: Maximum size of each batch.
+    // `output_tasks`: A list of output tasks after split.
+    //
+    // REQUIRED:
+    // 1) All `output_tasks` should be non-empty tasks.
+    // 2) Sizes of `output_tasks` add up to size of `input_task`.
+    //
+    // NOTE:
+    // Instantiations of `TaskType` may vary, so it's up to caller to define
+    // how (e.g., which members to access) to split input tasks.
+    std::function<Status(std::unique_ptr<TaskType>* input_task,
+                         int first_output_task_size, int input_batch_size_limit,
+                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+        split_input_task_func;
+
+    // The maximum size of each enqueued batch (i.e., in `batches_`).
+    //
+    // The scheduler may form batches of any size between 1 and this number
+    // (inclusive). If there is a need to quantize the batch sizes, i.e. only
+    // submit batches whose size is in a small set of allowed sizes, that can be
+    // done by adding padding in the process-batch callback.
+    //
+    // REQUIRES:
+    // - If enable_large_batch_splitting is true, `max_execution_batch_size` is
+    // less than or equal to `max_batch_size`.
+    // - If enable_large_batch_splitting is false, `max_execution_batch_size` is
+    // equal to `max_batch_size`.
+    int max_execution_batch_size = 10;
 
     // The following options are typically only overridden by test code.
 
@@ -216,21 +299,34 @@ Status BasicBatchScheduler<TaskType>::Create(
     std::function<void(std::unique_ptr<Batch<TaskType>>)>
         process_batch_callback,
     std::unique_ptr<BasicBatchScheduler>* scheduler) {
-  typename SharedBatchScheduler<TaskType>::Options shared_scheduler_options;
-  shared_scheduler_options.thread_pool_name = options.thread_pool_name;
-  shared_scheduler_options.num_batch_threads = options.num_batch_threads;
-  shared_scheduler_options.env = options.env;
   std::shared_ptr<SharedBatchScheduler<TaskType>> shared_scheduler;
-  TF_RETURN_IF_ERROR(SharedBatchScheduler<TaskType>::Create(
-      shared_scheduler_options, &shared_scheduler));
+
+  if (options.shared_batch_scheduler == nullptr) {
+    typename SharedBatchScheduler<TaskType>::Options shared_scheduler_options;
+    shared_scheduler_options.thread_pool_name = options.thread_pool_name;
+    shared_scheduler_options.num_batch_threads = options.num_batch_threads;
+    shared_scheduler_options.env = options.env;
+
+    TF_RETURN_IF_ERROR(SharedBatchScheduler<TaskType>::Create(
+        shared_scheduler_options, &shared_scheduler));
+  } else {
+    shared_scheduler = options.shared_batch_scheduler;
+  }
 
   typename SharedBatchScheduler<TaskType>::QueueOptions
       shared_scheduler_queue_options;
-  shared_scheduler_queue_options.max_batch_size = options.max_batch_size;
+  shared_scheduler_queue_options.input_batch_size_limit =
+      options.max_batch_size;
   shared_scheduler_queue_options.batch_timeout_micros =
       options.batch_timeout_micros;
   shared_scheduler_queue_options.max_enqueued_batches =
       options.max_enqueued_batches;
+  shared_scheduler_queue_options.enable_large_batch_splitting =
+      options.enable_large_batch_splitting;
+  shared_scheduler_queue_options.split_input_task_func =
+      options.split_input_task_func;
+  shared_scheduler_queue_options.max_execution_batch_size =
+      options.max_execution_batch_size;
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue;
   TF_RETURN_IF_ERROR(shared_scheduler->AddQueue(shared_scheduler_queue_options,
                                                 process_batch_callback,

@@ -73,7 +73,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       def __str__(self):
         return "Invalid"
 
-    with self.assertRaisesRegexp(TypeError, "Invalid"):
+    with self.assertRaisesRegex(TypeError, "Invalid"):
       _pywrap_events_writer.EventsWriter(b"foo").WriteEvent(_Invalid())
 
 

@@ -1,13 +1,8 @@
 # Library for generating feature vectors from audio data
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -21,12 +16,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tiny_conv_micro_features_model_data",
+    name = "model",
     srcs = [
-        "tiny_conv_micro_features_model_data.cc",
+        "model.cc",
     ],
     hdrs = [
-        "tiny_conv_micro_features_model_data.h",
+        "model.h",
     ],
 )
 
@@ -59,7 +54,7 @@ cc_library(
         ":micro_model_settings",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -75,16 +70,21 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_features_generator_test",
+    size = "small",
     srcs = [
         "micro_features_generator_test.cc",
+    ],
+    tags = [
+        "noasan",  # TODO(b/179930607): Fix with asan.
     ],
     deps = [
         ":micro_features_generator",
         ":micro_features_generator_test_data",
         ":micro_model_settings",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech:audio_sample_test_data",
         "//tensorflow/lite/micro/testing:micro_test",

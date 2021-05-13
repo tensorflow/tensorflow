@@ -12,10 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include <stdint.h>
+
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -159,6 +162,33 @@ TEST(ReverseOpTest, Uint8MultiDimensions) {
       model.GetOutput(),
       ElementsAreArray({5,  6,  3,  4,  1,  2,  11, 12, 9,  10, 7,  8,
                         17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
+}
+
+// int8 tests
+TEST(ReverseOpTest, Int8OneDimension) {
+  ReverseOpModel<int8_t> model({TensorType_INT8, {4}}, {TensorType_INT32, {1}});
+  model.PopulateTensor<int8_t>(model.input(), {1, 2, -1, -2});
+  model.PopulateTensor<int32_t>(model.axis(), {0});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({-2, -1, 2, 1}));
+}
+
+TEST(ReverseOpTest, Int8MultiDimensions) {
+  ReverseOpModel<int8_t> model({TensorType_INT8, {4, 3, 2}},
+                               {TensorType_INT32, {1}});
+  model.PopulateTensor<int8_t>(
+      model.input(), {-1, -2, -3, -4, 5,  6,  7,  8,  9,   10,  11,  12,
+                      13, 14, 15, 16, 17, 18, 19, 20, -21, -22, -23, -24});
+  model.PopulateTensor<int32_t>(model.axis(), {1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({5,  6,  -3, -4, -1, -2, 11,  12,  9,   10,  7,  8,
+                        17, 18, 15, 16, 13, 14, -23, -24, -21, -22, 19, 20}));
 }
 
 // int16 tests

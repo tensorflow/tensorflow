@@ -21,7 +21,7 @@ namespace tensorflow {
 REGISTER_OP("MlirLocalVarOp")
     .Output("resource: resource")
     .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"(Creates a handle to a in-scope variable.
+    .Doc(R"(Creates a handle to an in-scope variable.
 Used by internal passes for temporary representation of local state, which will
 be eventually removed.)");
 

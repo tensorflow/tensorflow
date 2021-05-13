@@ -19,8 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,7 +36,8 @@ class ReshapeOp : public XlaOpKernel {
   explicit ReshapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
+    TensorShape input_shape = ctx->InputShape(0);
+    auto input_xla_shape = ctx->InputXlaShape(0);
     const TensorShape sizes_shape = ctx->InputShape(1);
     // Preliminary validation of sizes.
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(sizes_shape),
@@ -43,8 +46,9 @@ class ReshapeOp : public XlaOpKernel {
     const int64 num_dims = sizes_shape.num_elements();
 
     std::vector<int64> shape_input;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
-
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntVector(
+                       1, &shape_input, xla::ValueInferenceMode::kUpperBound));
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one if there
     // is one.
@@ -75,6 +79,7 @@ class ReshapeOp : public XlaOpKernel {
         product *= size;
       }
     }
+    auto input = ctx->Input(0);
     if (unknown_index != -1) {
       int64 input_num_elements = 1;
       bool input_has_zero_dim = false;
@@ -89,14 +94,28 @@ class ReshapeOp : public XlaOpKernel {
         }
       }
 
-      const int64 missing = input_num_elements / product;
+      int64 missing = input_num_elements / product;
       if (!input_has_zero_dim) {
-        OP_REQUIRES(
-            ctx, product * missing == input_num_elements,
-            errors::InvalidArgument(
-                "Input to reshape is a tensor with ", input_num_elements,
-                " values, but the requested shape requires a multiple of ",
-                product));
+        if (input_xla_shape->is_static() || input_xla_shape->rank() != 1) {
+          OP_REQUIRES(
+              ctx, product * missing == input_num_elements,
+              errors::InvalidArgument(
+                  "Input to reshape is a tensor with ", input_num_elements,
+                  " values, but the requested shape requires a multiple of ",
+                  product));
+        } else {
+          // For 1D shape, we can safely insert extra padding in the end to make
+          // sure the input is multiple of the product of the known dimensions.
+          // (We can probably do that for >1D shapes but that involves
+          // factorizing the number of missing elements.)
+          int64 padded_input_num =
+              xla::CeilOfRatio(input_num_elements, product) * product;
+          missing = padded_input_num / product;
+          input = xla::PadInDim(
+              input, xla::Zero(ctx->builder(), input_xla_shape->element_type()),
+              0, 0, padded_input_num - input_num_elements);
+          input_shape.set_dim(0, padded_input_num);
+        }
       }
       shape.set_dim(unknown_index, missing);
     }
@@ -108,32 +127,72 @@ class ReshapeOp : public XlaOpKernel {
 
     VLOG(2) << "Reshape from " << input_shape.DebugString() << " to "
             << shape.DebugString() << ", unknown_index=" << unknown_index;
-
-    shape_input.clear();
-    // Run get input again, this time with dynamic dimension represented as
-    // "-1"
-    ctx->set_dynamic_dimension_is_minus_one(true);
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
-
-    int dynamic_dimension = -1;
-
-    for (int d = 0; d < num_dims; ++d) {
-      const int32 size = shape_input[d];
-      if (size == -1) {
-        if (dynamic_dimension == -1) {
-          dynamic_dimension = d;
-        } else {
-          if (unknown_index != d) {
-            dynamic_dimension = d;
-          }
-        }
-      }
+    if (input_xla_shape->is_static()) {
+      ctx->SetOutput(0, xla::Reshape(input, shape.dim_sizes()));
+      return;
     }
 
-    // Pass unknown_index to Xla::Reshape as a hint for dynamic shape inference
-    // in XLA to know which output dimension is dynamic.
-    ctx->SetOutput(0, xla::ReshapeWithInferredDimension(
-                          ctx->Input(0), shape.dim_sizes(), dynamic_dimension));
+    std::vector<xla::XlaOp> output_dim_sizes;
+    std::vector<bool> dims_are_dynamic;
+    for (int64 i = 0; i < shape.dims(); ++i) {
+      output_dim_sizes.push_back(
+          xla::Reshape(xla::Slice(ctx->Input(1), {i}, {i + 1}, {1}), {}));
+    }
+    OP_REQUIRES_OK(
+        ctx, ctx->ResolveInputDynamismIntoPredVector(1, &dims_are_dynamic));
+    if (unknown_index == -1) {
+      // No unknown index.
+      ctx->SetOutput(
+          0, xla::DynamicReshape(input, output_dim_sizes, shape.dim_sizes(),
+                                 dims_are_dynamic));
+      return;
+    }
+    auto common_factors =
+        xla::CommonFactors(input_shape.dim_sizes(), shape.dim_sizes());
+
+    // Find common_factors that the input belongs to.
+    for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+      auto start = common_factors[i];
+      auto end = common_factors[i + 1];
+      bool input_is_dynamic = false;
+      // product of all input dims in this group. E.g., in
+      // reshape(Tensor([2, 3, 3]), [3, -1, 3]) product of the group
+      // containing -1 will be 6.
+      xla::XlaOp product = xla::One(ctx->builder(), xla::S32);
+      for (int64 dim = start.first; dim < end.first; ++dim) {
+        if (input_xla_shape->is_dynamic_dimension(dim)) {
+          input_is_dynamic = true;
+        }
+        product = xla::Mul(product, xla::GetDimensionSize(input, dim));
+      }
+      bool unknown_dim_in_group = false;
+      // The real size for the -1 dimension in a reshape. E.g., in
+      // reshape(Tensor([2, 3, 3]), [3, -1, 3]) this will be 2.
+      xla::XlaOp unknown_dim_size = product;
+      for (int64 dim = start.second; dim < end.second; ++dim) {
+        if (dim == unknown_index) {
+          unknown_dim_in_group = true;
+        } else {
+          unknown_dim_size = xla::Div(unknown_dim_size, output_dim_sizes[dim]);
+        }
+      }
+
+      if (unknown_dim_in_group) {
+        // If input dim is dynamic, output dim at the -1 position must be
+        // dynamic. Similarly, if input dim is static, output dim has to be
+        // static at the -1 dimension.
+        dims_are_dynamic[unknown_index] = input_is_dynamic;
+        output_dim_sizes[unknown_index] = unknown_dim_size;
+
+        ctx->SetOutput(
+            0, xla::DynamicReshape(input, output_dim_sizes, shape.dim_sizes(),
+                                   dims_are_dynamic));
+        VLOG(2) << "Reshape from " << ctx->InputXlaShape(0)->ToString()
+                << " to " << xla::VectorString(shape.dim_sizes())
+                << ", dynamic_dims=" << xla::VectorString(dims_are_dynamic);
+        return;
+      }
+    }
   }
 };
 

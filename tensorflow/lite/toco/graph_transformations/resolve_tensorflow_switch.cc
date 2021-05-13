@@ -37,7 +37,7 @@ namespace toco {
 
   CHECK_EQ(switch_op->inputs.size(), 2);
   CHECK_EQ(switch_op->outputs.size(), 2);
-  const string& predicate_name = switch_op->inputs[1];
+  const std::string& predicate_name = switch_op->inputs[1];
   // If the predicate array hasn't been resolved to a constant yet,
   // we need to yield.
   if (!IsConstantParameterArray(*model, predicate_name)) {

@@ -18,28 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RawOpsTest(test.TestCase):
+@test_util.disable_tfrt
+class RawOpsTest(test.TestCase, parameterized.TestCase):
 
   def testSimple(self):
     x = constant_op.constant(1)
     self.assertEqual([2], self.evaluate(gen_math_ops.Add(x=x, y=x)))
 
   def testRequiresKwargs(self):
-    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
+    with self.assertRaisesRegex(TypeError, "only takes keyword args"):
       gen_math_ops.Add(1., 1.)
 
   def testRequiresKwargs_providesSuggestion(self):
     msg = "possible keys: \\['x', 'y', 'name'\\]"
-    with self.assertRaisesRegexp(TypeError, msg):
+    with self.assertRaisesRegex(TypeError, msg):
       gen_math_ops.Add(1., y=2.)
 
   def testName(self):
@@ -57,6 +63,29 @@ class RawOpsTest(test.TestCase):
     self.assertAllClose(
         gen_math_ops.Any(input=x, axis=0),
         gen_math_ops.Any(input=x, axis=0, keep_dims=False))
+
+  @parameterized.parameters([[0, 8]], [[-1, 6]])
+  def testStringNGramsBadDataSplits(self, splits):
+    data = ["aa", "bb", "cc", "dd", "ee", "ff"]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Invalid split value"):
+      self.evaluate(
+          gen_string_ops.string_n_grams(
+              data=data,
+              data_splits=splits,
+              separator="",
+              ngram_widths=[2],
+              left_pad="",
+              right_pad="",
+              pad_width=0,
+              preserve_short_sequences=False))
+
+  def testGetSessionHandle(self):
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(
+          errors.FailedPreconditionError,
+          "GetSessionHandle called on null session state"):
+        gen_data_flow_ops.GetSessionHandle(value=[1])
 
 
 if __name__ == "__main__":

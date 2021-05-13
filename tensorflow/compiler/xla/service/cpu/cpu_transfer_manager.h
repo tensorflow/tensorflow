@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -41,35 +42,24 @@ class CpuTransferManager : public GenericTransferManager {
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    const Shape& literal_shape,
                                     MutableBorrowingLiteral literal) override;
 
+  bool CanShapedBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const ShapedBuffer& device_buffer) const override {
+    return true;
+  }
+
+  bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const override {
+    return true;
+  }
+
+  Status ReadDynamicShapes(se::Stream* stream, ShapedBuffer* device_buffer,
+                           Shape* device_shape) override;
+
  private:
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source);
-
-  // Transfers infeed data to device. InfeedBuffer->Done() must be
-  // called to clean up the memory allocated for InfeedBuffer.
-  StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
-      se::StreamExecutor* executor, int64 size, const void* source);
-
-  // Helper that transfers a tuple of element buffers from the device's outfeed.
-  StatusOr<Shape> TransferTupleBuffersFromOutfeed(
-      se::StreamExecutor* executor,
-      absl::Span<const std::pair<void*, int64>> buffer_data);
-
-  // Helper that transfers an array buffer from the device's outfeed.
-  StatusOr<Shape> TransferArrayBufferFromOutfeed(se::StreamExecutor* executor,
-                                                 void* destination,
-                                                 int64 size_bytes);
-
-  // On success, returns the shape that was transferred from the outfeed -- if
-  // is_tuple is true, the returned shape will be a tuple of the returned shapes
-  // for the given buffers.
-  StatusOr<Shape> TransferBuffersFromOutfeedInternal(
-      se::StreamExecutor* executor,
-      absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple);
-
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };
 

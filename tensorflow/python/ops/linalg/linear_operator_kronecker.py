@@ -167,6 +167,15 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       TypeError:  If all operators do not have the same `dtype`.
       ValueError:  If `operators` is empty.
     """
+    parameters = dict(
+        operators=operators,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
+
     # Validate operators.
     check_ops.assert_proper_iterable(operators)
     operators = list(operators)
@@ -221,11 +230,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     with ops.name_scope(name, values=graph_parents):
       super(LinearOperatorKronecker, self).__init__(
           dtype=dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
     # TODO(b/143910018) Remove graph_parents in V3.
     self._set_graph_parents(graph_parents)
@@ -238,11 +247,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     # Get final matrix shape.
     domain_dimension = self.operators[0].domain_dimension
     for operator in self.operators[1:]:
-      domain_dimension *= operator.domain_dimension
+      domain_dimension = domain_dimension * operator.domain_dimension
 
     range_dimension = self.operators[0].range_dimension
     for operator in self.operators[1:]:
-      range_dimension *= operator.range_dimension
+      range_dimension = range_dimension * operator.range_dimension
 
     matrix_shape = tensor_shape.TensorShape([
         range_dimension, domain_dimension])
@@ -259,11 +268,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   def _shape_tensor(self):
     domain_dimension = self.operators[0].domain_dimension_tensor()
     for operator in self.operators[1:]:
-      domain_dimension *= operator.domain_dimension_tensor()
+      domain_dimension = domain_dimension * operator.domain_dimension_tensor()
 
     range_dimension = self.operators[0].range_dimension_tensor()
     for operator in self.operators[1:]:
-      range_dimension *= operator.range_dimension_tensor()
+      range_dimension = range_dimension * operator.range_dimension_tensor()
 
     matrix_shape = [range_dimension, domain_dimension]
 
@@ -399,7 +408,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     total = self.domain_dimension_tensor()
     determinant = 1.
     for operator in self.operators:
-      determinant *= operator.determinant() ** math_ops.cast(
+      determinant = determinant * operator.determinant() ** math_ops.cast(
           total / operator.domain_dimension_tensor(),
           dtype=operator.dtype)
     return determinant
@@ -418,7 +427,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     # tr(A x B) = tr(A) * tr(B)
     trace = 1.
     for operator in self.operators:
-      trace *= operator.trace()
+      trace = trace * operator.trace()
     return trace
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
@@ -508,7 +517,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     for operator in self.operators[1:]:
       diag_part = diag_part[..., :, array_ops.newaxis]
       op_diag_part = operator.diag_part()[..., array_ops.newaxis, :]
-      diag_part *= op_diag_part
+      diag_part = diag_part * op_diag_part
       diag_part = array_ops.reshape(
           diag_part,
           shape=array_ops.concat(
@@ -531,7 +540,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       op_to_mul = operator.to_dense()[
           ..., array_ops.newaxis, :, array_ops.newaxis, :]
       # This is now [B, R1, R2, C1, C2].
-      product *= op_to_mul
+      product = product * op_to_mul
       # Now merge together dimensions to get [B, R1 * R2, C1 * C2].
       product = array_ops.reshape(
           product,
@@ -554,7 +563,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       # Product has shape [B, R1, 1].
       product = product[..., array_ops.newaxis]
       # Eigval has shape [B, 1, R2]. Produces shape [B, R1, R2].
-      product *= eigval[..., array_ops.newaxis, :]
+      product = product * eigval[..., array_ops.newaxis, :]
       # Reshape to [B, R1 * R2]
       product = array_ops.reshape(
           product,

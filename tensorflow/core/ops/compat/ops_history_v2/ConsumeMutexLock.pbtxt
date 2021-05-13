@@ -1,0 +1,8 @@
+op {
+  name: "ConsumeMutexLock"
+  input_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}

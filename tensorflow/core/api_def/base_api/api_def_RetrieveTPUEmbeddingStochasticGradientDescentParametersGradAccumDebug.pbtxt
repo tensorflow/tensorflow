@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug"
+  visibility: HIDDEN
+  out_arg {
+    name: "parameters"
+    description: <<END
+Parameter parameters updated by the stochastic gradient descent optimization algorithm.
+END
+  }
+  out_arg {
+    name: "gradient_accumulators"
+    description: <<END
+Parameter gradient_accumulators updated by the Adadelta optimization algorithm.
+END
+  }
+  summary: "Retrieve SGD embedding parameters with debug support."
+  description: <<END
+An op that retrieves optimization parameters from embedding to host
+memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+the correct embedding table configuration. For example, this op is
+used to retrieve updated parameters before saving a checkpoint.
+END
+}

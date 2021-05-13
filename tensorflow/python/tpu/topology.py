@@ -22,6 +22,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf.tpu import topology_pb2
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _tpu_device_name(job, task, device):
@@ -40,6 +41,7 @@ def _tpu_host_device_name(job, task):
     return "/job:%s/task:%d/device:CPU:0" % (job, task)
 
 
+@tf_export("tpu.experimental.Topology")
 class Topology(object):
   """Describes a set of TPU devices.
 

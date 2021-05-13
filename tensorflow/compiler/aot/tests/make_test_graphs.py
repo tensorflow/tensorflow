@@ -23,6 +23,7 @@ import argparse
 import os
 import sys
 
+from absl import app
 import six
 from six.moves import range
 
@@ -39,7 +40,6 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import app
 from tensorflow.python.training import saver as saver_lib
 
 FLAGS = None
@@ -157,6 +157,7 @@ def tftop_k(_):
 
 def tfvariable_readonly(_):
   x = variables.Variable(1000.0, name='x')
+  unused_y = variables.Variable(1000.0, name='y')
   old_x = x.value()
   with ops.control_dependencies([old_x]):
     new_value = math_ops.add(old_x, 42.0)

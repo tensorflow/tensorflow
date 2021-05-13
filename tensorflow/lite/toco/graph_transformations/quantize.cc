@@ -121,7 +121,7 @@ bool SupportOutputTypeFloatInQuantizedOp(const Operator& op) {
   }
   return false;
 }
-const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
+const MinMax& GetOrComputeMinMax(Model* model, const std::string& array_name) {
   auto& array = model->GetArray(array_name);
   // Normally we should have a MinMax recorded on this Array,
   // so we just use it.
@@ -241,6 +241,13 @@ bool ChooseQuantizationForOperatorInput(
     if (input_index == 2) {
       is_bias_vector = true;
       activations_input_index = 0;
+      weights_input_index = 1;
+    }
+  }
+  if (op.type == OperatorType::kTransposeConv) {
+    if (input_index == 3) {
+      is_bias_vector = true;
+      activations_input_index = 2;
       weights_input_index = 1;
     }
   }
@@ -405,7 +412,8 @@ bool ChooseQuantizationForOperatorOutput(
       op.type == OperatorType::kReshape || op.type == OperatorType::kSplit ||
       op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
       op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu ||
-      op.type == OperatorType::kUnpack) {
+      op.type == OperatorType::kUnpack || op.type == OperatorType::kSlice ||
+      op.type == OperatorType::kStridedSlice) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;

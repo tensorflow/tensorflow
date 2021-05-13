@@ -33,7 +33,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testAutotuneOption(self):
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset.map(lambda x: x).apply(
-        testing.assert_next(["Model"]))
+        testing.assert_next(["Root"]))
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = True
@@ -43,6 +43,20 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(0, self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testParallelMapWithAutotune(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.ParallelMapDataset(
+        dataset,
+        lambda x: x + 1,
+        num_parallel_calls=1,
+        deterministic=True,
+        use_inter_op_parallelism=False)
+    dataset = dataset.map(
+        lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    next_element = self.getNext(dataset)
+    self.evaluate(next_element())
 
 
 if __name__ == "__main__":

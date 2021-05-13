@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -30,6 +29,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad
 from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
@@ -44,14 +44,18 @@ class BatchNormalizationTest(test.TestCase):
     return math_ops.cast(y, x.dtype)
 
   def _inference_ref(self, x, scale, offset, mean, var, epsilon, data_format):
-    if data_format not in ['NHWC', 'NCHW']:
-      raise ValueError('data_format must be NCHW or NHWC, '
-                       'got %s.' % data_format)
+    if data_format not in ['NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
+      raise ValueError('data_format must be NCHW or NHWC for 4D tensors or'
+                       'NCDHW or NDHWC for 5D tensors, got %s.' % data_format)
     if data_format == 'NCHW':
       x = array_ops.transpose(x, [0, 2, 3, 1])
+    elif data_format == 'NCDHW':
+      x = array_ops.transpose(x, [0, 2, 3, 4, 1])
     y = self._batch_norm(x, mean, var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
+    elif data_format == 'NCDHW':
+      y = array_ops.transpose(y, [0, 4, 1, 2, 3])
     return self.evaluate(y)
 
   def _test_inference(self,
@@ -103,17 +107,24 @@ class BatchNormalizationTest(test.TestCase):
 
   def _training_ref(self, x, scale, offset, old_mean, old_var,
                     exponential_avg_factor, epsilon, data_format):
-    if data_format not in ['NHWC', 'NCHW']:
-      raise ValueError('data_format must be NCHW or NHWC, '
-                       'got %s.' % data_format)
+    if data_format not in ['NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
+      raise ValueError('data_format must be NCHW or NHWC for 4D tensors or'
+                       'NCDHW or NDHWC for 5D tensors, got %s.' % data_format)
+    use_4d_tensor = (x.shape.ndims == 4)
     if data_format == 'NCHW':
       x = array_ops.transpose(x, [0, 2, 3, 1])
+    elif data_format == 'NCDHW':
+      x = array_ops.transpose(x, [0, 2, 3, 4, 1])
+
+    mean_axis = [0, 1, 2] if use_4d_tensor else [0, 1, 2, 3]
     batch_mean, batch_var = nn_impl.moments(
-        math_ops.cast(x, scale.dtype), [0, 1, 2], keep_dims=False)
+        math_ops.cast(x, scale.dtype), mean_axis, keep_dims=False)
 
     y = self._batch_norm(x, batch_mean, batch_var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
+    elif data_format == 'NCDHW':
+      y = array_ops.transpose(y, [0, 4, 1, 2, 3])
 
     # This is for Bessel's correction. tf.nn.moments uses n, instead of n-1, as
     # the denominator in the formula to calculate variance, while
@@ -376,21 +387,20 @@ class BatchNormalizationTest(test.TestCase):
     self.assertLess(err_grad_x_2, err_tolerance)
     self.assertLess(err_grad_scale, err_tolerance)
 
-  def _runtests(self, x_shape, is_training, gradient_test=False):
+  def _runtests(self, x_shape, is_training, gradient_test=False,
+                cpu_only=False):
+    if len(x_shape) == 4:
+      data_format_list = ['NHWC', 'NCHW']
+    else:
+      data_format_list = ['NCDHW', 'NDHWC']
     use_gpu_vals = [False]
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) and not cpu_only:
       use_gpu_vals += [True]
-    factors = [
-        1.0,
-    ]
-    if compat.forward_compatible(2020, 3, 6):
-      factors += [
-          0.6,
-      ]
+    factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32]:
       for use_gpu in use_gpu_vals:
-        for data_format in ['NHWC', 'NCHW']:
-          if data_format == 'NHWC':
+        for data_format in data_format_list:
+          if data_format == 'NHWC' or data_format == 'NDHWC':
             scale_shape = x_shape[-1:]
           else:
             scale_shape = x_shape[1:2]
@@ -445,6 +455,15 @@ class BatchNormalizationTest(test.TestCase):
     x_shape = [0, 131, 127, 6]
     self._runtests(x_shape, False)
 
+  def testInferenceShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, False, cpu_only=True)
+
+  def testInferenceShape7(self):
+    x_shape = [1, 2, 6, 1, 3]
+    self._runtests(x_shape, False)
+
   def testTrainingShape1(self):
     x_shape = [1, 1, 6, 1]
     self._runtests(x_shape, True)
@@ -464,6 +483,16 @@ class BatchNormalizationTest(test.TestCase):
   @test_util.disable_xla('b/141236973: Empty inputs wrong on CPU.')
   def testTrainingShape5(self):
     x_shape = [0, 131, 127, 6]
+    self._runtests(x_shape, True)
+
+  @test_util.run_deprecated_v1
+  def testTrainingShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, True, cpu_only=True)
+
+  def testTrainingShape7(self):
+    x_shape = [1, 2, 6, 1, 3]
     self._runtests(x_shape, True)
 
   @test_util.run_deprecated_v1
@@ -493,6 +522,18 @@ class BatchNormalizationTest(test.TestCase):
     self._runtests(x_shape, is_training=False, gradient_test=True)
 
   @test_util.run_deprecated_v1
+  def testBatchNormGradInferenceShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, is_training=False, gradient_test=True,
+                   cpu_only=True)
+
+  @test_util.run_deprecated_v1
+  def testBatchNormGradInferenceShape7(self):
+    x_shape = [1, 2, 6, 1, 3]
+    self._runtests(x_shape, is_training=False, gradient_test=True)
+
+  @test_util.run_deprecated_v1
   def testBatchNormGradTrainingShape1(self):
     x_shape = [1, 1, 6, 1]
     self._runtests(x_shape, is_training=True, gradient_test=True)
@@ -518,42 +559,60 @@ class BatchNormalizationTest(test.TestCase):
     x_shape = [0, 7, 11, 4]
     self._runtests(x_shape, is_training=True, gradient_test=True)
 
+  @test_util.run_deprecated_v1
+  def testBatchNormGradTrainingShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, is_training=True, gradient_test=True, cpu_only=True)
+
+  @test_util.run_deprecated_v1
+  def testBatchNormGradTrainingShape7(self):
+    x_shape = [1, 2, 6, 1, 3]
+    self._runtests(x_shape, is_training=True, gradient_test=True)
+
   def _testBatchNormGradGrad(self, config):
     shape = config['shape']
     err_tolerance = config['err_tolerance']
     dtype = config['dtype']
+    rank = len(shape)
+    if rank == 4:
+      data_format_nhwc, features_nhwc = 'NHWC', shape[3]
+      data_format_nchw, features_nchw = 'NCHW', shape[1]
+    else:
+      data_format_nhwc, features_nhwc = 'NDHWC', shape[4]
+      data_format_nchw, features_nchw = 'NCDHW', shape[1]
     for is_training in [True, False]:
       if test.is_gpu_available(cuda_only=True):
         self._test_grad_grad(
             shape,
-            dtype, [shape[3]],
+            dtype, [features_nhwc],
             np.float32,
             use_gpu=True,
-            data_format='NHWC',
+            data_format=data_format_nhwc,
             is_training=is_training,
             err_tolerance=err_tolerance)
         self._test_grad_grad(
             shape,
-            dtype, [shape[1]],
+            dtype, [features_nchw],
             np.float32,
             use_gpu=True,
-            data_format='NCHW',
+            data_format=data_format_nchw,
             is_training=is_training,
             err_tolerance=err_tolerance)
       self._test_grad_grad(
           shape,
-          dtype, [shape[3]],
+          dtype, [features_nhwc],
           np.float32,
           use_gpu=False,
-          data_format='NHWC',
+          data_format=data_format_nhwc,
           is_training=is_training,
           err_tolerance=err_tolerance)
       self._test_grad_grad(
           shape,
-          dtype, [shape[1]],
+          dtype, [features_nchw],
           np.float32,
           use_gpu=False,
-          data_format='NCHW',
+          data_format=data_format_nchw,
           is_training=is_training,
           err_tolerance=err_tolerance)
 
@@ -592,6 +651,52 @@ class BatchNormalizationTest(test.TestCase):
         'dtype': np.float16,
     }
     self._testBatchNormGradGrad(config)
+
+  @test_util.run_deprecated_v1
+  def testBatchNormGradGradConfig5(self):
+    config = {
+        'shape': [2, 3, 2, 2, 2],
+        'err_tolerance': 2e-3,
+        'dtype': np.float32,
+    }
+    self._testBatchNormGradGrad(config)
+
+  @test_util.run_deprecated_v1
+  def testBatchNormGradGradConfig6(self):
+    config = {
+        'shape': [2, 3, 2, 2, 2],
+        'err_tolerance': 3e-3,
+        'dtype': np.float16,
+    }
+    self._testBatchNormGradGrad(config)
+
+  def test5dBatchNormFollowedByRelu(self):
+    # The remapper grappler pass previously did not properly handle a 5D
+    # inference FusedBatchNorm followed by Relu. This asserts that this case is
+    # correctly handled.
+    np.random.seed(1)
+    x = np.random.random_sample((2, 3, 2, 2, 3)).astype(np.float32)
+    scale = np.random.random_sample((3,)).astype(np.float32)
+    offset = np.random.random_sample((3,)).astype(np.float32)
+    mean = np.random.random_sample((3,)).astype(np.float32)
+    var = np.random.random_sample((3,)).astype(np.float32)
+
+    epsilon = 0.001
+    y, _, _ = nn_impl.fused_batch_norm(
+        x,
+        scale,
+        offset,
+        mean=mean,
+        variance=var,
+        epsilon=epsilon,
+        data_format='NCDHW',
+        is_training=False)
+    y = nn_ops.relu(y)
+    y_val = self.evaluate(y)
+    y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
+                                'NCDHW')
+    y_ref = np.maximum(y_ref, 0.)
+    self.assertAllClose(y_ref, y_val, atol=1e-3)
 
 
 if __name__ == '__main__':

@@ -29,9 +29,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 template <typename Device, typename T>
@@ -152,21 +149,9 @@ class SelectV2Op : public OpKernel {
 
     // The `cond`, `then`, and `else` are broadcastable (bcast.IsValid()),
     // This matches the behavior of numpy.
-    // TODO (yongtang): Consolidate into n-ary broadcast, instead of multiple
-    // 2-ary broadcast.
-
-    // Combine `then` and `else`.
-    BCast then_else_bcast(BCast::FromShape(then->shape()),
-                          BCast::FromShape(else_->shape()), false);
-    OP_REQUIRES(ctx, then_else_bcast.IsValid(),
-                errors::InvalidArgument(
-                    "then ", then->shape().DebugString(), " and else ",
-                    else_->shape().DebugString(), " must be broadcastable"));
-    // Combine `cond` with `then` and `else`.
-    BCast bcast(
-        BCast::FromShape(cond->shape()),
-        BCast::FromShape(BCast::ToShape(then_else_bcast.output_shape())),
-        false);
+    BCastList<3> bcast({cond->shape().dim_sizes(), then->shape().dim_sizes(),
+                        else_->shape().dim_sizes()},
+                       false);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
                     "condition ", cond->shape().DebugString(), ", then ",
@@ -175,12 +160,9 @@ class SelectV2Op : public OpKernel {
 
     // Broadcast `cond`, `then` and `else` to combined shape,
     // in order to obtain the reshape.
-    BCast cond_bcast(BCast::FromShape(BCast::ToShape(bcast.output_shape())),
-                     BCast::FromShape(cond->shape()), false);
-    BCast then_bcast(BCast::FromShape(BCast::ToShape(bcast.output_shape())),
-                     BCast::FromShape(then->shape()), false);
-    BCast else_bcast(BCast::FromShape(BCast::ToShape(bcast.output_shape())),
-                     BCast::FromShape(else_->shape()), false);
+    BCast cond_bcast(bcast.output_shape(), cond->shape().dim_sizes(), false);
+    BCast then_bcast(bcast.output_shape(), then->shape().dim_sizes(), false);
+    BCast else_bcast(bcast.output_shape(), else_->shape().dim_sizes(), false);
     OP_REQUIRES(
         ctx,
         cond_bcast.IsValid() && then_bcast.IsValid() && else_bcast.IsValid(),
@@ -272,6 +254,8 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
 // Registration of the GPU implementations.
 #define REGISTER_SELECT_GPU(type)                                    \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -292,24 +276,27 @@ REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
 
+#else
+
+#define REGISTER_SELECT_GPU(type)                                  \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SelectOp<GPUDevice, type>);
+
+REGISTER_SELECT_GPU(bool);
+REGISTER_SELECT_GPU(Eigen::half);
+REGISTER_SELECT_GPU(float);
+REGISTER_SELECT_GPU(double);
+REGISTER_SELECT_GPU(int32);
+REGISTER_SELECT_GPU(int64);
+REGISTER_SELECT_GPU(complex64);
+REGISTER_SELECT_GPU(complex128);
+
+#undef REGISTER_SELECT_GPU
+#endif
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-// Registration of the SYCL implementations.
-#define REGISTER_SELECT_SYCL(type)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Select").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
-      SelectOp<SYCLDevice, type>);                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("SelectV2").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      SelectOp<SYCLDevice, type>);
-
-REGISTER_SELECT_SYCL(float);
-REGISTER_SELECT_SYCL(double);
-REGISTER_SELECT_SYCL(int32);
-REGISTER_SELECT_SYCL(int64);
-#undef REGISTER_SELECT_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -326,10 +313,6 @@ struct SelectFunctorBase {
 
 template <typename T>
 struct SelectFunctor<CPUDevice, T> : SelectFunctorBase<CPUDevice, T> {};
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct SelectFunctor<SYCLDevice, T> : SelectFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct SelectScalarHandler {
@@ -364,21 +347,6 @@ struct SelectScalarHandler<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename Device, typename T>
-struct SelectScalarFunctorBase {
-  void operator()(const Device& d, typename TTypes<T>::Flat out,
-                  TTypes<bool>::ConstScalar cond,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    out.device(d) = cond() ? then_flat : else_flat;
-  }
-};
-
-template <typename T>
-struct SelectScalarFunctor<SYCLDevice, T>
-    : SelectScalarFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct BatchSelectFunctorBase {
@@ -469,16 +437,6 @@ template <typename T, int NDIMS>
 struct BCastSelectFunctor<CPUDevice, T, NDIMS>
     : BCastSelectFunctorBase<CPUDevice, T, NDIMS> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct BatchSelectFunctor<SYCLDevice, T>
-    : BatchSelectFunctorBase<SYCLDevice, T> {};
-
-template <typename T, int NDIMS>
-struct BCastSelectFunctor<SYCLDevice, T, NDIMS>
-    : BCastSelectFunctorBase<SYCLDevice, T, NDIMS> {};
-
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

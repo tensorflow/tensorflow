@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
+#include <fstream>
 #include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
@@ -34,13 +37,15 @@ namespace {
 int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
                                int32_t version) {
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == op_code) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) == op_code) {
       return i;
     }
   }
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = op_code;
+  model->operator_codes[op_code_idx]->deprecated_builtin_code =
+      ConvertBuiltinCodeToDeprecatedBuiltinCode(op_code);
   // Version 2 and onwards supports INT8 inputs.
   model->operator_codes[op_code_idx]->version = version;
 
@@ -77,10 +82,14 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
   tensor_raw->name = name;
   tensor_raw->shape = shape;
+  if (!shape_signature.empty()) {
+    tensor_raw->shape_signature = shape_signature;
+  }
   tensor_raw->type = type;
 
   tensor->reset(tensor_raw);
@@ -89,10 +98,11 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
                               const std::vector<int32_t>& shape,
+                              const std::vector<int32_t>& shape_signature,
                               const TensorType& type, float scale,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor) {
-  MakeTensor(name, shape, type, tensor);
+  MakeTensor(name, shape, shape_signature, type, tensor);
   (*tensor)->quantization = absl::make_unique<QuantizationParametersT>();
   (*tensor)->quantization->scale.push_back(scale);
   (*tensor)->quantization->zero_point.push_back(zero_point);
@@ -120,7 +130,7 @@ bool HasMinMax(const TensorT* tensor) {
 }
 
 void SetOperatorCodeVersion(ModelT* model) {
-  for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+  for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     // Iterate backward to avoid messing with index.
@@ -129,12 +139,42 @@ void SetOperatorCodeVersion(ModelT* model) {
       OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
       operator_property::OperatorProperty property =
           operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
-      if (property.quantizable) {
-        // Only update the versions of quantizable operations.
+      if (property.quantizable && op_code->version < property.version) {
+        // Only update the versions of quantizable operations if the original
+        // version is lesser than minimum quantized one mentioned by
+        // OperatorProperty.
         op_code->version = property.version;
       }
     }
   }
+}
+
+void WriteFile(const std::string& out_file, const uint8_t* bytes,
+               size_t num_bytes) {
+  std::fstream stream(out_file, std::ios::binary | std::ios::out);
+  for (size_t i = 0; i < num_bytes; i++) {
+    stream << bytes[i];
+  }
+  TFLITE_DCHECK(!stream.bad() && !stream.fail());
+}
+
+std::unique_ptr<flatbuffers::FlatBufferBuilder> FinishModel(
+    const tflite::ModelT* model) {
+  std::unique_ptr<flatbuffers::FlatBufferBuilder> builder(
+      new flatbuffers::FlatBufferBuilder());
+  auto packed_model = tflite::Model::Pack(*builder, model);
+  tflite::FinishModelBuffer(*builder, packed_model);
+  return builder;
+}
+
+std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
+    const string& model_filepath) {
+  auto fb_model =
+      tflite::FlatBufferModel::BuildFromFile(model_filepath.c_str());
+  auto tflite_model = fb_model->GetModel();
+  auto copied_model = absl::make_unique<tflite::ModelT>();
+  tflite_model->UnPackTo(copied_model.get(), nullptr);
+  return copied_model;
 }
 
 }  // namespace utils

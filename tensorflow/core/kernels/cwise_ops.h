@@ -131,7 +131,15 @@ struct safe_div_or_mod_op {
                                                      const T& b) const {
     const T safe_b = tensorflow::internal::SubtleMustCopy(b);
     if (TF_PREDICT_TRUE(safe_b != 0)) {
-      return DivOrMod()(a, safe_b);
+      // Avoid FPE for INT_MIN/-1.
+      const T safe_a = tensorflow::internal::SubtleMustCopy(a);
+      if (TF_PREDICT_FALSE(std::is_signed<T>::value &&
+                           safe_a == std::numeric_limits<T>::min() &&
+                           safe_b == T(-1))) {
+        // Prefer to overflow 'a' instead of crashing.
+        return DivOrMod()(-safe_a, 1);
+      }
+      return DivOrMod()(safe_a, safe_b);
     } else {
       *error = true;
       return 0;
@@ -167,16 +175,60 @@ struct no_nan_op {
   }
 };
 
+template <typename T, bool IsComplex = Eigen::NumTraits<T>::IsComplex>
+struct div_no_nan_op;
+
 template <typename T>
-struct div_no_nan_op : public no_nan_op<T, scalar_quotient_op<T>> {
+struct div_no_nan_op<T, /*IsComplex=*/false>
+    : public no_nan_op<T, scalar_quotient_op<T>> {
   EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
 };
 
 template <typename T>
-struct functor_traits<div_no_nan_op<T>> {
+struct functor_traits<div_no_nan_op<T, /*IsComplex=*/false>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = true,
+  };
+};
+
+// Whether or not complex division produces a NaN depends on the underlying
+// implementation. Some compilers (e.g. gcc) use a simple method that divides
+// by |b|^2, which may underflow to 0 for b != 0.
+template <typename T>
+struct div_no_nan_op<T, /*IsComplex=*/true> {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    if (b == T(0)) {
+      return T(0);
+    } else {
+      // If the numerator is zero, then the result must be zero even if |b|^2
+      // underflows to zero.
+      const T numerator =
+          scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
+      if (numerator == T(0)) {
+        return T(0);
+      }
+    }
+    return scalar_quotient_op<T>()(a, b);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    const Packet numerator = pmul(a, pconj(b));
+    const Packet mask = por(pcmp_eq(b, pzero(a)), pcmp_eq(numerator, pzero(a)));
+    const Packet quotient = pdiv(a, b);
+    return pandnot(quotient, mask);
+  }
+};
+
+template <typename T>
+struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::MulCost,
+    PacketAccess = packet_traits<T>::HasMul && packet_traits<T>::HasDiv &&
+                   packet_traits<T>::HasConj,
   };
 };
 
@@ -391,20 +443,10 @@ template <typename T, typename Enable = void>
 struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
-    if ((x < T(0)) != (y < T(0))) {
-// HIP does not have the device version of the abs routine defined
-// for all datatypes that T can resolve to
-#if defined(__HIP_DEVICE_COMPILE__)
-      T abs_x = (x < T(0)) ? -x : x;
-      T abs_y = (y < T(0)) ? -y : y;
-#else
-      T abs_x = std::abs(x);
-      T abs_y = std::abs(y);
-#endif
-      return -(abs_x + abs_y - 1) / abs_y;
-    } else {
-      return x / y;
-    }
+    const T z = x / y;
+    // Subtract one if there is a remainder and if the inputs have opposite
+    // signs. This approach avoids unnecessary overflows.
+    return z * y != x && (x < T(0) != y < T(0)) ? z - T(1) : z;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
@@ -413,11 +455,9 @@ struct google_floor_div {
     Packet x_mask = pcmp_lt(x, zeros);
     Packet y_mask = pcmp_lt(y, zeros);
     Packet x_div_y = pdiv(x, y);
-    Packet abs_x = pabs(x);
-    Packet abs_y = pabs(y);
-    Packet ones = pones(x);
-    Packet ratio_rounded = pdiv(pnegate(psub(padd(abs_x, abs_y), ones)), abs_y);
-    return pselect(pxor(x_mask, y_mask), ratio_rounded, x_div_y);
+    Packet x_div_y_times_y = pmul(x_div_y, y);
+    return pselect(por(peq(x_div_y_times_y, x), peq(x_mask, y_mask)), x_div_y,
+                   psub(x_div_y, pones(x)));
   }
 };
 
@@ -793,7 +833,7 @@ struct base {
   // operation. Each functor for which this is enabled increases the
   // code size, so by default this is disabled for binary functors and
   // is enabled on a per-op basis as needed.
-  static const bool use_bcast_optimization = false;
+  static constexpr bool use_bcast_optimization = false;
 
   // operator() has the signature:
   //  out_type operator()(in_type in0, in_type in1 ...)
@@ -811,24 +851,24 @@ struct base {
 
   // Whether the functor can error out.  Currently applies only to integer
   // div and mod.
-  static const bool has_errors = false;
+  static constexpr bool has_errors = false;
 };
 
 // For now, we only apply certain speed optimization for
 // float/double's broadcast binary op.
 template <typename T>
 struct use_bcast_optimization {
-  static const bool value = false;
+  static constexpr bool value = false;
 };
 
 template <>
 struct use_bcast_optimization<float> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 template <>
 struct use_bcast_optimization<double> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -943,12 +983,6 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
-template <typename T>
-struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
-
-template <typename T>
-struct bessel_i1e : base<T, Eigen::internal::scalar_bessel_i1e_op<T>> {};
-
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -985,6 +1019,7 @@ struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
+// Note: rint rounds half values to even, just like round_half_to_even_op.
 template <typename T>
 struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
@@ -1007,17 +1042,17 @@ struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
@@ -1029,7 +1064,7 @@ struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_quotient_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1044,7 +1079,7 @@ struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 template <typename T>
 struct safe_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_mod2_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1053,7 +1088,7 @@ struct floor_fmod : base<T, Eigen::internal::google_floor_fmod<T>> {};
 template <typename T>
 struct safe_floor_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_mod<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1062,7 +1097,7 @@ struct floor_div : base<T, Eigen::internal::google_floor_div<T>> {};
 template <typename T>
 struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_div<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1073,14 +1108,38 @@ struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
+};
+
+// Version of safe_pow for integers which returns 0 if RHS is negative and LHS
+// is not 1 or -1. For use on GPUs, where we cannot raise an error.
+template <typename T>
+struct safe_pow_ignore_error_op {
+  static_assert(std::is_integral<T>::value, "Integer type expected");
+  EIGEN_EMPTY_STRUCT_CTOR(safe_pow_ignore_error_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
+    if (TF_PREDICT_FALSE(y < 0)) {
+      if (x == T(-1)) {
+        T trunc_mod = Eigen::internal::scalar_mod2_op<T>()(y, T(2));
+        return trunc_mod == T(-1) ? T(-1) : T(1);
+      }
+      return x == T(1) ? T(1) : T(0);
+    }
+    return Eigen::internal::scalar_pow_op<T, T>{}(x, y);
+  }
 };
 
 template <typename T>
-struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
+struct safe_pow_ignore_error : base<T, safe_pow_ignore_error_op<T>> {};
 
 template <typename T>
-struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
+struct maximum
+    : base<T, Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>> {};
+
+template <typename T>
+struct minimum
+    : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
@@ -1103,9 +1162,7 @@ struct scalar_atan2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
-#if GOOGLE_CUDA
-    return std::atan2(y, x);
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     return ::atan2(y, x);
 #else
     return std::atan2(y, x);

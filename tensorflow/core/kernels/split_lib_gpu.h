@@ -50,12 +50,9 @@ struct SplitVOpGPULaunch {
   extern template struct SplitVOpGPULaunch<T, int32>; \
   extern template struct SplitVOpGPULaunch<T, int64>;
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_complex64(REGISTER_GPU_KERNEL);
-TF_CALL_complex128(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_uint8(REGISTER_GPU_KERNEL);
-TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 }  // namespace tensorflow

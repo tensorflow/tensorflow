@@ -14,10 +14,6 @@
 # ==============================================================================
 """Integration tests for Keras applications."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.keras import backend
@@ -27,6 +23,7 @@ from tensorflow.python.keras.applications import inception_resnet_v2
 from tensorflow.python.keras.applications import inception_v3
 from tensorflow.python.keras.applications import mobilenet
 from tensorflow.python.keras.applications import mobilenet_v2
+from tensorflow.python.keras.applications import mobilenet_v3
 from tensorflow.python.keras.applications import nasnet
 from tensorflow.python.keras.applications import resnet
 from tensorflow.python.keras.applications import resnet_v2
@@ -50,6 +47,8 @@ MODEL_LIST_NO_NASNET = [
     (inception_resnet_v2.InceptionResNetV2, 1536),
     (mobilenet.MobileNet, 1024),
     (mobilenet_v2.MobileNetV2, 1280),
+    (mobilenet_v3.MobileNetV3Small, 1024),
+    (mobilenet_v3.MobileNetV3Large, 1280),
     (densenet.DenseNet121, 1024),
     (densenet.DenseNet169, 1664),
     (densenet.DenseNet201, 1920),
@@ -93,7 +92,7 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(*MODEL_LIST)
   def test_application_notop(self, app, last_dim):
-    if 'NASNet' in app.__name__:
+    if 'NASNet' or 'MobileNetV3' in app.__name__:
       only_check_last_dim = True
     else:
       only_check_last_dim = False
@@ -119,7 +118,10 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
       input_shape = (None, None, 1)
     output_shape = _get_output_shape(
         lambda: app(weights=None, include_top=False, input_shape=input_shape))
-    self.assertShapeEqual(output_shape, (None, None, None, last_dim))
+    if 'MobileNetV3' in app.__name__:
+      self.assertShapeEqual(output_shape, (None, 1, 1, last_dim))
+    else:
+      self.assertShapeEqual(output_shape, (None, None, None, last_dim))
     backend.clear_session()
 
     if backend.image_data_format() == 'channels_first':
@@ -128,7 +130,10 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
       input_shape = (None, None, 4)
     output_shape = _get_output_shape(
         lambda: app(weights=None, include_top=False, input_shape=input_shape))
-    self.assertShapeEqual(output_shape, (None, None, None, last_dim))
+    if 'MobileNetV3' in app.__name__:
+      self.assertShapeEqual(output_shape, (None, 1, 1, last_dim))
+    else:
+      self.assertShapeEqual(output_shape, (None, None, None, last_dim))
     backend.clear_session()
 
 

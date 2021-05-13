@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "create_file_writer"
-    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\', \'experimental_trackable\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "create_noop_writer"
@@ -23,6 +23,10 @@ tf_module {
   member_method {
     name: "flush"
     argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "graph"
+    argspec: "args=[\'graph_data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "histogram"
@@ -39,6 +43,10 @@ tf_module {
   member_method {
     name: "scalar"
     argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "should_record_summaries"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "text"

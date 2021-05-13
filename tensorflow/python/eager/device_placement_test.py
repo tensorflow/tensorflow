@@ -31,6 +31,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
@@ -38,6 +40,7 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
   def setUp(self):
     super(SoftDevicePlacementTest, self).setUp()
     context._reset_context()
+    context.ensure_initialized()
     config.set_soft_device_placement(enabled=True)
     context.context().log_device_placement = True
 
@@ -83,6 +86,14 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn('CPU', d.device)
 
   @test_util.run_gpu_only
+  def testSoftPlacedGPU(self):
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    with ops.device('GPU:110'):
+      c = a + b
+    self.assertIn('GPU:0', c.device)
+
+  @test_util.run_gpu_only
   def testNestedDeviceScope(self):
     a = constant_op.constant(1)
     b = constant_op.constant(2)
@@ -100,6 +111,36 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
       a = constant_op.constant(value, dtype=dtype)
     self.assertIn('CPU:0', a.device)
     self.assertIn('CPU:0', a.backing_device)
+
+  def testPlacedToDeviceInFunction(self):
+
+    @def_function.function
+    def f():
+      a = random_ops.random_uniform([32, 32])
+      return math_ops.matmul(a, a)
+
+    gpus = config.list_physical_devices('GPU')
+    if not gpus:
+      self.assertIn('CPU:0', f().device)
+    else:
+      self.assertIn('GPU:0', f().device)
+
+  @test_util.disable_tfrt('b/173726713: Support properly inserting device at '
+                          'tf_to_corert lowering.')
+  def testUnknownDeviceInFunction(self):
+
+    @def_function.function
+    def f():
+      with ops.device('GPU:42'):
+        # With placer, the unknown GPU:42 will be replaced with GPU:0.
+        a = constant_op.constant(1) + constant_op.constant(2)
+      return a + constant_op.constant(2)
+
+    gpus = config.list_physical_devices('GPU')
+    if not gpus:
+      self.assertIn('CPU:0', f().device)
+    else:
+      self.assertIn('GPU:0', f().device)
 
 
 class HardDevicePlacementTest(test.TestCase, parameterized.TestCase):
@@ -150,6 +191,7 @@ class ClusterPlacementTest(test.TestCase):
     workers, _ = test_util.create_local_cluster(2, 0)
     remote.connect_to_remote_host([workers[0].target, workers[1].target])
 
+  @test_util.disable_tfrt('remote host not supported yet.')
   def testNotFullySpecifiedTask(self):
     a = constant_op.constant(1)
     b = constant_op.constant(2)
@@ -157,6 +199,7 @@ class ClusterPlacementTest(test.TestCase):
       c = a + b
     self.assertIn('/job:worker/replica:0/task:0', c.device)
 
+  @test_util.disable_tfrt('remote host not supported yet.')
   def testRemoteUnknownDevice(self):
     a = constant_op.constant(1)
     b = constant_op.constant(2)
@@ -167,6 +210,7 @@ class ClusterPlacementTest(test.TestCase):
         del c
       self.assertIn('unknown device', cm.exception.message)
 
+  @test_util.disable_tfrt('remote host not supported yet.')
   def testUnknownDeviceInFunctionReturnUnknowDevice(self):
 
     @def_function.function
@@ -180,6 +224,7 @@ class ClusterPlacementTest(test.TestCase):
     else:
       self.assertIn('GPU:0', f().device)
 
+  @test_util.disable_tfrt('remote host not supported yet.')
   def testUnknownDeviceInFunction(self):
 
     @def_function.function

@@ -71,7 +71,7 @@ class NormalizeClusterSpecTest(test.TestCase):
   def testUnexpectedInput(self):
     cluster_spec = ["127.0.0.1:8964", "127.0.0.1:2333"]
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "`cluster_spec' should be dict or a `tf.train.ClusterSpec` or a "
         "`tf.train.ClusterDef` object"):
@@ -94,11 +94,11 @@ class IsChiefTest(test.TestCase):
     self.assertTrue(multi_worker_util.is_chief(cluster_spec, "worker", 0))
     self.assertFalse(multi_worker_util.is_chief(cluster_spec, "worker", 1))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "`task_type` 'chief' not found in cluster_spec."):
       multi_worker_util.is_chief(cluster_spec, "chief", 0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The `task_id` 2 exceeds the maximum id of worker."):
       multi_worker_util.is_chief(cluster_spec, "worker", 2)
 
@@ -135,7 +135,7 @@ class NumWorkersTest(test.TestCase):
 
   def testTaskTypeNotFound(self):
     cluster_spec = {}
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "`task_type` 'worker' not found in cluster_spec."):
       multi_worker_util.worker_count(cluster_spec, task_type="worker")
 
@@ -145,7 +145,7 @@ class NumWorkersTest(test.TestCase):
         "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
     }
     # A "ps" job shouldn't call this method.
-    with self.assertRaisesRegexp(ValueError, "Unexpected `task_type` 'ps'"):
+    with self.assertRaisesRegex(ValueError, "Unexpected `task_type` 'ps'"):
       multi_worker_util.worker_count(cluster_spec, task_type="ps")
 
 
@@ -187,16 +187,16 @@ class IdInClusterTest(test.TestCase):
 
   def testPsId(self):
     cluster_spec = {"chief": ["127.0.0.1:1234"], "ps": ["127.0.0.1:7566"]}
-    with self.assertRaisesRegexp(ValueError,
-                                 "There is no id for task_type 'ps'"):
+    with self.assertRaisesRegex(ValueError,
+                                "There is no id for task_type 'ps'"):
       multi_worker_util.id_in_cluster(cluster_spec, "ps", 0)
 
   def testMultipleChiefs(self):
     cluster_spec = {
         "chief": ["127.0.0.1:8258", "127.0.0.1:7566"],
     }
-    with self.assertRaisesRegexp(ValueError,
-                                 "There must be at most one 'chief' job."):
+    with self.assertRaisesRegex(ValueError,
+                                "There must be at most one 'chief' job."):
       multi_worker_util.id_in_cluster(cluster_spec, "chief", 0)
 
 
@@ -257,7 +257,7 @@ class ClusterSpecValidationTest(test.TestCase):
         "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
     }
     multi_worker_util._validate_cluster_spec(cluster_spec, "evaluator", 0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "`task_type` 'worker' not found in cluster_spec."):
       multi_worker_util._validate_cluster_spec(cluster_spec, "worker", 0)
 

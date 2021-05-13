@@ -66,7 +66,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
@@ -103,13 +103,13 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 
 def _disallow_undefs_into_loop(*values):
   """Ensures that all values in the state are defined when entering a loop."""
-  undefined = tuple(filter(special_values.is_undefined, values))
+  undefined = [v for v in values if isinstance(v, variables.Undefined)]
   if undefined:
     raise ValueError(
         '{} must be defined before the loop.'.format(
             ','.join(s.symbol_name for s in undefined)))
   for value in values:
-    if special_values.is_undefined_return(value):
+    if isinstance(value, variables.UndefinedReturnValue):
       # Assumption: the loop will only capture the variable which tracks the
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
@@ -144,8 +144,8 @@ def _verify_single_loop_var(
   if isinstance(exit_, (bool, int, float, str)):
     exit_ = ops.convert_to_tensor_v2(exit_)
 
-  if (not tensor_util.is_tensor(entry) or
-      not tensor_util.is_tensor(exit_)):
+  if (not tensor_util.is_tf_type(entry) or
+      not tensor_util.is_tf_type(exit_)):
     return
 
   # TODO(mdan): Properly account for CompositeTensors.
@@ -228,8 +228,8 @@ def _verify_single_cond_var(name, body_var, orelse_var):
   if isinstance(orelse_var, (bool, int, float, str)):
     orelse_var = ops.convert_to_tensor_v2(orelse_var)
 
-  if (not tensor_util.is_tensor(body_var) or
-      not tensor_util.is_tensor(orelse_var)):
+  if (not tensor_util.is_tf_type(body_var) or
+      not tensor_util.is_tf_type(orelse_var)):
     return
 
   # TODO(mdan): Properly account for CompositeTensors.
@@ -325,7 +325,7 @@ def for_stmt(iter_,
   Returns:
     Tuple containing the final state.
   """
-  if tensor_util.is_tensor(iter_):
+  if tensor_util.is_tf_type(iter_):
     if tensors.is_range_tensor(iter_):
       return _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
                                 init_vars, basic_symbol_names,
@@ -590,7 +590,7 @@ def _tf_iterator_for_stmt(itr, extra_test, body, get_state, set_state,
 
   def while_body(has_next, *loop_vars):
     """Main loop body."""
-    opt_iterate = iterator_ops.get_next_as_optional(itr)
+    opt_iterate = itr.get_next_as_optional()
     has_next = opt_iterate.has_value()
 
     if not init_vars:
@@ -1129,7 +1129,7 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
       results_tuple = results
     else:
       results_tuple = results,
-    undefined = tuple(filter(special_values.is_undefined, results_tuple))
+    undefined = [v for v in results_tuple if isinstance(v, variables.Undefined)]
     if undefined:
       raise ValueError(
           'The following symbols must also be initialized in the {} branch: {}.'
@@ -1138,7 +1138,7 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
                                tuple(s.symbol_name for s in undefined)))
 
     for result in results_tuple:
-      if special_values.is_undefined_return(result):
+      if isinstance(result, variables.UndefinedReturnValue):
         raise ValueError(
             'A value must also be returned from the {} branch. If a value is '
             'returned from one branch of a conditional a value must be '

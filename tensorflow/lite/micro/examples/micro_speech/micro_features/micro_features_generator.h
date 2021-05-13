@@ -26,7 +26,7 @@ TfLiteStatus InitializeMicroFeatures(tflite::ErrorReporter* error_reporter);
 // feeding into a neural network.
 TfLiteStatus GenerateMicroFeatures(tflite::ErrorReporter* error_reporter,
                                    const int16_t* input, int input_size,
-                                   int output_size, uint8_t* output,
+                                   int output_size, int8_t* output,
                                    size_t* num_samples_read);
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_MICRO_FEATURES_MICRO_FEATURES_GENERATOR_H_

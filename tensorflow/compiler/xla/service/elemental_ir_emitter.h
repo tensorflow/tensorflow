@@ -17,12 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 
 #include <unordered_map>
+#include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,22 +38,14 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   using HloToElementGeneratorMap =
       std::unordered_map<const HloInstruction*, llvm_ir::ElementGenerator>;
 
-  ElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                     llvm::Module* module, llvm::IRBuilder<>* b)
-      : b_(b), module_(module), hlo_module_config_(hlo_module_config) {}
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b)
+      : b_(b), module_(module) {}
 
   virtual ~ElementalIrEmitter() = default;
 
-  virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
-                                             llvm::Value* operand_value);
-
-  virtual StatusOr<llvm::Value*> EmitBinaryOp(const HloInstruction* op,
-                                              llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value);
-
   // Returns a function to generate an element of the output of `hlo`, given a
   // map of functions to generate elements of its operands.
-  virtual llvm_ir::ElementGenerator MakeElementGenerator(
+  llvm_ir::ElementGenerator MakeElementGenerator(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator);
 
@@ -61,6 +57,27 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Module* module() { return module_; }
 
  protected:
+  virtual llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
+      const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {
+    return index.SourceIndexOfBitcast(hlo->shape(), hlo->operand(0)->shape(),
+                                      b_);
+  }
+
+  virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
+                                                   llvm::Value* lhs_value,
+                                                   llvm::Value* rhs_value);
+
+  virtual llvm::Value* EmitExtractReal(llvm::Value* value);
+  virtual llvm::Value* EmitExtractImag(llvm::Value* value);
+
+ private:
+  virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
+                                             llvm::Value* operand_value);
+
+  virtual StatusOr<llvm::Value*> EmitBinaryOp(const HloInstruction* op,
+                                              llvm::Value* lhs_value,
+                                              llvm::Value* rhs_value);
+
   virtual StatusOr<llvm::Value*> EmitIntegerUnaryOp(const HloInstruction* op,
                                                     llvm::Value* operand_value);
 
@@ -81,25 +98,25 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                  bool is_signed);
   llvm::Value* EmitIntegerRemainder(llvm::Value* lhs, llvm::Value* rhs,
                                     bool is_signed);
+  llvm::Value* EmitIntegerPow(llvm::Value* lhs, llvm::Value* rhs,
+                              bool is_signed);
 
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value,
                                                      bool is_signed);
 
-  virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
-                                                   llvm::Value* lhs_value,
-                                                   llvm::Value* rhs_value);
-
   virtual StatusOr<llvm::Value*> EmitComplexBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value);
 
   virtual llvm::Value* EmitFloatMax(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name);
 
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name);
 
   llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
@@ -108,12 +125,16 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                bool is_signed);
 
   virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                           llvm::Value* lhs, llvm::Value* rhs);
+                                           llvm::Value* lhs, llvm::Value* rhs,
+                                           absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                          llvm::Value* value);
+
+  virtual StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
                                           llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
@@ -129,13 +150,15 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                          llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                         llvm::Value* value);
+                                         llvm::Value* value,
+                                         absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                            llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs);
+                                         llvm::Value* lhs, llvm::Value* rhs,
+                                         absl::string_view name);
 
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
@@ -159,16 +182,26 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                  PrimitiveType prim_type,
                                                  llvm::Value* operand_value);
 
+  virtual StatusOr<llvm::Value*> EmitComplexCbrt(const HloInstruction* op,
+                                                 PrimitiveType prim_type,
+                                                 llvm::Value* operand_value);
+
   virtual StatusOr<llvm::Value*> EmitComplexRsqrt(const HloInstruction* op,
                                                   PrimitiveType prim_type,
                                                   llvm::Value* operand_value);
 
-  virtual llvm::Value* EmitExtractReal(llvm::Value* value);
-  virtual llvm::Value* EmitExtractImag(llvm::Value* value);
+  StatusOr<llvm::Value*> EmitAccumResult(
+      absl::Span<llvm::Value* const> accumulator_addrs,
+      llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic);
 
   // Composes a complex struct. imag may be nullptr for simple cast operations.
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
+
+  // Emit `accumulator + lhs * rhs` for the given primitive type.
+  llvm::Value* EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
+                          llvm::Value* accumulator,
+                          xla::PrimitiveType primitive_type);
 
   // Identifier of the thread unique among all threads on the device
   virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
@@ -213,19 +246,45 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& dot_result_index);
 
-  llvm::IRBuilder<>* const b_;
+  virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name) = 0;
 
-  llvm::Module* module_;
+  StatusOr<llvm::Value*> EmitElementalMap(
+      const HloMapInstruction* map_instr,
+      absl::Span<llvm::Value* const> elemental_operands);
 
-  // The HloModuleConfig which gathers all settings and values which affect the
-  // compiled executable outside of the HLO code itself.
-  const HloModuleConfig& hlo_module_config_;
+  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+      const HloReduceWindowInstruction* reduce_window,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generators,
+      const llvm_ir::IrArray::Index& index);
 
- private:
+  StatusOr<llvm::Value*> EmitElementalReduce(
+      const HloReduceInstruction* reduce,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generators,
+      const llvm_ir::IrArray::Index& index);
+
+  virtual StatusOr<llvm::Value*> EmitConvolution(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index);
+
   // Computes the complex power function, returns (a + i*b)^(c + i*d).
   StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
                                           llvm::Value* a, llvm::Value* b,
                                           llvm::Value* c, llvm::Value* d);
+
+  // Evaluates a polynomial using Horner's method.
+  StatusOr<llvm::Value*> EvaluatePolynomial(
+      llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
+
+  virtual bool fast_min_max() = 0;
+
+  llvm::IRBuilder<>* const b_;
+
+  llvm::Module* module_;
 };
 
 }  // namespace xla

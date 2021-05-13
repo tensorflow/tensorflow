@@ -64,7 +64,7 @@ namespace toco {
   // Wire up arrays, constructing a new intermediate array to connect the
   // op to its new unfused activation function.
   ac_op->outputs = op->outputs;
-  const string& tmp_array_name =
+  const std::string& tmp_array_name =
       AvailableArrayName(*model, op->outputs[0] + "_unfused");
   CHECK(!model->HasArray(tmp_array_name));
 

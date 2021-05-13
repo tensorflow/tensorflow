@@ -94,7 +94,7 @@ TEST_F(RemoveSuccessiveTransposeTest, RemoveTranspose) {
   // Creating a model.
   CreateGraph({1, 0}, {1, 0});
 
-  toco::RemoveSuccesiveTranspose transformation;
+  toco::RemoveSuccessiveTranspose transformation;
   bool modified;
   ASSERT_TRUE(transformation.Run(model_.get(), /*op_index=*/1, &modified).ok());
   EXPECT_TRUE(modified);
@@ -109,7 +109,7 @@ TEST_F(RemoveSuccessiveTransposeTest, DontRemoveNotIdentityTranspose) {
   // Creating a model.
   CreateGraph({0, 2, 1}, {1, 0, 2});
 
-  toco::RemoveSuccesiveTranspose transformation;
+  toco::RemoveSuccessiveTranspose transformation;
   bool modified;
   ASSERT_TRUE(transformation.Run(model_.get(), /*op_index=*/1, &modified).ok());
   EXPECT_FALSE(modified);
@@ -139,7 +139,7 @@ TEST_F(RemoveSuccessiveTransposeTest, DontRemoveTransposeOutputUnused) {
   transpose2_op->outputs = {"InputTransposeTranspose"};
   model_->operators.push_back(std::unique_ptr<toco::Operator>(transpose2_op));
 
-  toco::RemoveSuccesiveTranspose transformation;
+  toco::RemoveSuccessiveTranspose transformation;
   bool modified;
   ASSERT_TRUE(transformation.Run(model_.get(), /*op_index=*/1, &modified).ok());
   EXPECT_FALSE(modified);

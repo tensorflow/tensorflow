@@ -47,11 +47,11 @@ namespace {
 // Since these nodes are connected to a Concatenate node, it makes sure the
 // axis value input of the Concatenate operator is 0.
 void FilterPartitionedConstNodes(
-    const string& const_pattern,
+    const std::string& const_pattern,
     const std::vector<const NodeDef*>& cluster_nodes,
     std::vector<const NodeDef*>* const_node_parts) {
   for (const NodeDef* node : cluster_nodes) {
-    string node_name_to_upper = node->name();
+    std::string node_name_to_upper = node->name();
     std::transform(node_name_to_upper.begin(), node_name_to_upper.end(),
                    node_name_to_upper.begin(), ::toupper);
     if (StrContains(node->name(), const_pattern) && node->op() == "Const") {
@@ -66,11 +66,11 @@ void FilterPartitionedConstNodes(
       }
     }
   }
-  sort(const_node_parts->begin(), const_node_parts->end(),
-       [](const NodeDef* a, const NodeDef* b) {
-         return (a->name().compare(b->name()) < 0 &&
-                 (a->name().size() < b->name().size()));
-       });
+  std::sort(const_node_parts->begin(), const_node_parts->end(),
+            [](const NodeDef* a, const NodeDef* b) {
+              return (a->name().compare(b->name()) < 0 &&
+                      (a->name().size() < b->name().size()));
+            });
 }
 
 }  // namespace
@@ -97,7 +97,7 @@ int SvdfCluster::InferFilterRank() {
 }
 
 void SvdfCluster::CreateNodes() {
-  for (const string& const_pattern : const_node_patterns_) {
+  for (const std::string& const_pattern : const_node_patterns_) {
     CreateConstNode(const_pattern);
   }
   std::unique_ptr<tensorflow::NodeDef> svdf_node(new NodeDef);
@@ -110,14 +110,14 @@ void SvdfCluster::CreateNodes() {
 
   // Add the rest of the inputs to Svdf cell: weights and bias.
   CHECK(new_nodes_.size() == 3 || new_nodes_.size() == 2);
-  string* weights_feature_input = svdf_node->add_input();
-  string* weights_time_input = svdf_node->add_input();
-  string* bias_input;
+  std::string* weights_feature_input = svdf_node->add_input();
+  std::string* weights_time_input = svdf_node->add_input();
+  std::string* bias_input;
   if (new_nodes_.size() == 3) {
     bias_input = svdf_node->add_input();
   }
   for (const std::unique_ptr<tensorflow::NodeDef>& node : new_nodes_) {
-    const string node_name = node->name();
+    const std::string node_name = node->name();
     if (StrContains(node_name, "SVDF_weights_feature")) {
       *weights_feature_input = node_name;
     } else if (StrContains(node_name, "SVDF_weights_time")) {
@@ -136,7 +136,7 @@ void SvdfCluster::CreateNodes() {
   CHECK_GT(rank, 0);
 
   // Add Svdf activation and rank.
-  string activation_function =
+  std::string activation_function =
       StrContains(outputs_[0], "Relu") ? "Relu" : "None";
   (*svdf_node->mutable_attr())["ActivationFunction"].set_s(activation_function);
   (*svdf_node->mutable_attr())["Rank"].set_i(rank);
@@ -145,7 +145,7 @@ void SvdfCluster::CreateNodes() {
   new_nodes_.push_back(std::move(svdf_node));
 }
 
-void SvdfCluster::CreateConstNode(const string& const_pattern) {
+void SvdfCluster::CreateConstNode(const std::string& const_pattern) {
   // Find the nodes with pattern like: "const_pattern"/part_xxx of type Const.
   std::vector<const NodeDef*> const_node_parts;
   FilterPartitionedConstNodes(const_pattern, nodes_, &const_node_parts);
@@ -236,15 +236,15 @@ void SvdfCluster::MaybeMergeConstNodes(
 
     // Set the tensor attributes.
     allocated_tensor->set_tensor_content(
-        string(reinterpret_cast<const char*>(transposed_tensor.get()),
-               allocated_content_flat_size));
+        std::string(reinterpret_cast<const char*>(transposed_tensor.get()),
+                    allocated_content_flat_size));
   } else {
     tensor_shape_dim0->set_size(dim0_size);
 
     // Set the tensor attributes.
     allocated_tensor->set_tensor_content(
-        string(reinterpret_cast<const char*>(allocated_content.get()),
-               allocated_content_flat_size));
+        std::string(reinterpret_cast<const char*>(allocated_content.get()),
+                    allocated_content_flat_size));
   }
 }
 
@@ -252,21 +252,21 @@ void SvdfCluster::MaybeMergeConstNodes(
 
 std::unique_ptr<Cluster> SvdfClusterFactory::CreateCluster(
     const NodeDef& node, const GraphDef& graph_def) const {
-  std::vector<string> node_patterns = {"SVDF_weights_feature",
-                                       "SVDF_weights_time", "SVDF_bias"};
+  std::vector<std::string> node_patterns = {"SVDF_weights_feature",
+                                            "SVDF_weights_time", "SVDF_bias"};
 
-  string node_name_to_upper = node.name();
+  std::string node_name_to_upper = node.name();
   std::transform(node_name_to_upper.begin(), node_name_to_upper.end(),
                  node_name_to_upper.begin(), ::toupper);
   std::unique_ptr<SvdfCluster> cluster = nullptr;
-  if (node_name_to_upper.find("SVDF", 0) != string::npos) {
+  if (node_name_to_upper.find("SVDF", 0) != std::string::npos) {
     size_t weights_pos = node.name().find(node_patterns[0]);
-    if (weights_pos != string::npos) {
+    if (weights_pos != std::string::npos) {
       // Assuming the node name has a pattern like:
       // "SOMESTRING1/CELLNAME/SEARCH_PATTERN/SOMESTRING2", we use
       // CELLNAME as the cluster name.
-      size_t cell_pos = node.name().rfind("/", weights_pos - 2) + 1;
-      string cell_name =
+      size_t cell_pos = node.name().rfind('/', weights_pos - 2) + 1;
+      std::string cell_name =
           node.name().substr(cell_pos, weights_pos - cell_pos - 1);
       cluster = std::unique_ptr<SvdfCluster>(new SvdfCluster);
       cluster->SetName(cell_name);
@@ -274,7 +274,7 @@ std::unique_ptr<Cluster> SvdfClusterFactory::CreateCluster(
       cluster->SetGraphDefInfo(&graph_def);
       CHECK(cluster->FindClusterInputsAndOutputs());
 
-      for (const string& const_pattern : node_patterns) {
+      for (const std::string& const_pattern : node_patterns) {
         cluster->AddConstNodePattern(const_pattern);
       }
     }

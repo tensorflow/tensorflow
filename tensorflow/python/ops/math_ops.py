@@ -70,6 +70,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import numpy as np
 import six
 from six.moves import builtins
@@ -82,8 +83,10 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -98,16 +101,140 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+
+np_dtypes = LazyLoader(
+    "np_dtypes", globals(),
+    "tensorflow.python.ops.numpy_ops.np_dtypes")
+
+
 # Aliases for some automatically-generated names.
-linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
+
+
+@tf_export("linspace", v1=["lin_space", "linspace"])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints("lin_space")
+def linspace_nd(start, stop, num, name=None, axis=0):
+  r"""Generates evenly-spaced values in an interval along a given axis.
+
+  A sequence of `num` evenly-spaced values are generated beginning at `start`
+  along a given `axis`.
+  If `num > 1`, the values in the sequence increase by
+  `(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
+  If `num <= 0`, `ValueError` is raised.
+
+  Matches
+  [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s
+  behaviour
+  except when `num == 0`.
+
+  For example:
+
+  ```
+  tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+  ```
+
+  `Start` and `stop` can be tensors of arbitrary size:
+
+  >>> tf.linspace([0., 5.], [10., 40.], 5, axis=0)
+  <tf.Tensor: shape=(5, 2), dtype=float32, numpy=
+  array([[ 0.  ,  5.  ],
+         [ 2.5 , 13.75],
+         [ 5.  , 22.5 ],
+         [ 7.5 , 31.25],
+         [10.  , 40.  ]], dtype=float32)>
+
+  `Axis` is where the values will be generated (the dimension in the
+  returned tensor which corresponds to the axis will be equal to `num`)
+
+  >>> tf.linspace([0., 5.], [10., 40.], 5, axis=-1)
+  <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
+  array([[ 0.  ,  2.5 ,  5.  ,  7.5 , 10.  ],
+         [ 5.  , 13.75, 22.5 , 31.25, 40.  ]], dtype=float32)>
+
+
+
+  Args:
+    start: A `Tensor`. Must be one of the following types: `bfloat16`,
+      `float32`, `float64`. N-D tensor. First entry in the range.
+    stop: A `Tensor`. Must have the same type and shape as `start`. N-D tensor.
+      Last entry in the range.
+    num: A `Tensor`. Must be one of the following types: `int32`, `int64`. 0-D
+      tensor. Number of values to generate.
+    name: A name for the operation (optional).
+    axis: Axis along which the operation is performed (used only when N-D
+      tensors are provided).
+
+  Returns:
+    A `Tensor`. Has the same type as `start`.
+  """
+
+  with ops.name_scope(name, "linspace", [start, stop]):
+    start = ops.convert_to_tensor(start, name="start")
+    # stop must be convertible to the same dtype as start
+    stop = ops.convert_to_tensor(stop, name="stop", dtype=start.dtype)
+    num_int = array_ops.convert_to_int_tensor(num, name="num")
+    num = cast(num_int, dtype=start.dtype)
+
+    broadcast_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(start), array_ops.shape(stop))
+    start = array_ops.broadcast_to(start, broadcast_shape)
+    stop = array_ops.broadcast_to(stop, broadcast_shape)
+
+    expanded_start = array_ops.expand_dims(start, axis=axis)
+    expanded_stop = array_ops.expand_dims(stop, axis=axis)
+
+    shape = array_ops.shape(expanded_start)
+    ndims = array_ops.shape(shape)[0]
+
+    axis = array_ops.where_v2(axis >= 0, axis, ndims + axis)
+
+    # The purpose is to avoid having negative values when repeating.
+    num_fill = gen_math_ops.maximum(num_int - 2, 0)
+    # To avoid having negative values in the range or zero division
+    # the result is sliced in the end so a correct result is returned for
+    # num == 1, and num == 0.
+    n_steps = gen_math_ops.maximum(num_int - 1, 1)
+    delta = (expanded_stop - expanded_start) / cast(n_steps,
+                                                    expanded_stop.dtype)
+    # Re-cast tensors as delta.
+    expanded_start = cast(expanded_start, delta.dtype)
+    expanded_stop = cast(expanded_stop, delta.dtype)
+    # If num < 0, we will throw exception in the range
+    # otherwise use the same div for delta
+    range_end = array_ops.where_v2(num_int >= 0, n_steps, -1)
+    # Even though range supports an output dtype, its limited
+    # (e.g. doesn't support half at the moment).
+    desired_range = cast(range(1, range_end, dtype=dtypes.int64), delta.dtype)
+    mask = gen_math_ops.equal(axis, range(ndims))
+    # desired_range_shape is [1. 1. 1. ... 1. num_fill 1. 1. ... 1.], where the
+    # index of num_fill is equal to axis.
+    desired_range_shape = array_ops.where_v2(mask, num_fill, 1)
+    desired_range = array_ops.reshape(desired_range, desired_range_shape)
+
+    res = expanded_start + delta * desired_range
+
+    # Add the start and endpoints to the result, and slice out the desired
+    # portion.
+    all_tensors = (expanded_start, res, expanded_stop)
+    concatenated = array_ops.concat(all_tensors, axis=axis)
+    begin = array_ops.zeros_like(shape)
+    size = array_ops.where_v2(mask, num_int, shape)
+
+    return array_ops.slice(concatenated, begin, size)
+
+
+linspace = linspace_nd
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
-tf_export(v1=["arg_max"])(arg_max)
-tf_export(v1=["arg_min"])(arg_min)
+tf_export(v1=["arg_max"])(dispatch.add_dispatch_support(arg_max))
+tf_export(v1=["arg_min"])(dispatch.add_dispatch_support(arg_min))
 
 
 # This is set by resource_variable_ops.py. It is included in this way since
@@ -126,6 +253,7 @@ def _set_doc(doc):
 
 # pylint: disable=redefined-builtin
 @tf_export(v1=["math.argmax", "argmax"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -142,10 +270,11 @@ def argmax(input,
 
 
 @tf_export("math.argmax", "argmax", v1=[])
+@dispatch.add_dispatch_support
 def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the largest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  In case of identity returns the smallest index.
 
   For example:
 
@@ -158,6 +287,9 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   <tf.Tensor: shape=(5,), dtype=int64, numpy=array([2, 2, 0, 2, 2])>
   >>> tf.math.argmax(B, 1)
   <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 1])>
+  >>> C = tf.constant([0, 0, 0, 0])
+  >>> tf.math.argmax(C) # Returns smallest index in case of ties
+  <tf.Tensor: shape=(), dtype=int64, numpy=0>
 
   Args:
     input: A `Tensor`.
@@ -175,6 +307,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
 
 @tf_export(v1=["math.argmin", "argmin"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -191,10 +324,11 @@ def argmin(input,
 
 
 @tf_export("math.argmin", "argmin", v1=[])
+@dispatch.add_dispatch_support
 def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the smallest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  Returns the smallest index in case of ties.
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
@@ -243,9 +377,18 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. For
-  a complex number \\(a + bj\\), its absolute value is computed as \\(\sqrt{a^2
-  + b^2}\\).  For example:
+  a complex number \\(a + bj\\), its absolute value is computed as
+  \\(\sqrt{a^2 + b^2}\\).
 
+  For example:
+
+  >>> # real number
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.abs(x)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([2.25, 3.25], dtype=float32)>
+
+  >>> # complex number
   >>> x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
   >>> tf.abs(x)
   <tf.Tensor: shape=(2, 1), dtype=float64, numpy=
@@ -330,6 +473,10 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    # We do conversion here to make sure at least x is a tensor.
+    if not tensor_util.is_tf_type(x):
+      dtype = y.dtype.base_dtype if tensor_util.is_tf_type(y) else None
+      x = ops.convert_to_tensor(x, dtype=dtype)
     return x / y
 
 
@@ -350,7 +497,7 @@ def multiply(x, y, name=None):
   >>> tf.math.multiply(7,6)
   <tf.Tensor: shape=(), dtype=int32, numpy=42>
 
-  If `x.shape` is not thes same as `y.shape`, they will be broadcast to a
+  If `x.shape` is not the same as `y.shape`, they will be broadcast to a
   compatible shape. (More about broadcasting
   [here](https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).)
 
@@ -362,6 +509,8 @@ def multiply(x, y, name=None):
   <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
   array([[1., 1.],
        [1., 1.]], dtype=float32)>
+
+  The reduction version of this elementwise operation is `tf.math.reduce_prod`
 
   Args:
     x: A Tensor. Must be one of the following types: `bfloat16`,
@@ -376,7 +525,7 @@ def multiply(x, y, name=None):
 
   Raises:
 
-   * InvalidArgumentError: When `x` and `y` have incomptatible shapes or types.
+   * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
   return gen_math_ops.mul(x, y, name)
@@ -400,7 +549,7 @@ def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
 
 
-subtract.__doc__ = gen_math_ops.sub.__doc__.replace("`Sub`", "`tf.subtract`")
+subtract.__doc__ = gen_math_ops.sub.__doc__
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -441,12 +590,19 @@ def _neg(x, name=None):
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
+@dispatch.add_dispatch_support
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
-  Intended for use in gradient code which might deal with `IndexedSlices`
-  objects, which are easy to multiply by a scalar but more expensive to
-  multiply with arbitrary tensors.
+  This is a special case of `tf.math.multiply`, where the first value must be a
+  `scalar`. Unlike the general form of `tf.math.multiply`, this is operation is
+  guaranteed to be efficient for `tf.IndexedSlices`.
+
+  >>> x = tf.reshape(tf.range(30, dtype=tf.float32), [10, 3])
+  >>> with tf.GradientTape() as g:
+  ...   g.watch(x)
+  ...   y = tf.gather(x, [1, 2])  # IndexedSlices
+  ...   z = tf.math.scalar_mul(10.0, y)
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
@@ -472,7 +628,33 @@ def scalar_mul(scalar, x, name=None):
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
 
 
+@tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.add_dispatch_support
+def softplus(features, name=None):
+  """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
+
+  `softplus` is a smooth approximation of `relu`. Like `relu`, `softplus` always
+  takes on positive values.
+
+  <img style="width:100%" src="https://www.tensorflow.org/images/softplus.png">
+
+  Example:
+
+  >>> import tensorflow as tf
+  >>> tf.math.softplus(tf.range(0, 2, dtype=tf.float32)).numpy()
+  array([0.6931472, 1.3132616], dtype=float32)
+
+  Args:
+    features: `Tensor`
+    name: Optional: name to associate with this operation.
+  Returns:
+    `Tensor`
+  """
+  return gen_nn_ops.softplus(features, name)
+
+
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@dispatch.add_dispatch_support
 @_set_doc(scalar_mul.__doc__)
 def scalar_mul_v2(scalar, x, name=None):
   with ops.name_scope(name, "scalar_mul", [x]) as name:
@@ -556,20 +738,27 @@ def complex(real, imag, name=None):
 @tf_export("math.sign", "sign")
 @dispatch.add_dispatch_support
 def sign(x, name=None):
-  """Returns an element-wise indication of the sign of a number.
+  r"""Returns an element-wise indication of the sign of a number.
 
-  y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+  `y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0`.
 
-  For complex numbers, y = sign(x) = x / |x| if x != 0, otherwise y = 0.
+  For complex numbers, `y = sign(x) = x / |x| if x != 0, otherwise y = 0`.
 
   Example usage:
 
+  >>> # real number
   >>> tf.math.sign([0., 2., -3.])
-  <tf.Tensor: ... numpy=array([ 0.,  1., -1.], dtype=float32)>
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([ 0.,  1., -1.], dtype=float32)>
+
+  >>> # complex number
+  >>> tf.math.sign([1 + 1j, 0 + 0j])
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([0.70710678+0.70710678j, 0.        +0.j        ])>
 
   Args:
    x: A Tensor. Must be one of the following types: bfloat16, half, float32,
-      float64, int32, int64, complex64, complex128.
+     float64, int32, int64, complex64, complex128.
    name: A name for the operation (optional).
 
   Returns:
@@ -579,7 +768,7 @@ def sign(x, name=None):
      tf.math.sign(x.values, ...), x.dense_shape).
   """
   x = ops.convert_to_tensor(x)
-  if x.dtype in (dtypes.complex64, dtypes.complex128):
+  if x.dtype.is_complex:
     return gen_math_ops.div_no_nan(
         x,
         cast(
@@ -593,6 +782,7 @@ def sign(x, name=None):
 
 
 @tf_export("math.real", v1=["math.real", "real"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
 @dispatch.add_dispatch_support
 def real(input, name=None):
@@ -627,6 +817,7 @@ def real(input, name=None):
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
 @dispatch.add_dispatch_support
 def imag(input, name=None):
@@ -660,6 +851,7 @@ def imag(input, name=None):
 
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
 @dispatch.add_dispatch_support
 def angle(input, name=None):
@@ -696,7 +888,8 @@ def angle(input, name=None):
     if input.dtype.is_complex:
       return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
     else:
-      return array_ops.zeros_like(input)
+      return array_ops.where(input < 0, np.pi * array_ops.ones_like(input),
+                             array_ops.zeros_like(input))
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
@@ -741,6 +934,12 @@ def cast(x, dtype, name=None):
   For example:
 
   >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  >>> tf.cast(x, tf.int32)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
+
+  Notice `tf.cast` has an alias `tf.dtypes.cast`:
+
+  >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
   >>> tf.dtypes.cast(x, tf.int32)
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
 
@@ -752,6 +951,8 @@ def cast(x, dtype, name=None):
   types to complex types (`complex64`, `complex128`), the imaginary part of the
   returned value is set to `0`. The handling of complex types here matches the
   behavior of numpy.
+
+  Note casting nan and inf values to integral types has undefined behavior.
 
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
@@ -828,6 +1029,7 @@ def saturate_cast(value, dtype, name=None):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_float"])
+@dispatch.add_dispatch_support
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -847,6 +1049,7 @@ def to_float(x, name="ToFloat"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_double"])
+@dispatch.add_dispatch_support
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -866,6 +1069,7 @@ def to_double(x, name="ToDouble"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int32"])
+@dispatch.add_dispatch_support
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -885,6 +1089,7 @@ def to_int32(x, name="ToInt32"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int64"])
+@dispatch.add_dispatch_support
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -904,6 +1109,7 @@ def to_int64(x, name="ToInt64"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_bfloat16"])
+@dispatch.add_dispatch_support
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -923,6 +1129,7 @@ def to_bfloat16(x, name="ToBFloat16"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex64"])
+@dispatch.add_dispatch_support
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -942,6 +1149,7 @@ def to_complex64(x, name="ToComplex64"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex128"])
+@dispatch.add_dispatch_support
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
@@ -961,10 +1169,48 @@ def to_complex128(x, name="ToComplex128"):
 
 ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
 ops.Tensor._override_operator("__abs__", abs)
-# __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
-# ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean
-# tensors and will throw a TypeError if used on nonboolean arrays
-ops.Tensor._override_operator("__invert__", gen_math_ops.logical_not)
+
+
+def _maybe_get_dtype(x):
+  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
+  # Don't put np.ndarray in this list, because np.result_type looks at the
+  # value (not just dtype) of np.ndarray to decide the result type.
+  if isinstance(x, numbers.Real):
+    return x
+  if isinstance(x, ops.Tensor):
+    return x.dtype.as_numpy_dtype
+  if isinstance(x, dtypes.DType):
+    return x.as_numpy_dtype
+  if isinstance(x, tensor_shape.TensorShape):
+    return np.int32
+  if isinstance(x, (list, tuple)):
+    raise ValueError("Got sequence {}".format(x))
+  return x
+
+
+def maybe_promote_tensors(*tensors, force_same_dtype=True):
+  """Promote tensors if numpy style promotion is enabled."""
+  if not tensors:
+    return tensors
+  if not ops._numpy_style_type_promotion:
+    if not force_same_dtype:
+      return tensors
+    promoted_tensors = []
+    promoted_tensors.append(tensors[0])
+    dtype = tensors[0].dtype.base_dtype
+    for tensor in tensors[1:]:
+      promoted_tensors.append(
+          ops.convert_to_tensor(tensor, dtype, name="x"))
+    return promoted_tensors
+  result_type = np_dtypes._result_type(
+      *[_maybe_get_dtype(x) for x in nest.flatten(tensors)])
+  def _promote_or_cast(x):
+    if isinstance(x, ops.Tensor):
+      x = cast(x, result_type)
+    else:
+      x = ops.convert_to_tensor(x, result_type)
+    return x
+  return [_promote_or_cast(x) for x in tensors]
 
 
 def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
@@ -981,21 +1227,30 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+      try:
+        # force_same_dtype=False to preserve existing TF behavior
+        # TODO(b/178860388): Figure out why binary_op_wrapper and
+        #   r_binary_op_wrapper use different force_same_dtype values.
+        x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
         return func(x, y, name=name)
-      elif not isinstance(y, sparse_tensor.SparseTensor):
-        try:
-          y = ops.convert_to_tensor_v2(
-              y, dtype_hint=x.dtype.base_dtype, name="y")
-        except TypeError:
-          # If the RHS is not a tensor, it might be a tensor aware object
-          # that can implement the operator with knowledge of itself
-          # and the tensor.
-          if hasattr(type(y), "__r%s__" % op_name):
-            return NotImplemented
-          else:
-            raise
-      return func(x, y, name=name)
+      except (TypeError, ValueError) as e:
+        # Even if dispatching the op failed, the RHS may be a tensor aware
+        # object that can implement the operator with knowledge of itself
+        # and the tensor.
+        # If the RHS is not tensor aware we still want to raise the
+        # original error from the LHS, because it may be more
+        # informative.
+        if hasattr(type(y), "__r%s__" % op_name):
+          try:
+            r_op = getattr(y, "__r%s__" % op_name)
+            out = r_op(x)
+            if out is NotImplemented:
+              raise
+            return out
+          except (TypeError, ValueError):
+            raise e
+        else:
+          raise
 
   def binary_op_wrapper_sparse(sp_x, y):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
@@ -1007,7 +1262,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+      # TODO(b/178860388): Figure out why binary_op_wrapper and
+      #   r_binary_op_wrapper use different force_same_dtype values.
+      y, x = maybe_promote_tensors(y, x)
       return func(x, y, name=name)
 
   # Propagate func.__doc__ to the wrappers
@@ -1075,7 +1332,7 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
 def _truediv_python3(x, y, name=None):
   with ops.name_scope(name, "truediv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
@@ -1156,6 +1413,7 @@ def truediv(x, y, name=None):
     date=None,
     instructions="Deprecated in favor of operator or tf.math.divide.")
 @tf_export(v1=["div"])
+@dispatch.add_dispatch_support
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -1179,10 +1437,18 @@ def div(x, y, name=None):
 
 
 @tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
-  """Computes a safe divide which returns 0 if the y is zero.
+  """Computes a safe divide which returns 0 if `y` (denominator) is zero.
+
+  For example:
+
+  >>> tf.constant(3.0) / 0.0
+  <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+  >>> tf.math.divide_no_nan(3.0, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1269,8 +1535,31 @@ truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
 
 
+@tf_export("__operators__.add", v1=[])
+@dispatch.add_dispatch_support
 def _add_dispatch(x, y, name=None):
-  """Dispatches to add for strings and add_v2 for all other types."""
+  """The operation invoked by the `Tensor.__add__` operator.
+
+    Purpose in the API:
+
+      This method is exposed in TensorFlow's API so that library developers
+      can register dispatching for `Tensor.__add__` to allow it to handle
+      custom composite tensors & other custom objects.
+
+      The API symbol is not intended to be called by users directly and does
+      appear in TensorFlow's generated documentation.
+
+  Args:
+    x: The left-hand side of the `+` operator.
+    y: The right-hand side of the `+` operator.
+    name: an optional name for the operation.
+
+  Returns:
+    The result of the elementwise `+` operation.
+  """
+  if not isinstance(y, ops.Tensor) and not isinstance(
+      y, sparse_tensor.SparseTensor):
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
@@ -1279,14 +1568,12 @@ def _add_dispatch(x, y, name=None):
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(y, ops.Tensor)
-  if is_tensor_y:
-    return gen_math_ops.mul(x, y, name=name)
-  else:
-    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+  if isinstance(y, sparse_tensor.SparseTensor):  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
+  else:
+    return multiply(x, y, name=name)
 
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
@@ -1300,10 +1587,10 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(subtract, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(_div_python2, "div")
-_OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
+_OverrideBinaryOperatorHelper(div, "div")
+_OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
@@ -1317,7 +1604,9 @@ def logical_xor(x, y, name="LogicalXor"):
 
   x ^ y = (x | y) & ~(x & y)
 
-  The operation works for the following input types:
+  Requires that `x` and `y` have the same shape or have
+  [broadcast-compatible](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  shapes. For example, `x` and `y` can be:
 
   - Two single elements of type `bool`
   - One `tf.Tensor` of type `bool` and one single `bool`, where the result will
@@ -1358,56 +1647,51 @@ def logical_xor(x, y, name="LogicalXor"):
       name=name)
 
 
-@tf_export("math.logical_and", "logical_and")
-@dispatch.add_dispatch_support
-def logical_and(x, y, name=None):
-  """Logical AND function.
-
-  The operation works for the following input types:
-
-  - Two single elements of type `bool`
-  - One `tf.Tensor` of type `bool` and one single `bool`, where the result will
-    be calculated by applying logical AND with the single element to each
-    element in the larger Tensor.
-  - Two `tf.Tensor` objects of type `bool` of the same shape. In this case,
-    the result will be the element-wise logical AND of the two input tensors.
-
-  Usage:
-
-  >>> a = tf.constant([True])
-  >>> b = tf.constant([False])
-  >>> tf.math.logical_and(a, b)
-  <tf.Tensor: shape=(1,), dtype=bool, numpy=array([False])>
-
-  >>> c = tf.constant([True])
-  >>> x = tf.constant([False, True, True, False])
-  >>> tf.math.logical_and(c, x)
-  <tf.Tensor: shape=(4,), dtype=bool, numpy=array([False,  True,  True, False])>
-
-  >>> y = tf.constant([False, False, True, True])
-  >>> z = tf.constant([False, True, False, True])
-  >>> tf.math.logical_and(y, z)
-  <tf.Tensor: shape=(4,), dtype=bool, numpy=array([False, False, False,  True])>
-
-  Args:
-      x: A `tf.Tensor` type bool.
-      y: A `tf.Tensor` of type bool.
-      name: A name for the operation (optional).
-
-  Returns:
-    A `tf.Tensor` of type bool with the same size as that of x or y.
-  """
-  return gen_math_ops.logical_and(x, y, name)
+def and_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_and(x, y, name)
+  return gen_bitwise_ops.bitwise_and(x, y)
 
 
-_OverrideBinaryOperatorHelper(gen_math_ops.logical_and, "and")
-_OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
-_OverrideBinaryOperatorHelper(logical_xor, "xor")
+def or_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_or(x, y, name)
+  return gen_bitwise_ops.bitwise_or(x, y)
 
-ops.Tensor._override_operator("__lt__", gen_math_ops.less)
-ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
-ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
-ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
+
+def xor_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return logical_xor(x, y, name)
+  return gen_bitwise_ops.bitwise_xor(x, y)
+
+
+def invert_(x, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_not(x, name=name)
+  return gen_bitwise_ops.invert(x, name=name)
+
+
+_OverrideBinaryOperatorHelper(and_, "and")
+_OverrideBinaryOperatorHelper(or_, "or")
+_OverrideBinaryOperatorHelper(xor_, "xor")
+ops.Tensor._override_operator("__invert__", invert_)
+
+
+def _promote_dtypes_decorator(fn):
+  def wrapper(x, y, *args, **kwargs):
+    x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+    return fn(x, y, *args, **kwargs)
+  return tf_decorator.make_decorator(fn, wrapper)
+
+
+ops.Tensor._override_operator("__lt__", _promote_dtypes_decorator(
+    gen_math_ops.less))
+ops.Tensor._override_operator("__le__", _promote_dtypes_decorator(
+    gen_math_ops.less_equal))
+ops.Tensor._override_operator("__gt__", _promote_dtypes_decorator(
+    gen_math_ops.greater))
+ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
+    gen_math_ops.greater_equal))
 
 
 @tf_export("math.equal", "equal")
@@ -1433,8 +1717,8 @@ def equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1469,8 +1753,8 @@ def not_equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1482,24 +1766,76 @@ def not_equal(x, y, name=None):
   return gen_math_ops.not_equal(x, y, name=name)
 
 
+@tf_export("__operators__.eq", v1=[])
+@dispatch.add_dispatch_support
 def tensor_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__eq__` operator.
+
+  Compares two tensors element-wise for equality if they are
+  broadcast-compatible; or returns False if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__eq__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `==` operator.
+    other: The right-hand side of the `==` operator.
+
+  Returns:
+    The result of the elementwise `==` operation, or `False` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g.building_function)):
+    self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
 
 
+@tf_export("__operators__.ne", v1=[])
+@dispatch.add_dispatch_support
 def tensor_not_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__ne__` operator.
+
+  Compares two tensors element-wise for inequality if they are
+  broadcast-compatible; or returns True if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.not_equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__ne__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `!=` operator.
+    other: The right-hand side of the `!=` operator.
+
+  Returns:
+    The result of the elementwise `!=` operation, or `True` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -1511,6 +1847,7 @@ ops.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
+@dispatch.add_dispatch_support
 def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
 
@@ -1583,9 +1920,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
                            key=dtype_hierarchy.index)
     else:
       inferred_dtype = dtype
-    # Always try perform a cast even start/limit/delta are already tensors.
-    # This will revole the case where start/limit/delta's original's dtype
-    # is different from provided dtype.
+    # Always try to perform a cast even when start/limit/delta are already
+    # tensors. This will resolve the case where start/limit/delta's original's
+    # dtype is different from provided dtype.
     start = cast(start, inferred_dtype)
     limit = cast(limit, inferred_dtype)
     delta = cast(delta, inferred_dtype)
@@ -1604,28 +1941,23 @@ if not six.PY2:
                                           _range_tensor_conversion_function)
 
 # Reduction operations
-def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
-  """Returns range(0, rank(x)) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _ReductionDims(x, axis):  # pylint: disable=invalid-name
+  """Returns range(0, rank(x)) if axis is None."""
   if axis is not None:
     return axis
   else:
-    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    x_rank = None
     if isinstance(x, ops.Tensor):
-      rank = x.shape.rank
-      if rank is not None:
-        return constant_op.constant(np.arange(rank, dtype=np.int32))
+      x_rank = x.shape.rank
     elif (isinstance(x, sparse_tensor.SparseTensor) and
           x.dense_shape.shape.is_fully_defined()):
-      rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
-      return constant_op.constant(np.arange(rank, dtype=np.int32))
-
-    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-    return range(0, array_ops.rank(x))
+      x_rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if x_rank:
+      return constant_op.constant(np.arange(x_rank, dtype=np.int32))
+    else:
+      # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+      return range(0, array_ops.rank(x))
 
 
 def _has_fully_defined_shape(tensor):
@@ -1642,6 +1974,7 @@ def _may_reduce_to_scalar(keepdims, axis, output):
 
 
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -1653,24 +1986,46 @@ def reduce_sum_v1(input_tensor,
                   keep_dims=None):
   """Computes the sum of elements across dimensions of a tensor.
 
+  This is the reduction operation for the elementwise `tf.math.add` op.
+
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  tf.reduce_sum(x)  # 6
-  tf.reduce_sum(x, 0)  # [2, 2, 2]
-  tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  tf.reduce_sum(x, [0, 1])  # 6
-  ```
+    >>> # x has a shape of (2, 3) (two rows and three columns):
+    >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+    >>> x.numpy()
+    array([[1, 1, 1],
+           [1, 1, 1]], dtype=int32)
+    >>> # sum all the elements
+    >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
+    >>> tf.reduce_sum(x).numpy()
+    6
+    >>> # reduce along the first dimension
+    >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+    >>> tf.reduce_sum(x, 0).numpy()
+    array([2, 2, 2], dtype=int32)
+    >>> # reduce along the second dimension
+    >>> # the result is [1, 1] + [1, 1] + [1, 1] = [3, 3]
+    >>> tf.reduce_sum(x, 1).numpy()
+    array([3, 3], dtype=int32)
+    >>> # keep the original dimensions
+    >>> tf.reduce_sum(x, 1, keepdims=True).numpy()
+    array([[3],
+           [3]], dtype=int32)
+    >>> # reduce along both dimensions
+    >>> # the result is 1 + 1 + 1 + 1 + 1 + 1 = 6
+    >>> # or, equivalently, reduce along rows, then reduce the resultant array
+    >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+    >>> # 2 + 2 + 2 = 6
+    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    6
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1703,30 +2058,52 @@ def reduce_sum_v1(input_tensor,
 def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the sum of elements across dimensions of a tensor.
 
+  This is the reduction operation for the elementwise `tf.math.add` op.
+
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  tf.reduce_sum(x)  # 6
-  tf.reduce_sum(x, 0)  # [2, 2, 2]
-  tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  tf.reduce_sum(x, [0, 1])  # 6
-  ```
+    >>> # x has a shape of (2, 3) (two rows and three columns):
+    >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+    >>> x.numpy()
+    array([[1, 1, 1],
+           [1, 1, 1]], dtype=int32)
+    >>> # sum all the elements
+    >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
+    >>> tf.reduce_sum(x).numpy()
+    6
+    >>> # reduce along the first dimension
+    >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+    >>> tf.reduce_sum(x, 0).numpy()
+    array([2, 2, 2], dtype=int32)
+    >>> # reduce along the second dimension
+    >>> # the result is [1, 1] + [1, 1] + [1, 1] = [3, 3]
+    >>> tf.reduce_sum(x, 1).numpy()
+    array([3, 3], dtype=int32)
+    >>> # keep the original dimensions
+    >>> tf.reduce_sum(x, 1, keepdims=True).numpy()
+    array([[3],
+           [3]], dtype=int32)
+    >>> # reduce along both dimensions
+    >>> # the result is 1 + 1 + 1 + 1 + 1 + 1 = 6
+    >>> # or, equivalently, reduce along rows, then reduce the resultant array
+    >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+    >>> # 2 + 2 + 2 = 6
+    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    6
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
-      rank(input_tensor))`.
+      rank(input_tensor)]`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
 
@@ -1748,20 +2125,21 @@ def reduce_sum_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
 
 
 @tf_export("math.reduce_euclidean_norm")
+@dispatch.add_dispatch_support
 def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the Euclidean norm of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -1790,6 +2168,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
+  keepdims = bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -1798,6 +2177,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.count_nonzero", "count_nonzero"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -1875,6 +2255,7 @@ def count_nonzero(input_tensor=None,
 
 
 @tf_export("math.count_nonzero", v1=[])
+@dispatch.add_dispatch_support
 def count_nonzero_v2(
     input,  # pylint: disable=redefined-builtin
     axis=None,
@@ -1942,6 +2323,7 @@ def count_nonzero_v2(
 
 
 @tf_export(v1=["math.reduce_mean", "reduce_mean"])
+@dispatch.add_dispatch_support
 def reduce_mean_v1(input_tensor,
                    axis=None,
                    keepdims=None,
@@ -1953,8 +2335,8 @@ def reduce_mean_v1(input_tensor,
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2015,8 +2397,8 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions are retained
-  with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2059,7 +2441,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
@@ -2068,28 +2450,30 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export("math.reduce_variance")
+@dispatch.add_dispatch_support
 def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the variance of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_variance(x)  # 1.25
-  tf.reduce_variance(x, 0)  # [1., 1.]
-  tf.reduce_variance(x, 1)  # [0.25,  0.25]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_variance(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.25>
+  >>> tf.math.reduce_variance(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], ...)>
+  >>> tf.math.reduce_variance(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.25, 0.25], ...)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2097,15 +2481,16 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.var
 
-  Please note that `np.var` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_variance` has an aggressive type inference from
-  `input_tensor`,
+  Please note `np.var` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_variance` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_variance"
@@ -2119,33 +2504,45 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
       square_of_mean = gen_math_ops.square(mean)
       return mean_of_square - square_of_mean
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    squared_deviations = gen_math_ops.square(input_tensor - means)
+    if means.dtype.is_integer:
+      raise TypeError("Input must be either real or complex")
+    diff = input_tensor - means
+    if diff.dtype.is_complex:
+      # For complex values we need to take the absolute value before squaring.
+      # This is achieved by multiplying with the conjugate.
+      real_dtype = diff.dtype.real_dtype
+      squared_deviations = gen_math_ops.real(
+          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
+    else:
+      squared_deviations = gen_math_ops.square(diff)
     return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
+@dispatch.add_dispatch_support
 def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the standard deviation of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_std(x)  # 1.1180339887498949
-  tf.reduce_std(x, 0)  # [1., 1.]
-  tf.reduce_std(x, 1)  # [0.5,  0.5]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_std(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.118034>
+  >>> tf.math.reduce_std(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], dtype=float32)>
+  >>> tf.math.reduce_std(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.5, 0.5], dtype=float32)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2153,14 +2550,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.std
 
-  Please note that `np.std` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_std` has an aggressive type inference from `input_tensor`,
+  Please note `np.std` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_std` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_std"
@@ -2172,7 +2571,9 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
 @dispatch.add_dispatch_support
 def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
-  """Computes the product of elements across dimensions of a tensor.
+  """Computes `tf.math.multiply` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.multiply` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
@@ -2181,6 +2582,17 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  For example:
+
+    >>> x = tf.constant([[1., 2.], [3., 4.]])
+    >>> tf.math.reduce_prod(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=24.>
+    >>> tf.math.reduce_prod(x, 0)
+    <tf.Tensor: shape=(2,), dtype=float32, numpy=array([3., 8.], dtype=float32)>
+    >>> tf.math.reduce_prod(x, 1)
+    <tf.Tensor: shape=(2,), dtype=float32, numpy=array([2., 12.],
+    dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2197,7 +2609,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.prod
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.prod(
@@ -2206,6 +2618,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_prod", "reduce_prod"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2215,15 +2628,28 @@ def reduce_prod_v1(input_tensor,
                    name=None,
                    reduction_indices=None,
                    keep_dims=None):
-  """Computes the product of elements across dimensions of a tensor.
+  """Computes `tf.math.multiply` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.multiply` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  For example:
+
+    >>> x = tf.constant([[1., 2.], [3., 4.]])
+    >>> tf.math.reduce_prod(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=24.>
+    >>> tf.math.reduce_prod(x, 0)
+    <tf.Tensor: shape=(2,), dtype=float32, numpy=array([3., 8.], dtype=float32)>
+    >>> tf.math.reduce_prod(x, 1)
+    <tf.Tensor: shape=(2,), dtype=float32, numpy=array([2., 12.],
+    dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2251,6 +2677,7 @@ def reduce_prod_v1(input_tensor,
 
 
 @tf_export(v1=["math.reduce_min", "reduce_min"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2260,15 +2687,37 @@ def reduce_min_v1(input_tensor,
                   name=None,
                   reduction_indices=None,
                   keep_dims=None):
-  """Computes the minimum of elements across dimensions of a tensor.
+  """Computes the `tf.math.minimum` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.minimum` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  Usage example:
+
+    >>> x = tf.constant([5, 1, 2, 4])
+    >>> tf.reduce_min(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
+    >>> x = tf.constant([-5, -1, -2, -4])
+    >>> tf.reduce_min(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=-5>
+    >>> x = tf.constant([4, float('nan')])
+    >>> tf.reduce_min(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('nan'), float('nan')])
+    >>> tf.reduce_min(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('-inf'), float('inf')])
+    >>> tf.reduce_min(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=-inf>
+
+  See the numpy docs for `np.amin` and `np.nanmin` behavior.
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
@@ -2282,10 +2731,6 @@ def reduce_min_v1(input_tensor,
 
   Returns:
     The reduced tensor.
-
-  @compatibility(numpy)
-  Equivalent to np.min
-  @end_compatibility
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis,
                                                 "reduction_indices",
@@ -2298,15 +2743,43 @@ def reduce_min_v1(input_tensor,
 @tf_export("math.reduce_min", "reduce_min", v1=[])
 @dispatch.add_dispatch_support
 def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
-  """Computes the minimum of elements across dimensions of a tensor.
+  """Computes the `tf.math.minimum` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.minimum` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  For example:
+
+  >>> a = tf.constant([
+  ...   [[1, 2], [3, 4]],
+  ...   [[1, 2], [3, 4]]
+  ... ])
+  >>> tf.reduce_min(a)
+  <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
+  Choosing a specific axis returns minimum element in the given axis:
+
+  >>> b = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> tf.reduce_min(b, axis=0)
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
+  >>> tf.reduce_min(b, axis=1)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 4], dtype=int32)>
+
+  Setting `keepdims` to `True` retains the dimension of `input_tensor`:
+
+  >>> tf.reduce_min(a, keepdims=True)
+  <tf.Tensor: shape=(1, 1, 1), dtype=int32, numpy=array([[[1]]], dtype=int32)>
+  >>> tf.math.reduce_min(a, axis=0, keepdims=True)
+  <tf.Tensor: shape=(1, 2, 2), dtype=int32, numpy=
+  array([[[1, 2],
+          [3, 4]]], dtype=int32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
@@ -2319,16 +2792,11 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
-  For example:
-    >>> a = tf.constant([[1, 2], [3, 4]])
-    >>> tf.reduce_min(a)
-    <tf.Tensor: shape=(), dtype=int32, numpy=1>
-
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
@@ -2337,6 +2805,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_max", "reduce_max"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2346,15 +2815,37 @@ def reduce_max_v1(input_tensor,
                   name=None,
                   reduction_indices=None,
                   keep_dims=None):
-  """Computes the maximum of elements across dimensions of a tensor.
+  """Computes `tf.math.maximum` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.maximum` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  Usage example:
+
+    >>> x = tf.constant([5, 1, 2, 4])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
+    >>> x = tf.constant([-5, -1, -2, -4])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=-1>
+    >>> x = tf.constant([4, float('nan')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('nan'), float('nan')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('-inf'), float('inf')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+
+  See the numpy docs for `np.amax` and `np.nanmax` behavior.
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
@@ -2368,10 +2859,6 @@ def reduce_max_v1(input_tensor,
 
   Returns:
     The reduced tensor.
-
-  @compatibility(numpy)
-  Equivalent to np.max
-  @end_compatibility
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis,
                                                 "reduction_indices",
@@ -2384,33 +2871,35 @@ def reduce_max_v1(input_tensor,
 @tf_export("math.reduce_max", "reduce_max", v1=[])
 @dispatch.add_dispatch_support
 def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
-  """Computes the maximum of elements across dimensions of a tensor.
+  """Computes `tf.math.maximum` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.maximum` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Usage example:
 
-  >>> x = tf.constant([5, 1, 2, 4])
-  >>> print(tf.reduce_max(x))
-  tf.Tensor(5, shape=(), dtype=int32)
-  >>> x = tf.constant([-5, -1, -2, -4])
-  >>> print(tf.reduce_max(x))
-  tf.Tensor(-1, shape=(), dtype=int32)
-  >>> x = tf.constant([4, float('nan')])
-  >>> print(tf.reduce_max(x))
-  tf.Tensor(4.0, shape=(), dtype=float32)
-  >>> x = tf.constant([float('nan'), float('nan')])
-  >>> print(tf.reduce_max(x))
-  tf.Tensor(-inf, shape=(), dtype=float32)
-  >>> x = tf.constant([float('-inf'), float('inf')])
-  >>> print(tf.reduce_max(x))
-  tf.Tensor(inf, shape=(), dtype=float32)
+    >>> x = tf.constant([5, 1, 2, 4])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
+    >>> x = tf.constant([-5, -1, -2, -4])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=-1>
+    >>> x = tf.constant([4, float('nan')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('nan'), float('nan')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=nan>
+    >>> x = tf.constant([float('-inf'), float('inf')])
+    >>> tf.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=float32, numpy=inf>
 
   See the numpy docs for `np.amax` and `np.nanmax` behavior.
 
@@ -2434,13 +2923,14 @@ def reduce_max_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._max(input_tensor, dims, keepdims, name=name))
 
 
 @tf_export(v1=["math.reduce_all", "reduce_all"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2450,24 +2940,27 @@ def reduce_all_v1(input_tensor,
                   name=None,
                   reduction_indices=None,
                   keep_dims=None):
-  """Computes the "logical and" of elements across dimensions of a tensor.
+  """Computes `tf.math.logical_and` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.logical_and` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_all(x)  # False
-  tf.reduce_all(x, 0)  # [False, False]
-  tf.reduce_all(x, 1)  # [True, False]
-  ```
+    >>> x = tf.constant([[True,  True], [False, False]])
+    >>> tf.math.reduce_all(x)
+    <tf.Tensor: shape=(), dtype=bool, numpy=False>
+    >>> tf.math.reduce_all(x, 0)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False, False])>
+    >>> tf.math.reduce_all(x, 1)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2494,27 +2987,30 @@ def reduce_all_v1(input_tensor,
   return reduce_all(input_tensor, axis, keepdims, name)
 
 
-@tf_export("reduce_all", "math.reduce_all", v1=[])
+@tf_export("math.reduce_all", "reduce_all", v1=[])
 @dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
-  """Computes the "logical and" of elements across dimensions of a tensor.
+  """Computes `tf.math.logical_and` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.logical_and` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_all(x)  # False
-  tf.reduce_all(x, 0)  # [False, False]
-  tf.reduce_all(x, 1)  # [True, False]
-  ```
+    >>> x = tf.constant([[True,  True], [False, False]])
+    >>> tf.math.reduce_all(x)
+    <tf.Tensor: shape=(), dtype=bool, numpy=False>
+    >>> tf.math.reduce_all(x, 0)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False, False])>
+    >>> tf.math.reduce_all(x, 1)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2531,7 +3027,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -2540,6 +3036,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_any", "reduce_any"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2549,24 +3046,27 @@ def reduce_any_v1(input_tensor,
                   name=None,
                   reduction_indices=None,
                   keep_dims=None):
-  """Computes the "logical or" of elements across dimensions of a tensor.
+  """Computes `tf.math.logical_or` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.logical_or` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_any(x)  # True
-  tf.reduce_any(x, 0)  # [True, True]
-  tf.reduce_any(x, 1)  # [True, False]
-  ```
+    >>> x = tf.constant([[True,  True], [False, False]])
+    >>> tf.reduce_any(x)
+    <tf.Tensor: shape=(), dtype=bool, numpy=True>
+    >>> tf.reduce_any(x, 0)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
+    >>> tf.reduce_any(x, 1)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2596,24 +3096,27 @@ def reduce_any_v1(input_tensor,
 @tf_export("math.reduce_any", "reduce_any", v1=[])
 @dispatch.add_dispatch_support
 def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
-  """Computes the "logical or" of elements across dimensions of a tensor.
+  """Computes `tf.math.logical_or` of elements across dimensions of a tensor.
+
+  This is the reduction operation for the elementwise `tf.math.logical_or` op.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_any(x)  # True
-  tf.reduce_any(x, 0)  # [True, True]
-  tf.reduce_any(x, 1)  # [True, False]
-  ```
+    >>> x = tf.constant([[True,  True], [False, False]])
+    >>> tf.reduce_any(x)
+    <tf.Tensor: shape=(), dtype=bool, numpy=True>
+    >>> tf.reduce_any(x, 0)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
+    >>> tf.reduce_any(x, 1)
+    <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2630,7 +3133,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
@@ -2639,6 +3142,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_logsumexp", "reduce_logsumexp"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2652,8 +3156,8 @@ def reduce_logsumexp_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2695,13 +3199,14 @@ def reduce_logsumexp_v1(input_tensor,
 
 
 @tf_export("math.reduce_logsumexp", "reduce_logsumexp", v1=[])
+@dispatch.add_dispatch_support
 def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2750,11 +3255,12 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             dims=reduce_dim))
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = gen_math_ops.add(result, my_max)
+    result = _add_dispatch(result, my_max, name=name)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("trace")
 @dispatch.add_dispatch_support
 def trace(x, name=None):
@@ -2764,7 +3270,7 @@ def trace(x, name=None):
   in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
   is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
 
-  `output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
+  `output[i, j, k, ..., l] = trace(x[i, j, k, ..., l, :, :])`
 
   For example:
 
@@ -2808,6 +3314,7 @@ def matmul(a,
            adjoint_b=False,
            a_is_sparse=False,
            b_is_sparse=False,
+           output_type=None,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
@@ -2816,7 +3323,8 @@ def matmul(a,
   and any further outer dimensions specify matching batch size.
 
   Both matrices must be of the same type. The supported types are:
-  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+  `bfloat16`, `float16`, `float32`, `float64`, `int32`, `int64`,
+  `complex64`, `complex128`.
 
   Either matrix can be transposed or adjointed (conjugated and transposed) on
   the fly by setting one of the corresponding flag to `True`. These are `False`
@@ -2895,12 +3403,15 @@ def matmul(a,
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.SparseTensor` multiplication.
+      for some support for `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.SparseTensor` multiplication.
+      for some support for `tf.sparse.SparseTensor` multiplication.
+    output_type: The output datatype if needed. Defaults to None in which case
+      the output_type is the same as input type. Currently only works when input
+      tensors are type int8 and output_type can be int32.
     name: Name for the operation (optional).
 
   Returns:
@@ -2917,7 +3428,10 @@ def matmul(a,
   Raises:
     ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
       `adjoint_b` are both set to `True`.
+    TypeError: If output_type is specified but the types of `a`, `b` and
+      `output_type` is not int8, int8 and int32.
   """
+
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
       raise ValueError("Only one of transpose_a and adjoint_a can be True.")
@@ -2928,10 +3442,10 @@ def matmul(a,
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
         a = ops.convert_to_tensor(a, name="a")
       if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
-        b = ops.convert_to_tensor(b, name="b")
+        b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
-      b = ops.convert_to_tensor(b, name="b")
+      b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
 
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
@@ -2940,6 +3454,13 @@ def matmul(a,
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
+
+    # TODO(b/178749687): remove this boolean and all related branches once the
+    # bridges are ready.
+    # batch_matmul_v3 is for when input type is different from output type.
+    use_batch_matmul_v3 = False
+    if output_type and (output_type != a.dtype or output_type != b.dtype):
+      use_batch_matmul_v3 = True
 
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
@@ -2951,8 +3472,12 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul_v2(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      if use_batch_matmul_v3:
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.batch_mat_mul_v2(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -2969,9 +3494,11 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
+    if (((a.dtype == dtypes.bfloat16 and b.dtype != dtypes.int8) or
+         (b.dtype == dtypes.bfloat16 and a.dtype != dtypes.int8)) and
         a.dtype != b.dtype):
-      # matmul currently doesn't handle mixed-precision inputs.
+      # matmul currently doesn't handle mixed-precision inputs other than
+      # fp16 * int8 which is supported in BatchMatMulV3.
       use_sparse_matmul = True
     if use_sparse_matmul:
       ret = sparse_matmul(
@@ -2989,11 +3516,18 @@ def matmul(a,
         ret = cast(ret, dtypes.bfloat16)
       return ret
     else:
-      return gen_math_ops.mat_mul(
-          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+      if use_batch_matmul_v3:
+        adjoint_a = adjoint_a or transpose_a
+        adjoint_b = adjoint_b or transpose_b
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.mat_mul(
+            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
 @tf_export("linalg.matvec")
+@dispatch.add_dispatch_support
 def matvec(a,
            b,
            transpose_a=False,
@@ -3092,11 +3626,19 @@ def matvec(a,
     return array_ops.squeeze(output, axis=-1)
 
 
-_OverrideBinaryOperatorHelper(matmul, "matmul")
+# TODO(b/178650720): Also support numpy-style type promotion in freestanding TF
+#   functions (e.g. tf.add).
+def matmul_wrapper(a, b, name=None):  # pylint: disable=missing-function-docstring
+  if ops._numpy_style_type_promotion:
+    return a._matmul(b)
+  return matmul(a, b, name=name)
+matmul_wrapper.__doc__ = matmul.__doc__
+_OverrideBinaryOperatorHelper(matmul_wrapper, "matmul")
 
 sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
     gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
+@dispatch.add_dispatch_support
 
 
 @ops.RegisterStatistics("MatMul", "flops")
@@ -3117,6 +3659,7 @@ def _calc_mat_mul_flops(graph, node):
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
 @ops.RegisterStatistics("BatchMatMulV2", "flops")
+@ops.RegisterStatistics("BatchMatMulV3", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
@@ -3191,6 +3734,86 @@ def _as_indexed_slices_list(inputs, optimize=True):
   return casted_outputs
 
 
+@tf_export("math.add", "add")
+@dispatch.add_dispatch_support
+def add(x, y, name=None):
+  """Returns x + y element-wise.
+
+  Example usages below.
+
+  Add a scalar and a list:
+
+  >>> x = [1, 2, 3, 4, 5]
+  >>> y = 1
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([2, 3, 4, 5, 6],
+  dtype=int32)>
+
+  Note that binary `+` operator can be used instead:
+
+  >>> x = tf.convert_to_tensor([1, 2, 3, 4, 5])
+  >>> y = tf.convert_to_tensor(1)
+  >>> x + y
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([2, 3, 4, 5, 6],
+  dtype=int32)>
+
+  Add a tensor and a list of same shape:
+
+  >>> x = [1, 2, 3, 4, 5]
+  >>> y = tf.constant([1, 2, 3, 4, 5])
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(5,), dtype=int32,
+  numpy=array([ 2,  4,  6,  8, 10], dtype=int32)>
+
+  **Warning**: If one of the inputs (`x` or `y`) is a tensor and the other is a
+  non-tensor, the non-tensor input will adopt (or get casted to) the data type
+  of the tensor input. This can potentially cause unwanted overflow or underflow
+  conversion.
+
+  For example,
+
+  >>> x = tf.constant([1, 2], dtype=tf.int8)
+  >>> y = [2**7 + 1, 2**7 + 2]
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(2,), dtype=int8, numpy=array([-126, -124], dtype=int8)>
+
+  When adding two input values of different shapes, `Add` follows NumPy
+  broadcasting rules. The two input array shapes are compared element-wise.
+  Starting with the trailing dimensions, the two dimensions either have to be
+  equal or one of them needs to be `1`.
+
+  For example,
+
+  >>> x = np.ones(6).reshape(1, 2, 1, 3)
+  >>> y = np.ones(6).reshape(2, 1, 3, 1)
+  >>> tf.add(x, y).shape.as_list()
+  [2, 2, 3, 3]
+
+  Another example with two arrays of different dimension.
+
+  >>> x = np.ones([1, 2, 1, 4])
+  >>> y = np.ones([3, 4])
+  >>> tf.add(x, y).shape.as_list()
+  [1, 2, 3, 4]
+
+  The reduction version of this elementwise operation is `tf.math.reduce_sum`
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
+      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
+      string.
+    y: A `tf.Tensor`. Must have the same type as x.
+    name: A name for the operation (optional)
+  """
+  with ops.name_scope(name, "Add", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
+    if x.dtype == dtypes.string:
+      return gen_math_ops.add(x, y, name=name)
+    else:
+      return gen_math_ops.add_v2(x, y, name=name)
+
+
 @tf_export("math.add_n", "add_n")
 @dispatch.add_dispatch_support
 def add_n(inputs, name=None):
@@ -3229,12 +3852,12 @@ def add_n(inputs, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one "
+  if not inputs or not isinstance(inputs, collections_abc.Iterable):
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be a list of at least one "
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:
@@ -3249,6 +3872,7 @@ def add_n(inputs, name=None):
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("accumulate_n")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
@@ -3327,12 +3951,13 @@ def _accumulate_n_grad(op, grad):
 
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
+@dispatch.add_dispatch_support
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
 
-  Formula for calculating sigmoid(x): `y = 1 / (1 + exp(-x))`.
+  Formula for calculating $\mathrm{sigmoid}(x) = y = 1 / (1 + \exp(-x))$.
 
-  For x \in (-inf, inf) => sigmoid(x) \in (0, 1)
+  For $x \in (-\infty, \infty)$, $\mathrm{sigmoid}(x) \in (0, 1)$.
 
   Example Usage:
 
@@ -3360,9 +3985,9 @@ def sigmoid(x, name=None):
 
   Returns:
     A Tensor with the same type as `x`.
-  
+
   Usage Example:
-  
+
   >>> x = tf.constant([-128.0, 0.0, 128.0], dtype=tf.float32)
   >>> tf.sigmoid(x)
   <tf.Tensor: shape=(3,), dtype=float32,
@@ -3392,121 +4017,37 @@ def log_sigmoid(x, name=None):
 
   Returns:
     A Tensor with the same type as `x`.
+
+  Usage Example:
+
+  If a positive number is large, then its log_sigmoid will approach to 0 since
+  the formula will be `y = log( <large_num> / (1 + <large_num>) )` which
+  approximates to `log (1)` which is 0.
+
+  >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
+  >>> tf.math.log_sigmoid(x)
+  <tf.Tensor: shape=(4,), dtype=float32, numpy=
+  array([-6.9314718e-01, -3.1326169e-01, -1.9287499e-22, -0.0000000e+00],
+        dtype=float32)>
+
+  If a negative number is large, its log_sigmoid will approach to the number
+  itself since the formula will be `y = log( 1 / (1 + <large_num>) )` which is
+  `log (1) - log ( (1 + <large_num>) )` which approximates to `- <large_num>`
+  that is the number itself.
+
+  >>> x = tf.constant([-100.0, -50.0, -1.0, 0.0])
+  >>> tf.math.log_sigmoid(x)
+  <tf.Tensor: shape=(4,), dtype=float32, numpy=
+  array([-100.       ,  -50.       ,   -1.3132616,   -0.6931472],
+        dtype=float32)>
   """
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
 
 
-@tf_export("math.bincount", v1=[])
-def bincount(arr,
-             weights=None,
-             minlength=None,
-             maxlength=None,
-             dtype=dtypes.int32,
-             name=None):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
-  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
-                  will be the vector length.
-
-  Each bin value in the output indicates number of occurrences of the particular
-  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
-  two times in `values`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-    name: A name scope for the associated operations (optional).
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-
-  Raises:
-    `InvalidArgumentError` if negative values are provided as an input.
-
-  """
-  name = "bincount" if name is None else name
-  with ops.name_scope(name):
-    arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-    array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
-    output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
-    if minlength is not None:
-      minlength = ops.convert_to_tensor(
-          minlength, name="minlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.maximum(minlength, output_size)
-    if maxlength is not None:
-      maxlength = ops.convert_to_tensor(
-          maxlength, name="maxlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.minimum(maxlength, output_size)
-    if weights is not None:
-      weights = ops.convert_to_tensor(weights, name="weights")
-      return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-    weights = constant_op.constant([], dtype)
-    return gen_math_ops.bincount(arr, output_size, weights)
-
-
-@tf_export(v1=["math.bincount", "bincount"])
-@deprecation.deprecated_endpoints("bincount")
-def bincount_v1(arr,
-                weights=None,
-                minlength=None,
-                maxlength=None,
-                dtype=dtypes.int32):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-  """
-  return bincount(arr, weights, minlength, maxlength, dtype)
-
-
 @tf_export("math.cumsum", "cumsum")
+@dispatch.add_dispatch_support
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -3578,6 +4119,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.cumprod", v1=["math.cumprod", "cumprod"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("cumprod")
 def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative product of the tensor `x` along `axis`.
@@ -3631,6 +4173,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
+@dispatch.add_dispatch_support
 def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
 
@@ -3691,19 +4234,28 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  complex numbers that are the complex conjugate of each element in `input`. The
-  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
-  real part and *b* is the imaginary part.
+  Given a tensor `x` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `x`. The
+  complex numbers in `x` must be of the form \\(a + bj\\), where `a` is the
+  real part and `b` is the imaginary part.
 
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
   For example:
 
-      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-      tf.math.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
+
+  For example:
+
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([-2.25,  3.25], dtype=float32)>
 
   Args:
     x: `Tensor` to conjugate.  Must have numeric or variant type.
@@ -3714,6 +4266,10 @@ def conj(x, name=None):
 
   Raises:
     TypeError: If `x` is not a numeric tensor.
+
+  @compatibility(numpy)
+  Equivalent to numpy.conj.
+  @end_compatibility
   """
   if isinstance(x, ops.Tensor):
     dt = x.dtype
@@ -3740,11 +4296,18 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keepdims were set to True.
   """
-  if context.executing_eagerly():
-    input_shape = input_shape.numpy()
-    axes = axes.numpy()
-    input_shape[axes] = 1
-    return input_shape
+  # TODO(allenl): Refactor `reduced_shape` to take the tensor corresponding to
+  # `input_shape` rather than `tf.shape` of it. Then we can check if the shape
+  # is fully defined here, which may be faster executing eagerly than running
+  # `tf.shape` and then fetching its constant value.
+  constant_input_shape = tensor_util.constant_value(input_shape)
+  if constant_input_shape is not None:
+    constant_axes = tensor_util.constant_value(axes)
+    if constant_axes is not None:
+      constant_axes = np.array(constant_axes, dtype=np.int32)
+      constant_input_shape = np.array(constant_input_shape, dtype=np.int32)
+      constant_input_shape[constant_axes] = 1
+      return constant_input_shape
 
   # Example:
   # cast needed for SparseTensor reductions
@@ -3761,7 +4324,7 @@ def reduced_shape(input_shape, axes):
       ],  # [1, 2]
       [
           input_shape,  # [2, 3, 5, 7]
-          array_ops.fill(axes_shape, 1)
+          array_ops.ones(axes_shape, dtype=dtypes.int32)
       ])  # [1, 1]
 
 
@@ -3790,6 +4353,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
 @tf_export(
     "math.unsorted_segment_mean",
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
 @dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
@@ -3799,8 +4363,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Instead of computing the sum over segments, it computes the mean of all
   entries belonging to a segment such that:
 
@@ -3836,6 +4399,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 @tf_export(
     "math.unsorted_segment_sqrt_n",
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
 @dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
@@ -3845,8 +4409,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Additionally to computing the sum over segments, it divides the results by
   sqrt(N).
 
@@ -4185,21 +4748,16 @@ def sparse_segment_sqrt_n_v2(data,
 
 
 @tf_export("tensordot", "linalg.tensordot")
+@dispatch.add_dispatch_support
 def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
-  from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
-  The lists `a_axes` and `b_axes` specify those pairs of axes along which to
-  contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
-  as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
-  `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors. Additionally
-  outer product is supported by passing `axes=0`.
+  from `a` and `b` over the indices specified by `axes`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
-  Example 1: When `a` and `b` are matrices (order 2), the case `axes = 1`
+  Example 1: When `a` and `b` are matrices (order 2), the case `axes=1`
   is equivalent to matrix multiplication.
 
   Example 2: When `a` and `b` are matrices (order 2), the case
@@ -4297,7 +4855,7 @@ def tensordot(a, b, axes, name=None):
         rank_a = array_ops.rank(a)
         axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
         axes = array_ops.where(axes >= 0, axes, axes + rank_a)
-        free, _ = array_ops.setdiff1d(range(rank_a), axes)
+        free, _ = gen_array_ops.list_diff(range(rank_a), axes, dtypes.int32)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)
@@ -4371,21 +4929,23 @@ def tensordot(a, b, axes, name=None):
 
 
 @tf_export("math.polyval")
+@dispatch.add_dispatch_support
 def polyval(coeffs, x, name=None):
   r"""Computes the elementwise value of a polynomial.
 
   If `x` is a tensor and `coeffs` is a list n + 1 tensors,
   this function returns the value of the n-th order polynomial
 
-     p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)
+  `p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)`
 
   evaluated using Horner's method, i.e.
 
-     p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
-            x * coeffs[0]))
-            
+  ```python
+  p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] + x * coeffs[0]))
+  ```
+
   Usage Example:
-  
+
   >>> coefficients = [1.0, 2.5, -4.2]
   >>> x = 5.0
   >>> y = tf.math.polyval(coefficients, x)
@@ -4441,6 +5001,7 @@ def polyval(coeffs, x, name=None):
 
 
 @tf_export("math.reciprocal_no_nan")
+@dispatch.add_dispatch_support
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
 
@@ -4542,7 +5103,37 @@ def ndtri(x, name=None):
     return gen_math_ops.ndtri(x)
 
 
+@tf_export("math.erfcinv")
+@dispatch.add_dispatch_support
+def erfcinv(x, name=None):
+  """Computes the inverse of complementary error function.
+
+  Given `x`, compute the inverse complementary error function of `x`.
+  This function is the inverse of `tf.math.erfc`, and is defined on
+  `[0, 2]`.
+
+  >>> tf.math.erfcinv([0., 0.2, 1., 1.5, 2.])
+  <tf.Tensor: shape=(5,), dtype=float32, numpy=
+  array([       inf,  0.9061935, -0.       , -0.4769363,       -inf],
+        dtype=float32)>
+
+  Args:
+    x: `Tensor` with type `float` or `double`.
+    name: A name for the operation (optional).
+  Returns:
+    Inverse complementary error function of `x`.
+
+  @compatibility(numpy)
+  Equivalent to scipy.special.erfcinv
+  @end_compatibility
+  """
+  with ops.name_scope(name, "erfcinv", [x]):
+    x = ops.convert_to_tensor(x, name="start")
+    return -ndtri(0.5 * x) * np.sqrt(0.5)
+
+
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
 @dispatch.add_dispatch_support
 def ceil(x, name=None):
@@ -4592,7 +5183,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
     array([[0.0+1.j],
            [4.0+0.j]])>
 
-  Note: In order to support complex complex, please provide an input tensor
+  Note: In order to support complex type, please provide an input tensor
   of `complex64` or `complex128`.
 
   Args:
@@ -4627,10 +5218,14 @@ def exp(x, name=None):
   numpy=array([   7.389056, 2980.958   ], dtype=float32)>
 
   For complex numbers, the exponential value is calculated as
-  \\(e^{x+iy}={e^x}{e^{iy}}={e^x}{\\cos(y)+i\\sin(y)}\\)
+  $$
+  e^{x+iy} = {e^x} {e^{iy}} = {e^x} ({\cos (y) + i \sin (y)})
+  $$
 
   For `1+1j` the value would be computed as:
-  \\(e^1{\\cos(1)+i\\sin(1)} = 2.7182817 \\times (0.5403023+0.84147096j)\\)
+  $$
+  e^1 (\cos (1) + i \sin (1)) = 2.7182817 \times (0.5403023+0.84147096j)
+  $$
 
   >>> x = tf.constant(1 + 1j)
   >>> tf.math.exp(x)
@@ -4656,6 +5251,7 @@ def exp(x, name=None):
 
 
 @tf_export("math.sobol_sample")
+@dispatch.add_dispatch_support
 def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
   """Generates points from the Sobol sequence.
 
@@ -4680,6 +5276,7 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 
 
 @tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
 @dispatch.add_dispatch_support
 def rsqrt(x, name=None):
@@ -4694,10 +5291,66 @@ def rsqrt(x, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`. `int32`
+      `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
     A `tf.Tensor`. Has the same type as `x`.
   """
   return gen_math_ops.rsqrt(x, name)
+
+
+@tf_export("math.acos", "acos")
+@dispatch.add_dispatch_support
+def acos(x, name=None):
+  """Computes acos of x element-wise.
+
+  Provided an input tensor, the `tf.math.acos` operation
+  returns the inverse cosine of each element of the tensor.
+  If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+
+  Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
+
+  For example:
+
+  >>> x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2], dtype = tf.float32)
+  >>> tf.math.acos(x)
+  <tf.Tensor: shape=(6,), dtype=float32,
+  numpy= array([0. , 2.0943952, nan, 1.3694383, 1.5707964, nan],
+  dtype=float32)>
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
+      `complex64`, `complex128`, `string`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as x.
+  """
+  return gen_math_ops.acos(x, name)
+
+
+@tf_export("math.floor", "floor")
+@dispatch.add_dispatch_support
+def floor(x, name=None):
+  """Returns element-wise largest integer not greater than x.
+
+  Both input range is `(-inf, inf)` and the
+  output range consists of all integer values.
+
+  For example:
+
+  >>> x = tf.constant([1.3324, -1.5, 5.555, -2.532, 0.99, float("inf")])
+  >>> tf.floor(x).numpy()
+  array([ 1., -2.,  5., -3.,  0., inf], dtype=float32)
+
+  Args:
+    x:  A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as x.
+  """
+  return gen_math_ops.floor(x, name)

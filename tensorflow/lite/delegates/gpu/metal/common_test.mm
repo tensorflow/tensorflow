@@ -17,15 +17,15 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
+#include <string>
 #include <tuple>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 using ::tflite::gpu::metal::GetBestSupportedMetalDevice;
 using ::tflite::gpu::metal::CreateComputeProgram;
-using ::tflite::gpu::Status;
 
 @interface CommonTest : XCTestCase
 
@@ -53,16 +53,16 @@ kernel void FunctionName(device TYPE* const src_buffer[[buffer(0)]],
   XCTAssertNotNil(device, @"The Metal device must exists on real device");
   NSString* functionName = @"FunctionName";
   id<MTLComputePipelineState> program;
-  Status status;
+  absl::Status status;
 
   NSDictionary* macrosFloat4 = @{@"TYPE" : @"float4"};
   status = CreateComputeProgram(device, code, functionName, macrosFloat4, &program);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   XCTAssertNotNil(program);
 
   NSDictionary* macrosHalf4 = @{@"TYPE" : @"half4"};
   status = CreateComputeProgram(device, code, functionName, macrosHalf4, &program);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   XCTAssertNotNil(program);
 
   // This compilation is intended to be incorrect

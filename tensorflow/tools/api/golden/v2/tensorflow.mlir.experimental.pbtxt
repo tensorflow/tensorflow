@@ -1,7 +1,11 @@
 path: "tensorflow.mlir.experimental"
 tf_module {
   member_method {
+    name: "convert_function"
+    argspec: "args=[\'concrete_function\', \'pass_pipeline\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\', \'False\'], "
+  }
+  member_method {
     name: "convert_graph_def"
-    argspec: "args=[\'graph_def\', \'pass_pipeline\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\'], "
+    argspec: "args=[\'graph_def\', \'pass_pipeline\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\', \'False\'], "
   }
 }

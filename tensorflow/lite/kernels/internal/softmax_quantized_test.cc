@@ -25,7 +25,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/string_type.h"
@@ -134,6 +133,7 @@ void RunOneSoftmaxTest(const uint8* input_data,
   params.scale = 1.0f / 256;
   params.zero_point = 0;
   params.table = table;
+
   optimized_ops::PopulateSoftmaxLookupTable(&params, input_scale, beta);
   optimized_ops::Softmax(params, shape_common, input_data, shape_common,
                          optimized_softmax_output.data());
@@ -149,6 +149,19 @@ void RunOneSoftmaxTest(const uint8* input_data,
   CheckOutputData<uint8_t>(reference_quant_softmax_output.data(),
                            reference_float_softmax_output.data(), shape_common,
                            "Quant reference vs float reference", false);
+
+#if __aarch64__ && __clang__
+  uint8_t uint8_table1[256];
+  uint8_t uint8_table2[256];
+  params.uint8_table1 = uint8_table1;
+  params.uint8_table2 = uint8_table2;
+  optimized_ops::PopulateSoftmaxUInt8LookupTable(&params, input_scale, beta);
+  optimized_ops::SoftmaxInt8LUT(params, shape_common, input_data, shape_common,
+                                optimized_softmax_output.data());
+  CheckOutputData<uint8_t>(
+      optimized_softmax_output.data(), reference_quant_softmax_output.data(),
+      shape_common, "Optimized (Uint8 Lookup table) vs quant reference", false);
+#endif
 }
 
 // This function picks some random Softmax params, which are checked for

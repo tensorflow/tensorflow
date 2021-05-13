@@ -46,20 +46,21 @@ enum class TargetIntrinsicID {
 
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
-  kPow = 0,
-  kErfcinv,
-  kLog,
-  kLog1p,
-  kSin,
+  kAtan2 = 0,
   kCos,
+  kErfcinv,
   kExp,
   kExpm1,
-  kSqrt,
-  kRsqrt,
-  kAtan2,
   kFmod,
+  kHypot,
+  kLog,
+  kLog1p,
+  kPow,
   kRound,
-  kHypot
+  kRsqrt,
+  kSin,
+  kSqrt,
+  kTanh,
 };
 
 // Emits IR to call a device function named "callee_name" on the given
@@ -68,7 +69,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
     absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b);
+    llvm::IRBuilder<>* b, absl::string_view name = "");
 
 // Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type

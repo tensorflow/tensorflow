@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
@@ -131,6 +132,11 @@ class TfLiteFlatbufferModelBuilder {
 
   bool Verify() {
     return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
+                          &mock_reporter_);
+  }
+
+  bool VerifyWithOpResolver() {
+    return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
                           resolver_, &mock_reporter_);
   }
 
@@ -164,6 +170,8 @@ TEST(VerifyModel, TestEmptyModel) {
   ::tflite::FinishModelBuffer(builder, model);
 
   MockErrorReporter mock_reporter;
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
                       MutableOpResolver{}, &mock_reporter));
   EXPECT_THAT(mock_reporter.GetAsString(),
@@ -182,6 +190,7 @@ TEST(VerifyModel, TestEmptyVector) {
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
   builder.FinishModel({0, 1}, {3});
   ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
 }
 
 TEST(VerifyModel, TestSimpleModel) {
@@ -195,6 +204,7 @@ TEST(VerifyModel, TestSimpleModel) {
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
   builder.FinishModel({0, 1}, {2});
   ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
 
@@ -204,6 +214,7 @@ TEST(VerifyModel, TestNullTensors) {
   builder.FinishModel(
       {}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ(builder.GetErrorString(),
             "Input tensor 0 to op 0 (CUSTOM) is not produced");
 }
@@ -213,6 +224,7 @@ TEST(VerifyModel, TestNullOperators) {
   builder.FinishModel(
       {0, 1}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(
       builder.GetErrorString(),
       ::testing::ContainsRegex("Missing 'operators' section in subgraph"));
@@ -230,6 +242,7 @@ TEST(VerifyModel, TestNullInputs) {
   builder.FinishModel(
       {}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
   ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
 
@@ -276,6 +289,7 @@ TEST(VerifyModel, TestIntTensorShapeIsGreaterThanBuffer) {
   builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex("Tensor input requires 6 bytes, but is "
                                        "allocated with 4 bytes buffer"));
@@ -286,6 +300,7 @@ TEST(VerifyModel, TestIntTensorShapeIsSmallerThanBuffer) {
   builder.AddTensor({2, 1}, TensorType_UINT8, {1, 2, 3, 4}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex("Tensor input requires 2 bytes, but is "
                                        "allocated with 4 bytes buffer"));
@@ -297,6 +312,7 @@ TEST(VerifyModel, TestIntTensorShapeOverflow) {
                     "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex("Tensor input dimension overflow"));
 }
@@ -322,6 +338,8 @@ TEST(VerifyModel, TensorBufferIsNotValid) {
 
   ::tflite::FinishModelBuffer(builder, model);
   MockErrorReporter mock_reporter;
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
                       MutableOpResolver{}, &mock_reporter));
   EXPECT_THAT(
@@ -334,6 +352,7 @@ TEST(VerifyModel, StringTensorIsEmpty) {
   builder.AddTensor({2}, TensorType_STRING, {0x00}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ(builder.GetErrorString(), "String tensor input is invalid (empty)");
 }
 
@@ -345,6 +364,7 @@ TEST(VerifyModel, StringTensorHasInvalidNumString) {
       "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(
       builder.GetErrorString(),
       ::testing::ContainsRegex(
@@ -359,6 +379,7 @@ TEST(VerifyModel, StringTensorOffsetTooSmall) {
       {2, 0, 0, 0, 12, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 'A', 'B'}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "String tensor input buffer initial offset must be: 16"));
@@ -371,6 +392,7 @@ TEST(VerifyModel, StringTensorOffsetOutOfRange) {
       {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 22, 0, 0, 0, 'A', 'B'}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "String tensor input buffer is invalid: index 2"));
@@ -384,6 +406,7 @@ TEST(VerifyModel, StringTensorIsLargerThanRequired) {
       "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "String tensor input buffer last offset must be 19"));
@@ -399,6 +422,7 @@ TEST(VerifyModel, AllOpsAreSupported) {
   builder.AddOperator({0, 1}, {3}, BuiltinOperator_CUSTOM, "CustomOp");
   builder.FinishModel({}, {});
   ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
 
@@ -409,7 +433,9 @@ TEST(VerifyModel, UseUnsupportedBuiltinOps) {
   builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
   builder.AddOperator({0, 1}, {2}, BuiltinOperator_ADD, nullptr);
   builder.FinishModel({}, {});
-  ASSERT_FALSE(builder.Verify());
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(
       builder.GetErrorString(),
       ::testing::ContainsRegex("Unsupported builtin op: ADD, version: 1"));
@@ -422,10 +448,27 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
   builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
   builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "Not supported");
   builder.FinishModel({}, {});
-  ASSERT_FALSE(builder.Verify());
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "Unsupported custom op: Not supported, version: 1"));
+}
+
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
 }
 
 TEST(VerifyModel, UnpopulatedInputToOp) {
@@ -441,6 +484,7 @@ TEST(VerifyModel, UnpopulatedInputToOp) {
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
   builder.FinishModel({0, 2}, {3});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ("Input tensor 1 to op 0 (CUSTOM) is not produced",
             builder.GetErrorString());
 }
@@ -455,6 +499,7 @@ TEST(VerifyModel, MultipleOpsOutputToSameTensor) {
   builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "CustomOp");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ(
       "Output tensor 2 to op 1 (CUSTOM) is an output from another op. "
       "There is a cycle in the graph",
@@ -473,6 +518,7 @@ TEST(VerifyModel, OutputIsAConstantTensor) {
   builder.AddTensor({2, 3}, TensorType_INT32, {1, 2, 3, 4, 5, 6}, "output");
   builder.FinishModel({0, 1}, {2});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a constant",
             builder.GetErrorString());
 }
@@ -489,6 +535,7 @@ TEST(VerifyModel, OutputIsSubgraphInput) {
   // Output shouldn't be a subgraph input.
   builder.FinishModel({0, 1, 2}, {2});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a subgraph input",
             builder.GetErrorString());
 }
@@ -505,6 +552,7 @@ TEST(VerifyModel, OutputIsAVariable) {
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output", /*variable*/ true);
   builder.FinishModel({0, 1}, {2});
   ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
   EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a variable",
             builder.GetErrorString());
 }
@@ -521,6 +569,7 @@ TEST(VerifyModel, OpWithOptionalTensor) {
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
   builder.FinishModel({0, 1}, {2});
   ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
 
@@ -533,6 +582,7 @@ TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
                       {1, 2, 3, 4}, "input");
     builder.FinishModel({}, {});
     ASSERT_FALSE(builder.Verify());
+    ASSERT_FALSE(builder.VerifyWithOpResolver());
     EXPECT_THAT(
         builder.GetErrorString(),
         ::testing::ContainsRegex("Tensor input requires .* bytes, but is "
@@ -544,7 +594,9 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
        ++tensor_type) {
-    if (tensor_type == TensorType_STRING) continue;
+    if (tensor_type == TensorType_STRING ||
+        tensor_type == TensorType_RESOURCE || tensor_type == TensorType_VARIANT)
+      continue;
     TfLiteType lite_type = kTfLiteNoType;
     ASSERT_EQ(ConvertTensorType(static_cast<TensorType>(tensor_type),
                                 &lite_type, /*error_reporter=*/nullptr),
@@ -557,6 +609,7 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
                       "input");
     builder.FinishModel({}, {});
     ASSERT_TRUE(builder.Verify());
+    ASSERT_TRUE(builder.VerifyWithOpResolver());
   }
 }
 
@@ -575,8 +628,8 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
-  Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
-         &mock_reporter);
+  ASSERT_TRUE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                      &mock_reporter));
 }
@@ -599,6 +652,8 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                       &mock_reporter));
   EXPECT_THAT(mock_reporter.GetAsString(),
@@ -624,6 +679,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                       &mock_reporter));
   EXPECT_THAT(mock_reporter.GetAsString(),
@@ -648,6 +705,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                       &mock_reporter));
   EXPECT_THAT(mock_reporter.GetAsString(),
@@ -674,6 +733,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                       &mock_reporter));
   EXPECT_THAT(mock_reporter.GetAsString(),
@@ -712,6 +773,8 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   MutableOpResolver resolver;
   TfLiteRegistration fake_op;
   resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_TRUE(
+      Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                      &mock_reporter));
 }

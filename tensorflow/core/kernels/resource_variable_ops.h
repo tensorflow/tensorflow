@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_var.h"
 
 namespace tensorflow {
 
@@ -36,10 +37,6 @@ class VarHandleOp : public OpKernel {
   Tensor resource_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;
-
-  // A set of devices containing the resource variable. Set when the output
-  // ResourceHandle represents a per-replica/partitioned resource variable.
-  std::vector<string> allowed_devices_;
 };
 
 class ReadVariableOp : public OpKernel {
@@ -68,6 +65,26 @@ class DestroyResourceOp : public OpKernel {
 
  private:
   bool ignore_lookup_error_;
+};
+
+template <typename T>
+class VariableShapeOp : public OpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    core::RefCountPtr<Var> variable;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    variable->mu()->lock_shared();
+    TensorShape shape = variable->tensor()->shape();
+    variable->mu()->unlock_shared();
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
+    for (int i = 0; i < shape.dims(); ++i) {
+      output->flat<T>()(i) = shape.dim_size(i);
+    }
+  }
 };
 
 }  // namespace tensorflow

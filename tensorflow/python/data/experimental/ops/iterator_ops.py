@@ -25,10 +25,13 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 def _convert_external_state_policy_to_enum(external_state_policy):
+  if isinstance(external_state_policy, distribute_options.ExternalStatePolicy):
+    return external_state_policy
   if external_state_policy == "warn":
     return distribute_options.ExternalStatePolicy.WARN
   if external_state_policy == "ignore":
@@ -42,7 +45,10 @@ def _convert_external_state_policy_to_enum(external_state_policy):
 
 
 @tf_export("data.experimental.make_saveable_from_iterator")
-def make_saveable_from_iterator(iterator, external_state_policy="fail"):
+@deprecation.deprecated(
+    None, "`make_saveable_from_iterator` is intended for use in TF1 with "
+    "`tf.compat.v1.Saver`. In TF2, use `tf.train.Checkpoint` instead.")
+def make_saveable_from_iterator(iterator, external_state_policy=None):
   """Returns a SaveableObject for saving/restoring iterator state using Saver.
 
   Args:
@@ -91,6 +97,8 @@ def make_saveable_from_iterator(iterator, external_state_policy="fail"):
   Note: Not all iterators support checkpointing yet. Attempting to save the
   state of an unsupported iterator will throw an error.
   """
+  if external_state_policy is None:
+    external_state_policy = "fail"
   policy_enum = _convert_external_state_policy_to_enum(external_state_policy)
   return iterator_ops._IteratorSaveable(  # pylint: disable=protected-access
       iterator._iterator_resource,  # pylint: disable=protected-access
@@ -144,7 +152,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
   collector when building the eval graph.
   """
 
-  def __init__(self, estimator, external_state_policy="fail"):
+  def __init__(self, estimator, external_state_policy=None):
     """Initializes a `CheckpointInputPipelineHook`.
 
     If the input pipeline depends on external state (e.g. seeds for
@@ -181,6 +189,8 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
       ValueError: If `external_state_policy` is not one of 'warn', 'ignore' or
         'fail'.
     """
+    if external_state_policy is None:
+      external_state_policy = "fail"
     self._external_state_policy = _convert_external_state_policy_to_enum(
         external_state_policy)
     # `checkpoint_basename` is "input.ckpt" for non-distributed pipelines or

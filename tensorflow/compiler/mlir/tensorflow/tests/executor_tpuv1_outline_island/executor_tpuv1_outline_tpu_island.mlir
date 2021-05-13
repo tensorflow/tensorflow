@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-outlining | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-outlining | FileCheck %s
 
 
 // CHECK-LABEL: @func0
@@ -47,11 +47,11 @@ func @func2(%arg0 : tensor<i1>) -> tensor<i1> {
 
 // CHECK: module
 // CHECK-SAME: @_tpu_v1_compat_outlined
-// CHECK-LABEL: func @_tpu_v1_compat_outlined_func0(%arg0: tensor<i1>) -> tensor<i1>
+// CHECK-LABEL: func nested @_tpu_v1_compat_outlined_func0(%arg0: tensor<i1>) -> tensor<i1>
 // CHECK-NEXT: tf.TPUReplicateMetadata
 // CHECK-NEXT: tf.opA
 
-// CHECK-LABEL: func @_tpu_v1_compat_outlined_func1(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (tensor<i1>, tensor<i32>)
+// CHECK-LABEL: func nested @_tpu_v1_compat_outlined_func1(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (tensor<i1>, tensor<i32>)
 // CHECK-NEXT: tf.TPUReplicateMetadata
 // CHECK-NEXT: tf.opA
 // CHECK-NEXT: tf.opA

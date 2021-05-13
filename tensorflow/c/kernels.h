@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -62,6 +65,11 @@ typedef struct TF_Tensor TF_Tensor;
 typedef struct TF_KernelBuilder TF_KernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+
+// TF_InitKernel to do op/kernel registration.
+// Plugin should implement TF_InitKernel to register kernels. This function
+// should register all kernels in a plugin.
+void TF_InitKernel();
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -107,6 +115,10 @@ TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
 TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
     TF_KernelBuilder* kernel_builder, const char* arg_name);
 
+// Specify a priority number for this kernel.
+TF_CAPI_EXPORT extern void TF_KernelBuilder_Priority(
+    TF_KernelBuilder* kernel_builder, int32_t priority_number);
+
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
 //
@@ -121,6 +133,16 @@ TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 
 // --------------------------------------------------------------------------
 // OpKernelContext routines
+
+// TF_GetStream returns the SP_Stream available in ctx.
+// This function returns a stream only for devices registered using the
+// StreamExecutor C API
+// (tensorflow/c/experimental/stream_executor/stream_executor.h). It will return
+// nullptr and set error status in all other cases.
+// Experimental: this function doesn't have compatibility guarantees and subject
+// to change at any time.
+TF_CAPI_EXPORT extern SP_Stream TF_GetStream(TF_OpKernelContext* ctx,
+                                             TF_Status* status);
 
 // TF_NumInputs returns the number of inputs available in ctx.
 TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
@@ -162,6 +184,24 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Get the list_size and total_size of the attribute `attr_name` of `oper`.
+// list_size - the length of the list.
+// total_size - total size of the list.
+//   (1) If attr_type == TF_ATTR_STRING
+//       then total_size is the cumulative byte size
+//       of all the strings in the list.
+//   (3) If attr_type == TF_ATTR_SHAPE
+//       then total_size is the number of dimensions
+//       of the shape valued attribute, or -1
+//       if its rank is unknown.
+//   (4) If attr_type == TF_ATTR_SHAPE
+//       then total_size is the cumulative number
+//       of dimensions of all shapes in the list.
+//   (5) Otherwise, total_size is undefined.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrSize(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* list_size,
+    int32_t* total_size, TF_Status* status);
+
 // Interprets the named kernel construction attribute as a TF_DataType and
 // places it into *val. *status is set to TF_OK.
 //
@@ -180,6 +220,116 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
 
+// Interprets the named kernel construction attribute as int64_t and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// int64, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int64_t* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as float and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// float, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloat(
+    TF_OpKernelConstruction* ctx, const char* attr_name, float* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as bool and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// bool, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBool(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Bool* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as string and
+// places it into *val. `val` must
+// point to an array of length at least `max_length` (ideally set to
+// total_size from TF_OpKernelConstruction_GetAttrSize(ctx,
+// attr_name, list_size, total_size)). *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// string, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
+    TF_OpKernelConstruction* ctx, const char* attr_name, char* val,
+    size_t max_length, TF_Status* status);
+
+// Interprets the named kernel construction attribute as a TF_DataType array and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to list_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTypeList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as int32_t array and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to list_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32List(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as int64_t array and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to list_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64List(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int64_t* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as float array and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to list_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloatList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, float* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as bool array and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to list_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Bool* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as string array and fills
+// in `vals` and `lengths`, each of which must point to an array of length at
+// least `max_values`. *status is set to TF_OK. The elements of values will
+// point to addresses in `storage` which must be at least `storage_size` bytes
+// in length. Ideally, max_values would be set to list_size and `storage` would
+// be at least total_size, obtained from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
+// total_size).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
+    size_t* lengths, int max_values, void* storage, size_t storage_size,
+    TF_Status* status);
+
+// Return true if the kernel construction has the attr_name
+TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);
+
+// Returns the unique operation name for this OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
+    TF_OpKernelConstruction* ctx);
+
 // Allocates Tensor for output at given index. Caller takes ownership of
 // returned TF_Tensor and should deallocate it using TF_DeleteTensor(tensor).
 //
@@ -189,6 +339,26 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
+
+// Tries to forward one of the inputs given in input_indices to
+// output[output_index]. If none of the given inputs can be forwarded, calls
+// allocate_output() to allocate a new output buffer. The index of the
+// forwarded input will be assign to output argument forwarded_input (if it's
+// not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+// -1.
+TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
+    TF_OpKernelContext* context, int* candidate_input_indices,
+    int num_candidate_input_indices, int output_index, int64_t* output_dims,
+    int output_num_dims, int* forwarded_input, TF_Status* status);
+
+// Allocates a temporary Tensor of the specified type and shape. The
+// Tensor must not be used after kernel construction is
+// complete.
+//
+// num_dims must equal the size of array dims
+TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
+    TF_OpKernelContext* context, TF_DataType dtype, int64_t* dims, int num_dims,
+    TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

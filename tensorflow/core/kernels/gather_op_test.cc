@@ -40,11 +40,12 @@ namespace {
 
 class GatherOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType data_type, DataType index_type) {
+  void MakeOp(DataType data_type, DataType index_type, int batch_dims = 0) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "GatherV2")
                      .Input(FakeInput(data_type))
                      .Input(FakeInput(index_type))
                      .Input(FakeInput(index_type))
+                     .Attr("batch_dims", batch_dims)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -176,6 +177,20 @@ TEST_F(GatherOpTest, Error_IndexOutOfRange) {
       << s;
 }
 
+TEST_F(GatherOpTest, Error_BatchDimsOutOfRange) {
+  MakeOp(DT_FLOAT, DT_INT32, 10);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int32>(TensorShape({4}), {0, 4, 99, 2});
+  AddInputFromArray<int32>(TensorShape({}), {0});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Expected batch_dims in the range [-1, 1], but got 10"))
+      << s;
+}
+
 constexpr int kLookups = 2000;
 
 template <typename Index>
@@ -207,21 +222,24 @@ static Graph* Gather(int dim) {
   return g;
 }
 
-#define BM_GATHER(DEVICE, INDEX)                                  \
-  static void BM_##DEVICE##_gather_##INDEX(int iters, int dim) {  \
-    const int64 tot = static_cast<int64>(iters) * kLookups * dim; \
-    testing::ItemsProcessed(tot);                                 \
-    testing::BytesProcessed(tot * sizeof(float));                 \
-    testing::UseRealTime();                                       \
-    test::Benchmark(#DEVICE, Gather<INDEX>(dim)).Run(iters);      \
-  }                                                               \
-  BENCHMARK(BM_##DEVICE##_gather_##INDEX)                         \
-      ->Arg(1)                                                    \
-      ->Arg(10)                                                   \
-      ->Arg(20)                                                   \
-      ->Arg(64)                                                   \
-      ->Arg(100)                                                  \
-      ->Arg(200)                                                  \
+#define BM_GATHER(DEVICE, INDEX)                                               \
+  static void BM_##DEVICE##_gather_##INDEX(                                    \
+      ::testing::benchmark::State& state) {                                    \
+    const int dim = state.range(0);                                            \
+    test::Benchmark(#DEVICE, Gather<INDEX>(dim), /*old_benchmark_api=*/false)  \
+        .Run(state);                                                           \
+    const int64 tot = static_cast<int64>(state.iterations()) * kLookups * dim; \
+    state.SetItemsProcessed(tot);                                              \
+    state.SetBytesProcessed(tot * sizeof(float));                              \
+  }                                                                            \
+  BENCHMARK(BM_##DEVICE##_gather_##INDEX)                                      \
+      ->UseRealTime()                                                          \
+      ->Arg(1)                                                                 \
+      ->Arg(10)                                                                \
+      ->Arg(20)                                                                \
+      ->Arg(64)                                                                \
+      ->Arg(100)                                                               \
+      ->Arg(200)                                                               \
       ->Arg(1000)
 
 BM_GATHER(cpu, int32);

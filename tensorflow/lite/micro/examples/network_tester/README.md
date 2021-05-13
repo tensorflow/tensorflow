@@ -8,6 +8,19 @@ input data (input_data.h) and default expected output data
 The default model is a single MaxPool2D operator, with an input shape of {1, 4,
 4, 1} and an output shape of {1, 2, 2, 1}.
 
+When building the FVP target for Ethos-U (CO_PROCESSOR=ethos_u) the person
+detect int8 model is used instead. The downloaded model is optimized for Ethos-U
+with Ethos-U Vela. For more info see the following readmes:
+tensorflow/lite/micro/kernels/ethos_u/README.md
+tensorflow/lite/micro/cortex_m_corstone_300/README.md
+tensorflow/lite/micro/examples/person_detection/README.md The following Vela
+configuration has been used, which is compatible with the FVP build target
+(TARGET=cortex_m_corstone_300).
+
+```
+vela --accelerator-config=ethos-u55-256
+```
+
 In order to use another model, input data, or expected output data, simply
 specify the path to the new header files when running make as seen below.
 
@@ -34,8 +47,18 @@ make -f tensorflow/lite/micro/tools/make/Makefile network_tester_test \
 `ARENA_SIZE`: The size of the memory to be allocated (in bytes) by the
 interpreter. \
 `NUM_BYTES_TO_PRINT`: The number of bytes of the output data to print. \
-Defaults to 0 if not specified. \
+If set to 0, all bytes of the output are printed. \
 `COMPARE_OUTPUT_DATA`: If set to "no" the output data is not compared to the
 expected output data. This could be useful e.g. if the execution time needs to
 be minimized, or there is no expected output data. If omitted, the output data
-is compared to the expected output.
+is compared to the expected output. `NUM_INFERENCES`: Define how many inferences
+that are made. Defaults to 1. \
+
+The output is printed in JSON format using printf: `num_of_outputs: 1
+output_begin [ { "dims": [4,1,2,2,1], "data_address": "0x000000",
+"data":"0x06,0x08,0x0e,0x10" }] output_end`
+
+If there are multiple output tensors, the output will look like this:
+`num_of_outputs: 2 output_begin [ { "dims": [4,1,2,2,1], "data_address":
+"0x000000", "data":"0x06,0x08,0x0e,0x10" }, { "dims": [4,1,2,2,1],
+"data_address": "0x111111", "data":"0x06,0x08,0x0e,0x10" }] output_end`

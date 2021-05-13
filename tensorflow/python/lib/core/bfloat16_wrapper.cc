@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 PYBIND11_MODULE(_pywrap_bfloat16, m) {
   tensorflow::RegisterNumpyBfloat16();
 
   m.def("TF_bfloat16_type",
-        [] { return pybind11::handle(tensorflow::Bfloat16PyType()); });
+        [] { return pybind11::handle(tensorflow::Bfloat16Dtype()); });
 }

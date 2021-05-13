@@ -60,18 +60,25 @@ Status InitializeFusedComputation(
   if (*fused_computation == FusedComputationType::kBiasAdd ||
       *fused_computation == FusedComputationType::kBiasAddWithRelu ||
       *fused_computation == FusedComputationType::kBiasAddWithRelu6 ||
-      *fused_computation == FusedComputationType::kBiasAddWithElu) {
+      *fused_computation == FusedComputationType::kBiasAddWithElu ||
+      *fused_computation == FusedComputationType::kBiasAddWithLeakyRelu) {
     if (num_args != 1) {
       return errors::InvalidArgument(
           "Fused ", kernel_name,
           " with BiasAdd must have one extra argument: bias.");
+    }
+    if (*fused_computation == FusedComputationType::kBiasAddWithLeakyRelu) {
+      TF_RETURN_IF_ERROR(context->GetAttr(
+          "leakyrelu_alpha", &fused_computation_args->leakyrelu_alpha));
     }
   }
 
   if (*fused_computation == FusedComputationType::kFusedBatchNorm ||
       *fused_computation == FusedComputationType::kFusedBatchNormWithRelu ||
       *fused_computation == FusedComputationType::kFusedBatchNormWithRelu6 ||
-      *fused_computation == FusedComputationType::kFusedBatchNormWithElu) {
+      *fused_computation == FusedComputationType::kFusedBatchNormWithElu ||
+      *fused_computation ==
+          FusedComputationType::kFusedBatchNormWithLeakyRelu) {
     if (num_args != 4) {
       return errors::InvalidArgument(
           "Fused ", kernel_name,
@@ -80,6 +87,11 @@ Status InitializeFusedComputation(
     }
     TF_RETURN_IF_ERROR(
         context->GetAttr("epsilon", &fused_computation_args->epsilon));
+    if (*fused_computation ==
+        FusedComputationType::kFusedBatchNormWithLeakyRelu) {
+      TF_RETURN_IF_ERROR(context->GetAttr(
+          "leakyrelu_alpha", &fused_computation_args->leakyrelu_alpha));
+    }
   }
 
   return Status::OK();

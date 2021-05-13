@@ -66,6 +66,18 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
+    // As before, but also take a multidim to reuse.  multidim.size()
+    // == shape.rank() must be true.  If some of the multidim element
+    // are null we will use the value that would be used if
+    // deliearized from linear.
+    Index(llvm::Value* linear, absl::Span<llvm::Value* const> multidim,
+          const Shape& shape, llvm::IRBuilder<>* b);
+
+    // Similar to the above constructor except using "dynamic_dims" instead of
+    // shape's static dimension to constructs the index.
+    Index(llvm::Value* linear, const Shape& shape,
+          absl::Span<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+
     // Constructs an index from a multi-dimensional index. 'shape' is the shape
     // for which the multi-dimensional index is used. 'index_type' is the type
     // of the index.
@@ -105,15 +117,12 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
+    static bool ShapeIsCompatible(const Shape& a, const Shape& b);
+
     bool ShapeIsCompatible(const Shape& a) const {
-      Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
-      *own_shape.mutable_layout() = layout_;
-      // The shape 'a' could have dynamic dimensions set. Before we check for
-      // equality, we need to copy the information which dimensions are dynamic.
-      for (int64 i = 0; i < a.rank(); ++i) {
-        own_shape.set_dynamic_dimension(i, a.is_dynamic_dimension(i));
-      }
-      return ShapeUtil::Equal(own_shape, a);
+      return ShapeIsCompatible(
+          a, ShapeUtil::MakeShapeWithLayout(a.element_type(), dims_,
+                                            layout_.minor_to_major()));
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`
@@ -135,9 +144,9 @@ class IrArray {
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        absl::Span<const int64> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -153,6 +162,10 @@ class IrArray {
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
     llvm::Value* Linearize(absl::Span<const int64> dimensions,
+                           llvm::IRBuilder<>* builder) const;
+
+    // Linearizes the index into the given dynamic dimensions.
+    llvm::Value* Linearize(const std::vector<llvm::Value*>& dynamic_dims,
                            llvm::IRBuilder<>* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }
@@ -175,6 +188,11 @@ class IrArray {
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
                      const Shape& shape, llvm::IRBuilder<>* b) const;
+
+    // Delinearize the linear index with the dynamic dimensions.
+    void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
+                     const Shape& shape, absl::Span<llvm::Value*> dynamic_dims,
+                     llvm::IRBuilder<>* b) const;
 
     std::vector<llvm::Value*> multidim_;
 

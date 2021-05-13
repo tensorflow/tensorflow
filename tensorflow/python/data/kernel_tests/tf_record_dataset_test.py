@@ -19,27 +19,23 @@ from __future__ import print_function
 
 import gzip
 import os
+import pathlib
 import zlib
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
-from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
-from tensorflow.python.util import compat
 
 
-class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
-
-  def setUp(self):
-    super(TFRecordDatasetTest, self).setUp()
-    self._num_files = 2
-    self._num_records = 7
-    self.test_filenames = self._createFiles()
+class TFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
+                          parameterized.TestCase):
 
   def _dataset_factory(self,
                        filenames,
@@ -52,20 +48,6 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     if batch_size:
       return repeat_dataset.batch(batch_size)
     return repeat_dataset
-
-  def _record(self, f, r):
-    return compat.as_bytes("Record %d of file %d" % (r, f))
-
-  def _createFiles(self):
-    filenames = []
-    for i in range(self._num_files):
-      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
-      filenames.append(fn)
-      writer = python_io.TFRecordWriter(fn)
-      for j in range(self._num_records):
-        writer.write(self._record(i, j))
-      writer.close()
-    return filenames
 
   @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDatasetConstructorErrorsTensorInput(self):
@@ -82,19 +64,19 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testReadOneEpoch(self):
     # Basic test: read from file 0.
-    dataset = self._dataset_factory(self.test_filenames[0])
+    dataset = self._dataset_factory(self._filenames[0])
     self.assertDatasetProduces(
         dataset,
         expected_output=[self._record(0, i) for i in range(self._num_records)])
 
     # Basic test: read from file 1.
-    dataset = self._dataset_factory(self.test_filenames[1])
+    dataset = self._dataset_factory(self._filenames[1])
     self.assertDatasetProduces(
         dataset,
         expected_output=[self._record(1, i) for i in range(self._num_records)])
 
     # Basic test: read from both files.
-    dataset = self._dataset_factory(self.test_filenames)
+    dataset = self._dataset_factory(self._filenames)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
@@ -103,7 +85,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochs(self):
-    dataset = self._dataset_factory(self.test_filenames, num_epochs=10)
+    dataset = self._dataset_factory(self._filenames, num_epochs=10)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
@@ -113,7 +95,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochsOfBatches(self):
     dataset = self._dataset_factory(
-        self.test_filenames, num_epochs=10, batch_size=self._num_records)
+        self._filenames, num_epochs=10, batch_size=self._num_records)
     expected_output = []
     for j in range(self._num_files):
       expected_output.append(
@@ -123,7 +105,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testReadZlibFiles(self):
     zlib_files = []
-    for i, fn in enumerate(self.test_filenames):
+    for i, fn in enumerate(self._filenames):
       with open(fn, "rb") as f:
         cdata = zlib.compress(f.read())
 
@@ -141,7 +123,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testReadGzipFiles(self):
     gzip_files = []
-    for i, fn in enumerate(self.test_filenames):
+    for i, fn in enumerate(self._filenames):
       with open(fn, "rb") as f:
         gzfn = os.path.join(self.get_temp_dir(), "tfrecord_%s.gz" % i)
         with gzip.GzipFile(gzfn, "wb") as gzf:
@@ -158,7 +140,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testReadWithBuffer(self):
     one_mebibyte = 2**20
     dataset = readers.TFRecordDataset(
-        self.test_filenames, buffer_size=one_mebibyte)
+        self._filenames, buffer_size=one_mebibyte)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
@@ -167,7 +149,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadFromDatasetOfFiles(self):
-    files = dataset_ops.Dataset.from_tensor_slices(self.test_filenames)
+    files = dataset_ops.Dataset.from_tensor_slices(self._filenames)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
@@ -178,7 +160,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochsFromDatasetOfFilesInParallel(self):
     files = dataset_ops.Dataset.from_tensor_slices(
-        self.test_filenames).repeat(10)
+        self._filenames).repeat(10)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
@@ -186,6 +168,83 @@ class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = readers.TFRecordDataset(files, num_parallel_reads=4)
     self.assertDatasetProduces(
         dataset, expected_output=expected_output * 10, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetPathlib(self):
+    files = [pathlib.Path(self._filenames[0])]
+
+    expected_output = [self._record(0, i) for i in range(self._num_records)]
+    ds = readers.TFRecordDataset(files)
+    self.assertDatasetProduces(
+        ds, expected_output=expected_output, assert_items_equal=True)
+
+
+class TFRecordDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
+                                    checkpoint_test_base.CheckpointTestBase,
+                                    parameterized.TestCase):
+
+  def _build_iterator_graph(self,
+                            num_epochs,
+                            batch_size=1,
+                            compression_type=None,
+                            buffer_size=None):
+    filenames = self._createFiles()
+    if compression_type == "ZLIB":
+      zlib_files = []
+      for i, fn in enumerate(filenames):
+        with open(fn, "rb") as f:
+          cdata = zlib.compress(f.read())
+          zfn = os.path.join(self.get_temp_dir(), "tfrecord_%s.z" % i)
+          with open(zfn, "wb") as f:
+            f.write(cdata)
+          zlib_files.append(zfn)
+      filenames = zlib_files
+
+    elif compression_type == "GZIP":
+      gzip_files = []
+      for i, fn in enumerate(self._filenames):
+        with open(fn, "rb") as f:
+          gzfn = os.path.join(self.get_temp_dir(), "tfrecord_%s.gz" % i)
+          with gzip.GzipFile(gzfn, "wb") as gzf:
+            gzf.write(f.read())
+          gzip_files.append(gzfn)
+      filenames = gzip_files
+
+    return readers.TFRecordDataset(
+        filenames, compression_type,
+        buffer_size=buffer_size).repeat(num_epochs).batch(batch_size)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTFRecordWithoutBufferCore(self):
+    num_epochs = 5
+    batch_size = num_epochs
+    num_outputs = num_epochs * self._num_files * self._num_records // batch_size
+    # pylint: disable=g-long-lambda
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(
+            num_epochs, batch_size, buffer_size=0), num_outputs)
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(num_epochs, buffer_size=0),
+        num_outputs * batch_size)
+    # pylint: enable=g-long-lambda
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTFRecordWithBufferCore(self):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
+    self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
+                        num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTFRecordWithCompressionCore(self):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(num_epochs, compression_type="ZLIB"),
+        num_outputs)
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(num_epochs, compression_type="GZIP"),
+        num_outputs)
 
 
 if __name__ == "__main__":

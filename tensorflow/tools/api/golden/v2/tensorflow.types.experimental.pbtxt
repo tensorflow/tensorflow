@@ -1,0 +1,19 @@
+path: "tensorflow.types.experimental"
+tf_module {
+  member {
+    name: "Callable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ConcreteFunction"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GenericFunction"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorLike"
+    mtype: "typing.Union"
+  }
+}

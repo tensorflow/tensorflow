@@ -8,6 +8,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_allow_per_host_v2_parallel_get_next"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_feed_hook"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_host_call_every_n_steps"
     mtype: "<type \'property\'>"
   }

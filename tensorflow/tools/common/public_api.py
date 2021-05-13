@@ -75,8 +75,6 @@ class PublicAPIVisitor(object):
         'tf.app': ['flags'],
         # Imported for compatibility between py2/3.
         'tf.test': ['mock'],
-        # Externalized modules of the Keras API.
-        'tf.keras': ['applications', 'preprocessing']
     }
 
   @property
@@ -114,7 +112,7 @@ class PublicAPIVisitor(object):
     return ((path in self._private_map and name in self._private_map[path]) or
             (six.ensure_str(name).startswith('_') and
              not re.match('__.*__$', six.ensure_str(name)) or
-             name in ['__base__', '__class__']))
+             name in ['__base__', '__class__', '__next_in_mro__']))
 
   def _do_not_descend(self, path, name):
     """Safely queries if a specific fully qualified name should be excluded."""

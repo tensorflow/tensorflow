@@ -74,12 +74,13 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64 n_dims = shape.rank();
-    TF_RET_CHECK(start.size() == n_dims);
+    const int64 start_size = start.size();
+    TF_RET_CHECK(start_size == n_dims);
 
     // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
     std::vector<int32> start_as_int32(start.begin(), start.end());
     std::vector<XlaOp> start_ops(start.size());
-    for (int i = 0; i < start.size(); ++i) {
+    for (int i = 0, end = start.size(); i < end; ++i) {
       start_ops[i] = ConstantR0(builder, start_as_int32[i]);
     }
     return DynamicUpdateSlice(x, update, start_ops);

@@ -75,13 +75,21 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-try:
-  from .python.keras.api._v1 import keras
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+if _os.environ.get("_PREFER_OSS_KERAS", False):
+  _keras_module = "keras.api._v1.keras"
+  keras = _LazyLoader("keras", globals(), _keras_module)
+  _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+  if _module_dir:
+    _current_module.__path__ = [_module_dir] + _current_module.__path__
   setattr(_current_module, "keras", keras)
-except ImportError:
-  pass
+else:
+  try:
+    from .python.keras.api._v1 import keras
+    _current_module.__path__ = (
+        [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+    setattr(_current_module, "keras", keras)
+  except ImportError:
+    pass
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
@@ -116,6 +124,24 @@ setattr(_current_module, "flags", flags)
 
 _major_api_version = 1
 
+# Add module aliases from Keras to TF.
+# Some tf endpoints actually lives under Keras.
+if (hasattr(_current_module, "keras") and
+    _os.environ.get("_PREFER_OSS_KERAS", False)):
+  # It is possible that keras is a lazily loaded module, which might break when
+  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
+  # when it doing some very initial loading, like tf.compat.v2, etc.
+  try:
+    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
+    layers = _LazyLoader("layers", globals(), _layer_package)
+    setattr(_current_module, "layers", layers)
+
+    _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
+    legacy_rnn = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
+    _current_module.nn.rnn_cell = legacy_rnn
+  except ImportError:
+    pass
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin
@@ -126,7 +152,7 @@ from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
-_site_packages_dirs += [_site.USER_SITE]
+_site_packages_dirs += [] if _site.USER_SITE is None else [_site.USER_SITE]
 _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
@@ -147,13 +173,36 @@ if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
     # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
-    if _fi.file_exists(_main_dir):
+    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
+    if _os.path.exists(_main_dir):
       _ll.load_library(_main_dir)
 
     # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
-    if _fi.file_exists(_plugin_dir):
+    if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+      # Load Pluggable Device Library
+      _ll.load_pluggable_device_library(_plugin_dir)
+
+# Delete modules that should be hidden from dir().
+# Don't fail if these modules are not available.
+# For e.g. this file will be originally placed under tensorflow/_api/v1 which
+# does not have 'python', 'core' directories. Then, it will be copied
+# to tensorflow/ which does have these two directories.
+
+# pylint: disable=undefined-variable
+try:
+  del python
+except NameError:
+  pass
+try:
+  del core
+except NameError:
+  pass
+try:
+  del compiler
+except NameError:
+  pass
+
 
 # __all__ PLACEHOLDER

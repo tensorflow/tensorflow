@@ -1,11 +1,11 @@
-// RUN: tf-opt -tf-executor-break-up-islands %s | FileCheck %s --dump-input=fail
-// RUN: tf-opt -tf-executor-break-up-islands -tf-executor-break-up-islands %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-executor-break-up-islands %s | FileCheck %s
+// RUN: tf-opt -tf-executor-break-up-islands -tf-executor-break-up-islands %s | FileCheck %s
 
 // All tests also test for idempotence.
 
 // Test that external functions aren't processed (used to crash).
-// CHECK-LABEL: func @unused_external_func
-func @unused_external_func()
+// CHECK-LABEL: func private @unused_external_func
+func private @unused_external_func()
 
 func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %graph:2 = tf_executor.graph {
@@ -285,13 +285,14 @@ func @empty_island_multiple_data_results(%arg0: tensor<*xf32>, %arg1: tensor<*xi
 // and certain tf_executor ops are added correctly.
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
-// CHECK: tf_executor.NextIteration.Sink [{{.*}}] {{.*}}, %[[CONTROL]]
+// CHECK: tf_executor.NextIteration.Sink[{{.*}}] {{.*}}, %[[CONTROL]]
 func @next_iteration_sink_control_input() {
   tf_executor.graph {
     %source:3 = tf_executor.NextIteration.Source : tensor<*xi32>
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
+
       tf_executor.yield %const : tensor<*xi32>
     }
     tf_executor.NextIteration.Sink[%source#1] %island#0 : tensor<*xi32>
@@ -306,7 +307,7 @@ func @loop_cond_control_input() {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i1>} : () -> tensor<*xi1>
-      %print = "tf.Print"(%const) : (tensor<*xi1>) -> (tensor<*xi1>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi1>) -> (tensor<*xi1>)
       tf_executor.yield %const : tensor<*xi1>
     }
     %loop_cond:2 = tf_executor.LoopCond %island#0 : tensor<*xi1>
@@ -321,7 +322,7 @@ func @enter_control_input() {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
       tf_executor.yield %const : tensor<*xi32>
     }
     %enter:2 = tf_executor.Enter %island#0 frame "some/frame" : tensor<*xi32>
@@ -331,16 +332,156 @@ func @enter_control_input() {
 }
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
-// CHECK: tf_executor.SwitchN {{.*}}, {{.*}} of {{[0-9]*}} (%[[CONTROL]])
+// CHECK: tf_executor._SwitchN {{.*}}, {{.*}} of {{[0-9]*}} (%[[CONTROL]])
 func @switchn_control_input(%arg1: tensor<i32>) {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
       tf_executor.yield %const : tensor<*xi32>
     }
-    %switchn:4 = tf_executor.SwitchN %island#0, %arg1 of 3: tensor<*xi32>
+    %switchn:4 = tf_executor._SwitchN %island#0, %arg1 of 3: tensor<*xi32>
     tf_executor.fetch %switchn#0 : tensor<*xi32>
+  }
+  return
+}
+
+// CHECK-LABEL: func @single_op_island_forward_block_arg
+// CHECK: %[[CONST:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"
+// CHECK: tf_executor.fetch %[[CONST]], %arg0
+func @single_op_island_forward_block_arg(%arg0: tensor<?x?x?x?xbf16>) -> (tensor<2048xf32>, tensor<?x?x?x?xbf16>) {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2048xf32>} : () -> tensor<2048xf32>
+      tf_executor.yield %1, %arg0 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+  }
+  return %0#0, %0#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+}
+
+// CHECK-LABEL: func @single_op_island_duplicate_result
+// CHECK: %[[CONST:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"
+// CHECK: tf_executor.fetch %[[CONST]], %[[CONST]]
+func @single_op_island_duplicate_result() -> (tensor<2048xf32>, tensor<2048xf32>) {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2048xf32>} : () -> tensor<2048xf32>
+      tf_executor.yield %1, %1 : tensor<2048xf32>, tensor<2048xf32>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<2048xf32>
+  }
+  return %0#0, %0#1 : tensor<2048xf32>, tensor<2048xf32>
+}
+
+// CHECK: func @tpu_load_embedding_ops_sink_controls
+// CHECK: {{%.+}}, [[READ0:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: {{%.+}}, [[READ1:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: {{%.+}}, [[READ2:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: [[LOAD0:%.+]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: {{%.+}}, [[READ3:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: [[LOAD1:%.+]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[UNKNOWN0:%.+]] = tf_executor.island([[READ0]], [[READ1]], [[READ2]], [[LOAD0]], [[READ3]], [[LOAD1]]) wraps "tf.UnknownOp"
+// CHECK: [[UNKNOWN1:%.+]] = tf_executor.island([[UNKNOWN0]]) wraps "tf.UnknownOp"
+// CHECK: [[LOAD2:%.+]] = tf_executor.island([[UNKNOWN1]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[LOAD3:%.+]] = tf_executor.island([[UNKNOWN1]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[SINK:%.+]] = tf_executor.island([[LOAD2]], [[LOAD3]]) wraps "tf.NoOp"
+// CHECK: tf_executor.fetch [[SINK]]
+func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8xf32>>>, %arg1: tensor<*x!tf.resource<tensor<8xf32>>>, %arg2: tensor<*x!tf.resource<tensor<8xf32>>>, %arg3: tensor<*x!tf.resource<tensor<8xf32>>>) {
+ tf_executor.graph {
+   %control = tf_executor.island {
+     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %1 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %2 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     "tf.LoadTPUEmbeddingAdagradParameters"(%0, %1) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     %3 = "tf.ReadVariableOp"(%arg3) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     "tf.LoadTPUEmbeddingAdagradParameters"(%2, %3) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table2"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     "tf.UnknownOp"() : () -> ()
+     "tf.UnknownOp"() : () -> ()
+     "tf.LoadTPUEmbeddingAdagradParameters"(%0, %1) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table3"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     "tf.LoadTPUEmbeddingAdagradParameters"(%2, %3) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table4"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     tf_executor.yield
+   }
+   tf_executor.fetch %control : !tf_executor.control
+ }
+ return
+}
+
+// CHECK: func @stateful_composite_op_control
+func @stateful_composite_op_control(%arg0: tensor<i1>, %arg1: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %output, %control = tf_executor.island {
+      // CHECK: {{%.+}}, [[IF_CONTROL:%.+]] = tf_executor.island wraps "tf.If"
+      %1 = "tf.If"(%arg0, %arg1) {device = "", else_branch = @stateful_composite_op_control_else, is_stateless = false, then_branch = @stateful_composite_op_control_then} : (tensor<i1>, tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+      // CHECK: [[IDENTITY_OUTPUT:%.+]], [[IDENTITY_CONTROL:%.+]] = tf_executor.island wraps "tf.Identity"
+      %2 = "tf.Identity"(%1) {device = ""} : (tensor<i32>) -> tensor<i32>
+
+      // The side effects of the If op might not be executed without an
+      // explicit control dependency on the tf.If op, due to the way the
+      // LowerFunctionalOpsPass in TF operates (b/185483669). Check that we
+      // output an explicit control dependency on the tf.If op in this case to
+      // be on the safe side.
+      // CHECK: [[SINK:%.+]] = tf_executor.island([[IF_CONTROL]], [[IDENTITY_CONTROL]]) wraps "tf.NoOp"
+      tf_executor.yield %2 : tensor<i32>
+    }
+    // CHECK: tf_executor.fetch [[IDENTITY_OUTPUT]], [[SINK]]
+    tf_executor.fetch %output : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_else
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_else(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_then
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_then(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @generator_op
+func @generator_op(%str : tensor<!tf.string>, %arg0: tensor<*x!tf.string>, %arg1: tensor<!tf.string>, %arg2: tensor<*xi64>, %arg3: tensor<!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      // CHECK: %{{.*}}, %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.GeneratorDataset"
+      %gen0 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      %add1 = "tf.Add"(%str, %arg3) : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.string>
+      // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.GeneratorDataset"
+      %gen1 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      tf_executor.yield
+    }
+    tf_executor.fetch
   }
   return
 }

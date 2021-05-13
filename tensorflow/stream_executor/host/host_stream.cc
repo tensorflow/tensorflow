@@ -24,9 +24,20 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-HostStream::HostStream()
+namespace {
+
+port::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
+  port::ThreadOptions options;
+  options.stack_size = stack_size_in_bytes;
+  return options;
+}
+
+}  // namespace
+
+HostStream::HostStream(size_t stack_size_in_bytes)
     : thread_(port::Env::Default()->StartThread(
-          port::ThreadOptions(), "host_executor", [this]() { WorkLoop(); })) {}
+          GetThreadOptions(stack_size_in_bytes), "host_executor",
+          [this]() { WorkLoop(); })) {}
 
 HostStream::~HostStream() {
   {
@@ -53,17 +64,20 @@ void HostStream::WorkLoop() {
   tensorflow::port::ScopedFlushDenormal flush;
   tensorflow::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::function<void()> fn;
+    std::queue<std::function<void()>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
-      fn = std::move(work_queue_.front());
-      work_queue_.pop();
+      std::swap(queue, work_queue_);
     }
-    if (!fn) {
-      return;
+    while (!queue.empty()) {
+      std::function<void()>& fn = queue.front();
+      if (!fn) {
+        return;
+      }
+      fn();
+      queue.pop();
     }
-    fn();
   }
 }
 

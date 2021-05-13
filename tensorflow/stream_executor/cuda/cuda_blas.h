@@ -21,6 +21,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cublasLt.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
@@ -70,6 +73,9 @@ class CUDABlas : public blas::BlasSupport {
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Returns the underlying CUDA stream.
+  cudaStream_t CUDAStream(Stream *stream);
+
   // A helper function that calls the real cuBLAS function together with error
   // handling.
   //
@@ -78,30 +84,20 @@ class CUDABlas : public blas::BlasSupport {
   // stream:             Stream to enqueue the BLAS operation onto.
   // pointer_mode_host:  Indicate if the pointer to a scalar value is from host
   //                     (true) or device (false).
-  // err_on_failure:     Whether to print an error if the cublas function fails.
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                          bool pointer_mode_host, bool err_on_failure,
-                          bool use_tensor_op_math, Args... args);
+  port::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                                  bool pointer_mode_host,
+                                  cublasMath_t math_type, Args... args);
 
-  // Convenience functions that call DoBlasInternalImpl with different values
-  // for err_on_failure.
+  // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
+  // and math_type=CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, /*use_tensor_ops=*/false,
-                              args...);
-  }
-  template <typename FuncT, typename... Args>
-  bool DoBlasInternalFailureOK(FuncT cublas_func, Stream *stream,
-                               bool pointer_mode_host, Args... args) {
-    // Tensor ops are hard-coded off in this path, but can still be enabled with
-    // a specific algorithm choice as in DoBlasGemmWithAlgorithmImpl().
-    return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/false,
-                              /*use_tensor_ops=*/false, args...);
+                              CUBLAS_DEFAULT_MATH, args...)
+        .ok();
   }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
@@ -114,16 +110,6 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, Scalar beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
-
-  // Helper function for implementing DoBlasGemmWithAlgorithm.
-  template <typename InT, typename OutT, typename CompT>
-  bool DoBlasGemmWithAlgorithmImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const HostOrDeviceScalar<CompT> &alpha,
-      const DeviceMemory<InT> &a, int lda, const DeviceMemory<InT> &b, int ldb,
-      const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>
@@ -142,6 +128,24 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
+  // Helper function for implementing DoBlasLtMatmul.
+  bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
+                              const blas::IBlasLtMatmulPlan *plan,
+                              const HostOrDeviceScalar<void> &alpha,
+                              DeviceMemoryBase a, DeviceMemoryBase b,
+                              const HostOrDeviceScalar<void> &beta,
+                              DeviceMemoryBase c, DeviceMemoryBase d,
+                              ScratchAllocator *scratch_allocator,
+                              const blas::IBlasLtMatmulAlgorithm *algorithm,
+                              DeviceMemoryBase bias);
+
+  // Helper function for implementing GetBlasLtMatmulAlgorithms.
+  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+  GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
+                                    size_t max_workspace_size,
+                                    int max_algorithm_count,
+                                    bool for_remainder_batch = false);
+
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
 
@@ -151,6 +155,11 @@ class CUDABlas : public blas::BlasSupport {
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ TF_GUARDED_BY(mu_);
+
+#if CUDA_VERSION >= 11000
+  // cuBLASLt library handle on the device.
+  cublasLtHandle_t blasLt_ TF_GUARDED_BY(mu_);
+#endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

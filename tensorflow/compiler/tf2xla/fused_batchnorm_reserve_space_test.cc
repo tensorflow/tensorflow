@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -139,5 +140,11 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   test::ExpectClose(results[0], results[1], /*atol=*/1e-4);
   test::ExpectClose(results[2], results[3], /*atol=*/1e-4);
 }
+
+static bool Initialized = [] {
+  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  return true;
+}();
+
 }  // namespace
 }  // namespace tensorflow

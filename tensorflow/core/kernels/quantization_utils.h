@@ -43,7 +43,8 @@ namespace tensorflow {
 // We have to be able to detect and handle overflows in int32, so this function
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
-int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
+inline int64 FloatToQuantizedUnclamped(float input, float range_min,
+                                       float range_max) {
   const int64 lowest_quantized =
       static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
@@ -58,6 +59,12 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
       (round(input * range_scale) - round(range_min * range_scale));
   quantized += lowest_quantized;
   return quantized;
+}
+
+template <>
+inline int64 FloatToQuantizedUnclamped<float>(float input, float range_min,
+                                              float range_max) {
+  return -1;
 }
 
 // This converts the float into the final quantized type, clamping/saturating
@@ -268,7 +275,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input, int64 count,
   // that could be easily adapted for a SIMD implementation. It should also be
   // possible to perform all the calculations in 32-bit rather than 64, but
   // that's not been implemented yet.
-  for (size_t index = 0; index < count; ++index) {
+  for (tensorflow::int64 index = 0; index < count; ++index) {
     const int64 input_value = static_cast<int64>(input[index]);
     const int64 fp_value =
         ((input_value * range_scale_fp) >> 32) + input_offset_fp;
@@ -661,7 +668,7 @@ template <int shift>
 struct int64_right_shift_op {
   EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
-  EIGEN_STRONG_INLINE const int64 operator()(const int64& a) const {
+  EIGEN_STRONG_INLINE const int64 operator()(const int64 a) const {
     return a >> shift;
   }
 };

@@ -18,7 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -37,19 +39,17 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/timed.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace tensorflow {
 
 namespace {
-
-struct InputBuffers {
-  std::vector<RefPtr<XRTTupleAllocation>> input_tuples;
-  std::vector<xla::ShapedBuffer> input_allocations;
-  std::vector<xla::ShapedBuffer*> input_pointers;
-};
 
 uint32 InitialRandomSeed() {
   // Support plumbing the TF seed through to XLA is being worked on.
@@ -74,120 +74,299 @@ uint32 GetXLARandomSeed() {
   return counter.fetch_add(2);
 }
 
-xla::StatusOr<InputBuffers> GetInputBuffers(
-    XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
-    const std::vector<InputCoords>& input_coords, bool release_inputs) {
-  InputBuffers input_buffers;
-  input_buffers.input_tuples.reserve(input_coords.size());
-  input_buffers.input_allocations.reserve(input_coords.size());
-  input_buffers.input_pointers.reserve(input_coords.size());
-  for (size_t i = 0; i < input_coords.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        working_set->LookupAndPin(backend, input_coords[i].handle));
-    auto tuple = working_set->PinnedTuples().back();
-    input_buffers.input_tuples.emplace_back(tuple);
-    if (release_inputs) {
-      // We are holding a reference to the tuple, so we can safely delete it
-      // from the resource manager here.
-      TF_RETURN_IF_ERROR(
-          working_set->MemoryManager()->Release(input_coords[i].handle));
-      VLOG(2) << "Released allocation handle " << input_coords[i].handle;
-    }
-    if (input_coords[i].index.empty()) {
-      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
-                          tuple->ToShapedBuffer());
-      input_buffers.input_allocations.emplace_back(std::move(shaped_buffer));
-    } else {
-      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
-                          tuple->ToShapedBuffer());
-      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer sub_shaped_buffer,
-                          shaped_buffer.SubShapedBuffer(input_coords[i].index));
-      input_buffers.input_allocations.emplace_back(
-          std::move(sub_shaped_buffer));
-    }
+std::vector<bool> GetDynamicInputInfo(
+    const xla::ComputationLayout& computation_layout) {
+  std::vector<bool> input_is_dynamic;
+  input_is_dynamic.reserve(computation_layout.parameter_count());
+  for (int64 i = 0; i < computation_layout.parameter_count(); ++i) {
+    input_is_dynamic.push_back(
+        !computation_layout.parameter_shape(i).is_static());
   }
-  for (size_t i = 0; i < input_buffers.input_allocations.size(); ++i) {
-    input_buffers.input_pointers.push_back(&input_buffers.input_allocations[i]);
-  }
-  return std::move(input_buffers);
+  return input_is_dynamic;
 }
 
-xla::StatusOr<InputBuffers> GetChainedOpInputs(
+xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTuples(
+    xla::LocalExecutable* executable, XRTMemoryManager::WorkingSet* working_set,
+    xla::Backend* backend, const std::vector<InputCoords>& input_coords,
+    bool release_inputs) {
+  const xla::ComputationLayout& computation_layout =
+      executable->executable()->module_config().entry_computation_layout();
+
+  return GetInputTupleAllocations(
+      input_coords, working_set, backend, computation_layout.parameter_count(),
+      [&](int64 i) { return computation_layout.parameter_shape(i); },
+      release_inputs);
+}
+
+xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetChainedOpInputTuples(
     const xrt::XRTChainedExecuteOp& op,
     absl::Span<const RefPtr<XRTTupleAllocation>> op_inputs) {
-  InputBuffers input_buffers;
-  input_buffers.input_tuples.reserve(op.inputs_size());
-  input_buffers.input_allocations.reserve(op.inputs_size());
-  input_buffers.input_pointers.reserve(op.inputs_size());
+  std::vector<RefPtr<XRTTupleAllocation>> input_tuples;
+  input_tuples.reserve(op.inputs_size());
   for (int i = 0; i < op.inputs_size(); ++i) {
     auto& input = op.inputs(i);
-    input_buffers.input_tuples.emplace_back(op_inputs[i]);
     // Thanks to the greatness of proto3, there is no way to query for
     // explicitly set fields, so the default for output_index (zero) means no
     // sub-index. As consequence, the real index is output_index - 1.
     if (input.output_index() == 0) {
-      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
-                          input_buffers.input_tuples.back()->ToShapedBuffer());
-      input_buffers.input_allocations.emplace_back(std::move(shaped_buffer));
+      input_tuples.emplace_back(op_inputs[i]);
     } else {
-      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
-                          input_buffers.input_tuples.back()->ToShapedBuffer());
-      TF_ASSIGN_OR_RETURN(
-          xla::ShapedBuffer sub_shaped_buffer,
-          shaped_buffer.SubShapedBuffer({input.output_index() - 1}));
-      input_buffers.input_allocations.emplace_back(
-          std::move(sub_shaped_buffer));
+      XRTTupleAllocation* sub_tuple;
+      TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+          op_inputs[i].get(), {input.output_index() - 1}, &sub_tuple,
+          /*alias_parent_allocation=*/true));
+      input_tuples.emplace_back(sub_tuple);
     }
   }
-  for (size_t i = 0; i < input_buffers.input_allocations.size(); ++i) {
-    input_buffers.input_pointers.push_back(&input_buffers.input_allocations[i]);
+  return input_tuples;
+}
+
+// Given a shape, returns a byte array representing the shape metadata of the
+// shape. The shape metadata contains dimensions sizes stored as contiguous S32.
+std::vector<int32> PrepareMetadata(const xla::Shape& shape) {
+  DCHECK(shape.is_static());
+  DCHECK(shape.IsArray());
+  // Each dimension size is stored as a S32.
+  std::vector<int32> result(shape.dimensions_size());
+  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
+    result[i] = shape.dimensions(i);
   }
-  return std::move(input_buffers);
+  return result;
+}
+
+// Given a buffer with dynamic shape, update buffer metadata at the correct
+// offset starting from that buffer.
+//
+// +-----------+
+// |Payload    |
+// +-----------+
+// | Padding   |
+// +-----------+
+// |dim_size_0 |  (each dim_size is a S32):
+// +-----------+
+// |dim_size_1 |
+// +-----------+
+//  ..........
+// +-----------+
+//
+// Size of payload = ByteSizeOf(runtime_shape)
+// Size of payload + padding = ByteSizeOf(compile_time_shape_static)
+// Size of payload + padding + metadata = ByteSizeOf(compile_time_shape)
+Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
+                      const xla::Shape& compile_time_shape,
+                      const xla::Shape& runtime_shape) {
+  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
+                                         stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
+  xla::Shape compile_time_shape_static =
+      xla::ShapeUtil::MakeStaticShape(compile_time_shape);
+  uint64 offset = shape_size_fn(compile_time_shape_static);
+  uint64 metadata_size = shape_size_fn(compile_time_shape) - offset;
+  auto metadata_buffer =
+      stream->parent()->GetSubBuffer(buffer, offset, metadata_size);
+
+  auto metadata_literal = std::make_shared<xla::Literal>(
+      xla::LiteralUtil::CreateR1<int32>(PrepareMetadata(runtime_shape)));
+  TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
+      stream, *metadata_literal, metadata_buffer));
+  // Retain the literal until the end of the transfer.
+  stream->ThenDoHostCallback([metadata_literal]() { return Status::OK(); });
+  return Status::OK();
+}
+
+// Given a static input buffer, convert it to dynamic form by expanding it to
+// the bounded size and attaching a metadata filled with dimension sizes.
+//
+// From:
+// +--------+
+// |Payload |
+// +--------+
+//
+// To:
+//
+// +--------+
+// |Payload |
+// +--------+
+// | Padding|
+// +--------+
+// |Metadata|
+// +--------+
+//
+// As we can't expand the size of an existing memory allocation, a reallocation
+// is required. A list of new allocations are returned after this function. The
+// caller is reponsible for maintaining those allocations.
+Status UpdateDynamicInputs(
+    se::Stream* stream, se::DeviceMemoryAllocator* allocator,
+    std::vector<xla::ExecutionInput>* execution_inputs,
+    const std::vector<xla::ShapeLayout>& compile_time_shapes) {
+  TF_RET_CHECK(execution_inputs->size() == compile_time_shapes.size());
+  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
+                                         stream->parent()->platform()));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
+  for (int64 i = 0; i < compile_time_shapes.size(); i++) {
+    const xla::Shape& compile_time_shape = compile_time_shapes[i].shape();
+    if (compile_time_shape.is_static()) {
+      continue;
+    }
+    xla::ExecutionInput* execution_input = &(*execution_inputs)[i];
+    bool element_modified = false;
+    TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
+        compile_time_shape,
+        [&](const xla::Shape& sub_shape,
+            const xla::ShapeIndex& index) -> Status {
+          if (sub_shape.IsTuple() || sub_shape.is_static()) {
+            return Status::OK();
+          }
+          TF_ASSIGN_OR_RETURN(
+              const xla::Shape* runtime_shape,
+              xla::ShapeUtil::TryGetSubshape(execution_input->shape(), index));
+          TF_RET_CHECK(!runtime_shape->IsTuple());
+          TF_RET_CHECK(xla::ShapeUtil::DynamicArrayShapeIsCompatible(
+              *runtime_shape, sub_shape));
+          TF_ASSIGN_OR_RETURN(
+              se::OwningDeviceMemory dynamic_input,
+              allocator->Allocate(stream->parent()->device_ordinal(),
+                                  shape_size_fn(sub_shape)));
+
+          se::DeviceMemoryBase static_input =
+              execution_input->Buffer(index).AsDeviceMemoryBase();
+          se::DeviceMemory<uint8>* dynamic_input_base = dynamic_input.ptr();
+          // Send the original data to the new location.
+          stream->ThenMemcpyD2D(dynamic_input_base, static_input,
+                                static_input.size());
+          TF_RETURN_IF_ERROR(UpdateMetadata(stream, dynamic_input_base,
+                                            sub_shape, *runtime_shape));
+          // Modify the memory location in the input shape tree to point to the
+          // new input.
+          execution_input->SetBuffer(
+              index, xla::MaybeOwningDeviceMemory(std::move(dynamic_input)));
+          execution_input->ClearUnownedIndex(index);
+          element_modified = true;
+          return Status::OK();
+        }));
+    if (element_modified) {
+      TF_RETURN_IF_ERROR(execution_input->SetDynamicShape(compile_time_shape));
+      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
+                          execution_input->ToShapedBuffer(
+                              allocator, stream->parent()->device_ordinal()));
+      // The input location has been modified, need to fix tuple table to
+      // point to the correct address.
+      TF_ASSIGN_OR_RETURN(
+          auto transfer_manager,
+          xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+      TF_RETURN_IF_ERROR(
+          transfer_manager->WriteTupleIndexTablesAsync(stream, shaped_buffer));
+    }
+  }
+  return Status::OK();
+}
+
+xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
+    se::Stream* stream, xla::ExecutionOutput run_result, xla::Backend* backend,
+    int device_ordinal) {
+  XRTTupleAllocation* output_tuple;
+  xla::ScopedShapedBuffer* shaped_buffer = run_result.MutableResult();
+  if (shaped_buffer->on_device_shape().is_dynamic()) {
+    // Update dynamic shapes from output buffer, and create a XRT tensor with
+    // dimension sizes read from metadata.
+    xla::Shape output_device_shape = shaped_buffer->on_device_shape();
+    TF_ASSIGN_OR_RETURN(
+        auto transfer_manager,
+        xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+    TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
+        stream, shaped_buffer, &output_device_shape));
+    TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
+        *shaped_buffer,
+        xla::ShapeUtil::DeviceShapeToHostShape(output_device_shape),
+        output_device_shape, backend, device_ordinal, &output_tuple));
+  } else {
+    // Fast-path: Don't copy shapes of output buffer.
+    TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
+        *shaped_buffer, backend, device_ordinal, &output_tuple));
+  }
+  // After the output tuple is created, we can release the output result
+  // buffers, to make sure they won't be cleared by its destructor.
+  (void)run_result.ConsumeResult().release();
+  return RefPtr<XRTTupleAllocation>(output_tuple);
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     OpKernelContext* context, XRTGenericDeviceAccessor::ScopedRef* device_ref,
-    xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed) {
-  VLOG(2) << "Executing computation.";
+    xla::LocalExecutable* executable,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    bool release_inputs, se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
+  const xla::ComputationLayout& computation_layout =
+      executable->executable()->module_config().entry_computation_layout();
+  std::vector<bool> input_is_dynamic = GetDynamicInputInfo(computation_layout);
+  TF_ASSIGN_OR_RETURN(
+      std::vector<xla::ExecutionInput> execution_inputs,
+      GetArgumentsBuffers(
+          executable->executable()->module().input_output_alias_config(),
+          input_tuples, input_is_dynamic, release_inputs));
+
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(device_ref->backend()->memory_allocator());
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
+  if (config.run_id() != 0) {
+    run_options.set_run_id(xla::RunId(config.run_id()));
+  }
+  if (executable->executable()
+          ->module_config()
+          .has_static_device_assignment()) {
+    run_options.set_device_assignment(
+        &executable->executable()->module_config().static_device_assignment());
+  }
+  xla::gpu::GpuExecutableRunOptions gpu_options;
+  std::vector<xla::GlobalDeviceId> gpu_global_ids;
+  if (config.local_replica_mapping_size() > 0) {
+    gpu_global_ids.reserve(config.local_replica_mapping_size());
+    for (auto& gid : config.local_replica_mapping()) {
+      gpu_global_ids.emplace_back(xla::GlobalDeviceId(gid));
+    }
+    gpu_options.set_gpu_global_device_ids(gpu_global_ids);
+  }
+  std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
+  if (nccl_factory != nullptr) {
+    auto uid_callback =
+        [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
+      std::vector<xla::int64> replicas;
+      for (auto& device : key.devices()) {
+        replicas.push_back(device.value());
+      }
+      return nccl_factory->GetUniqueId(replicas);
+    };
+    gpu_options.set_nccl_unique_id_callback(uid_callback);
+  }
+  run_options.set_gpu_executable_run_options(&gpu_options);
 
-  Env* env = Env::Default();
-  auto start_time = env->NowMicros();
+  const std::vector<xla::ShapeLayout>& shape_layouts =
+      executable->executable()
+          ->module_config()
+          .entry_computation_layout()
+          .parameter_layouts();
+  TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, run_options.allocator(),
+                                         &execution_inputs, shape_layouts));
   TF_ASSIGN_OR_RETURN(
-      xla::ScopedShapedBuffer run_result,
-      executable->Run(input_buffers.input_pointers, run_options));
-  auto elapsed = env->NowMicros() - start_time;
-  VLOG(2) << "Elapsed time: " << elapsed << "us";
+      xla::ExecutionOutput run_result,
+      executable->Run(std::move(execution_inputs), run_options));
 
-  auto shaped_buffer = run_result.release();
-  XRTTupleAllocation* output_tuple;
-  TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-      shaped_buffer, device_ref->backend(), device_ref->device_ordinal(),
-      &output_tuple));
-  RefPtr<XRTTupleAllocation> output_tuple_ptr(output_tuple);
-
+  TF_ASSIGN_OR_RETURN(
+      RefPtr<XRTTupleAllocation> output_tuple_ptr,
+      CreateOutputTuple(stream, std::move(run_result), device_ref->backend(),
+                        device_ref->device_ordinal()));
   // The ScopedShapedBuffer returned by the executable Run() API, in case of
   // input/output buffer aliasing, might have holes in it, which need to be
   // filled using the proper input tuples buffers which are the source of
   // aliasing.
-  const xla::HloInputOutputAliasConfig& input_output_alias =
-      executable->executable()->module().input_output_alias_config();
-  auto alias_function =
-      [&](const xla::ShapeIndex& output_index,
-          const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
-    TF_RET_CHECK(alias.parameter_number < input_buffers.input_tuples.size());
-    return alias.kind == xla::HloInputOutputAliasConfig::AliasKind::kUserAlias
-               ? output_tuple->AliasBufferFrom(
-                     *input_buffers.input_tuples[alias.parameter_number],
-                     alias.parameter_index, output_index)
-               : Status::OK();
-  };
-  TF_RETURN_IF_ERROR(input_output_alias.ForEachAliasWithStatus(alias_function));
+  TF_RETURN_IF_ERROR(RebuildOutputAliases(
+      output_tuple_ptr, input_tuples,
+      executable->executable()->module().input_output_alias_config()));
 
   return std::move(output_tuple_ptr);
 }
@@ -195,11 +374,13 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     OpKernelContext* context, XRTMemoryManager* memory_manager,
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
-    xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed) {
+    xla::LocalExecutable* executable,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    bool release_inputs, se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   auto runfn = [&]() {
-    return RunExecutable(context, device_ref, executable, input_buffers, stream,
-                         rng_seed);
+    return RunExecutable(context, device_ref, executable, input_tuples,
+                         release_inputs, stream, rng_seed, config);
   };
 
   // We pass zero as requested_free_size as there is no simple way to get the
@@ -215,13 +396,16 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
-    se::Stream* stream, int rng_seed) {
+    se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   XRTMemoryManager::WorkingSet working_set(memory_manager);
-  TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
-                      GetInputBuffers(&working_set, device_ref->backend(),
-                                      input_coords, release_inputs));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
+      GetInputTuples(executable, &working_set, device_ref->backend(),
+                     input_coords, release_inputs));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
-                            executable, input_buffers, stream, rng_seed);
+                            executable, input_tuples, release_inputs, stream,
+                            rng_seed, config);
 }
 
 // XRTExecuteOp
@@ -270,8 +454,9 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   bool release_inputs = config_proto.release_input_handles();
   bool release_compilation = config_proto.release_compilation_handle();
 
-  TF_ASSIGN_OR_RETURN(
-      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
+  TF_ASSIGN_OR_RETURN(auto cache,
+                      XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+                          context, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
@@ -302,7 +487,8 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple,
       ExecuteComputation(context, memory_manager, &device_ref, executable,
-                         input_coords, release_inputs, stream, rng_seed));
+                         input_coords, release_inputs, stream, rng_seed,
+                         config_proto.common_config()));
 
   return CreateExecuteOutput(context, memory_manager.get(),
                              std::move(output_tuple),
@@ -351,8 +537,9 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   xrt::XRTChainedExecuteConfig config;
   TF_RET_CHECK(ParseFromTString(execution_config.scalar<tstring>()(), &config));
 
-  TF_ASSIGN_OR_RETURN(
-      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
+  TF_ASSIGN_OR_RETURN(auto cache,
+                      XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+                          context, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
@@ -371,15 +558,16 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   auto execute_op = [&](const xrt::XRTChainedExecuteOp& op,
                         absl::Span<const RefPtr<XRTTupleAllocation>> op_inputs)
       -> xla::StatusOr<RefPtr<XRTTupleAllocation>> {
-    TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
-                        GetChainedOpInputs(op, op_inputs));
-
     std::unique_ptr<XRTCompilationCacheEntryRef> entry;
     TF_RETURN_IF_ERROR(cache->Lookup(op.computation_handle(), &entry));
     xla::LocalExecutable* executable = entry->get().get_executable();
 
-    return ExecuteComputation(context, memory_manager.get(), &device_ref,
-                              executable, input_buffers, stream, rng_seed);
+    TF_ASSIGN_OR_RETURN(std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
+                        GetChainedOpInputTuples(op, op_inputs));
+
+    return ExecuteComputation(
+        context, memory_manager.get(), &device_ref, executable, input_tuples,
+        /*release_inputs=*/false, stream, rng_seed, config.common_config());
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),

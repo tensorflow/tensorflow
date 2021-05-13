@@ -29,7 +29,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -387,6 +389,8 @@ _BINARY_ELEMENTWISE_OPS = [
     math_ops.realdiv,
     math_ops.squared_difference,
     math_ops.subtract,
+    math_ops.tensor_equals,
+    math_ops.tensor_not_equals,
     math_ops.truediv,
     math_ops.truncatediv,
     math_ops.truncatemod,
@@ -453,6 +457,26 @@ def _ragged_dynamic_partition(data, partitions, num_partitions, name=None):
                                                      num_partitions, name)
   return [result[i] for i in range(num_partitions)]
 
+
+def _ragged_nn_dropout_v1(x, keep_prob=None, noise_shape=None, seed=None,
+                          name=None, rate=None):
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(nn_ops.dropout(x.flat_values, keep_prob=keep_prob,
+                                             seed=seed, rate=rate))
+
+
+def _ragged_nn_dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(nn_ops.dropout_v2(x.flat_values, rate=rate,
+                                                seed=seed))
+
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_batch_gather_ops.batch_gather,
@@ -475,6 +499,7 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
+    (array_ops.where_v2, ragged_where_op.where_v2, ['condition', 'x', 'y']),
     (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
      ['data', 'partitions']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
@@ -489,6 +514,7 @@ _RAGGED_DISPATCH_OPS = [
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_sqrt_n, ragged_math_ops.segment_sqrt_n,
      ['data', 'segment_ids']),
+    (string_ops.string_format, ragged_string_ops.string_format, ['[inputs]']),
     (string_ops.reduce_join_v2, ragged_string_ops.reduce_join, ['inputs']),
     (math_ops.reduce_sum, ragged_math_ops.reduce_sum, ['input_tensor']),
     (math_ops.reduce_prod, ragged_math_ops.reduce_prod, ['input_tensor']),
@@ -497,6 +523,8 @@ _RAGGED_DISPATCH_OPS = [
     (math_ops.reduce_mean, ragged_math_ops.reduce_mean, ['input_tensor']),
     (math_ops.reduce_any, ragged_math_ops.reduce_any, ['input_tensor']),
     (math_ops.reduce_all, ragged_math_ops.reduce_all, ['input_tensor']),
+    (nn_ops.dropout, _ragged_nn_dropout_v1, ['x']),
+    (nn_ops.dropout_v2, _ragged_nn_dropout_v2, ['x']),
 ]
 
 
@@ -510,8 +538,9 @@ def register_dispatchers():
     _, undecorated_op = tf_decorator.unwrap(op)
     if not hasattr(undecorated_op,
                    tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names):
-      raise AssertionError('Expected %s to be an exported symbol '
-                           '(while adding a RaggedTensor dispatcher)')
+      raise AssertionError('Expected %r to be an exported symbol '
+                           '(while adding a RaggedTensor dispatcher)'
+                           % (undecorated_op,))
 
   for op in _UNARY_ELEMENTWISE_OPS:
     UnaryRaggedElementwiseDispatcher(op).register(op)
@@ -526,7 +555,7 @@ def register_dispatchers():
     RaggedDispatcher(original_op, ragged_op, args).register(original_op)
 
 
-def _ragged_op_signature(op, ragged_args):
+def _ragged_op_signature(op, ragged_args, ragged_varargs=False):
   """Returns a signature for the given op, marking ragged args in bold."""
   op_name = tf_export.get_canonical_name_for_symbol(op)
   argspec = tf_inspect.getfullargspec(op)
@@ -543,7 +572,10 @@ def _ragged_op_signature(op, ragged_args):
 
   # Add varargs and keyword args
   if argspec.varargs:
-    arg_names.append('*' + argspec.varargs)
+    if ragged_varargs:
+      arg_names.append('***' + argspec.varargs + '**')
+    else:
+      arg_names.append('*' + argspec.varargs)
   if argspec.varkw:
     arg_names.append('**' + argspec.varkw)
 
@@ -574,6 +606,8 @@ def ragged_op_list(tf_version=1):
       arginfos = _get_arg_infos(op, ragged_args)
       ragged_args = [arginfo.position for arginfo in arginfos]
       lines.append(_ragged_op_signature(op, ragged_args))
+  lines.append(
+      _ragged_op_signature(logging_ops.print_v2, [], ragged_varargs=True))
   return ('\n\n### Additional ops that support `RaggedTensor`\n\n'
           'Arguments that accept `RaggedTensor`s are marked in **bold**.\n\n' +
           '\n'.join(sorted(lines)) + 'n')

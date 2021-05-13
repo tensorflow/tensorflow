@@ -50,20 +50,16 @@ limitations under the License.
 //     Output.Dim == { Tensor[0].Dim[0] * Tensor[0].Dim[1] }
 //     A flattened tensor represents projected bit vectors.
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
+#include <stddef.h>
+#include <stdint.h>
+
 #include <cstring>
-#include <iostream>
-#include <limits>
 #include <memory>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 #include <farmhash.h>
 
 namespace tflite {
@@ -77,22 +73,26 @@ TfLiteStatus Resize(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 2 || NumInputs(node) == 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* hash = GetInput(context, node, 0);
+  const TfLiteTensor* hash;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &hash));
   TF_LITE_ENSURE_EQ(context, NumDimensions(hash), 2);
   // Support up to 32 bits.
   TF_LITE_ENSURE(context, SizeOfDimension(hash, 1) <= 32);
 
-  const TfLiteTensor* input = GetInput(context, node, 1);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &input));
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   if (NumInputs(node) == 3) {
-    const TfLiteTensor* weight = GetInput(context, node, 2);
+    const TfLiteTensor* weight;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &weight));
     TF_LITE_ENSURE_EQ(context, NumDimensions(weight), 1);
     TF_LITE_ENSURE_EQ(context, SizeOfDimension(weight, 0),
                       SizeOfDimension(input, 0));
   }
 
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   switch (params->type) {
     case kTfLiteLshProjectionSparse:
@@ -174,9 +174,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteLSHProjectionParams*>(node->builtin_data);
 
-  int32_t* out_buf = GetOutput(context, node, 0)->data.i32;
-  const TfLiteTensor* hash = GetInput(context, node, 0);
-  const TfLiteTensor* input = GetInput(context, node, 1);
+  TfLiteTensor* out_tensor;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
+  int32_t* out_buf = out_tensor->data.i32;
+  const TfLiteTensor* hash;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &hash));
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &input));
   const TfLiteTensor* weight =
       NumInputs(node) == 2 ? nullptr : GetInput(context, node, 2);
 

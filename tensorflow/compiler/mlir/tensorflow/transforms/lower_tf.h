@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_TF_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_TF_H_
 
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -26,6 +26,14 @@ namespace TF {
 // operations that can be represented using other TensorFlow operations.
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns);
+
+// Populates TensorFlow lowering patterns to lower some of the TensorFlow
+// operations that can be represented by means of other TensorFlow operations.
+// This pattern collection preserves those TensorFlow operations that will later
+// be lowered to equivalent operations in CHLO or MHLO. This allows for
+// HLO-specific lowerings.
+void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns);
 
 }  // namespace TF
 }  // namespace mlir

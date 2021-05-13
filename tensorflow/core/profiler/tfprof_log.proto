@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow.tfprof;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/profiler/tfprof_log_go_proto";
 
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/step_stats.proto";

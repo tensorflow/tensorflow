@@ -45,6 +45,16 @@ struct RocBlasTypeConversionHelper<Eigen::half> {
   using mapped_type = rocblas_half;
 };
 
+template <>
+struct RocBlasTypeConversionHelper<std::complex<float>> {
+  using mapped_type = rocblas_float_complex;
+};
+
+template <>
+struct RocBlasTypeConversionHelper<std::complex<double>> {
+  using mapped_type = rocblas_double_complex;
+};
+
 // Opaque and unique identifier for the rocBLAS plugin.
 extern const PluginId kRocBlasPlugin;
 
@@ -103,6 +113,16 @@ class ROCMBlas : public blas::BlasSupport {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/true, args...);
   }
+
+  // Same as above, but returns Status.
+  template <typename... Args>
+  port::Status DoBlasInternalStatus(Args... args) {
+    if (!DoBlasInternal(args...)) {
+      return port::InternalError("Failed calling rocBLAS");
+    }
+    return port::Status::OK();
+  }
+
   template <typename FuncT, typename... Args>
   bool DoBlasInternalFailureOK(FuncT rocblas_func, Stream *stream,
                                bool pointer_mode_host, Args... args) {
@@ -121,7 +141,8 @@ class ROCMBlas : public blas::BlasSupport {
       std::unique_ptr<TemporaryDeviceMemory<
           typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
       DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-          *device_memory);
+          *device_memory,
+      bool copy_data, bool &reallocated);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
@@ -147,21 +168,6 @@ class ROCMBlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
       T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator);
-
-  // Helper function for implementing DoBlasGemmWithAlgorithm.
-  //
-  // We take alpha and beta by const reference because T might be Eigen::half,
-  // and we want to avoid pulling in a dependency on Eigen.  When we pass the
-  // references to rocBLAS, we essentially reinterpret_cast to __half, which is
-  // safe because Eigen::half inherits from __half.
-  template <typename InT, typename OutT, typename CompT>
-  bool DoBlasGemmWithAlgorithmImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a,
-      int lda, const DeviceMemory<InT> &b, int ldb, const CompT &beta,
-      DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>

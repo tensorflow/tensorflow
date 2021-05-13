@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -32,7 +35,33 @@ class OpResolver {
   /// Finds the op registration of a custom operator by op name.
   virtual const TfLiteRegistration* FindOp(const char* op,
                                            int version) const = 0;
+
+  // Returns optional delegates for resolving and handling ops in the flatbuffer
+  // model. This may be used in addition to the standard TfLiteRegistration
+  // lookup for graph resolution.
+  using TfLiteDelegatePtrVector =
+      std::vector<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>>;
+  virtual TfLiteDelegatePtrVector GetDelegates(int num_threads) const {
+    return TfLiteDelegatePtrVector();
+  }
+
   virtual ~OpResolver() {}
+
+ private:
+  /// Returns true if this OpResolver may contain any "user defined" ops.
+  /// By "user defined" ops, we mean any op definitions other than those
+  /// contained in tflite::ops::builtin::BuiltinOpResolver.
+  ///
+  /// If this method returns true, it doesn't necessarily mean that the
+  /// OpResolver contains a user-defined op, just that the absence of
+  /// user-defined ops can't be guaranteed.
+  ///
+  /// Note that "user-defined" ops are not the same as "custom" ops;
+  /// BuiltinOpResolver may support certain "custom" ops, in addition to
+  /// "builtin" ops, and may not support all of the "builtin" op enum values.
+  virtual bool MayContainUserDefinedOps() const { return true; }
+
+  friend class OpResolverInternal;
 };
 
 // Handles the logic for converting between an OperatorCode structure extracted

@@ -1,0 +1,11 @@
+// This proto describes the diagnostics for debugging profiling issues of
+// the TensorFlow profiler.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+message Diagnostics {
+  repeated string info = 1;
+  repeated string warnings = 2;
+  repeated string errors = 3;
+}

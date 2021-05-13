@@ -114,6 +114,12 @@ class IrFunction {
   llvm::Value* profile_counters_arg_;
 };
 
+// Returns arguments in `arguments` encoded as a single buffer, suitable for a
+// function call.
+llvm::Value* EncodeArrayFunctionArguments(
+    absl::Span<llvm::Value* const> arguments, absl::string_view name,
+    llvm::IRBuilder<>* b);
+
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,

@@ -20,17 +20,42 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+
+
+class SoftmaxOpTest(test.TestCase):
+
+  # This test is for bfloat16, but the type has a problem with compute_gradient.
+  # TODO(penporn): Change the data type back to bfloat16 once b/157773623 is
+  # fixed. (compute_gradient internally converts bfloat16 to float32 for
+  # calculation anyway.)
+  def testSoftmaxGradGradExtendType(self):
+    with self.cached_session():
+
+      def f(x):
+        assert x.dtype == dtypes.float32
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.softmax(x)
+        return tape.gradient(y, x)
+
+      x = constant_op.constant([[-2, -1, 1, 3], [5, 7, 8, 9]],
+                               dtype=dtypes.float32)
+      error = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
+      self.assertLess(error, 1e-4)
 
 
 class Relu6OpTest(test.TestCase):

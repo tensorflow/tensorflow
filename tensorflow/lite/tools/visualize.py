@@ -28,8 +28,16 @@ import json
 import os
 import re
 import sys
+import numpy as np
 
-from tensorflow.lite.python import schema_py_generated as schema_fb
+# pylint: disable=g-import-not-at-top
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join("tflite_runtime", "visualize")):
+  # This file is part of tensorflow package.
+  from tensorflow.lite.python import schema_py_generated as schema_fb
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -220,8 +228,9 @@ def NameListToString(name_list):
     return name_list
   else:
     result = ""
-    for val in name_list:
-      result = result + chr(int(val))
+    if name_list is not None:
+      for val in name_list:
+        result = result + chr(int(val))
     return result
 
 
@@ -232,6 +241,8 @@ class OpCodeMapper(object):
     self.code_to_name = {}
     for idx, d in enumerate(data["operator_codes"]):
       self.code_to_name[idx] = BuiltinCodeToName(d["builtin_code"])
+      if self.code_to_name[idx] == "CUSTOM":
+        self.code_to_name[idx] = NameListToString(d["custom_code"])
 
   def __call__(self, x):
     if x not in self.code_to_name:
@@ -289,7 +300,7 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   second = {}
   pixel_mult = 200  # TODO(aselle): multiplier for initial placement
   width_mult = 170  # TODO(aselle): multiplier for initial placement
-  for op_index, op in enumerate(g["operators"]):
+  for op_index, op in enumerate(g["operators"] or []):
 
     for tensor_input_position, tensor_index in enumerate(op["inputs"]):
       if tensor_index not in first:
@@ -377,23 +388,34 @@ def CamelCaseToSnakeCase(camel_case_input):
   return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
-def FlatbufferToDict(fb):
-  """Converts a hierarchy of FB objects into a nested dict."""
-  if hasattr(fb, "__dict__"):
+def FlatbufferToDict(fb, preserve_as_numpy):
+  """Converts a hierarchy of FB objects into a nested dict.
+
+  We avoid transforming big parts of the flat buffer into python arrays. This
+  speeds conversion from ten minutes to a few seconds on big graphs.
+
+  Args:
+    fb: a flat buffer structure. (i.e. ModelT)
+    preserve_as_numpy: true if all downstream np.arrays should be preserved.
+      false if all downstream np.array should become python arrays
+  Returns:
+    A dictionary representing the flatbuffer rather than a flatbuffer object.
+  """
+  if isinstance(fb, int) or isinstance(fb, float) or isinstance(fb, str):
+    return fb
+  elif hasattr(fb, "__dict__"):
     result = {}
     for attribute_name in dir(fb):
       attribute = fb.__getattribute__(attribute_name)
       if not callable(attribute) and attribute_name[0] != "_":
         snake_name = CamelCaseToSnakeCase(attribute_name)
-        result[snake_name] = FlatbufferToDict(attribute)
+        preserve = True if attribute_name == "buffers" else preserve_as_numpy
+        result[snake_name] = FlatbufferToDict(attribute, preserve)
     return result
-  elif isinstance(fb, str):
-    return fb
+  elif isinstance(fb, np.ndarray):
+    return fb if preserve_as_numpy else fb.tolist()
   elif hasattr(fb, "__len__"):
-    result = []
-    for entry in fb:
-      result.append(FlatbufferToDict(entry))
-    return result
+    return [FlatbufferToDict(entry, preserve_as_numpy) for entry in fb]
   else:
     return fb
 
@@ -401,11 +423,11 @@ def FlatbufferToDict(fb):
 def CreateDictFromFlatbuffer(buffer_data):
   model_obj = schema_fb.Model.GetRootAsModel(buffer_data, 0)
   model = schema_fb.ModelT.InitFromObj(model_obj)
-  return FlatbufferToDict(model)
+  return FlatbufferToDict(model, preserve_as_numpy=False)
 
 
-def CreateHtmlFile(tflite_input, html_output):
-  """Given a tflite model in `tflite_input` file, produce html description."""
+def create_html(tflite_input):
+  """Returns html description with the given tflite model in `tflite_input` file."""
 
   # Convert the model into a JSON flatbuffer using flatc (build if doesn't
   # exist.
@@ -437,8 +459,12 @@ def CreateHtmlFile(tflite_input, html_output):
   # Spec on what keys to display
   buffer_keys_to_display = [("data", DataSizeMapper())]
   operator_keys_to_display = [("builtin_code", BuiltinCodeToName),
-                              ("custom_code", None),
+                              ("custom_code", NameListToString),
                               ("version", None)]
+
+  # Update builtin code fields.
+  for d in data["operator_codes"]:
+    d["builtin_code"] = max(d["builtin_code"], d["deprecated_builtin_code"])
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
     # Subgraph local specs on what to display
@@ -468,8 +494,9 @@ def CreateHtmlFile(tflite_input, html_output):
     html += GenerateTableHtml(g["tensors"], tensor_keys_to_display)
 
     # Print the ops.
-    html += "<h3>Ops</h3>\n"
-    html += GenerateTableHtml(g["operators"], op_keys_to_display)
+    if g["operators"]:
+      html += "<h3>Ops</h3>\n"
+      html += GenerateTableHtml(g["operators"], op_keys_to_display)
 
     # Visual graph.
     html += "<svg id='subgraph%d' width='1600' height='900'></svg>\n" % (
@@ -487,8 +514,7 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  with open(html_output, "w") as output_file:
-    output_file.write(html)
+  return html
 
 
 def main(argv):
@@ -498,7 +524,9 @@ def main(argv):
   except IndexError:
     print("Usage: %s <input tflite> <output html>" % (argv[0]))
   else:
-    CreateHtmlFile(tflite_input, html_output)
+    html = create_html(tflite_input)
+    with open(html_output, "w") as output_file:
+      output_file.write(html)
 
 
 if __name__ == "__main__":

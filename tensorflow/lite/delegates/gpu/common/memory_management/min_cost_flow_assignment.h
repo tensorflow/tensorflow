@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_MIN_COST_FLOW_ASSIGNMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_MIN_COST_FLOW_ASSIGNMENT_H_
 
+#include <stddef.h>
+
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
@@ -30,7 +32,7 @@ namespace gpu {
 // auxiliary flow graph, find minimum-cost flow in it and calculates the
 // assignment of shared objects to tensors, using the result of the flow
 // algorithm.
-Status MinCostFlowAssignment(
+absl::Status MinCostFlowAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     ObjectsAssignment<size_t>* assignment);
 

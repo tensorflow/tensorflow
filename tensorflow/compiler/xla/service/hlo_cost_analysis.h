@@ -76,9 +76,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
   Status HandleCholesky(const HloInstruction* hlo) override;
+  Status HandleAllGather(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
   Status HandleReplicaId(const HloInstruction* hlo) override;
   Status HandlePartitionId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
@@ -110,6 +113,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleDynamicReshape(const HloInstruction* reshape) override;
   Status HandleAddDependency(const HloInstruction* add_dependency) override;
   Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
@@ -161,6 +165,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                               ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
+  // Get bytes read/written by this HLO. If memory_space is provided, it returns
+  // the bytes read/written from/to the given memory space only.
+  int64 GetBytesRead(const HloInstruction& hlo,
+                     absl::optional<int64> memory_space = absl::nullopt) const;
+  int64 GetBytesWritten(
+      const HloInstruction& hlo,
+      absl::optional<int64> memory_space = absl::nullopt) const;
+
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
     return GetProperty(key, properties());
@@ -170,6 +182,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   const float per_second_rate(const string& key) const {
     return GetProperty(key, per_second_rates_);
   }
+
+  // Return the key that is used to index into Properties for the specified
+  // input/output at the shape index.
+  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+                                                ShapeIndex index = {});
+  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
  protected:
   typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
@@ -216,12 +234,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Set bytes accessed by the output at the shape index.
   void SetOutputBytesAccessed(float value);
   void SetOutputBytesAccessed(ShapeIndex index, float value);
-
-  // Return the key that is used to index into Properties for the specified
-  // input/output at the shape index.
-  static std::string GetOperandBytesAccessedKey(int64 operand_num,
-                                                ShapeIndex index = {});
-  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

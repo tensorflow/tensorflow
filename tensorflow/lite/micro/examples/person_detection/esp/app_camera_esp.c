@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "app_camera_esp.h"
 
-static const char *TAG = "app_camera";
+static const char* TAG = "app_camera";
 
 int app_camera_init() {
 #if CONFIG_CAMERA_MODEL_ESP_EYE

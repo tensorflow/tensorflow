@@ -1,0 +1,25 @@
+op {
+  name: "TPUEmbeddingActivations"
+  input_arg {
+    name: "embedding_variable"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sliced_activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "lookup_id"
+    type: "int"
+    has_minimum: true
+  }
+}

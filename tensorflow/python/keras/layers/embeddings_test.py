@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for embedding layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python import keras
@@ -27,6 +23,7 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -86,6 +83,13 @@ class EmbeddingTest(keras_parameterized.TestCase):
     outputs = model.predict(np.array([[0, 1, 0]], dtype='int32'))
     self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
+  def test_embedding_incorrect_dimension(self):
+    with self.assertRaises(ValueError):
+      keras.layers.Embedding(input_dim=0, output_dim=1)
+
+    with self.assertRaises(ValueError):
+      keras.layers.Embedding(input_dim=1, output_dim=0)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_eager_gpu_cpu(self):
     l = keras.layers.Embedding(output_dim=2, input_dim=2)
@@ -122,6 +126,17 @@ class EmbeddingTest(keras_parameterized.TestCase):
         ragged_factory_ops.constant(
             [[[1., 1.], [2., 2.], [2., 2.]], [[0., 0.]], [[1., 1.], [2., 2.]]],
             ragged_rank=1))
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_mixed_precision_embedding(self):
+    try:
+      policy.set_policy('mixed_float16')
+      layer = keras.layers.Embedding(input_dim=5, output_dim=2)
+      self.assertEqual(layer._dtype_policy.name, 'mixed_float16')
+      outputs = layer(np.array([0, 1, 2]))
+      self.assertEqual(outputs.dtype, 'float16')
+    finally:
+      policy.set_policy('float32')
 
 
 if __name__ == '__main__':

@@ -585,10 +585,11 @@ void XRTTupleAllocation::InitializeFromShapedBuffer(
 
 xla::StatusOr<xla::ShapedBuffer> XRTTupleAllocation::ToShapedBuffer() {
   xla::ShapedBuffer shaped_buffer(on_host_shape(), on_device_shape(),
-                                  allocator_->platform(), device_ordinal_);
+                                  device_ordinal_);
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
-        index_buffer.second->allocation().is_null()) {
+        (index_buffer.second->allocation().is_null() &&
+         index_buffer.second->allocation().size() > 0)) {
       return errors::InvalidArgument("Literal buffer at index ",
                                      index_buffer.first.ToString(),
                                      " has been released");
@@ -649,10 +650,11 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
 xla::StatusOr<xla::ExecutionInput> XRTTupleAllocation::ToExecutionInput(
     const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
         alias_checker) {
-  xla::ExecutionInput result(on_device_shape());
+  xla::ExecutionInput result(on_device_shape(), on_host_shape());
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
-        index_buffer.second->allocation().is_null()) {
+        (index_buffer.second->allocation().is_null() &&
+         index_buffer.second->allocation().size() > 0)) {
       return errors::InvalidArgument("Literal buffer at index ",
                                      index_buffer.first.ToString(),
                                      " has been released");

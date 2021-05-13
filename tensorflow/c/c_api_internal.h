@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
@@ -70,7 +70,7 @@ struct TF_Library {
 struct TF_Graph {
   TF_Graph();
 
-  tensorflow::mutex mu;
+  mutable tensorflow::mutex mu;
   tensorflow::Graph graph TF_GUARDED_BY(mu);
 
   // Runs shape inference.
@@ -157,6 +157,7 @@ struct TF_DeviceList {
 
 struct TF_Function {
   tensorflow::FunctionDef fdef;
+  tensorflow::StackTracesMap stack_traces;
 };
 
 struct TF_ApiDefMap {
@@ -186,12 +187,11 @@ struct TF_Server {
 
 namespace tensorflow {
 
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
-
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);
+
+Status BufferToMessage(const TF_Buffer* in,
+                       tensorflow::protobuf::MessageLite* out);
 
 // Set the shapes and types of the output's handle.
 //

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -39,6 +40,7 @@ struct WorkerCacheFactoryOptions {
   const string* job_name = nullptr;
   int task_index;
   const string* protocol = nullptr;
+  const RPCOptions* rpc_options = nullptr;
 
   WorkerCacheFactoryOptions() {}
 
@@ -51,6 +53,7 @@ struct WorkerCacheFactoryOptions {
       job_name = &server_def.job_name();
       task_index = server_def.task_index();
       protocol = &server_def.protocol();
+      rpc_options = &server_def.default_session_config().rpc_options();
     }
   }
 };
@@ -62,7 +65,7 @@ struct WorkerCacheFactoryOptions {
 struct MasterEnv {
   Env* env = nullptr;
 
-  // Object from which WorkerInterface instances can be obtained.
+  // Object from which WorkerInterface instances can be obtained. Not owned.
   WorkerCacheInterface* worker_cache = nullptr;
 
   // The operation definitions to use.  Must be filled before use.
@@ -93,7 +96,7 @@ struct MasterEnv {
       worker_cache_factory;
 
   // Generates per-step CollectiveExecutors and has access to utilities
-  // supporting collective operations.
+  // supporting collective operations. Not owned.
   CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr;
 };
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 
 from absl.testing import parameterized
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -35,6 +36,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -398,6 +400,30 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertNotEqual(iter1, iter2)
     self.assertCountEqual(iter2, iter3)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSaveRestoreModifiedDataset(self):
+    ckpt_dir = self.get_temp_dir()
+    dataset = dataset_ops.Dataset.range(10)
+    iterator = iter(dataset)
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, ckpt_dir, max_to_keep=3)
+
+    for _ in range(5):
+      next(iterator)
+    manager.save()
+
+    # Define a different dataset and try to restore into its iterator.
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    iterator = iter(dataset)
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, ckpt_dir, max_to_keep=3)
+    with self.assertRaisesRegex(
+        errors.NotFoundError,
+        "Make sure the dataset definition has not changed"):
+      ckpt.restore(manager.latest_checkpoint)
+
   def _assertNotCheckpointable(self, dataset):
     iterator = iter(dataset)
     ckpt = trackable_utils.Checkpoint(
@@ -531,6 +557,36 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(take_while_ops.take_while(self._statefulBoolFunc))
     self._assertNotCheckpointable(dataset)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulExternalPolicy(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.range(4)
+
+    def fn(x):
+      return x * x
+
+    dataset = dataset.map(
+        lambda x: script_ops.eager_py_func(fn, [x], dtypes.int64))
+
+    options = dataset_ops.Options()
+    options.experimental_external_state_policy = (
+        distribute_options.ExternalStatePolicy.WARN)
+    dataset = dataset.with_options(options)
+
+    iterator = iter(dataset)
+    get_next = iterator.get_next
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
+    self.assertEqual(0, get_next().numpy())
+    self.assertEqual(1, get_next().numpy())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertEqual(4, get_next().numpy())
+    self.assertEqual(9, get_next().numpy())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertEqual(4, get_next().numpy())
+    self.assertEqual(9, get_next().numpy())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
 
 if __name__ == "__main__":
   test.main()

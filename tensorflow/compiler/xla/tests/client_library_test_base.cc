@@ -605,7 +605,7 @@ XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                       : LiteralSlice(literal));
 }
 
-std::unique_ptr<GlobalData>
+StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(int64 parameter_number,
                                                          const Literal& literal,
                                                          const string& name,
@@ -637,15 +637,14 @@ Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
   return literal.Clone();
 }
 
-std::unique_ptr<GlobalData>
+StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64 parameter_number, const Literal& literal, const string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
   Literal param_literal = MaybeConvertLiteralToBfloat16(literal);
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(param_literal, device_handle)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(auto data,
+                      client_->TransferToServer(param_literal, device_handle));
   *data_handle =
       Parameter(builder, parameter_number, param_literal.shape(), name);
   return data;

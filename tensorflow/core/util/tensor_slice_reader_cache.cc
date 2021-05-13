@@ -44,7 +44,7 @@ const TensorSliceReader* TensorSliceReaderCacheWrapper::GetReader(
 TensorSliceReaderCache::TensorSliceReaderCache() {}
 
 TensorSliceReaderCache::~TensorSliceReaderCache() {
-  for (auto pair : readers_) {
+  for (const auto& pair : readers_) {
     delete pair.second.second;
   }
 }

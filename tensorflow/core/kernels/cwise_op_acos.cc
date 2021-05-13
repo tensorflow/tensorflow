@@ -19,10 +19,9 @@ namespace tensorflow {
 REGISTER2(UnaryOp, CPU, "Acos", functor::acos, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "Acos", functor::acos, float, double);
 #endif
+#endif
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Acos", functor::acos, float, double);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

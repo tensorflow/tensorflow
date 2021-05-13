@@ -128,7 +128,8 @@ class LookupInterface : public ResourceBase {
   // requirements are satisfied, otherwise it returns InvalidArgument:
   // - DataType of the tensor keys equals to the table key_dtype
   // - DataType of the tensor default_value equals to the table value_dtype
-  // - the default_value tensor shape matches the table's value shape.
+  // - the default_value tensor has the required shape given keys and the
+  //   tables's value shape.
   Status CheckFindArguments(const Tensor& keys, const Tensor& default_value);
 
   string DebugString() const override {

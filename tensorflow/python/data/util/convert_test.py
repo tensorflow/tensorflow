@@ -18,35 +18,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import convert
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class ConvertTest(test.TestCase):
+class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInteger(self):
     resp = convert.optional_param_to_tensor("foo", 3)
     self.assertEqual(3, self.evaluate(resp))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testIntegerDefault(self):
     resp = convert.optional_param_to_tensor("foo", None)
     self.assertEqual(0, self.evaluate(resp))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testStringDefault(self):
     resp = convert.optional_param_to_tensor("bar", None, "default",
                                             dtypes.string)
     self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testString(self):
     resp = convert.optional_param_to_tensor("bar", "value", "default",
                                             dtypes.string)
     self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorKnownDimension(self):
     self.assertAllEqual([1],
                         self.evaluate(
@@ -61,7 +69,7 @@ class ConvertTest(test.TestCase):
                             convert.partial_shape_to_tensor(
                                 constant_op.constant([1], dtype=dtypes.int64))))
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testPartialShapeToTensorUnknownDimension(self):
     self.assertAllEqual([-1],
                         self.evaluate(
@@ -79,17 +87,18 @@ class ConvertTest(test.TestCase):
                                 constant_op.constant([-1],
                                                      dtype=dtypes.int64))))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"The given shape .* must be a 1-D tensor of tf.int64 "
         r"values, but the shape was \(2, 2\)."):
       convert.partial_shape_to_tensor(constant_op.constant(
           [[1, 1], [1, 1]], dtype=dtypes.int64))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"The given shape .* must be a 1-D tensor of tf.int64 "
         r"values, but the element type was float32."):
       convert.partial_shape_to_tensor(constant_op.constant([1., 1.]))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorMultipleDimensions(self):
     self.assertAllEqual([3, 6],
                         self.evaluate(
@@ -137,6 +146,7 @@ class ConvertTest(test.TestCase):
                                 constant_op.constant([-1, -1],
                                                      dtype=dtypes.int64))))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorScalar(self):
     self.assertAllEqual([],
                         self.evaluate(

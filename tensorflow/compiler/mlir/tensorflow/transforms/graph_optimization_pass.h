@@ -18,21 +18,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
-namespace tensorflow {
+namespace mlir {
+namespace TF {
 
 // Bundle generic MLIR graph optimization passes (some derived from TF Grappler
 // graph optimizers) into a single MLIR optimization pass.
-class MlirGraphOptimizationPass : public MlirOptimizationPass {
+class MlirGraphOptimizationPass : public ::tensorflow::MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "graph_optimization"; }
 
-  bool IsEnabled(const ConfigProto& config_proto) const override {
-    return config_proto.experimental().enable_mlir_graph_optimization();
+  ::tensorflow::MlirOptimizationPassState GetPassState(
+      const ::tensorflow::DeviceSet* device_set,
+      const ::tensorflow::ConfigProto& config_proto,
+      const tensorflow::Graph& graph,
+      const tensorflow::FunctionLibraryDefinition& function_library)
+      const override {
+    return config_proto.experimental().enable_mlir_graph_optimization()
+               ? tensorflow::MlirOptimizationPassState::Enabled
+               : tensorflow::MlirOptimizationPassState::Disabled;
   }
 
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
+  ::tensorflow::Status Run(
+      const ::tensorflow::ConfigProto& config_proto, ModuleOp module,
+      const ::tensorflow::Graph& graph,
+      const tensorflow::FunctionLibraryDefinition& function_library) override;
 };
 
-}  // namespace tensorflow
+}  // namespace TF
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GRAPH_OPTIMIZATION_PASS_H_

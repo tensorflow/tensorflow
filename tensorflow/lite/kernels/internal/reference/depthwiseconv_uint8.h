@@ -62,21 +62,21 @@ namespace reference_ops {
 namespace depthwise_conv {
 
 template <DepthwiseConvOutputRounding output_rounding>
-inline int32 DepthwiseConvRound(int32 x, int32 quantized_multiplier,
-                                int shift) {
+inline int32_t DepthwiseConvRound(int32_t x, int32_t quantized_multiplier,
+                                  int shift) {
   TFLITE_DCHECK_NE(output_rounding, DepthwiseConvOutputRounding::kNone);
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
 template <>
-inline int32 DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
-    int32 x, int32 quantized_multiplier, int shift) {
+inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
+    int32_t x, int32_t quantized_multiplier, int shift) {
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
 template <>
-inline int32 DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
-    int32 x, int32 quantized_multiplier, int shift) {
+inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
+    int32_t x, int32_t quantized_multiplier, int shift) {
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   const int left_shift = shift > 0 ? shift : 0;
   const int right_shift = shift > 0 ? 0 : -shift;
@@ -89,13 +89,12 @@ inline int32 DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
 
 template <DepthwiseConvOutputRounding output_rounding>
 struct DepthwiseConvBasicKernel {
-  static inline void Run(const DepthwiseParams& params,
-                         const RuntimeShape& input_shape,
-                         const uint8* input_data,
-                         const RuntimeShape& filter_shape,
-                         const uint8* filter_data,
-                         const RuntimeShape& bias_shape, const int32* bias_data,
-                         const RuntimeShape& output_shape, uint8* output_data) {
+  static inline void Run(
+      const DepthwiseParams& params, const RuntimeShape& input_shape,
+      const uint8_t* input_data, const RuntimeShape& filter_shape,
+      const uint8_t* filter_data, const RuntimeShape& bias_shape,
+      const int32_t* bias_data, const RuntimeShape& output_shape,
+      uint8_t* output_data) {
     const int stride_width = params.stride_width;
     const int stride_height = params.stride_height;
     const int dilation_width_factor = params.dilation_width_factor;
@@ -103,12 +102,12 @@ struct DepthwiseConvBasicKernel {
     const int pad_width = params.padding_values.width;
     const int pad_height = params.padding_values.height;
     const int depth_multiplier = params.depth_multiplier;
-    const int32 output_activation_min = params.quantized_activation_min;
-    const int32 output_activation_max = params.quantized_activation_max;
-    const int32 input_offset = params.input_offset;
-    const int32 filter_offset = params.weights_offset;
-    const int32 output_offset = params.output_offset;
-    const int32 output_multiplier = params.output_multiplier;
+    const int32_t output_activation_min = params.quantized_activation_min;
+    const int32_t output_activation_max = params.quantized_activation_max;
+    const int32_t input_offset = params.input_offset;
+    const int32_t filter_offset = params.weights_offset;
+    const int32_t output_offset = params.output_offset;
+    const int32_t output_multiplier = params.output_multiplier;
     const int output_shift = params.output_shift;
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -135,7 +134,7 @@ struct DepthwiseConvBasicKernel {
               const int oc = m + ic * depth_multiplier;
               const int in_x_origin = (out_x * stride_width) - pad_width;
               const int in_y_origin = (out_y * stride_height) - pad_height;
-              int32 acc = 0;
+              int32_t acc = 0;
               for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
                 for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                   const int in_x =
@@ -146,9 +145,9 @@ struct DepthwiseConvBasicKernel {
                   // use zero as a default value.
                   if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                       (in_y < input_height)) {
-                    int32 input_val =
+                    int32_t input_val =
                         input_data[Offset(input_shape, b, in_y, in_x, ic)];
-                    int32 filter_val = filter_data[Offset(
+                    int32_t filter_val = filter_data[Offset(
                         filter_shape, 0, filter_y, filter_x, oc)];
                     acc += (filter_val + filter_offset) *
                            (input_val + input_offset);
@@ -164,7 +163,7 @@ struct DepthwiseConvBasicKernel {
               acc = std::max(acc, output_activation_min);
               acc = std::min(acc, output_activation_max);
               output_data[Offset(output_shape, b, out_y, out_x, oc)] =
-                  static_cast<uint8>(acc);
+                  static_cast<uint8_t>(acc);
             }
           }
         }
@@ -176,10 +175,10 @@ struct DepthwiseConvBasicKernel {
   // MultiplyByQuantizedMultiplier or DepthwiseConvRound function.
   static inline void RunPerChannel(
       const DepthwiseParams& params, const RuntimeShape& input_shape,
-      const int8* input_data, const RuntimeShape& filter_shape,
-      const int8* filter_data, const RuntimeShape& bias_shape,
-      const int32* bias_data, const RuntimeShape& output_shape,
-      int8* output_data) {
+      const int8_t* input_data, const RuntimeShape& filter_shape,
+      const int8_t* filter_data, const RuntimeShape& bias_shape,
+      const int32_t* bias_data, const RuntimeShape& output_shape,
+      int8_t* output_data) {
     // Get parameters.
     // TODO(b/141565753): Re-introduce ScopedProfilingLabel on Micro.
     const int stride_width = params.stride_width;
@@ -189,12 +188,12 @@ struct DepthwiseConvBasicKernel {
     const int pad_width = params.padding_values.width;
     const int pad_height = params.padding_values.height;
     const int depth_multiplier = params.depth_multiplier;
-    const int32 input_offset = params.input_offset;
-    const int32 output_offset = params.output_offset;
-    const int32 output_activation_min = params.quantized_activation_min;
-    const int32 output_activation_max = params.quantized_activation_max;
-    const int32* output_multiplier = params.output_multiplier_per_channel;
-    const int32* output_shift = params.output_shift_per_channel;
+    const int32_t input_offset = params.input_offset;
+    const int32_t output_offset = params.output_offset;
+    const int32_t output_activation_min = params.quantized_activation_min;
+    const int32_t output_activation_max = params.quantized_activation_max;
+    const int32_t* output_multiplier = params.output_multiplier_per_channel;
+    const int32_t* output_shift = params.output_shift_per_channel;
 
     // Check dimensions of the tensors.
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -222,7 +221,7 @@ struct DepthwiseConvBasicKernel {
               const int output_channel = m + in_channel * depth_multiplier;
               const int in_x_origin = (out_x * stride_width) - pad_width;
               const int in_y_origin = (out_y * stride_height) - pad_height;
-              int32 acc = 0;
+              int32_t acc = 0;
               for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
                 for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                   const int in_x =
@@ -234,17 +233,18 @@ struct DepthwiseConvBasicKernel {
                       (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                       (in_y < input_height);
                   if (is_point_inside_image) {
-                    int32 input_val = input_data[Offset(
+                    int32_t input_val = input_data[Offset(
                         input_shape, batch, in_y, in_x, in_channel)];
-                    int32 filter_val = filter_data[Offset(
+                    int32_t filter_val = filter_data[Offset(
                         filter_shape, 0, filter_y, filter_x, output_channel)];
                     // Accumulate with 32 bits accumulator.
                     // In the nudging process during model quantization, we
                     // force real value of 0.0 be represented by a quantized
-                    // value. This guarantees that the input_offset is a int8,
-                    // even though it is represented using int32. int32 += int8
-                    // * (int8 - int8) so the highest value we can get from each
-                    // accumulation is [-127, 127] * ([-128, 127] -
+                    // value. This guarantees that the input_offset is a int8_t,
+                    // even though it is represented using int32_t. int32_t +=
+                    // int8_t
+                    // * (int8_t - int8_t) so the highest value we can get from
+                    // each accumulation is [-127, 127] * ([-128, 127] -
                     // [-128, 127]), which is [-32512, 32512]. log2(32512)
                     // = 14.98, which means we can accumulate at least 2^16
                     // multiplications without overflow. The accumulator is
@@ -279,10 +279,10 @@ struct DepthwiseConvBasicKernel {
 
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data) {
   return depthwise_conv::DepthwiseConvBasicKernel<
       DepthwiseConvOutputRounding::kAwayFromZero>::Run(params, input_shape,
                                                        input_data, filter_shape,

@@ -52,7 +52,8 @@ Status EagerKernelExecute(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
-    absl::Span<TensorHandle*> retvals);
+    absl::Span<TensorHandle*> retvals,
+    const absl::optional<ManagedStackTrace>& stack_trace = {});
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for
@@ -62,6 +63,27 @@ Status EagerKernelExecute(
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          EagerExecutor* executor, Device* device, bool mirror,
                          TensorHandle** result);
+
+// Utility function that executes a fully constructed EagerOperation
+// asynchronously on the local task. This function works differently from
+// EagerExecute in several ways:
+//  - It supports local execution only.
+//  - It returns after launching the eager operation to run asynchronously.
+//    Different from EagerExecute with async context that apends the operation
+//    to the end of the eager executor schedule queue, this call bypasses the
+//    executor logic and directly launches op execution. Ops running through
+//    this call does NOT have an ordering and can be executed in parallel.
+//  - It takes a StatusCallback which will be triggered after execution with the
+//    execution status.
+//
+// Does not support custom device.
+//
+// 'retvals' must point to a pre-allocated array of TensorHandle* and
+// '*num_retvals' should be set to the size of this array. It is an error if
+// the size of 'retvals' is less than the number of outputs. This call sets
+// *num_retvals to the number of outputs.
+void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
+                            int* num_retvals, StatusCallback done);
 
 }  // namespace tensorflow
 

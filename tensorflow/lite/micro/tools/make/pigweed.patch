@@ -1,0 +1,117 @@
+diff --git a/pw_presubmit/py/pw_presubmit/build.py b/pw_presubmit/py/pw_presubmit/build.py
+index 4a370e33..224ad9c6 100644
+--- a/pw_presubmit/py/pw_presubmit/build.py
++++ b/pw_presubmit/py/pw_presubmit/build.py
+@@ -20,7 +20,6 @@ from pathlib import Path
+ import re
+ from typing import Container, Dict, Iterable, List, Mapping, Set, Tuple
+ 
+-from pw_package import package_manager
+ from pw_presubmit import call, log_run, plural, PresubmitFailure, tools
+ 
+ _LOG = logging.getLogger(__name__)
+diff --git a/pw_presubmit/py/pw_presubmit/format_code.py b/pw_presubmit/py/pw_presubmit/format_code.py
+index 19d09546..dae2e813 100755
+--- a/pw_presubmit/py/pw_presubmit/format_code.py
++++ b/pw_presubmit/py/pw_presubmit/format_code.py
+@@ -229,8 +229,7 @@ def print_format_check(errors: Dict[Path, str],
+             except ValueError:
+                 return Path(path).resolve()
+ 
+-        message = (f'  pw format --fix {path_relative_to_cwd(path)}'
+-                   for path in errors)
++        message = (f' tensorflow/lite/{__file__} --fix {path}' for path in errors)
+         _LOG.warning('To fix formatting, run:\n\n%s\n', '\n'.join(message))
+ 
+ 
+diff --git a/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py b/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py
+index 794967db..061db7ea 100755
+--- a/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py
++++ b/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py
+@@ -220,8 +220,8 @@ def clang_tidy(ctx: PresubmitContext):
+ 
+ 
+ # The first line must be regex because of the '20\d\d' date
+-COPYRIGHT_FIRST_LINE = r'Copyright 20\d\d The Pigweed Authors'
+-COPYRIGHT_COMMENTS = r'(#|//| \*|REM|::)'
++COPYRIGHT_FIRST_LINE = r'Copyright 20\d\d The TensorFlow Authors. All Rights Reserved.'
++COPYRIGHT_COMMENTS = r'(#|//|\*|REM|::|/\*)'
+ COPYRIGHT_BLOCK_COMMENTS = (
+     # HTML comments
+     (r'<!--', r'-->'), )
+@@ -232,21 +232,23 @@ COPYRIGHT_FIRST_LINE_EXCEPTIONS = (
+     '@echo off',
+     '# -*-',
+     ':',
++    '# Lint as',
++    '# coding=utf-8'
+ )
+ 
+ COPYRIGHT_LINES = tuple("""\
+ 
+-Licensed under the Apache License, Version 2.0 (the "License"); you may not
+-use this file except in compliance with the License. You may obtain a copy of
+-the License at
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
+ 
+-    https://www.apache.org/licenses/LICENSE-2.0
++    http://www.apache.org/licenses/LICENSE-2.0
+ 
+ Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+-License for the specific language governing permissions and limitations under
+-the License.
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
+ """.splitlines())
+ 
+ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
+@@ -344,6 +346,11 @@ def copyright_notice(ctx: PresubmitContext):
+                 errors.append(path)
+                 continue
+ 
++            # Special handling for TFLM style of copyright+license in the cc
++            # files.
++            if comment == '/*':
++              comment = ''
++
+             if end_block_comment:
+                 expected_lines = COPYRIGHT_LINES + (end_block_comment, )
+             else:
+@@ -354,6 +361,10 @@ def copyright_notice(ctx: PresubmitContext):
+                     expected_line = expected + '\n'
+                 elif comment:
+                     expected_line = (comment + ' ' + expected).rstrip() + '\n'
++                else:
++                    # Special handling for TFLM style of copyright+license in
++                    # the cc files.
++                    expected_line = (expected).rstrip() + '\n'
+ 
+                 if expected_line != actual:
+                     _LOG.warning('  bad line: %r', actual)
+@@ -475,6 +486,10 @@ BROKEN = (
+     gn_nanopb_build,
+ )
+ 
++COPYRIGHT_NOTICE = (
++    copyright_notice,
++)
++
+ QUICK = (
+     commit_message_format,
+     init_cipd,
+@@ -509,7 +524,8 @@ FULL = (
+     build_env_setup,
+ )
+ 
+-PROGRAMS = Programs(broken=BROKEN, quick=QUICK, full=FULL)
++PROGRAMS = Programs(broken=BROKEN, quick=QUICK, full=FULL,
++                    copyright_notice=COPYRIGHT_NOTICE)
+ 
+ 
+ def parse_args() -> argparse.Namespace:

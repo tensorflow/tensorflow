@@ -1,9 +1,9 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -allow-unregistered-dialect
 
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{unknown tf_saved_model dialect arg attribute 'tf_saved_model.not_a_real_arg_attr'}}
-  func @f(%arg0: tensor<f32> {tf_saved_model.not_a_real_arg_attr = 1 : i32}) {
+  func private @f(%arg0: tensor<f32> {tf_saved_model.not_a_real_arg_attr = 1 : i32}) {
     return
   }
 
@@ -120,10 +120,23 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path' or 'tf_saved_model.bound_input' attributes}}
+  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path', 'tf_saved_model.bound_input' or 'tf.resource_name' attributes}}
   func @f(
     %arg0: tensor<f32>
   ) attributes { tf_saved_model.exported_names = ["f"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{'tf.resource_name' attribute is not allowed unless it is being under construction}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
     return
   }
 
@@ -232,7 +245,7 @@ module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
   // expected-error@+1 {{can only apply 'tf_saved_model' argument attributes to exported functions}}
-  func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+  func private @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
   -> (tensor<?xf32> {tf_saved_model.index_path = []}) {
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<?xf32>>>) -> tensor<?xf32>
     return %0 : tensor<?xf32>
@@ -257,4 +270,147 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{'type' attribute for immutable 'tf_saved_model.global_tensor' should have a static shape}}
   "tf_saved_model.global_tensor"() { sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function does not exist}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should have no output}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func private @init() -> tensor<1xf32> {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  // expected-error@+1 {{there must be no more than one session_initializer op}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func private @init() -> tensor<1xf32> {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
+
+  // expected-error@+1 {{exported function @f should be public}}
+  func private @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes {tf_saved_model.exported_names = ["foo.some_func"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{non-exported function @f should be private}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function does not exist}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should have no output}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
+    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  // expected-error@+1 {{there must be no more than one session_initializer op}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
+    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should be exported}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func private @init() {
+    return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should have only one exported name}}
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+  func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
+    return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{unknown symbol operation}}
+  "some_dialect.some_op"() {sym_name = "v"} : () -> ()
+  func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+    attributes { tf_saved_model.exported_names = ["a"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
+  // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
+  func @f(
+    %arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
+  ) attributes {tf_saved_model.exported_names = ["f"]} {
+    return
+  }
 }

@@ -54,10 +54,10 @@ class TFProfLoggerTest(test.TestCase):
     graph2 = ops.Graph()
     # Use copy_op_to_graph to remove shape information.
     y2 = copy_elements.copy_op_to_graph(y, graph2, [])
-    self.assertEquals('<unknown>', str(y2.get_shape()))
+    self.assertEqual('<unknown>', str(y2.get_shape()))
 
     tfprof_logger._fill_missing_graph_shape(graph2, run_metadata)
-    self.assertEquals('(2, 2)', str(y2.get_shape()))
+    self.assertEqual('(2, 2)', str(y2.get_shape()))
 
   def testFailedFillMissingShape(self):
     y = self._BuildSmallModel()
@@ -69,10 +69,10 @@ class TFProfLoggerTest(test.TestCase):
 
     graph2 = ops.Graph()
     y2 = copy_elements.copy_op_to_graph(y, graph2, [])
-    self.assertEquals('<unknown>', str(y2.get_shape()))
+    self.assertEqual('<unknown>', str(y2.get_shape()))
     # run_metadata has special name for MatMul, hence failed to fill shape.
     tfprof_logger._fill_missing_graph_shape(graph2, run_metadata)
-    self.assertEquals('<unknown>', str(y2.get_shape()))
+    self.assertEqual('<unknown>', str(y2.get_shape()))
   """
 
 

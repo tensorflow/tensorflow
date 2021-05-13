@@ -22,7 +22,9 @@ import itertools
 
 from absl.testing import parameterized
 import numpy as np
+import scipy.linalg
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,13 +35,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
-
-
-def _AddTest(test_class, op_name, testcase_name, fn):
-  test_name = "_".join(["test", op_name, testcase_name])
-  if hasattr(test_class, test_name):
-    raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test_class, test_name, fn)
 
 
 def _RandomPDMatrix(n, rng, dtype=np.float64):
@@ -59,17 +54,17 @@ class CholeskySolveTest(test.TestCase):
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
-        with self.session(use_gpu=True):
+        with self.session():
           # Create 2 x n x n matrix
           array = np.array(
               [_RandomPDMatrix(n, self.rng),
                _RandomPDMatrix(n, self.rng)]).astype(np_type)
           chol = linalg_ops.cholesky(array)
           for k in range(1, 3):
-            rhs = self.rng.randn(2, n, k).astype(np_type)
-            x = linalg_ops.cholesky_solve(chol, rhs)
-            self.assertAllClose(
-                rhs, math_ops.matmul(array, x).eval(), atol=atol)
+            with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
+              rhs = self.rng.randn(2, n, k).astype(np_type)
+              x = linalg_ops.cholesky_solve(chol, rhs)
+              self.assertAllClose(rhs, math_ops.matmul(array, x), atol=atol)
 
 
 class LogdetTest(test.TestCase):
@@ -82,24 +77,26 @@ class LogdetTest(test.TestCase):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
-        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
-        _, logdet_np = np.linalg.slogdet(matrix)
-        with self.session(use_gpu=True):
-          # Create 2 x n x n matrix
-          # matrix = np.array(
-          #     [_RandomPDMatrix(n, self.rng, np_dtype),
-          #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
-          logdet_tf = linalg.logdet(matrix)
-          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+        with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
+          matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+          _, logdet_np = np.linalg.slogdet(matrix)
+          with self.session():
+            # Create 2 x n x n matrix
+            # matrix = np.array(
+            #     [_RandomPDMatrix(n, self.rng, np_dtype),
+            #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
+            logdet_tf = linalg.logdet(matrix)
+            self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
     for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                            (np.complex64, 0.05), (np.complex128, 1e-5)]:
-      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
-      _, logdet_np = np.linalg.slogdet(matrix)
-      with self.session(use_gpu=True):
-        logdet_tf = linalg.logdet(matrix)
-        self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
 
 class SlogdetTest(test.TestCase):
@@ -112,38 +109,41 @@ class SlogdetTest(test.TestCase):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
-        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
-        sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-        with self.session(use_gpu=True):
-          sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
-          self.assertAllClose(
-              log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
-          self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
+        with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
+          matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+          sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+          with self.session():
+            sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+            self.assertAllClose(
+                log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
+            self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
     for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                            (np.complex64, 0.05), (np.complex128, 1e-5)]:
-      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
-      sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-      with self.session(use_gpu=True):
-        sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
-        self.assertAllClose(
-            log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
-        self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+        sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+        with self.session():
+          sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+          self.assertAllClose(
+              log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
+          self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
 
 
 class AdjointTest(test.TestCase):
 
   def test_compare_to_numpy(self):
     for dtype in np.float64, np.float64, np.complex64, np.complex128:
-      matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
-                                                       6 + 6j]]).astype(dtype)
-      expected_transposed = np.conj(matrix_np.T)
-      with self.session():
-        matrix = ops.convert_to_tensor(matrix_np)
-        transposed = linalg.adjoint(matrix)
-        self.assertEqual((3, 2), transposed.get_shape())
-        self.assertAllEqual(expected_transposed, self.evaluate(transposed))
+      with self.subTest(dtype=dtype):
+        matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
+                                                         6 + 6j]]).astype(dtype)
+        expected_transposed = np.conj(matrix_np.T)
+        with self.session():
+          matrix = ops.convert_to_tensor(matrix_np)
+          transposed = linalg.adjoint(matrix)
+          self.assertEqual((3, 2), transposed.get_shape())
+          self.assertAllEqual(expected_transposed, self.evaluate(transposed))
 
 
 class EyeTest(parameterized.TestCase, test.TestCase):
@@ -254,7 +254,7 @@ class EyeTest(parameterized.TestCase, test.TestCase):
         num_columns=num_columns_placeholder,
         batch_shape=batch_shape_placeholder,
         dtype=dtype)
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       eye_tf = sess.run(
           eye,
           feed_dict={
@@ -555,6 +555,99 @@ class LUSolveStatic(test.TestCase, _LUSolve):
 @test_util.run_all_in_graph_and_eager_modes
 class LUSolveDynamic(test.TestCase, _LUSolve):
   use_static_shape = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class EighTridiagonalTest(test.TestCase):
+
+  # This op is rather slow in pure eager mode, so we force it to be
+  # a function here.
+  @def_function.function
+  def run_eigh_tridiagonal(self, alpha, beta, **kwargs):
+    return linalg.eigh_tridiagonal(alpha, beta, **kwargs)
+
+  def run_test(self, alpha, beta):
+    n = alpha.shape[0]
+    # scipy.linalg.eigh_tridiagonal doesn't support complex inputs, so for
+    # this we call the slower numpy.linalg.eigh.
+    if np.issubdtype(alpha.dtype, np.complexfloating):
+      tridiagonal = np.diag(alpha) + np.diag(beta, 1) + np.diag(
+          np.conj(beta), -1)
+      eigvals_expected, _ = np.linalg.eigh(tridiagonal)
+    else:
+      eigvals_expected = scipy.linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=True)
+    eigvals = self.run_eigh_tridiagonal(alpha, beta)
+    eps = np.finfo(alpha.dtype).eps
+    atol = 2 * n * eps * np.amax(np.abs(eigvals_expected))
+    self.assertAllClose(eigvals_expected, eigvals, atol=atol)
+
+  def run_toeplitz_tests(self, dtype):
+    for n in [1, 2, 3, 7, 8, 100]:
+      for a, b in [[2, -1], [1, 0], [0, 1], [-1e10, 1e10], [-1e-10, 1e-10]]:
+        alpha = a * np.ones([n], dtype=dtype)
+        beta = b * np.ones([n - 1], dtype=dtype)
+        if np.issubdtype(alpha.dtype, np.complexfloating):
+          beta += 1j * beta
+        self.run_test(alpha, beta)
+
+  def run_random_uniform_tests(self, dtype):
+    for n in [2, 3, 7, 8, 100]:
+      alpha = np.random.uniform(size=(n,)).astype(dtype)
+      beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  def run_select_tests(self, dtype):
+    n = 5
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals_all = self.run_eigh_tridiagonal(alpha, beta, select="a")
+    eps = np.finfo(alpha.dtype).eps
+    atol = 2 * n * eps
+    for first in range(n - 1):
+      for last in range(first + 1, n - 1):
+        # Check that we get the expected eigenvalues by selecting by
+        # index range.
+        eigvals_index = self.run_eigh_tridiagonal(
+            alpha, beta, select="i", select_range=(first, last))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_index, atol=atol)
+
+        # Check that we get the expected eigenvalues by selecting by
+        # value range.
+        eigvals_value = self.run_eigh_tridiagonal(
+            alpha,
+            beta,
+            select="v",
+            select_range=(eigvals_all[first], eigvals_all[last]))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
+
+  def test_float32(self):
+    dtype = np.float32
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+    self.run_select_tests(dtype)
+
+  def test_float64(self):
+    dtype = np.float64
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+    self.run_select_tests(dtype)
+
+  def test_complex64(self):
+    dtype = np.complex64
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+    self.run_select_tests(dtype)
+
+  def test_complex128(self):
+    dtype = np.complex128
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+    self.run_select_tests(dtype)
 
 
 if __name__ == "__main__":

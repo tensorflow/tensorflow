@@ -103,14 +103,14 @@ class AssertBroadcastableTest(test.TestCase):
 
   def _test_invalid(self, weights, values):
     error_msg = 'weights can not be broadcast to values'
-    with self.assertRaisesRegexp(ValueError, error_msg):
+    with self.assertRaisesRegex(ValueError, error_msg):
       weights_broadcast_ops.assert_broadcastable(weights=weights, values=values)
     weights_placeholder = array_ops.placeholder(dtypes_lib.float32)
     values_placeholder = array_ops.placeholder(dtypes_lib.float32)
     dynamic_op = weights_broadcast_ops.assert_broadcastable(
         weights=weights_placeholder, values=values_placeholder)
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.OpError, error_msg):
+      with self.assertRaisesRegex(errors_impl.OpError, error_msg):
         dynamic_op.run(feed_dict={
             weights_placeholder: weights,
             values_placeholder: values,
@@ -245,14 +245,14 @@ class BroadcastWeightsTest(test.TestCase):
 
   def _test_invalid(self, weights, values):
     error_msg = 'weights can not be broadcast to values'
-    with self.assertRaisesRegexp(ValueError, error_msg):
+    with self.assertRaisesRegex(ValueError, error_msg):
       weights_broadcast_ops.broadcast_weights(weights=weights, values=values)
     weights_placeholder = array_ops.placeholder(dtypes_lib.float32)
     values_placeholder = array_ops.placeholder(dtypes_lib.float32)
     dynamic_op = weights_broadcast_ops.broadcast_weights(
         weights=weights_placeholder, values=values_placeholder)
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.OpError, error_msg):
+      with self.assertRaisesRegex(errors_impl.OpError, error_msg):
         dynamic_op.eval(feed_dict={
             weights_placeholder: weights,
             values_placeholder: values,

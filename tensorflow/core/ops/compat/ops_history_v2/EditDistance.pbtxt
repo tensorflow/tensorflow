@@ -1,0 +1,42 @@
+op {
+  name: "EditDistance"
+  input_arg {
+    name: "hypothesis_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "hypothesis_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "hypothesis_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "truth_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "truth_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "truth_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "normalize"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

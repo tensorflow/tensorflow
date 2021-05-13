@@ -4,31 +4,41 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+    ],
+    licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "preprocessing",
     srcs = [
         "__init__.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":image",
         ":sequence",
         ":text",
         ":timeseries",
+        "//tensorflow/python/keras/utils:all_utils",
     ],
 )
 
 py_library(
     name = "image",
     srcs = [
+        "dataset_utils.py",
         "image.py",
-        "image_pipeline.py",
+        "image_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
@@ -42,6 +52,7 @@ py_library(
     srcs = [
         "sequence.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:data_utils",
@@ -53,6 +64,7 @@ py_library(
     srcs = [
         "timeseries.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -64,8 +76,11 @@ py_library(
 py_library(
     name = "text",
     srcs = [
+        "dataset_utils.py",
         "text.py",
+        "text_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:util"],
 )
 
@@ -77,14 +92,15 @@ tf_py_test(
     deps = [
         ":image",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
 
 tf_py_test(
-    name = "image_pipeline_test",
+    name = "image_dataset_test",
     size = "small",
-    srcs = ["image_pipeline_test.py"],
+    srcs = ["image_dataset_test.py"],
     python_version = "PY3",
     deps = [
         ":image",
@@ -116,6 +132,19 @@ tf_py_test(
         ":text",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "text_dataset_test",
+    size = "small",
+    srcs = ["text_dataset_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":text",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
     ],
 )
 

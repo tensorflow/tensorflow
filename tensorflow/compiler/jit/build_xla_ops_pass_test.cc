@@ -130,17 +130,6 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
   return fdef_lib;
 }
 
-FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
-  FunctionDefLibrary fdef_lib;
-  FunctionDef func = FunctionDefHelper::Create(
-      /*function_name=*/name, /*in_def=*/{"in: int32"},
-      /*out_def=*/{"out: int32"},
-      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
-      /*ret_def=*/{{"out", "out:output:0"}});
-  *fdef_lib.add_function() = std::move(func);
-  return fdef_lib;
-}
-
 TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
   Scope root = Scope::NewRootScope().WithDevice(kXlaDeviceName).ExitOnError();
@@ -205,7 +194,7 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
   auto xla_run =
       NodeWith(Op("_XlaRun"), Inputs(Out(1, predicated_compilation_key)));
   auto tf_call =
-      NodeWith(Op("PartitionedCall"),
+      NodeWith(Op("StatefulPartitionedCall"),
                CtrlDeps(NodeWith(Op("Identity"),
                                  Inputs(Out(0, predicated_compilation_key)))));
   auto merge = NodeWith(Op("_XlaMerge"), Inputs(Out(tf_call), Out(xla_run)));
@@ -263,12 +252,24 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
 
   Node* sink_node = graph->sink_node();
-  EXPECT_THAT(sink_node, NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")),
-                                           NodeWith(Op("PartitionedCall")),
-                                           NodeWith(Op("NoOp")))));
+  EXPECT_THAT(sink_node,
+              NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")),
+                                NodeWith(Op("StatefulPartitionedCall")),
+                                NodeWith(Op("NoOp")))));
 }
 
 #ifdef GOOGLE_CUDA
+FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
+  FunctionDefLibrary fdef_lib;
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/name, /*in_def=*/{"in: int32"},
+      /*out_def=*/{"out: int32"},
+      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
+      /*ret_def=*/{{"out", "out:output:0"}});
+  *fdef_lib.add_function() = std::move(func);
+  return fdef_lib;
+}
+
 // This tests a rewrite that only makes sense and is active in a CUDA-enabled
 // build.  Specifically we check that we insert an IdentityN op to avoid extra
 // device-to-host copies.
@@ -298,15 +299,15 @@ TEST_F(BuildXlaOpsTest, NoDeviceToHostCopiesForClustersWithInt32Inputs) {
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
 
-  Node* partitioned_call_op = nullptr;
+  Node* stateful_partitioned_call_op = nullptr;
   for (Node* n : graph->op_nodes()) {
-    if (n->type_string() == "PartitionedCall") {
-      ASSERT_EQ(partitioned_call_op, nullptr);
-      partitioned_call_op = n;
+    if (n->type_string() == "StatefulPartitionedCall") {
+      ASSERT_EQ(stateful_partitioned_call_op, nullptr);
+      stateful_partitioned_call_op = n;
     }
   }
 
-  ASSERT_NE(partitioned_call_op, nullptr);
+  ASSERT_NE(stateful_partitioned_call_op, nullptr);
   auto xla_compile = NodeWith(Op("_XlaCompile"));
   auto switch_on_compilation_pred =
       NodeWith(Op("Switch"), Inputs(Out(0, xla_compile), Out(1, xla_compile)));
@@ -315,7 +316,7 @@ TEST_F(BuildXlaOpsTest, NoDeviceToHostCopiesForClustersWithInt32Inputs) {
   // Check that we pipe int32 inputs through an IdentityN to avoid extra D2H
   // copies.
   EXPECT_THAT(
-      partitioned_call_op,
+      stateful_partitioned_call_op,
       NodeWith(Inputs(Out(NodeWith(Op("IdentityN"), CtrlDeps(ctrl_dep))))));
 }
 #endif

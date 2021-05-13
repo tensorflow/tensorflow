@@ -20,7 +20,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd ${ROOT_DIR}
+cd "${ROOT_DIR}"
 pwd
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
@@ -32,6 +32,23 @@ TARGET=bluepill
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
 
-# TODO(b/143286954): Run all the tests once they pass.
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} kernel_add_test
+# check that the release build is ok.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} OPTIMIZATION_LEVEL=-O3 BUILD_TYPE=release build
 
+# Next, build w/o release so that we can run the tests and get additional
+# debugging info on failures.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} OPTIMIZATION_LEVEL=-Os test
+
+# We have had examples where tests pass with -Os but fail without it so we run
+# the unit tests with and without -Os. See
+# https://github.com/tensorflow/tensorflow/issues/48516 for one such issue.
+
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
+
+# We use Renode differently when running the full test suite (make test) vs an
+# individual test. So, we test only of the kernels individually as well to have
+# both of the Renode variations be part of the CI.
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test_kernel_add_test

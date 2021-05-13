@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -77,17 +77,22 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
  public:
   MapFunctionCallFrame(ComputeOptions* compute_opts, OpKernel* kernel,
                        size_t iter)
-      : compute_opts_(compute_opts), kernel_(kernel), iter_(iter) {}
+      : compute_opts_(compute_opts),
+        kernel_(kernel),
+        iter_(iter),
+        sliced_args_(compute_opts_->args.size()) {}
 
   ~MapFunctionCallFrame() override = default;
 
-  size_t num_args() const override { return compute_opts_->args.size(); }
+  size_t num_args() const override {
+    return compute_opts_->args.size() + compute_opts_->captured_inputs.size();
+  }
 
   size_t num_retvals() const override {
     return static_cast<size_t>(kernel_->num_outputs());
   }
 
-  Status GetArg(int index, Tensor* val) const override {
+  Status GetArg(int index, const Tensor** val) override {
     if (index < 0 || index >= compute_opts_->args.size() +
                                   compute_opts_->captured_inputs.size()) {
       return errors::InvalidArgument("Mismatch in number of function inputs.");
@@ -95,19 +100,24 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 
     if (index >= compute_opts_->args.size()) {
       // The function is calling for a captured input
-      *val = compute_opts_->captured_inputs[index - compute_opts_->args.size()];
+      *val =
+          &compute_opts_->captured_inputs[index - compute_opts_->args.size()];
       return Status::OK();
     }
 
-    bool result =
-        val->CopyFrom(compute_opts_->args[index].Slice(iter_, iter_ + 1),
-                      compute_opts_->arg_shapes.at(index));
+    // NOTE: If contention on mu_ becomes problematic, we could create a vector
+    // of mutexes, each guarding a different element of sliced_args_.
+    mutex_lock l(mu_);
+    bool result = sliced_args_[index].CopyFrom(
+        compute_opts_->args[index].Slice(iter_, iter_ + 1),
+        compute_opts_->arg_shapes.at(index));
     if (!result) {
       return errors::Internal("GetArg failed.");
-    } else if (!val->IsAligned()) {
+    } else if (!sliced_args_[index].IsAligned()) {
       // Ensure alignment
-      *val = tensor::DeepCopy(*val);
+      sliced_args_[index] = tensor::DeepCopy(sliced_args_[index]);
     }
+    *val = &sliced_args_[index];
     return Status::OK();
   }
 
@@ -152,6 +162,8 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
   ComputeOptions* const compute_opts_;  // Not owned
   const OpKernel* kernel_;
   const size_t iter_;
+  mutex mu_;
+  std::vector<Tensor> sliced_args_ TF_GUARDED_BY(mu_);
 };
 
 MapDefunOp::MapDefunOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {

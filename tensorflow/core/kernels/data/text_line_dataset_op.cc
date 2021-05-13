@@ -15,9 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -70,6 +70,10 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -100,17 +104,17 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
       do {
         // We are currently processing a file, so try to read the next line.
         if (buffered_input_stream_) {
-          string line_contents;
-          Status s = buffered_input_stream_->ReadLine(&line_contents);
+          Tensor line_contents(tstring{});
+          tstring& line_contents_str = line_contents.scalar<tstring>()();
+          Status s = buffered_input_stream_->ReadLine(&line_contents_str);
 
           if (s.ok()) {
             // Produce the line as output.
-            metrics::RecordTFDataBytesRead(
-                name_utils::OpName(TextLineDatasetOp::kDatasetType),
-                line_contents.size());
-            out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
-                                      TensorShape({}));
-            out_tensors->back().scalar<tstring>()() = std::move(line_contents);
+            static monitoring::CounterCell* bytes_counter =
+                metrics::GetTFDataBytesReadCounter(
+                    name_utils::OpName(TextLineDatasetOp::kDatasetType));
+            bytes_counter->IncrementBy(line_contents_str.size());
+            out_tensors->push_back(std::move(line_contents));
             *end_of_sequence = false;
             return Status::OK();
           } else if (!errors::IsOutOfRange(s)) {
@@ -139,7 +143,8 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
                                              current_file_index_));
@@ -270,6 +275,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
+    metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,

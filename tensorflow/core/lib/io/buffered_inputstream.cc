@@ -21,17 +21,17 @@ namespace tensorflow {
 namespace io {
 
 BufferedInputStream::BufferedInputStream(InputStreamInterface* input_stream,
-                                         size_t buffer_size,
+                                         size_t buffer_bytes,
                                          bool owns_input_stream)
     : input_stream_(input_stream),
-      size_(buffer_size),
+      size_(buffer_bytes),
       owns_input_stream_(owns_input_stream) {
   buf_.reserve(size_);
 }
 
 BufferedInputStream::BufferedInputStream(RandomAccessFile* file,
-                                         size_t buffer_size)
-    : BufferedInputStream(new RandomAccessInputStream(file), buffer_size,
+                                         size_t buffer_bytes)
+    : BufferedInputStream(new RandomAccessInputStream(file), buffer_bytes,
                           true) {}
 
 BufferedInputStream::~BufferedInputStream() {
@@ -49,35 +49,43 @@ Status BufferedInputStream::FillBuffer() {
   Status s = input_stream_->ReadNBytes(size_, &buf_);
   pos_ = 0;
   limit_ = buf_.size();
-  if (buf_.empty()) {
-    DCHECK(!s.ok());
+  if (!s.ok()) {
     file_status_ = s;
   }
   return s;
 }
 
-Status BufferedInputStream::ReadLineHelper(string* result, bool include_eol) {
+template <typename StringType>
+Status BufferedInputStream::ReadLineHelper(StringType* result,
+                                           bool include_eol) {
   result->clear();
   Status s;
+  size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       // Get more data into buffer
       s = FillBuffer();
       if (limit_ == 0) {
         break;
       }
+      start_pos = pos_;
     }
-    char c = buf_[pos_++];
+    char c = buf_[pos_];
     if (c == '\n') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       if (include_eol) {
-        *result += c;
+        result->append(1, c);
       }
+      pos_++;
       return Status::OK();
     }
     // We don't append '\r' to *result
-    if (c != '\r') {
-      *result += c;
+    if (c == '\r') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
+      start_pos = pos_ + 1;
     }
+    pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -91,7 +99,7 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
                                    bytes_to_read);
   }
   result->clear();
-  if (!file_status_.ok() && bytes_to_read > 0) {
+  if (pos_ == limit_ && !file_status_.ok() && bytes_to_read > 0) {
     return file_status_;
   }
   result->reserve(bytes_to_read);
@@ -156,15 +164,22 @@ Status BufferedInputStream::Seek(int64 position) {
                                    position);
   }
 
-  // Position of the buffer within file.
-  const int64 bufpos = Tell();
-  if (position < bufpos) {
-    // Reset input stream and skip 'position' bytes.
+  // Position of the buffer's lower limit within file.
+  const int64 buf_lower_limit = input_stream_->Tell() - limit_;
+  if (position < buf_lower_limit) {
+    // Seek before buffer, reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
-  return SkipNBytes(position - bufpos);
+  if (position < Tell()) {
+    // Seek within buffer before 'pos_'
+    pos_ -= Tell() - position;
+    return Status::OK();
+  }
+
+  // Seek after 'pos_'
+  return SkipNBytes(position - Tell());
 }
 
 template <typename T>
@@ -187,7 +202,7 @@ Status BufferedInputStream::ReadAll(T* result) {
   return status;
 }
 
-template Status BufferedInputStream::ReadAll<string>(string* result);
+template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 Status BufferedInputStream::Reset() {
@@ -198,14 +213,41 @@ Status BufferedInputStream::Reset() {
   return Status::OK();
 }
 
-Status BufferedInputStream::ReadLine(string* result) {
+Status BufferedInputStream::ReadLine(std::string* result) {
   return ReadLineHelper(result, false);
 }
 
-string BufferedInputStream::ReadLineAsString() {
-  string result;
+Status BufferedInputStream::ReadLine(tstring* result) {
+  return ReadLineHelper(result, false);
+}
+
+std::string BufferedInputStream::ReadLineAsString() {
+  std::string result;
   ReadLineHelper(&result, true).IgnoreError();
   return result;
+}
+
+Status BufferedInputStream::SkipLine() {
+  Status s;
+  bool skipped = false;
+  while (true) {
+    if (pos_ == limit_) {
+      // Get more data into buffer
+      s = FillBuffer();
+      if (limit_ == 0) {
+        break;
+      }
+    }
+    char c = buf_[pos_++];
+    skipped = true;
+    if (c == '\n') {
+      return Status::OK();
+    }
+  }
+  if (errors::IsOutOfRange(s) && skipped) {
+    return Status::OK();
+  }
+  return s;
 }
 
 }  // namespace io

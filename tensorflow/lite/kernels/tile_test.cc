@@ -12,12 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -203,10 +208,6 @@ TEST_P(TileTest, Int64Matrix64Multipliers) {
 }
 
 TEST_P(TileTest, StringMatrix) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   Check<std::string>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
@@ -218,10 +219,6 @@ TEST_P(TileTest, StringMatrix) {
 }
 
 TEST_P(TileTest, StringMatrix64Multipliers) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   Check<std::string, int64_t>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
@@ -233,10 +230,6 @@ TEST_P(TileTest, StringMatrix64Multipliers) {
 }
 
 TEST_P(TileTest, StringMatrix2) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   Check<std::string>(
       /*input_shape=*/{3, 2, 1},
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},

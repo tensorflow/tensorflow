@@ -21,9 +21,6 @@ namespace tensorflow {
 
 void CollectiveRemoteAccessLocal::StartAbort(const Status& s) {
   buf_rendezvous_.StartAbort(s);
-  if (errors::IsFailedPrecondition(s)) {
-    dev_resolver_->ClearCache();
-  }
 }
 
 void CollectiveRemoteAccessLocal::RecvFromPeer(
@@ -31,7 +28,7 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
     const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    const StatusCallback& done) {
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   VLOG(1) << "RecvFromPeer " << this << " from " << peer_device << " key "
           << key;
   if (!peer_is_local) {
@@ -94,18 +91,27 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
   };
   buf_rendezvous_.ConsumeBuf(key, from_device->name(),
                              from_device->attributes().incarnation(),
-                             consumer_callback);
+                             consumer_callback, cancellation_manager);
 }
 
 void CollectiveRemoteAccessLocal::PostToPeer(
     const string& peer_device, const string& peer_task, const string& key,
     Device* from_device, DeviceContext* from_device_ctx,
     const AllocatorAttributes& from_alloc_attr, const Tensor* from_tensor,
-    const DeviceLocality& client_locality, const StatusCallback& done) {
+    const DeviceLocality& client_locality,
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   VLOG(1) << "PostToPeer " << this << " key " << key
           << " step_id_=" << step_id_;
   buf_rendezvous_.ProvideBuf(key, from_device, from_device_ctx, from_tensor,
-                             from_alloc_attr, done);
+                             from_alloc_attr, done, cancellation_manager);
+}
+
+void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
+                                                  int64 timeout_in_ms,
+                                                  const StatusCallback& done) {
+  // Assume local devices are always healthy.
+  done(errors::Internal(
+      "CheckPeerHealth is not supposed to be called for local collectives"));
 }
 
 /*static*/

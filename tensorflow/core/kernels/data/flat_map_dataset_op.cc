@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -73,6 +73,11 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -152,8 +157,47 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
 
-        TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
+        TF_RETURN_IF_ERROR(
+            BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
       } while (true);
+    }
+
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence, int* num_skipped) override {
+      mutex_lock l(mu_);
+      *num_skipped = 0;
+      while (*num_skipped < num_to_skip) {
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+        if (!current_element_iterator_) {
+          // Get the next element from the input dataset.
+          captured_func_inputs_.clear();
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &captured_func_inputs_,
+                                                  end_of_sequence));
+          if (*end_of_sequence) {
+            input_impl_.reset();
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(
+              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+        }
+        bool end_of_element;
+        int last_num_skipped;
+        TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
+            ctx, num_to_skip - *num_skipped, &end_of_element,
+            &last_num_skipped));
+        *num_skipped += last_num_skipped;
+        if (end_of_element) {
+          // We have reached the end of the current element, so maybe move on
+          // to the next element.
+          current_element_iterator_.reset();
+        }
+      }
+      *end_of_sequence = false;
+      return Status::OK();
     }
 
    protected:
@@ -162,11 +206,13 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return model::MakeInterleaveManyNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kElementIndex), element_index_));
         if (current_element_iterator_) {
@@ -178,7 +224,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 full_name(strings::StrCat(kCapturedFuncInputs, "[", i, "]")),
                 captured_func_inputs_[i]));
           }
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_element_iterator_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
         } else {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(kCurrentElementIteratorUninitialized), ""));
@@ -223,7 +269,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 &captured_func_inputs_.back()));
           }
           element_index_--;
-          TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
+          TF_RETURN_IF_ERROR(
+              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
           TF_RETURN_IF_ERROR(
               RestoreInput(ctx, reader, current_element_iterator_));
         }
@@ -232,11 +279,21 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
+    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
+                                             bool is_get_next)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return MakeIteratorFromInputElement(
-          ctx, this, captured_func_inputs_, element_index_++,
-          *instantiated_captured_func_, prefix(), &current_element_iterator_);
+      if (is_get_next) {
+        return MakeIteratorFromInputElement(
+            ctx, this, captured_func_inputs_, element_index_++,
+            *instantiated_captured_func_, prefix(), &current_element_iterator_,
+            model_node());
+      } else {
+        // NOTE: We intentionally ignore resource modeling outside GetNext().
+        return MakeIteratorFromInputElement(
+            ctx, this, captured_func_inputs_, element_index_++,
+            *instantiated_captured_func_, prefix(), &current_element_iterator_,
+            /*node=*/nullptr);
+      }
     }
 
     mutex mu_;

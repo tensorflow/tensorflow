@@ -1,6 +1,7 @@
 # Description:
 #   C++ implementation code for the summary writing APIs.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -10,7 +11,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -79,6 +80,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/kernels:summary_interface",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -89,11 +91,13 @@ tf_cc_test(
     srcs = ["summary_file_writer_test.cc"],
     deps = [
         ":summary_file_writer",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -107,8 +111,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:png_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/png:png_io",
     ],
 )
 

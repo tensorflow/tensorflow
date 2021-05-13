@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 
 namespace tflite {
 namespace {
@@ -192,8 +193,3 @@ TEST(OpResolver, TestGetRegistrationFromOpCodeNonexistentCustom) {
 }
 
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

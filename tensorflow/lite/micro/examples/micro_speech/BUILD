@@ -1,14 +1,9 @@
 # Description:
 #   TensorFlow Lite microcontroller example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -22,12 +17,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tiny_conv_simple_features_model_data",
+    name = "model",
     srcs = [
-        "simple_features/tiny_conv_simple_features_model_data.cc",
+        "simple_features/model.cc",
     ],
     hdrs = [
-        "simple_features/tiny_conv_simple_features_model_data.h",
+        "simple_features/model.h",
     ],
 )
 
@@ -43,18 +38,17 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_speech_test",
     srcs = [
         "micro_speech_test.cc",
     ],
     deps = [
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_features_test_data",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -107,11 +101,11 @@ cc_library(
     deps = [
         ":simple_model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "simple_features_generator_reference_test",
     srcs = [
         "simple_features/simple_features_generator_test.cc",
@@ -122,6 +116,7 @@ tflite_micro_cc_test(
         ":simple_features_generator_test_data",
         ":simple_model_settings",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -138,11 +133,11 @@ cc_library(
     deps = [
         ":simple_model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "simple_features_generator_fixed_test",
     srcs = [
         "simple_features/simple_features_generator_test.cc",
@@ -153,6 +148,7 @@ tflite_micro_cc_test(
         ":simple_features_generator_test_data",
         ":simple_model_settings",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -168,7 +164,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
 )
@@ -184,12 +180,12 @@ cc_library(
     deps = [
         ":audio_large_sample_test_data",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "audio_provider_test",
     srcs = [
         "audio_provider_test.cc",
@@ -197,13 +193,14 @@ tflite_micro_cc_test(
     deps = [
         ":audio_provider",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "audio_provider_mock_test",
     srcs = [
         "audio_provider_mock_test.cc",
@@ -212,6 +209,7 @@ tflite_micro_cc_test(
         ":audio_large_sample_test_data",
         ":audio_provider_mock",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -229,13 +227,13 @@ cc_library(
     deps = [
         ":audio_provider",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_features_generator",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "feature_provider_test",
     srcs = [
         "feature_provider_test.cc",
@@ -244,6 +242,7 @@ tflite_micro_cc_test(
         ":audio_provider",
         ":feature_provider",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -261,20 +260,25 @@ cc_library(
     deps = [
         ":audio_provider_mock",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_features_generator",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "feature_provider_mock_test",
+    size = "small",
     srcs = [
         "feature_provider_mock_test.cc",
+    ],
+    tags = [
+        "noasan",  # TODO(b/179930607): Fix with asan.
     ],
     deps = [
         ":feature_provider_mock",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_features_test_data",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
@@ -292,12 +296,12 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "recognize_commands_test",
     srcs = [
         "recognize_commands_test.cc",
@@ -308,7 +312,9 @@ tflite_micro_cc_test(
     deps = [
         ":recognize_commands",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -323,11 +329,11 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "command_responder_test",
     srcs = [
         "command_responder_test.cc",
@@ -335,6 +341,7 @@ tflite_micro_cc_test(
     deps = [
         ":command_responder",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -352,11 +359,12 @@ cc_binary(
         ":command_responder",
         ":feature_provider",
         ":recognize_commands",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -373,11 +381,18 @@ cc_binary(
         ":command_responder",
         ":feature_provider",
         ":recognize_commands",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+sh_test(
+    name = "micro_speech_binary_mock_test",
+    srcs = ["micro_speech_binary_mock_test.sh"],
+    data = [":micro_speech_mock"],
 )

@@ -16,9 +16,9 @@ This page describes how to use the NNAPI delegate with the TensorFlow Lite
 Interpreter in Java and Kotlin. For Android C APIs, please refer to
 [Android Native Developer Kit documentation](https://developer.android.com/ndk/guides/neuralnetworks).
 
-## Trying the NNAPI Delegate on your own model
+## Trying the NNAPI delegate on your own model
 
-### Gradle Import
+### Gradle import
 
 The NNAPI delegate is part of the TensorFlow Lite Android interpreter, release
 1.14.0 or higher. You can import it to your project by adding the following to
@@ -69,7 +69,7 @@ if(null != nnApiDelegate) {
 }
 ```
 
-## Best Practices
+## Best practices
 
 ### Test performance before deploying
 
@@ -164,6 +164,15 @@ The following models are known to be compatible with NNAPI:
 NNAPI acceleration is also not supported when the model contains
 dynamically-sized outputs. In this case, you will get a warning like:
 
+```none
+ERROR: Attempting to use a delegate that only supports static-sized tensors \
+with a graph that has dynamic-sized tensors.
 ```
-ERROR: Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors.
-```
+
+### Enable NNAPI CPU implementation
+
+A graph that can't be processed completely by an accelerator can fall back to
+the NNAPI CPU implementation. However, since this is typically less performant
+than the TensorFlow interpreter, this option is disabled by default in the NNAPI
+delegate for Android 10 (API Level 29) or above. To override this behavior, set
+`setUseNnapiCpu` to `true` in the `NnApiDelegate.Options` object.

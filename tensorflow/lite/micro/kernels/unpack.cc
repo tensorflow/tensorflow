@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -26,20 +27,18 @@ namespace {
 
 constexpr int kInputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T>
 TfLiteStatus UnpackImpl(TfLiteContext* context, TfLiteNode* node,
-                        const TfLiteTensor* input, int output_count, int axis) {
-  const TfLiteTensor* output0 = &context->tensors[node->outputs->data[0]];
+                        const TfLiteEvalTensor* input, int output_count,
+                        int axis) {
+  const TfLiteEvalTensor* output0 =
+      tflite::micro::GetEvalOutput(context, node, 0);
   const TfLiteIntArray* input_dims = input->dims;
   const TfLiteIntArray* output_dims = output0->dims;
   const int dimensions = input_dims->size;
 
   if (axis < 0) {
-    axis += NumDimensions(input);
+    axis += input->dims->size;
   }
 
   TFLITE_DCHECK_LT(axis, dimensions);
@@ -58,11 +57,11 @@ TfLiteStatus UnpackImpl(TfLiteContext* context, TfLiteNode* node,
   }
   TFLITE_DCHECK_EQ(output_size, copy_size * outer_size);
 
-  const T* input_data = GetTensorData<T>(input);
+  const T* input_data = tflite::micro::GetTensorData<T>(input);
 
   for (int i = 0; i < output_count; ++i) {
-    TfLiteTensor* t = &context->tensors[node->outputs->data[i]];
-    T* output_data = GetTensorData<T>(t);
+    TfLiteEvalTensor* t = tflite::micro::GetEvalOutput(context, node, i);
+    T* output_data = tflite::micro::GetTensorData<T>(t);
     for (int k = 0; k < outer_size; ++k) {
       T* output_ptr = output_data + copy_size * k;
       int loc = k * output_count * copy_size + i * copy_size;
@@ -78,7 +77,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteUnpackParams* data =
       reinterpret_cast<TfLiteUnpackParams*>(node->builtin_data);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
 
   switch (input->type) {
     case kTfLiteFloat32: {
@@ -105,11 +105,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 }  // namespace unpack
 
-TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {};
-  r.prepare = unpack::Prepare;
-  r.invoke = unpack::Eval;
-  return &r;
+TfLiteRegistration Register_UNPACK() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/unpack::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

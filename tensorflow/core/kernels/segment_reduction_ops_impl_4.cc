@@ -88,18 +88,18 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
 #define REGISTER_REAL_GPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMax", type, index_type,  \
                                       functor::Lowest<type>,                   \
-                                      functor::MaxOpGpu<type>);                \
+                                      functor::AtomicMaxOpGpu<type>);          \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMin", type, index_type,  \
                                       functor::Highest<type>,                  \
-                                      functor::MinOpGpu<type>);                \
+                                      functor::AtomicMinOpGpu<type>);          \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentProd", type, index_type, \
                                       functor::One<type>,                      \
-                                      functor::ProdOpGpu<type>);
+                                      functor::AtomicProdOpGpu<type>);
 
 #define REGISTER_SUM_GPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type, \
                                       functor::Zero<type>,                    \
-                                      functor::SumOpGpu<type>);
+                                      functor::AtomicSumOpGpu<type>);
 
 #define REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL(type) \
   REGISTER_REAL_GPU_UNSORTED_KERNELS(type, int64)
@@ -113,8 +113,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 // TODO(rocm): support atomicAdd for complex numbers on ROCm
 #if GOOGLE_CUDA
-TF_CALL_complex64(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
-TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_COMPLEX_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 #endif
 
 #undef REGISTER_GPU_KERNEL_UNSORTEDSEGMENT

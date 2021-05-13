@@ -73,6 +73,54 @@ XLA_TEST_F(MatrixTest, Triangle) {
   ComputeAndCompareR3<int32>(&builder, expected, {a_data.get()});
 }
 
+XLA_TEST_F(MatrixTest, Symmetrize) {
+  for (bool lower : {false, true}) {
+    XlaBuilder builder(TestName());
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    Array<float> input = {
+        {1, nan, nan},
+        {2, 3, nan},
+        {4, 5, 6},
+    };
+
+    XlaOp a;
+    auto a_data = CreateParameter<float>(input, 0, "a", &builder, &a);
+    Symmetrize(lower ? a : TransposeInMinorDims(a), /*lower=*/lower);
+
+    Array<float> expected = {
+        {1, 2, 4},
+        {2, 3, 5},
+        {4, 5, 6},
+    };
+
+    ComputeAndCompare<float>(&builder, expected, {a_data.get()});
+  }
+}
+
+XLA_TEST_F(MatrixTest, SymmetrizeComplex) {
+  for (bool lower : {false, true}) {
+    XlaBuilder builder(TestName());
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    Array<complex64> input = {
+        {complex64{1, nan}, nan, nan},
+        {complex64{2, 7}, complex64{3, nan}, nan},
+        {complex64{4, 8}, complex64{5, 9}, complex64{6, nan}},
+    };
+
+    XlaOp a;
+    auto a_data = CreateParameter<complex64>(input, 0, "a", &builder, &a);
+    Symmetrize(lower ? a : Conj(TransposeInMinorDims(a)), /*lower=*/lower);
+
+    Array<complex64> expected = {
+        {1, complex64{2, -7}, complex64{4, -8}},
+        {complex64{2, 7}, 3, complex64{5, -9}},
+        {complex64{4, 8}, complex64{5, 9}, 6},
+    };
+
+    ComputeAndCompare<complex64>(&builder, expected, {a_data.get()});
+  }
+}
+
 template <typename T>
 void MatrixTest::TestMatrixDiagonal() {
   XlaBuilder builder("SetMatrixDiagonal");
@@ -233,12 +281,23 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   };
 
   std::vector<std::vector<string>> good_test_cases = {
-      {"ab", "bc", "ac"},           {"Bab", "Bbc", "Bac"},
-      {"ab", "cd", "dcba"},         {"abc", "abd", "cbd"},
-      {"...ab", "...bc", "...ac"},  {"a...bc", "...abd", "cbd..."},
-      {"...ab", "...bc", "ac"},     {"...b", "...bc", "...c"},
-      {"...abz", "...bc", "...ac"}, {"...ab", "...bcz", "...ac"},
-      {"abz", "bc", "ac"},          {"ab", "bcz", "ac"},
+      {"ab", "bc", "ac"},
+      {"Bab", "Bbc", "Bac"},
+      {"ab", "cd", "dcba"},
+      {"abc", "abd", "cbd"},
+      {"...ab", "...bc", "...ac"},
+      {"a...bc", "...abd", "cbd..."},
+      {"...ab", "...bc", "ac"},
+      {"...b", "...bc", "...c"},
+      {"...abz", "...bc", "...ac"},
+      {"...ab", "...bcz", "...ac"},
+      {"abz", "bc", "ac"},
+      {"ab", "bcz", "ac"},
+
+      {"a", "b", "c"},
+      {"...a", "...b", "...c"},
+      {"abb", "bcc", "ac"},
+      {"ab", "bc", "ad"},
   };
   for (auto test_case : good_test_cases) {
     auto parse_result_or_status =
@@ -249,9 +308,6 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     for (int i = 0; i < 3; ++i) {
       EXPECT_EQ(parse_result[i], to_vec(test_case[i]));
     }
-    EXPECT_TRUE(ValidateEinsumNumericDimensions(
-                    parse_result[0], parse_result[1], parse_result[2])
-                    .ok());
   }
 
   std::vector<string> einsum_strings_that_fail_parsing = {
@@ -260,24 +316,6 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   for (auto test_case : einsum_strings_that_fail_parsing) {
     auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
     EXPECT_FALSE(parse_result_or_status.status().ok());
-  }
-  std::vector<std::vector<string>> einsum_strings_that_fail_numeric_validation =
-      {
-          {"a", "b", "c"},
-          {"...a", "...b", "...c"},
-          {"abb", "bcc", "ac"},
-          {"ab", "bc", "ad"},
-      };
-
-  for (auto test_case : einsum_strings_that_fail_numeric_validation) {
-    auto parse_result_or_status =
-        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
-                          test_case[0].size(), test_case[1].size());
-    EXPECT_TRUE(parse_result_or_status.status().ok());
-    auto parse_result = parse_result_or_status.ValueOrDie();
-    EXPECT_FALSE(ValidateEinsumNumericDimensions(
-                     parse_result[0], parse_result[1], parse_result[2])
-                     .ok());
   }
 }
 

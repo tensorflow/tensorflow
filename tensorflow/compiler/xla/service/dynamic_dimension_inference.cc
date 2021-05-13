@@ -15,18 +15,56 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dynamic_window_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-
 namespace xla {
+
+namespace {
+// Replace `narrow_comp` with a new computation with `wide_shape` as input.
+StatusOr<HloComputation*> WidenComputation(HloComputation* narrow_comp,
+                                           const Shape& wide_shape) {
+  TF_RET_CHECK(wide_shape.IsTuple());
+  const Shape& narrow_shape = narrow_comp->parameter_instruction(0)->shape();
+  if (Shape::Equal()(wide_shape, narrow_shape)) {
+    // No need to widen the computation.
+    return narrow_comp;
+  }
+  HloComputation* wide_comp = [&]() {
+    HloComputation::Builder builder(absl::StrCat("wide.", narrow_comp->name()));
+    builder.AddInstruction(
+        HloInstruction::CreateParameter(0, wide_shape, "wide_param"));
+    return narrow_comp->parent()->AddEmbeddedComputation(builder.Build());
+  }();
+
+  HloInstruction* wide_parameter = wide_comp->parameter_instruction(0);
+  HloInstruction* truncated_parameter = TupleUtil::ExtractPrefix(
+      wide_parameter, narrow_shape.tuple_shapes_size());
+  HloInstruction* call_narrow_comp = wide_comp->AddInstruction(
+      HloInstruction::CreateCall(narrow_comp->root_instruction()->shape(),
+                                 {truncated_parameter}, narrow_comp));
+  wide_comp->set_root_instruction(call_narrow_comp,
+                                  /*accept_different_shape=*/true);
+  TF_RETURN_IF_ERROR(CallInliner::Inline(call_narrow_comp).status());
+  return wide_comp;
+}
+}  // namespace
 
 class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -59,6 +97,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleTuple(HloInstruction* hlo) override;
 
   Status HandleTranspose(HloInstruction* hlo) override;
+
+  Status HandleDynamicReshape(HloInstruction* hlo) override;
 
   Status HandleReshape(HloInstruction* hlo) override;
 
@@ -94,6 +134,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleClamp(HloInstruction* hlo) override;
 
+  Status HandleConditional(HloInstruction* hlo) override;
+
   Status HandleWhile(HloInstruction* hlo) override;
 
   Status HandleSlice(HloInstruction* hlo) override;
@@ -106,22 +148,43 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleScatter(HloInstruction* hlo) override;
 
+  Status HandleDomain(HloInstruction* hlo) override;
+
  private:
-  using DimensionConstraint = DynamicDimensionInference::DimensionConstraint;
   using OperandDynamicDimensionFn = std::function<Status(
       HloInstruction* operand, ShapeIndex index, int64 dimension,
-      int64 operand_index, HloInstruction* dynamic_size,
-      DimensionConstraint constraint)>;
+      int64 operand_index, HloInstruction* dynamic_size)>;
+
+  using DynamicDimensionFn = std::function<Status(
+      ShapeIndex index, int64 dimension, HloInstruction* dynamic_size)>;
+
+  Status HandleDynamicConvolutionForward(HloInstruction* hlo,
+                                         int64 operand_index, int64 dimension,
+                                         HloInstruction* dynamic_size);
+
+  Status HandleDynamicConvolutionKernelGrad(HloInstruction* hlo,
+                                            int64 operand_index,
+                                            int64 dimension);
+
+  Status HandleDynamicConvolutionInputGrad(HloInstruction* hlo,
+                                           int64 operand_index,
+                                           int64 dimension);
+
+  Status HandleDynamicWindowSamePadding(HloInstruction* hlo,
+                                        HloInstruction* dynamic_size,
+                                        int64 operand_index, int64 dimension);
 
   Status ForEachOperandDynamicDimension(HloInstruction* inst,
                                         const OperandDynamicDimensionFn&);
   Status ForEachDynamicDimensionInOperand(HloInstruction* inst,
                                           int64 operand_index,
                                           const OperandDynamicDimensionFn&);
+  Status ForEachDynamicDimension(HloInstruction* inst,
+                                 const DynamicDimensionFn& fn);
 
-  // Pass through a dynamic dimension from the input to the output with the same
-  // value and index in the shape. This is a helper function to handle trivial
-  // instructions like elementwise operations.
+  // Pass through a dynamic dimension from the input to the output with the
+  // same value and index in the shape. This is a helper function to handle
+  // trivial instructions like elementwise operations.
   Status PassThroughDynamicDimension(HloInstruction*);
 
   // The dynamic parameter bindings of this computation.
@@ -137,8 +200,7 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         return UnimplementedStrCat(
             "Asked to propagate a dynamic dimension from hlo ", operand->name(),
             "@", index.ToString(), "@", dimension, " to hlo ", hlo->ToString(),
@@ -150,13 +212,11 @@ Status DynamicDimensionInferenceVisitor::HandleGetTupleElement(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         if (hlo->tuple_index() == index[0]) {
           ShapeIndex new_index =
               ShapeIndexView(index).ConsumeFront().ToShapeIndex();
-          parent_->SetDynamicSize(hlo, new_index, dimension, dynamic_size,
-                                  constraint);
+          parent_->SetDynamicSize(hlo, new_index, dimension, dynamic_size);
         }
         return Status::OK();
       });
@@ -165,11 +225,9 @@ Status DynamicDimensionInferenceVisitor::HandleGetTupleElement(
 Status DynamicDimensionInferenceVisitor::HandleTuple(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction*, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         index.push_front(operand_index);
-        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
-                                constraint);
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         return Status::OK();
       });
 }
@@ -177,11 +235,9 @@ Status DynamicDimensionInferenceVisitor::HandleTuple(HloInstruction* hlo) {
 Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         int64 broadcast_dim = hlo->dimensions(dimension);
-        parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size,
-                                constraint);
+        parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size);
         return Status::OK();
       });
 }
@@ -197,8 +253,7 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
         // returns the padded data output and the dynamic sizes of input
         // dimensions.
         ShapeIndex data_output = {0};
-        parent_->SetDynamicSize(hlo, data_output, i, dynamic_size,
-                                DimensionConstraint(1, 1));
+        parent_->SetDynamicSize(hlo, data_output, i, dynamic_size);
       }
     }
     return Status::OK();
@@ -206,33 +261,95 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (custom_call_handler_) {
     return custom_call_handler_(hlo, parent_);
   }
+
+  if (hlo->custom_call_target() == "DynamicConvolutionForward") {
+    // If input feature is dynamic and kernel feature is static, we can infer
+    // that input feature is also static.
+    // E.g.,:
+    // lhs = [B, X, Y, ?]
+    // rhs = [X, Y, I, O]
+    // dim_labels = b01f_01io
+    // We can infer that the dynamic dimension in rhs is static I.
+    const ConvolutionDimensionNumbers& dnums =
+        hlo->convolution_dimension_numbers();
+    HloInstruction* input_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(0), {}, dnums.input_feature_dimension());
+    HloInstruction* kernel_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(1), {}, dnums.kernel_input_feature_dimension());
+
+    if (input_feature != nullptr && kernel_feature == nullptr) {
+      if (hlo->mutable_operand(0)->shape().dimensions(
+              dnums.input_feature_dimension()) ==
+          hlo->mutable_operand(1)->shape().dimensions(
+              dnums.kernel_input_feature_dimension()))
+        parent_->SetDynamicSize(hlo->mutable_operand(0), {},
+                                dnums.input_feature_dimension(), nullptr);
+    }
+  }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "SliceToDynamic" ||
-            absl::StartsWith(hlo->custom_call_target(), "Resize")) {
-          return Unimplemented(
-              "CustomCall is not supported to have a dynamic dimension");
+               int64 operand_index, HloInstruction* dynamic_size) {
+        // Resize custom call should propagate dynamic batch (0) and channel (3)
+        // dimensions.
+        if (hlo->custom_call_target() == "SliceToDynamic" ||
+            hlo->custom_call_target() == "Sharding" ||
+            (absl::StartsWith(hlo->custom_call_target(), "Resize") &&
+             (dimension == 0 || dimension == 3))) {
+          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+          return Status::OK();
+        }
+        if (hlo->custom_call_target() == "DynamicReduceWindowSamePadding") {
+          if (hlo->operand_count() > 2) {
+            return Unimplemented(
+                "DynamicReduceWindowSamePadding doesn't support variadic "
+                "reduce window %s",
+                hlo->ToString());
+          }
+          return HandleDynamicWindowSamePadding(hlo, dynamic_size,
+                                                operand_index, dimension);
         }
 
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
-        return Status::OK();
+        if (hlo->custom_call_target() == "DynamicSelectAndScatterSamePadding") {
+          if (operand_index == 1) {
+            // Operand 0 (input) determines dynamic output size. We ignore the
+            // dynamic size in the operand 1 (output gradient).
+            return Status::OK();
+          }
+          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+          return Status::OK();
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionInputGrad") {
+          return HandleDynamicConvolutionInputGrad(hlo, operand_index,
+                                                   dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionKernelGrad") {
+          return HandleDynamicConvolutionKernelGrad(hlo, operand_index,
+                                                    dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionForward") {
+          return HandleDynamicConvolutionForward(hlo, operand_index, dimension,
+                                                 dynamic_size);
+        }
+        return Unimplemented(
+            "CustomCall \"%s\" is not supported to have a dynamic dimension",
+            hlo->custom_call_target());
       });
 }
 
 Status DynamicDimensionInferenceVisitor::HandleSort(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index,
-               int64 dynamic_dimension, int64 operand_index,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64 dynamic_dimension,
+          int64 operand_index, HloInstruction* dynamic_size) {
         HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
         if (sort->values_count() == 0) {
-          parent_->SetDynamicSize(hlo, {}, dynamic_dimension, dynamic_size,
-                                  constraint);
+          parent_->SetDynamicSize(hlo, {}, dynamic_dimension, dynamic_size);
         } else {
           parent_->SetDynamicSize(hlo, {operand_index}, dynamic_dimension,
-                                  dynamic_size, constraint);
+                                  dynamic_size);
         }
 
         return Status::OK();
@@ -242,37 +359,63 @@ Status DynamicDimensionInferenceVisitor::HandleSort(HloInstruction* hlo) {
 Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         if (operand_index != 0) {
           return Unimplemented(
               "Dynamic dimension on padding value is not supported");
         }
         const PaddingConfig_PaddingConfigDimension& padding_config =
             hlo->padding_config().dimensions(dimension);
-        if (padding_config.interior_padding() == 0 &&
-            padding_config.edge_padding_low() == 0 &&
-            padding_config.edge_padding_high() == 0) {
-          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
-          return Status::OK();
-        } else {
-          return Unimplemented(
-              "Dynamic dimension propagation on padding dimension is not "
-              "supported.");
+
+        HloInstruction* dynamic_size_adjusted = dynamic_size;
+        if (padding_config.interior_padding() != 0) {
+          // Adjust for interior padding :
+          // Size' = max((Size - 1), 0) * interior_padding + Size
+          HloInstruction* one = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+          HloInstruction* zero = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+          HloInstruction* interior_padding = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  padding_config.interior_padding())));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kSubtract,
+                  dynamic_size_adjusted, one));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMaximum,
+                  dynamic_size_adjusted, zero));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMultiply,
+                  dynamic_size_adjusted, interior_padding));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kAdd,
+                  dynamic_size_adjusted, dynamic_size));
         }
+        HloInstruction* adjustment = hlo->parent()->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                padding_config.edge_padding_low() +
+                padding_config.edge_padding_high())));
+        dynamic_size_adjusted =
+            hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                dynamic_size_adjusted->shape(), HloOpcode::kAdd,
+                dynamic_size_adjusted, adjustment));
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size_adjusted);
+        return Status::OK();
       });
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        HloInstruction* reduce = hlo;
+               int64 operand_index, HloInstruction* dynamic_size) {
+        auto* reduce = Cast<HloReduceInstruction>(hlo);
         int64 operand_count = reduce->operand_count();
-        bool is_variadic_reduce = operand_count > 2;
         CHECK_EQ(operand_count % 2, 0);
-        if (operand_index >= operand_count / 2) {
+        if (operand_index >= reduce->input_count()) {
           // Init values doesn't have dynamic size.
           return Status::OK();
         }
@@ -285,22 +428,21 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
         int64 dimensions_not_reduced_count = 0;
         for (int i = 0; i < operand->shape().rank(); ++i) {
           if (dimension == i) {
-            ShapeIndex result_index = {};
-
-            if (is_variadic_reduce) {
-              // The dimensions of all data operands of a variadic reduce have
-              // to be the same.  This means that if one operand of variadic
-              // reduce has a dynamic dimension, we set all outputs to use the
-              // same dynamic size in corresponding dimensions.
-              for (int64 i = 0; i < operand_count / 2; ++i) {
-                parent_->SetDynamicSize(reduce, {i},
-                                        dimensions_not_reduced_count,
-                                        dynamic_size, constraint);
-              }
-            } else {
-              parent_->SetDynamicSize(reduce, {}, dimensions_not_reduced_count,
-                                      dynamic_size, constraint);
-            }
+            // The dimensions of all data operands of a variadic reduce have
+            // to be the same.  This means that if one operand of variadic
+            // reduce has a dynamic dimension, we set all outputs to use the
+            // same dynamic size in corresponding dimensions.
+            ShapeUtil::ForEachSubshape(
+                reduce->shape(),
+                [&](const Shape& subshape, ShapeIndex reduce_result_index) {
+                  if (!ShapeUtil::IsLeafIndex(reduce->shape(),
+                                              reduce_result_index)) {
+                    return;
+                  }
+                  parent_->SetDynamicSize(reduce, reduce_result_index,
+                                          dimensions_not_reduced_count,
+                                          dynamic_size);
+                });
 
             return Status::OK();
           }
@@ -317,7 +459,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex operand_shape_index,
                int64 operand_dimension, int64 operand_index,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+               HloInstruction* dynamic_size) {
         // There are three types of dimensions in a dot:
         // A. batch dims
         // B. contracting dims
@@ -390,8 +532,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
         // work item to trace that dimension.
         auto iter = result_dim_mapping.find(operand_dimension);
         if (iter != result_dim_mapping.end()) {
-          parent_->SetDynamicSize(dot, {}, iter->second, dynamic_size,
-                                  constraint);
+          parent_->SetDynamicSize(dot, {}, iter->second, dynamic_size);
         }
 
         return Status::OK();
@@ -400,11 +541,17 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
 
 Status DynamicDimensionInferenceVisitor::HandleTranspose(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        parent_->SetDynamicSize(hlo, {}, hlo->dimensions()[dimension],
-                                dynamic_size, constraint);
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+          int64 operand_index, HloInstruction* dynamic_size) -> Status {
+        int64 permuted_dim = -1;
+        for (int64 i = 0; i < hlo->dimensions().size(); ++i) {
+          if (hlo->dimensions()[i] == dimension) {
+            TF_RET_CHECK(permuted_dim == -1);
+            permuted_dim = i;
+          }
+        }
+        parent_->SetDynamicSize(hlo, {}, permuted_dim, dynamic_size);
         return Status::OK();
       });
 }
@@ -413,17 +560,15 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         HloInstruction* conv = hlo;
         const ConvolutionDimensionNumbers& dimension_numbers =
             conv->convolution_dimension_numbers();
-
         if (operand_index == 0) {
           if (dimension == dimension_numbers.input_batch_dimension()) {
             parent_->SetDynamicSize(conv, {},
                                     dimension_numbers.output_batch_dimension(),
-                                    dynamic_size, constraint);
+                                    dynamic_size);
             return Status::OK();
           }
 
@@ -473,26 +618,24 @@ Status DynamicDimensionInferenceVisitor::HandleConcatenate(
                                        dim_size_total, dynamic_dim));
     }
     parent_->SetDynamicSize(hlo, {}, hlo->concatenate_dimension(),
-                            dim_size_total, DimensionConstraint(1, 1));
+                            dim_size_total);
   }
 
   // Simply pass through non-concat dynamic dimensions.
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         int64 concatenate_dimension = hlo->concatenate_dimension();
         if (concatenate_dimension == dimension) {
           return Status::OK();
         }
-        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
-                                constraint);
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         return Status::OK();
       });
 }
 
 Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
-    HloInstruction*) {
+    HloInstruction* gds) {
   // Dynamic dimension doesn't propagate through GetDimensionSize:
   //
   //   Input: F32[x, y, z]
@@ -502,6 +645,24 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
   // The returned value is a scalar, which doesn't have any dynamic dimension in
   // the shape (although the value contains the real size of the dynamic
   // dimension of the input).
+  int64 dim = gds->dimension();
+  HloInstruction* operand = gds->mutable_operand(0);
+  HloInstruction* dynamic_size = parent_->GetDynamicSize(operand, {}, dim);
+  HloComputation* computation = gds->parent();
+  if (dynamic_size != nullptr) {
+    TF_RETURN_IF_ERROR(gds->ReplaceAllUsesWith(dynamic_size));
+    // The dependency between an instruction and its dynamic dimensions is not
+    // modeled in the IR. As instr is being replaced by dynamic_size, also tell
+    // dynamic dimension inference that the instruction is being replaced.
+    parent_->ReplaceAllDynamicDimensionUsesWith(gds, dynamic_size);
+  } else {
+    TF_RET_CHECK(dim < gds->operand(0)->shape().rank());
+    int32 size = gds->operand(0)->shape().dimensions(dim);
+    HloInstruction* new_instr = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
+    TF_RETURN_IF_ERROR(gds->ReplaceAllUsesWith(new_instr));
+    parent_->ReplaceAllDynamicDimensionUsesWith(gds, new_instr);
+  }
   return Status::OK();
 }
 
@@ -527,18 +688,15 @@ Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
   if (!dimension_is_static) {
     // Propagate dynamic dimension indicated by this set dimension size
     // instruction.
-    parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1),
-                            DimensionConstraint(1, 1));
+    parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1));
   }
 
   // Also Propagate dynamic dimension already set by operands.
   TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 operand_index, HloInstruction* dynamic_size) {
         if (dimension != hlo->dimension()) {
-          parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
-                                  constraint);
+          parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         }
         return Status::OK();
       }));
@@ -546,16 +704,100 @@ Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
   return Status::OK();
 }
 
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionForward(
+    HloInstruction* hlo, int64 operand_index, int64 dimension,
+    HloInstruction* dynamic_size) {
+  TF_RET_CHECK(operand_index == 0);
+  const ConvolutionDimensionNumbers& dimension_numbers =
+      hlo->convolution_dimension_numbers();
+
+  if (dimension == dimension_numbers.input_batch_dimension()) {
+    // Batch dimension is propagated without any changes.
+    parent_->SetDynamicSize(hlo, {}, dimension_numbers.output_batch_dimension(),
+                            dynamic_size);
+    return Status::OK();
+  }
+
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dimension_numbers.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim =
+        dimension_numbers.input_spatial_dimensions(spatial_dim_index);
+    int64 output_spatial_dim =
+        dimension_numbers.output_spatial_dimensions(spatial_dim_index);
+    if (dimension == input_spatial_dim) {
+      // This is a dynamic spatial dimension. Calculate the output size.
+      WindowDimension window_dim = hlo->window().dimensions(spatial_dim_index);
+      DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+          dynamic_size, window_dim.size(), window_dim.window_dilation(),
+          window_dim.stride(), hlo->padding_type());
+      TF_RET_CHECK(window_dim.base_dilation() == 1);
+      parent_->SetDynamicSize(hlo, {}, output_spatial_dim,
+                              dynamic_window_dims.output_size);
+      return Status::OK();
+    }
+  }
+  // Input Feature dim disappears after convolution.
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicWindowSamePadding(
+    HloInstruction* hlo, HloInstruction* dynamic_size, int64 operand_index,
+    int64 dimension) {
+  const Window& window = hlo->window();
+  const WindowDimension& window_dim = window.dimensions(dimension);
+  if (!window_util::IsTrivialWindowDimension(window_dim)) {
+    DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+        dynamic_size, window_dim.size(), window_dim.window_dilation(),
+        window_dim.stride(), PaddingType::PADDING_SAME);
+    parent_->SetDynamicSize(hlo, {}, dimension,
+                            dynamic_window_dims.output_size);
+    return Status::OK();
+  }
+
+  parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
+    HloInstruction* hlo, int64 operand_index, int64 dimension) {
+  // The output size of convolution input grad is corresponding input size.
+  HloInstruction* input_sizes = hlo->mutable_operand(0);
+  HloComputation* comp = hlo->parent();
+  TF_RET_CHECK(input_sizes->shape().rank() == 1) << hlo->ToString();
+  TF_RET_CHECK(input_sizes->shape().element_type() == S32) << hlo->ToString();
+  TF_RET_CHECK(input_sizes->shape().dimensions(0) ==
+               hlo->shape().dimensions_size())
+      << hlo->ToString();
+  // Slice to get corresponding input size.
+  HloInstruction* slice = comp->AddInstruction(
+      HloInstruction::CreateSlice(ShapeUtil::MakeShape(S32, {1}), input_sizes,
+                                  {dimension}, {dimension + 1}, {1}));
+  HloInstruction* reshape = comp->AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeScalarShape(S32), slice));
+  parent_->SetDynamicSize(hlo, {}, dimension, reshape);
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionKernelGrad(
+    HloInstruction* hlo, int64 operand_index, int64 dimension) {
+  // Dynamic convolution kernel grad produces static shape outputs.
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
-                                constraint);
+               int64 operand_index, HloInstruction* dynamic_size) {
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         return Status::OK();
       });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDomain(HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseUnary(
@@ -569,11 +811,39 @@ Status DynamicDimensionInferenceVisitor::HandleSelect(HloInstruction* hlo) {
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
     HloInstruction* hlo) {
-  return PassThroughDynamicDimension(hlo);
+  HloComputation* comp = hlo->parent();
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size) {
+        HloInstruction* existing_size =
+            parent_->GetDynamicSize(hlo, index, dimension);
+        if (existing_size == nullptr || existing_size == dynamic_size) {
+          parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
+        } else {
+          HloInstruction* max =
+              comp->AddInstruction(HloInstruction::CreateBinary(
+                  ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum,
+                  dynamic_size, existing_size));
+          parent_->SetDynamicSize(hlo, index, dimension, max);
+        }
+        return Status::OK();
+      });
 }
 
 Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicReshape(
+    HloInstruction* hlo) {
+  HloDynamicReshapeInstruction* dynamic_reshape =
+      Cast<HloDynamicReshapeInstruction>(hlo);
+  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+    if (hlo->shape().is_dynamic_dimension(i)) {
+      parent_->SetDynamicSize(hlo, {}, i, dynamic_reshape->dim_sizes(i));
+    }
+  }
+  return Status::OK();
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
@@ -581,8 +851,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
       hlo,
       [&](HloInstruction* operand, ShapeIndex index,
           int64 input_dynamic_dimension, int64 operand_index,
-          HloInstruction* operand_dynamic_size,
-          DimensionConstraint constraint) -> Status {
+          HloInstruction* operand_dynamic_size) -> Status {
         HloInstruction* reshape = hlo;
         if (reshape->shape().rank() == 0) {
           VLOG(0) << "Reshaping a dynamic dimension into a scalar, which has "
@@ -678,9 +947,6 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
 
         if (output_dynamic_dimension == -1 &&
             output_dim_end - output_dim_start > 1) {
-          // TODO(yunxing): We now have a better way to decide output dimension
-          // in the bridge. No need for this constraint propagation logic.
-          //
           // One input dimension is splitted into multiple output dimensions.
           // Output dimension is decomposed from input most major dimension.
           // In this case, we don't know which one is dynamic, e.g., when we
@@ -697,61 +963,17 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           // We use the following logics to disambiguate:
           // 1. If the user sets "inferred_dimension", then use that as
           // dynamic dimension.
+          // 2. If the one dimension in the reshape is dynamic, use that as
+          // dynamic dimension.
+          // E.g.:
+          //     [<=4]
+          //      |
+          //   reshape
+          //      |
+          //   [1, <=2, 2]
+          // We use second dim as dynamic dimension.
           //
-          // 2. Use the "multiple_of" constraint, e.g, :
-          //    [<=2, 4]
-          //     | Reshape
-          //    [<=8]
-          //     | Reshape
-          //    [2, 4] // Which is dynamic?
-          //
-          //    If the dynamic value has to be multiple of 4 (constraint
-          //    created by the first reshape), then 2 must be the dynamic
-          //    dimension.
-          //
-          //    But this logic doesn't help with the case where two
-          //    dimensions are the same:
-          //
-          //    [<=3, 3]
-          //     | Reshape
-          //    [<=9]
-          //     | Reshape
-          //    [3, 3]  // Which is dynamic?
-          //
-          //    Both dynamic dimension can be multiple of 3.
-          //
-          //    We then need the next constraint to disambiguate this case:
-          //
-          // 3. Use the "stride" constraint (also see the comment at the
-          // definition):
-          //
-          //        [<=3, 3]
-          //           | Reshape
-          //         [<=9] // constraint.stride = 1
-          //          | Reshape
-          //        [3, 3]
-          //         ^  ^
-          //         |  |
-          // stride= 1  3
-          //
-          //    Each dimension will have different strides, only one will
-          //    satisfy the stride constraint.
-          //
-          //    Note that the stride constrint itself is not enough:
-          //
-          //
-          //         [<=128]
-          //           | Reshape
-          //         [1, 128]
-          //          ^  ^
-          //          |  |
-          //  stride= 1  1
-          //
-          //    In this case, both dimensions have the same stride, which is
-          //    ambiguous. That's why we need the "multiple_of" constraint
-          //    as used above.
-          //
-          // 4. If all logics above cannot disambiguate, e.g.,:
+          // 3. If all logics above cannot disambiguate, e.g.,:
           //
           //     [<=1]
           //      |
@@ -760,68 +982,15 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           //   [1, 1, 1]
           //
           //   We bail out and return an error.
+          // TODO(yunxing): Further simplify this, remove 1. and fully rely
+          // on 2.
           output_dynamic_dimension = reshape->inferred_dimension();
           if (output_dynamic_dimension == -1) {
-            // The user of XLA didn't specify a dynamic dimension, try infer
-            // it from the current constraint.
-            //
-            // Find all output dimensions that are decomposed from the first
-            // dimension. Among those dimensions, find all dimensions that
-            // satisfy the constraint of the dynamic dimension. In the
-            // previous example, if `a` is 9 and constraint is a multiple of
-            // `3', then in the output shape both a/c and c can be dynamic.
-            int64 current_product = 1;
-            int64 dimension_iter = output_dim_start;
-
-            // compatible_dimensions are dimensions that satisfies
-            // "multiple_of" constraints.
-            std::vector<int64> compatible_dimensions;
-            while (current_product <
-                   operand->shape().dimensions(input_dynamic_dimension)) {
-              current_product *= reshape->shape().dimensions(dimension_iter);
-              if (operand->shape().dimensions(input_dynamic_dimension) /
-                      reshape->shape().dimensions(dimension_iter) ==
-                  constraint.multiple_of) {
-                compatible_dimensions.push_back(dimension_iter);
+            // Try find dynamic dimension from the result shape.
+            for (int64 i = output_dim_start; i < output_dim_end; ++i) {
+              if (reshape->shape().is_dynamic_dimension(i)) {
+                output_dynamic_dimension = i;
               }
-              dimension_iter++;
-            }
-            CHECK_EQ(current_product,
-                     operand->shape().dimensions(input_dynamic_dimension))
-                << "Not a valid reshape: " << hlo->ToString();
-            // If there is only one compatible dimension, it must be the
-            // dynamic one in the output.
-            if (compatible_dimensions.size() == 1) {
-              output_dynamic_dimension = compatible_dimensions[0];
-            }
-
-            // When there are multiple compatible dimensions, e.g:
-            //     [<=9]
-            //      | Reshape
-            //    [3, 3]
-            // Use stride constraint to figure out which one is the true
-            // dynamic one.
-            //
-            //         [<=9]
-            //          | Reshape
-            //        [3, 3]
-            //         ^  ^
-            //         |  |
-            // stride= 1  3
-            //
-            std::vector<int64> compatible_dimensions_with_stride;
-            absl::c_copy_if(
-                compatible_dimensions,
-                std::back_inserter(compatible_dimensions_with_stride),
-                [&](int64 dimension) {
-                  int64 stride_total = 1;
-                  for (int64 i = 0; i < dimension + 1; ++i) {
-                    stride_total *= reshape->shape().dimensions(dimension);
-                  }
-                  return stride_total == constraint.stride;
-                });
-            if (compatible_dimensions_with_stride.size() == 1) {
-              output_dynamic_dimension = compatible_dimensions_with_stride[0];
             }
           }
 
@@ -841,9 +1010,8 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
             return InvalidArgument(
                 "Reshape's input dynamic dimension is decomposed into "
                 "multiple output dynamic dimensions, but the constraint is "
-                "ambiguous and XLA can't infer the output dimension %s. "
-                "Constraint: multiple_of: %lld, stride: %lld",
-                hlo->ToString(), constraint.multiple_of, constraint.stride);
+                "ambiguous and XLA can't infer the output dimension %s. ",
+                hlo->ToString());
           }
         }
 
@@ -858,11 +1026,12 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
         if (input_dim_size == output_dim_size) {
           // Simply forward dynamic dimension.
           parent_->SetDynamicSize(reshape, {}, output_dynamic_dimension,
-                                  operand_dynamic_size, constraint);
+                                  operand_dynamic_size);
         }
 
         if (input_dim_size > output_dim_size) {
-          TF_RET_CHECK(input_dim_size % output_dim_size == 0);
+          TF_RET_CHECK(input_dim_size % output_dim_size == 0)
+              << reshape->ToString();
           const int64 divisor = input_dim_size / output_dim_size;
           HloInstruction* divisor_hlo =
               hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
@@ -873,9 +1042,8 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                   operand_dynamic_size->shape(), HloOpcode::kDivide,
                   operand_dynamic_size, divisor_hlo));
 
-          parent_->SetDynamicSize(
-              reshape, {}, output_dynamic_dimension, new_dynamic_size,
-              DimensionConstraint(1, constraint.multiple_of / divisor));
+          parent_->SetDynamicSize(reshape, {}, output_dynamic_dimension,
+                                  new_dynamic_size);
         }
 
         if (input_dim_size < output_dim_size) {
@@ -912,12 +1080,8 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
                   output_dynamic_size->shape(), HloOpcode::kMultiply,
                   new_dynamic_size, operand_dynamic_size));
-          int64 new_multiple_of_constraint =
-              constraint.multiple_of * output_dim_size /
-              operand->shape().dimensions(input_dynamic_dimension);
-          parent_->SetDynamicSize(
-              reshape, {}, output_dynamic_dimension, new_dynamic_size,
-              DimensionConstraint(1, new_multiple_of_constraint));
+          parent_->SetDynamicSize(reshape, {}, output_dynamic_dimension,
+                                  new_dynamic_size);
         }
 
         return Status::OK();
@@ -928,20 +1092,37 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        HloInstruction* reduce_window = hlo;
-        const WindowDimension& window_dimension =
+               int64 operand_index, HloInstruction* dynamic_size) {
+        auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
+        const WindowDimension& window_dim =
             reduce_window->window().dimensions(dimension);
 
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial reduce window is not supported: %s",
-              reduce_window->ToString());
+        if (operand_index >= reduce_window->input_count()) {
+          // Init values doesn't have dynamic size.
+          return Status::OK();
         }
 
-        parent_->SetDynamicSize(reduce_window, {}, dimension, dynamic_size,
-                                constraint);
+        if (!window_util::IsTrivialWindowDimension(window_dim)) {
+          DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+              dynamic_size, window_dim.size(), window_dim.window_dilation(),
+              window_dim.stride(), PaddingType::PADDING_VALID);
+          dynamic_size = dynamic_window_dims.output_size;
+        }
+
+        // The dimensions of all data operands of a variadic reduce window have
+        // to be the same.  This means that if one operand of variadic
+        // reduce has a dynamic dimension, we set all outputs to use the
+        // same dynamic size in corresponding dimensions.
+        ShapeUtil::ForEachSubshape(
+            reduce_window->shape(),
+            [&](const Shape& subshape, ShapeIndex reduce_window_result_index) {
+              if (!ShapeUtil::IsLeafIndex(reduce_window->shape(),
+                                          reduce_window_result_index)) {
+                return;
+              }
+              parent_->SetDynamicSize(reduce_window, reduce_window_result_index,
+                                      dimension, dynamic_size);
+            });
 
         return Status::OK();
       });
@@ -951,20 +1132,13 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        HloInstruction* select_and_scatter = hlo;
-        const WindowDimension& window_dimension =
-            select_and_scatter->window().dimensions(dimension);
-
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial select and scatter is not supported: %s",
-              select_and_scatter->ToString());
+               int64 operand_index, HloInstruction* dynamic_size) {
+        if (operand_index == 1) {
+          // Operand 0 (input) determines dynamic output size. We ignore the
+          // dynamic size in the operand 1 (output gradient).
+          return Status::OK();
         }
-
-        parent_->SetDynamicSize(select_and_scatter, {}, dimension, dynamic_size,
-                                constraint);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -973,23 +1147,16 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
 Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex /*index*/, int64 dimension,
-               int64 /*operand_index*/, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 /*operand_index*/, HloInstruction* dynamic_size) {
         if (hlo->slice_starts(dimension) != 0 ||
             hlo->slice_strides(dimension) != 1 ||
             hlo->slice_limits(dimension) !=
                 operand->shape().dimensions(dimension)) {
-          // Slicing a single element out eliminates the dynamic dimension.
-          if (hlo->shape().dimensions(dimension) == 1) {
-            return Status::OK();
-          }
-          return Unimplemented(
-              "Dynamic dimension propagation on Slice where it doesn't slice "
-              "out an entire dimension is not supported %s",
-              hlo->ToString());
+          // Slicing a partial element out eliminates the dynamic dimension.
+          return Status::OK();
         }
 
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -999,8 +1166,7 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicSlice(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction*, ShapeIndex /*index*/, int64 dimension,
-               int64 /*operand_index*/, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+               int64 /*operand_index*/, HloInstruction* dynamic_size) {
         if (hlo->shape().dimensions(dimension) !=
             hlo->operand(0)->shape().dimensions(dimension)) {
           // Slicing a single element out kills the dynamic dimension.
@@ -1013,7 +1179,7 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicSlice(
               hlo->ToString());
         }
 
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -1022,18 +1188,30 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicSlice(
 Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* /*operand*/, ShapeIndex /*index*/,
-               int64 dimension, int64 /*operand_index*/,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
+          int64 operand_index, HloInstruction* dynamic_size) {
         if (hlo->shape().dimensions(dimension) !=
             hlo->operand(0)->shape().dimensions(dimension)) {
           return Unimplemented(
-              "Dynamic dimension propagation on DynamicSlice where a partial "
-              "dimension is selected %s",
+              "Dynamic dimension propagation on DynamicUpdateSlice where a "
+              "partial dimension is selected %s",
               hlo->ToString());
         }
 
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+        if (operand_index == 1 &&
+            hlo->operand(1)->shape().dimensions(dimension) <
+                hlo->operand(0)->shape().dimensions(dimension)) {
+          // DUS(input=[A], update=[<=B])
+          //
+          // If update dim is smaller than input dim (B < A) , then we are doing
+          // a partial update, no need to set the output dynamic dimension.
+          //
+          // The dynamic shape in `update` doesn't change output dynamic shape.
+          return Status::OK();
+        }
+
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -1041,16 +1219,16 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
 
 Status DynamicDimensionInferenceVisitor::HandleReverse(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* /*operand*/, ShapeIndex /*index*/,
-               int64 dimension, int64 /*operand_index*/,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
+          int64 /*operand_index*/, HloInstruction* dynamic_size) {
         if (absl::c_linear_search(hlo->dimensions(), dimension)) {
           return Unimplemented(
               "Dynamic dimension propagation on reversed dimension is not "
               "supported %s",
               hlo->ToString());
         }
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -1060,7 +1238,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex /*index*/,
                int64 input_dynamic_dimension, int64 operand_index,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+               HloInstruction* dynamic_size) {
         const GatherDimensionNumbers& gather_dims =
             hlo->gather_dimension_numbers();
         if (operand_index != 1) {
@@ -1080,8 +1258,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
                 output_dimension--;
               }
             }
-            parent_->SetDynamicSize(hlo, {}, output_dimension, dynamic_size,
-                                    constraint);
+            parent_->SetDynamicSize(hlo, {}, output_dimension, dynamic_size);
             return Status::OK();
           }
           return Unimplemented(
@@ -1104,8 +1281,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
               indices_dim++;
             }
             if (indices_dim++ == input_dynamic_dimension) {
-              parent_->SetDynamicSize(hlo, {}, output_dim, dynamic_size,
-                                      constraint);
+              parent_->SetDynamicSize(hlo, {}, output_dim, dynamic_size);
               return Status::OK();
             }
           }
@@ -1119,15 +1295,168 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
       });
 }
 
+Status DynamicDimensionInferenceVisitor::HandleConditional(
+    HloInstruction* hlo) {
+  // Conditionals are handled by producing additional inputs and outputs of
+  // the conditional instruction.
+  std::vector<HloComputation*> new_branch_computations;
+  std::vector<HloInstruction*> new_operands;
+  // If the output of the conditional contains dynamic dimension. We send
+  // dynamic dimension size out by adding additional root element. A mapping
+  // from the root instruction's dynamic dimension index (represented by a shape
+  // index as output index and a int64 dimension number) to output index
+  // (represented by an int64) is tracked for the conditional intsruction (all
+  // branches should have the same mapping).
+  ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
+      hlo->shape());
+
+  bool need_rewrite = false;
+
+  for (int64 branch_index = 0; branch_index < hlo->branch_count();
+       ++branch_index) {
+    std::vector<HloInstruction*> operands_to_add;
+
+    absl::flat_hash_map<HloInstruction*, int64>
+        dynamic_size_to_operand_id_index_map;
+    // Only look at branch_index + 1, the correct operand index for a
+    // given branch.
+    const int64 operand_index = branch_index + 1;
+
+    int64 operand_count =
+        hlo->operand(operand_index)->shape().tuple_shapes_size();
+    // Prepare to pass dynamic dimension into the new computation and add
+    // dynamic dimension sizes as parameters to the new tuple.
+    TF_RETURN_IF_ERROR(ForEachDynamicDimensionInOperand(
+        hlo, operand_index,
+        [&](HloInstruction*, ShapeIndex, int64, int64,
+            HloInstruction* dynamic_size) -> Status {
+          TF_RET_CHECK(hlo->operand(operand_index)->shape().IsTuple())
+              << "Only tuple typed inputs can have dynamic dimension. Please "
+                 "file a bug against XLA team.";
+          const HloInstruction* tuple_operand = hlo->operand(operand_index);
+          for (int64 i = 0; i < tuple_operand->operand_count(); ++i) {
+            // If the dynamic size is already an operand to the computation,
+            // skip adding it to the computation input again.
+            if (dynamic_size == tuple_operand->operand(i)) {
+              dynamic_size_to_operand_id_index_map[dynamic_size] = i;
+              return Status::OK();
+            }
+          }
+          auto iter = dynamic_size_to_operand_id_index_map.find(dynamic_size);
+          if (iter == dynamic_size_to_operand_id_index_map.end()) {
+            operands_to_add.push_back(dynamic_size);
+            dynamic_size_to_operand_id_index_map[dynamic_size] =
+                operand_count++;
+          }
+          return Status::OK();
+        }));
+
+    HloInstruction* original_input = hlo->mutable_operand(operand_index);
+    HloComputation* branch_computation = hlo->branch_computation(branch_index);
+
+    HloComputation* new_computation = branch_computation;
+    HloInstruction* new_operand = hlo->mutable_operand(operand_index);
+    if (!operands_to_add.empty()) {
+      TF_RET_CHECK(original_input->shape().IsTuple());
+      need_rewrite = true;
+      new_operand = TupleUtil::AppendSuffix(original_input, operands_to_add);
+      TF_ASSIGN_OR_RETURN(
+          new_computation,
+          WidenComputation(branch_computation, new_operand->shape()));
+    }
+    // Set the dynamic dimensions for the newly created branch computation's
+    // parameters so that the hlos inside the computation can see dynamic
+    // dimensions.
+    DynamicParameterBinding dynamic_parameter_binding;
+    TF_RETURN_IF_ERROR(ForEachDynamicDimensionInOperand(
+        hlo, operand_index,
+        [&](HloInstruction*, ShapeIndex index, int64 dimension,
+            int64 operand_index, HloInstruction* dynamic_size) {
+          DynamicParameterBinding::DynamicParameter dynamic_parameter{
+              0, {dynamic_size_to_operand_id_index_map[dynamic_size]}};
+          DynamicParameterBinding::DynamicDimension dynamic_dimension{
+              0, {index}, dimension};
+          TF_RETURN_IF_ERROR(dynamic_parameter_binding.Bind(dynamic_parameter,
+                                                            dynamic_dimension));
+
+          return Status::OK();
+        }));
+    VLOG(2) << "dynamic_parameter_binding for conditional branch"
+            << dynamic_parameter_binding;
+    TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
+        new_computation, dynamic_parameter_binding, parent_));
+    std::vector<HloInstruction*> hlos_to_add_in_root;
+    int64 original_tuple_count = hlo->shape().tuple_shapes_size();
+    // There may be some dynamic dimensions coming out of the computation, wire
+    // that into the root instruction as additional tuple elements.
+    TF_RETURN_IF_ERROR(ForEachDynamicDimension(
+        new_computation->root_instruction(),
+        [&](ShapeIndex index, int64 dim,
+            HloInstruction* dynamic_size) -> Status {
+          TF_RET_CHECK(hlo->shape().IsTuple())
+              << "Only tuple typed conditionals can have dynamic dimension. "
+                 "Please file a bug against XLA team.";
+          dynamic_output_mapping.mutable_element(index)->emplace(
+              dim, original_tuple_count++);
+          hlos_to_add_in_root.push_back(dynamic_size);
+          return Status::OK();
+        }));
+
+    VLOG(2) << "hlos_to_add_in_root:" << hlos_to_add_in_root.size();
+    if (!hlos_to_add_in_root.empty()) {
+      need_rewrite = true;
+      HloInstruction* new_branch_root = TupleUtil::AppendSuffix(
+          new_computation->root_instruction(), hlos_to_add_in_root);
+      new_computation->set_root_instruction(new_branch_root,
+                                            /*accept_different_shape=*/true);
+    }
+
+    new_branch_computations.push_back(new_computation);
+    new_operands.push_back(new_operand);
+  }
+  if (!need_rewrite) {
+    return Status::OK();
+  }
+  // Create a new conditional with the new operations and computations.
+  HloInstruction* new_conditional =
+      hlo->parent()->AddInstruction(HloInstruction::CreateConditional(
+          new_branch_computations[0]->root_instruction()->shape(),
+          hlo->mutable_operand(0), new_branch_computations, new_operands));
+
+  HloInstruction* new_conditional_extracted = TupleUtil::ExtractPrefix(
+      new_conditional, hlo->shape().tuple_shapes_size());
+  // Now set the dynamic dimensions of the newly created conditional.
+  dynamic_output_mapping.ForEachElement(
+      [&](const ShapeIndex& index,
+          const absl::flat_hash_map<int64, int64>& dim_to_output) {
+        for (auto iter : dim_to_output) {
+          int64 dim = iter.first;
+          int64 output_index = iter.second;
+          HloInstruction* dynamic_size = hlo->parent()->AddInstruction(
+              HloInstruction::CreateGetTupleElement(
+                  ShapeUtil::MakeScalarShape(S32), new_conditional,
+                  output_index));
+          parent_->SetDynamicSize(new_conditional, index, dim, dynamic_size);
+          parent_->SetDynamicSize(new_conditional_extracted, index, dim,
+                                  dynamic_size);
+        }
+      });
+
+  TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_conditional_extracted));
+  // Remove the original instruction even if has side-effects.
+  TF_RETURN_IF_ERROR(hlo->parent()->RemoveInstruction(hlo));
+  SetVisited(*new_conditional);
+  SetVisited(*new_conditional_extracted);
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
-          int64 operand_index, HloInstruction* operand_dynamic_size,
-          DimensionConstraint constraint) {
+          int64 operand_index, HloInstruction* operand_dynamic_size) {
         if (operand_index == 0) {
-          parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size,
-                                  constraint);
+          parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size);
           return Status::OK();
         }
 
@@ -1136,10 +1465,43 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
         if (operand_index == 2 &&
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
-          return Unimplemented(
-              "Dynamic dimension of update window dims is not supported "
-              "is not supported: %s",
-              hlo->ToString());
+          // Dynamic update window dimension is only allowed if it is exactly
+          // the same as the corresponding operand dimension.
+          std::vector<int64> update_window_dims_in_operand;
+          for (int64 i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+            if (absl::c_linear_search(scatter_dims.inserted_window_dims(), i)) {
+              continue;
+            }
+            update_window_dims_in_operand.push_back(i);
+          }
+
+          for (int64 i = 0; i < scatter_dims.update_window_dims_size(); ++i) {
+            if (scatter_dims.update_window_dims(i) == dimension) {
+              const Shape& operand_shape = hlo->operand(0)->shape();
+              const Shape& update_shape = hlo->operand(2)->shape();
+              int64 dim_in_operand = update_window_dims_in_operand[i];
+              if (operand_shape.dimensions(dim_in_operand) !=
+                      update_shape.dimensions(dimension) ||
+                  !operand_shape.is_dynamic_dimension(dim_in_operand)) {
+                return Unimplemented(
+                    "Dynamic dimension of update window dims that are not the "
+                    "same as corresponding operand dim is not supported: "
+                    "%s",
+                    hlo->ToString());
+              }
+              HloInstruction* base_dynamic_size = parent_->GetDynamicSize(
+                  hlo->mutable_operand(0), {}, dim_in_operand);
+              if (base_dynamic_size != operand_dynamic_size) {
+                return Unimplemented(
+                    "Dynamic dimension size of update window dims that are not "
+                    "the same as corresponding operand dim is not supported: "
+                    "%s.\n Dynamic dim size of base: %s, dynamic dim size of "
+                    "update: %s",
+                    hlo->ToString(), base_dynamic_size->ToString(),
+                    operand_dynamic_size->ToString());
+              }
+            }
+          }
         }
         // The dynamic dimension is collapsed and won't show up in the output.
         // Do nothing here.
@@ -1148,77 +1510,27 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
-  // While loop is handled by passing dynamic size hlos as parameters into the
-  // hlo while loop. This is done by replacing the original while with a new
-  // one.
-  //
-  // Before:
-  //
-  // op1 = ...
-  // op2 = ...
-  // op1_x = ... // dynamic dimension size of op1
-  // while = while(op1, op2)
-  //
-  //
-  // After:
-  //
-  // op1 = ...
-  // op2 = ...
-  // op1_x = ... // dynamic dimension size of op1
-  // while = while(op1, op2, op1_x)
-  //
-  // In the above graph, op_x is the bound of the dynamic dimension size of op1
-  // and is wired into the while loop as new parameter.
-  //
-  // TODO(b/119843103): Once we implement dynamic bounds in XLA backend, dynamic
-  // bound can be propagated through native xla values instead of relying on
-  // additional parameter.
-
-  // dynamic_size_to_operand_id_index_map keeps track of dynamic size operations
-  // to their operand ids in the new while loop.
-  absl::flat_hash_map<HloInstruction*, int64>
-      dynamic_size_to_operand_id_index_map;
-
-  // operands_to_add collects dynamic sizes that need to be added to the while
-  // loop as parameters. Note that a dynamic size is ignored if it is already
-  // part of the parameter. i.e.:
-  //
-  // We don't do:
-  //
-  // op1 = ...
-  // op2 = ...
-  // op_x = ... // dynamic dimension size of both op1 and op2
-  // while = while(op1, op2, op_x, op_x) // 4 parameters
-  //
-  // But we do:
-  //
-  // op1 = ...
-  // op2 = ...
-  // op_x = ... // dynamic dimension size of both op1 and op2
-  // while = while(op1, op2, op_x)
-  //
-  // An alternative is to do this in a while loop CSE pass.
-  //
+  // If the output of the kWhile contains dynamic dimension, we send
+  // dynamic dimension size into the while body by adding additional root/body
+  // element. A mapping from the root instruction's dynamic dimension index
+  // (represented by a shape index as output index and an int64 dimension
+  // number) to output index (represented by an int64) is tracked for the
+  // conditional instruction.
+  ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
+      hlo->shape());
   std::vector<HloInstruction*> operands_to_add;
-  int64 operand_count = hlo->shape().tuple_shapes_size();
+  const int64 original_tuple_count = hlo->shape().tuple_shapes_size();
+  int64 operand_count = original_tuple_count;
   TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction*, ShapeIndex, int64, int64,
-               HloInstruction* dynamic_size, DimensionConstraint constraint) {
-        const HloInstruction* tuple_operand = hlo->operand(0);
-        for (int64 i = 0; i < tuple_operand->operand_count(); ++i) {
-          if (dynamic_size == tuple_operand->operand(i)) {
-            dynamic_size_to_operand_id_index_map[dynamic_size] = i;
-            return Status::OK();
-          }
-        }
-        auto iter = dynamic_size_to_operand_id_index_map.find(dynamic_size);
-        if (iter == dynamic_size_to_operand_id_index_map.end()) {
-          operands_to_add.push_back(dynamic_size);
-          dynamic_size_to_operand_id_index_map[dynamic_size] = operand_count++;
-        }
+      hlo, [&](HloInstruction*, ShapeIndex index, int64 dim, int64,
+               HloInstruction* dynamic_size) {
+        operands_to_add.push_back(dynamic_size);
+        dynamic_output_mapping.mutable_element(index)->emplace(dim,
+                                                               operand_count++);
         return Status::OK();
       }));
 
+  DynamicParameterBinding binding_for_while;
   if (!operands_to_add.empty()) {
     // Only replace the while loop if there are new parameters to add.
     HloInstruction* old_tuple_operand = hlo->mutable_operand(0);
@@ -1232,28 +1544,36 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
     parent_->CopyMapping(/*from=*/old_tuple_operand,
                          /*to=*/new_tuple_operand);
     hlo = result.new_while_instr;
+    // We have replaced the while loop, now set the dynamic dimensions for the
+    // newly created while loop so that the hlos that consumes the while loop
+    // can see the dynamic dimensions. Also sets the dynamic parameter binding
+    // for running inference in the while loop.
+    TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+        hlo,
+        [&](HloInstruction*, ShapeIndex index, int64 dimension,
+            int64 operand_index, HloInstruction* dynamic_size) -> Status {
+          TF_RET_CHECK(!operands_to_add.empty());
+          const int64 output_dynamic_size_index =
+              dynamic_output_mapping.element(index).at(dimension);
+          DynamicParameterBinding::DynamicParameter dynamic_parameter{
+              operand_index, {output_dynamic_size_index}};
+          DynamicParameterBinding::DynamicDimension dynamic_dimension{
+              operand_index, index, dimension};
+          TF_RETURN_IF_ERROR(
+              binding_for_while.Bind(dynamic_parameter, dynamic_dimension));
+          // This is the updated output dynamic size coming out of hlo while
+          // loop.
+          HloInstruction* output_dynamic_size = hlo->parent()->AddInstruction(
+              HloInstruction::CreateGetTupleElement(
+                  ShapeUtil::MakeScalarShape(S32), hlo,
+                  output_dynamic_size_index));
+          parent_->SetDynamicSize(result.replacement_instr, index, dimension,
+                                  output_dynamic_size);
+          return Status::OK();
+        }));
+    // Set the replacement instruction as visited to avoid visiting it again.
+    SetVisited(*result.replacement_instr);
   }
-
-  // We have replaced the while loop, now set the dynamic dimensions for the
-  // newly created while loop so that the hlos that consumes the while loop can
-  // see the dynamic dimensions. Also sets the dynamic parameter binding for
-  // running inference in the while loop.
-  DynamicParameterBinding binding_for_while;
-  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction*, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
-        DynamicParameterBinding::DynamicParameter dynamic_parameter{
-            operand_index,
-            {dynamic_size_to_operand_id_index_map[dynamic_size]}};
-        DynamicParameterBinding::DynamicDimension dynamic_dimension{
-            operand_index, index, dimension};
-        TF_RETURN_IF_ERROR(
-            binding_for_while.Bind(dynamic_parameter, dynamic_dimension));
-        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
-                                constraint);
-        return Status::OK();
-      }));
 
   // Run inference in while body and condition.
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
@@ -1261,8 +1581,39 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
       hlo->while_condition(), binding_for_while, parent_));
 
-  // Set the replacement while loop as visited to avoid visiting it again.
-  SetVisited(*hlo);
+  if (operands_to_add.empty()) {
+    // No dynamic dimension in the inputs and outputs.
+    return Status::OK();
+  }
+
+  // The dynamic dimension size could have been changed in the loop body (e.g, A
+  // loop that inserts items in a stack, the stack size increases with each
+  // iteration). Rewrite the dynamic dimension size at the root.
+  HloInstruction* body_root = hlo->while_body()->root_instruction();
+  std::vector<HloInstruction*> new_root_operands(body_root->operand_count(),
+                                                 nullptr);
+
+  // Original non-dynamic-dim operands of root are pass-through.
+  for (int64 i = 0; i < original_tuple_count; ++i) {
+    new_root_operands[i] =
+        hlo->while_body()->AddInstruction(HloInstruction::CreateGetTupleElement(
+            body_root->shape().tuple_shapes(i), body_root, i));
+  }
+  // Add dynamic dimension size as new parameters.
+  TF_RETURN_IF_ERROR(ForEachDynamicDimension(
+      hlo->while_body()->root_instruction(),
+      [&](ShapeIndex index, int64 dim, HloInstruction* dynamic_size) -> Status {
+        const int64 output_index =
+            dynamic_output_mapping.element(index).at(dim);
+        new_root_operands[output_index] = dynamic_size;
+        return Status::OK();
+      }));
+  for (auto operand : new_root_operands) {
+    TF_RET_CHECK(operand != nullptr);
+  }
+  HloInstruction* new_body_root = hlo->while_body()->AddInstruction(
+      HloInstruction::CreateTuple(new_root_operands));
+  hlo->while_body()->set_root_instruction(new_body_root);
   return Status::OK();
 }
 
@@ -1288,10 +1639,24 @@ Status DynamicDimensionInferenceVisitor::HandleParameter(HloInstruction* hlo) {
 
         parent_->SetDynamicSize(target_parameter,
                                 dynamic_dimension.parameter_index,
-                                dynamic_dimension.dimension, dynamic_size,
-                                DimensionConstraint(1, 1));
+                                dynamic_dimension.dimension, dynamic_size);
         return Status::OK();
       });
+}
+
+Status DynamicDimensionInferenceVisitor::ForEachDynamicDimension(
+    HloInstruction* inst, const DynamicDimensionFn& fn) {
+  auto iter = parent_->per_hlo_dynamic_dimensions_.find(inst);
+  if (iter != parent_->per_hlo_dynamic_dimensions_.end()) {
+    for (auto& dynamic_dimension : iter->second) {
+      HloInstruction* dynamic_size = parent_->GetDynamicSize(
+          dynamic_dimension.inst, dynamic_dimension.index,
+          dynamic_dimension.dim);
+      TF_RETURN_IF_ERROR(
+          fn(dynamic_dimension.index, dynamic_dimension.dim, dynamic_size));
+    }
+  }
+  return Status::OK();
 }
 
 Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
@@ -1304,10 +1669,9 @@ Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
       HloInstruction* dynamic_size = parent_->GetDynamicSize(
           dynamic_dimension.inst, dynamic_dimension.index,
           dynamic_dimension.dim);
-      CHECK_NE(parent_->constraint_mapping_.count(dynamic_dimension), 0);
       TF_RETURN_IF_ERROR(fn(dynamic_dimension.inst, dynamic_dimension.index,
-                            dynamic_dimension.dim, operand_index, dynamic_size,
-                            parent_->constraint_mapping_[dynamic_dimension]));
+                            dynamic_dimension.dim, operand_index,
+                            dynamic_size));
     }
   }
   return Status::OK();
@@ -1323,6 +1687,24 @@ Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
   return Status::OK();
 }
 
+void DynamicDimensionInference::SetDynamicSize(HloInstruction* inst,
+                                               const ShapeIndex& index,
+                                               int64 dim,
+                                               HloInstruction* size) {
+  VLOG(1) << "Set dimension inst " << inst->ToString() << " index "
+          << index.ToString() << "@" << dim << " to " << size->ToShortString();
+  Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
+  CHECK(!subshape.IsTuple()) << "Can't set a tuple shape to dynamic dimension";
+  CHECK(dim < subshape.rank() && dim >= 0)
+      << "Asked to set invalid dynamic dimension. Shape: "
+      << subshape.ToString() << ", Dimension: " << dim;
+  DynamicDimension dynamic_dimension{inst, index, dim};
+  // Updating a dynamic dimension twice overwrites the previous one.
+  dynamic_mapping_[dynamic_dimension] = size;
+  auto iter = per_hlo_dynamic_dimensions_.try_emplace(inst);
+  iter.first->second.emplace(dynamic_dimension);
+}
+
 void DynamicDimensionInference::CopyMapping(HloInstruction* from,
                                             HloInstruction* to) {
   auto iter = per_hlo_dynamic_dimensions_.find(from);
@@ -1332,7 +1714,7 @@ void DynamicDimensionInference::CopyMapping(HloInstruction* from,
           GetDynamicSize(dynamic_dimension.inst, dynamic_dimension.index,
                          dynamic_dimension.dim);
       SetDynamicSize(to, dynamic_dimension.index, dynamic_dimension.dim,
-                     dynamic_size, constraint_mapping_[dynamic_dimension]);
+                     dynamic_size);
     }
   }
 }
@@ -1370,6 +1752,19 @@ Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
       custom_call_handler_);
 }
 
+void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
+    HloInstruction* replace, HloInstruction* with) {
+  CHECK(Shape::Equal().IgnoreLayout()(replace->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(with->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  for (auto& kv : dynamic_mapping_) {
+    if (kv.second == replace) {
+      kv.second = with;
+    }
+  }
+}
+
 Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
                                                      HloInstruction* new_inst,
                                                      const ShapeIndex& index) {
@@ -1381,14 +1776,30 @@ Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
     auto iter = dynamic_mapping_.find(dynamic_dimension);
     if (iter != dynamic_mapping_.end()) {
       dynamic_mapping_.insert({dynamic_dimension_new, iter->second});
-      constraint_mapping_.insert(
-          {dynamic_dimension_new, constraint_mapping_[dynamic_dimension]});
       auto iter = per_hlo_dynamic_dimensions_.try_emplace(new_inst);
       iter.first->second.emplace(dynamic_dimension_new);
     }
   }
 
   return Status::OK();
+}
+
+bool DynamicDimensionInference::HasDynamicDimension(
+    HloInstruction* inst) const {
+  bool has_dynamic_dim = false;
+  ShapeUtil::ForEachSubshape(
+      inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
+          HloInstruction* operand_dynamic_size = GetDynamicSize(inst, index, i);
+          if (operand_dynamic_size != nullptr) {
+            has_dynamic_dim = true;
+          }
+        }
+      });
+  return has_dynamic_dim;
 }
 
 HloInstruction* DynamicDimensionInference::GetDynamicSize(
@@ -1398,6 +1809,17 @@ HloInstruction* DynamicDimensionInference::GetDynamicSize(
     return iter->second;
   }
   return nullptr;
+}
+
+std::vector<HloInstruction*> DynamicDimensionInference::GetDynamicSizes(
+    HloInstruction* inst, const ShapeIndex& index) const {
+  CHECK(ShapeUtil::IndexIsValid(inst->shape(), index));
+  const int64 rank = ShapeUtil::GetSubshape(inst->shape(), index).rank();
+  std::vector<HloInstruction*> result(rank, nullptr);
+  for (int64 i = 0; i < rank; ++i) {
+    result[i] = GetDynamicSize(inst, {}, i);
+  }
+  return result;
 }
 
 }  // namespace xla

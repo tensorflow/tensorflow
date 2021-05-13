@@ -16,16 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_H_
 
-#include <cstdint>
-#include <memory>
+#include <stddef.h>
+
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_in_order_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -79,10 +75,11 @@ enum class MemoryStrategy {
 
 // Chooses greedy algorithm with the lowest memory consumption for given usage
 // records and returns corresponding shared objects assignment.
-Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
-                  ObjectsAssignment<size_t>* assignment);
+absl::Status BestGreedy(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    ObjectsAssignment<size_t>* assignment);
 
-// Calculates the assignement of shared objects to given tensors, including
+// Calculates the assignment of shared objects to given tensors, including
 // objects' sizes. Below there are specializations for different types, that
 // support more memory strategies.
 // If reallocation_graph is provided, assignment of shared objects support
@@ -90,7 +87,7 @@ Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
 // can be larger. Currently only GREEDY_IN_ORDER strategy can use this
 // reallocation_graph.
 template <typename TensorSizeT>
-Status AssignObjectsToTensors(
+absl::Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     MemoryStrategy strategy, ObjectsAssignment<TensorSizeT>* assignment,
     const UsageGraph* reallocation_graph = nullptr) {
@@ -100,39 +97,39 @@ Status AssignObjectsToTensors(
     case MemoryStrategy::EQUALITY:
       return EqualityAssignment(usage_records, assignment);
     default:
-      return InternalError(
+      return absl::InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
-Status AssignObjectsToTensors(
+absl::Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
     const UsageGraph* reallocation_graph);
 
 template <>
-Status AssignObjectsToTensors(
+absl::Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
     MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
     const UsageGraph* reallocation_graph);
 
 template <>
-Status AssignObjectsToTensors(
+absl::Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint2>>& usage_records,
     MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
     const UsageGraph* reallocation_graph);
 
 template <>
-Status AssignObjectsToTensors(
+absl::Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint3>>& usage_records,
     MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
     const UsageGraph* reallocation_graph);
 
-// Calculates the assignement of tensors to offsets, considering those tensors
+// Calculates the assignment of tensors to offsets, considering those tensors
 // are going to be allocated in one continuous memory block.
-Status AssignOffsetsToTensors(
+absl::Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     const MemoryStrategy& strategy, OffsetsAssignment* assignment,
     const UsageGraph* reallocation_graph = nullptr);

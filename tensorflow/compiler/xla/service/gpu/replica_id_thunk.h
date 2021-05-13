@@ -23,16 +23,29 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Thunk that implements the ReplicaId HLO.
-class ReplicaIdThunk : public Thunk {
- public:
-  ReplicaIdThunk(const BufferAllocation::Slice& dest,
-                 const HloInstruction* instr);
-
+// Thunk that implements the ReplicaId(Idx == 0) or PartitionId(Idx == 1).
+class ReplicaOrPartitionIdThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ protected:
+  ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,
+                            const BufferAllocation::Slice& dest)
+      : Thunk(kind, thunk_info), dest_(dest) {}
 
  private:
   const BufferAllocation::Slice dest_;
+};
+
+class ReplicaIdThunk : public ReplicaOrPartitionIdThunk {
+ public:
+  ReplicaIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest)
+      : ReplicaOrPartitionIdThunk(Kind::kReplicaId, thunk_info, dest) {}
+};
+
+class PartitionIdThunk : public ReplicaOrPartitionIdThunk {
+ public:
+  PartitionIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest)
+      : ReplicaOrPartitionIdThunk(Kind::kPartitionId, thunk_info, dest) {}
 };
 
 }  // namespace gpu

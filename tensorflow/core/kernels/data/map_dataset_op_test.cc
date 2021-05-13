@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -134,7 +134,7 @@ std::vector<CardinalityTestCase<MapDatasetParams>> CardinalityTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*expected_cardinality=*/4},
           {/*dataset_params=*/MapDatasetParams2(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapDatasetParams3(),
            /*expected_cardinality=*/4}};
 }

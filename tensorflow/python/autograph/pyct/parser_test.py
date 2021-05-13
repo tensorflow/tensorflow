@@ -18,15 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import textwrap
 
 import gast
 
+from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.platform import test
 
 
 class ParserTest(test.TestCase):
+
+  def assertAstMatches(self, actual_node, expected_node_src, expr=True):
+    if expr:
+      # Ensure multi-line expressions parse.
+      expected_node = gast.parse('({})'.format(expected_node_src)).body[0]
+      expected_node = expected_node.value
+    else:
+      expected_node = gast.parse(expected_node_src).body[0]
+
+    msg = 'AST did not match expected:\n{}\nActual:\n{}'.format(
+        pretty_printer.fmt(expected_node),
+        pretty_printer.fmt(actual_node))
+    self.assertTrue(ast_util.matches(actual_node, expected_node), msg)
 
   def test_parse_entity(self):
 
@@ -35,6 +52,171 @@ class ParserTest(test.TestCase):
 
     node, _ = parser.parse_entity(f, future_features=())
     self.assertEqual('f', node.name)
+
+  def test_parse_lambda(self):
+
+    l = lambda x: x + 1
+    expected_node_src = 'lambda x: (x + 1)'
+
+    node, source = parser.parse_entity(l, future_features=())
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+
+  def test_parse_lambda_prefix_cleanup(self):
+
+    lambda_lam = lambda x: x + 1
+    expected_node_src = 'lambda x: (x + 1)'
+
+    node, source = parser.parse_entity(lambda_lam, future_features=())
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+
+  def test_parse_lambda_resolution_by_location(self):
+
+    _ = lambda x: x + 1
+    l = lambda x: x + 1
+    _ = lambda x: x + 1
+    expected_node_src = 'lambda x: (x + 1)'
+
+    node, source = parser.parse_entity(l, future_features=())
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+    self.assertEqual(source, 'lambda x: x + 1')
+
+  def test_parse_lambda_resolution_by_signature(self):
+
+    l = lambda x: lambda x, y: x + y
+
+    node, source = parser.parse_entity(l, future_features=())
+    expected_node_src = 'lambda x: (lambda x, y: (x + y))'
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+    self.assertEqual(source, 'lambda x: lambda x, y: x + y')
+
+    node, source = parser.parse_entity(l(0), future_features=())
+    expected_node_src = 'lambda x, y: (x + y)'
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
+    self.assertEqual(source, 'lambda x, y: x + y')
+
+  def test_parse_lambda_resolution_ambiguous(self):
+
+    l = lambda x: lambda x: 2 * x
+
+    expected_exception_text = re.compile(r'found multiple definitions'
+                                         r'.+'
+                                         r'\(?lambda x: \(?lambda x'
+                                         r'.+'
+                                         r'\(?lambda x: \(?2', re.DOTALL)
+
+    with self.assertRaisesRegex(
+        errors.UnsupportedLanguageElementError,
+        expected_exception_text):
+      parser.parse_entity(l, future_features=())
+
+    with self.assertRaisesRegex(
+        errors.UnsupportedLanguageElementError,
+        expected_exception_text):
+      parser.parse_entity(l(0), future_features=())
+
+  def assertMatchesWithPotentialGarbage(self, source, expected, garbage):
+    # In runtimes which don't track end_col_number, the source contains the
+    # entire line, which in turn may have garbage from the surrounding context.
+    self.assertIn(source, (expected, expected + garbage))
+
+  def test_parse_lambda_multiline(self):
+
+    l = (
+        lambda x: lambda y: x + y  # pylint:disable=g-long-lambda
+        - 1)
+
+    node, source = parser.parse_entity(l, future_features=())
+    expected_node_src = 'lambda x: (lambda y: ((x + y) - 1))'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(
+        source, ('lambda x: lambda y: x + y  # pylint:disable=g-long-lambda\n'
+                 '        - 1'), ')')
+
+    node, source = parser.parse_entity(l(0), future_features=())
+    expected_node_src = 'lambda y: ((x + y) - 1)'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(
+        source, ('lambda y: x + y  # pylint:disable=g-long-lambda\n'
+                 '        - 1'), ')')
+
+  def test_parse_lambda_in_expression(self):
+
+    l = (
+        lambda x: lambda y: x + y + 1,
+        lambda x: lambda y: x + y + 2,
+        )
+
+    node, source = parser.parse_entity(l[0], future_features=())
+    expected_node_src = 'lambda x: (lambda y: ((x + y) + 1))'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(
+        source, 'lambda x: lambda y: x + y + 1', ',')
+
+    node, source = parser.parse_entity(l[0](0), future_features=())
+    expected_node_src = 'lambda y: ((x + y) + 1)'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(
+        source, 'lambda y: x + y + 1', ',')
+
+    node, source = parser.parse_entity(l[1], future_features=())
+    expected_node_src = 'lambda x: (lambda y: ((x + y) + 2))'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(source,
+                                           'lambda x: lambda y: x + y + 2', ',')
+
+    node, source = parser.parse_entity(l[1](0), future_features=())
+    expected_node_src = 'lambda y: ((x + y) + 2)'
+    self.assertAstMatches(node, expected_node_src)
+    self.assertMatchesWithPotentialGarbage(source, 'lambda y: x + y + 2', ',')
+
+  def test_parse_lambda_complex_body(self):
+
+    l = lambda x: (  # pylint:disable=g-long-lambda
+        x.y(
+            [],
+            x.z,
+            (),
+            x[0:2],
+        ),
+        x.u,
+        'abc',
+        1,
+    )
+
+    node, source = parser.parse_entity(l, future_features=())
+    expected_node_src = "lambda x: (x.y([], x.z, (), x[0:2]), x.u, 'abc', 1)"
+    self.assertAstMatches(node, expected_node_src)
+
+    base_source = ('lambda x: (  # pylint:disable=g-long-lambda\n'
+                   '        x.y(\n'
+                   '            [],\n'
+                   '            x.z,\n'
+                   '            (),\n'
+                   '            x[0:2],\n'
+                   '        ),\n'
+                   '        x.u,\n'
+                   '        \'abc\',\n'
+                   '        1,')
+    # The complete source includes the trailing parenthesis. But that is only
+    # detected in runtimes which correctly track end_lineno for ASTs.
+    self.assertMatchesWithPotentialGarbage(source, base_source, '\n    )')
+
+  def test_parse_lambda_function_call_definition(self):
+
+    def do_parse_and_test(lam, **unused_kwargs):
+      node, source = parser.parse_entity(lam, future_features=())
+      expected_node_src = 'lambda x: x'
+      self.assertAstMatches(node, expected_node_src)
+      self.assertMatchesWithPotentialGarbage(
+          source, 'lambda x: x', ', named_arg=1)')
+
+    do_parse_and_test(  # Intentional line break
+        lambda x: x, named_arg=1)
 
   def test_parse_entity_print_function(self):
 
@@ -47,7 +229,7 @@ class ParserTest(test.TestCase):
   def test_parse_comments(self):
 
     def f():
-# unindented comment
+      # unindented comment
       pass
 
     node, _ = parser.parse_entity(f, future_features=())
@@ -195,6 +377,13 @@ string""")
                 a = 'c'
         """).strip(), source.strip())
 
+  def test_ext_slice_roundtrip(self):
+    def ext_slice(n):
+      return n[:, :], n[0, :], n[:, 0]
+
+    node, _ = parser.parse_entity(ext_slice, future_features=())
+    source = parser.unparse(node)
+    self.assertAstMatches(node, source, expr=False)
 
 if __name__ == '__main__':
   test.main()

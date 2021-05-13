@@ -592,6 +592,20 @@ TEST(SparseTensorTest, Concat) {
   EXPECT_EQ(conc_ooo.num_entries(), 4 * N);
 }
 
+TEST(SparseTensorTest, ConcatEmptyN) {
+  constexpr int N = 0;
+  constexpr int NDIM = 2;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+  TensorShape shape({10, 10});
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, {0, 1}, &st));
+
+  SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st});
+
+  EXPECT_EQ(concatted.num_entries(), 0);
+}
+
 // TODO(ebrevdo): ReduceToDense(R={dim1,dim2,...}, reduce_fn, &output)
 // reduce_fn sees slices of resorted values based on generator (dim: DDIMS), and
 // slices of resorted indices on generator.
@@ -692,6 +706,29 @@ TEST(SparseTensorTest, Slice) {
   EXPECT_EQ(slice.indices().matrix<int64>()(2, 1), 2);
 }
 
+TEST(SparseTensorTest, SliceReducesOutputDimension) {
+  const int num_rows = 2;
+  const int num_columns = 2;
+
+  Tensor ids(DT_INT64, TensorShape({num_rows, num_columns}));
+  ids.matrix<int64>()(0, 0) = 0;
+  ids.matrix<int64>()(0, 1) = 0;
+  ids.matrix<int64>()(1, 0) = 1;
+  ids.matrix<int64>()(1, 1) = 1;
+
+  Tensor vals(DT_INT64, TensorShape({2}));
+  vals.vec<int64>()(0) = 1;
+  vals.vec<int64>()(1) = 2;
+
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ids, vals,
+                                    TensorShape({num_rows, num_columns}), &st));
+
+  SparseTensor slice =
+      SparseTensor::Slice<int64>(st, {num_rows + 1, 1}, {1, num_columns});
+  EXPECT_EQ(TensorShape(slice.shape()), TensorShape({0, 1}));
+}
+
 TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
   Tensor ix(DT_INT64, TensorShape({1, 0}));
   Tensor vals(DT_INT32, TensorShape({1}));
@@ -707,7 +744,9 @@ TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
   EXPECT_EQ(dense.scalar<int32>()(), 5);
 }
 
-static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
+static void BM_SparseReorderFloat(::testing::benchmark::State& state) {
+  int N32 = state.range(0);
+  int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   const int64 NDIM = static_cast<int64>(NDIM32);
@@ -727,10 +766,9 @@ static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
     reorder.push_back(d);
   }
   auto ix_t = ix.matrix<int64>();
-  testing::UseRealTime();
 
-  while (--iters) {
-    testing::StopTiming();
+  for (auto s : state) {
+    state.PauseTiming();
     for (int64 i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
@@ -739,12 +777,14 @@ static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
     SparseTensor st;
     TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
-    testing::StartTiming();
+    state.ResumeTiming();
     st.Reorder<float>(reorder);
   }
 }
 
-static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
+static void BM_SparseReorderString(::testing::benchmark::State& state) {
+  int N32 = state.range(0);
+  int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   const int64 NDIM = static_cast<int64>(NDIM32);
@@ -769,10 +809,9 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
   for (int d = 2; d < NDIM32; ++d) {
     reorder.push_back(d);
   }
-  testing::UseRealTime();
 
-  while (--iters) {
-    testing::StopTiming();
+  for (auto s : state) {
+    state.PauseTiming();
     for (int64 i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
@@ -781,30 +820,30 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
     SparseTensor st;
     TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
-    testing::StartTiming();
+    state.ResumeTiming();
     st.Reorder<tstring>(reorder);
   }
 }
 
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100000, 3);
 
-BENCHMARK(BM_SparseReorderString)->ArgPair(10, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(100, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(100, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10000, 3);
 
 }  // namespace
 }  // namespace sparse

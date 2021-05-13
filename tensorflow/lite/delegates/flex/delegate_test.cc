@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
+#include <cstdint>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/flex/test_util.h"
+#include "tensorflow/lite/shared_library.h"
 
 namespace tflite {
 namespace flex {
@@ -26,8 +30,7 @@ using ::testing::ElementsAre;
 
 class DelegateTest : public testing::FlexModelTest {
  public:
-  DelegateTest() {
-    delegate_ = FlexDelegate::Create();
+  DelegateTest() : delegate_(FlexDelegate::Create()) {
     interpreter_.reset(new Interpreter(&error_reporter_));
   }
 
@@ -44,7 +47,7 @@ class DelegateTest : public testing::FlexModelTest {
   }
 
  private:
-  std::unique_ptr<FlexDelegate> delegate_;
+  std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> delegate_;
 };
 
 TEST_F(DelegateTest, FullGraph) {
@@ -300,6 +303,100 @@ TEST_F(DelegateTest, MultiThreaded) {
   ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
   ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
   ASSERT_EQ(GetType(8), kTfLiteFloat32);
+}
+
+#if !defined(__ANDROID__)
+TEST_F(DelegateTest, TF_AcquireFlexDelegate) {
+  auto TF_AcquireFlexDelegate =
+      reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
+          SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
+  ASSERT_TRUE(TF_AcquireFlexDelegate);
+  auto delegate_ptr = TF_AcquireFlexDelegate();
+  ASSERT_TRUE(delegate_ptr != nullptr);
+}
+#endif  // !defined(__ANDROID__)
+
+TEST_F(DelegateTest, StaticOutput) {
+  // Define the graph with input, output shapes of [2].
+  AddTensors(7, {0, 1, 2, 3}, {6}, kTfLiteFloat32, {2});
+
+  AddTfOp(testing::kAdd, {0, 2}, {4});
+  AddTfOp(testing::kAdd, {1, 3}, {5});
+  AddTfOp(testing::kMul, {4, 5}, {6});
+
+  // Apply the delegate.
+  ConfigureDelegate();
+
+  // Define inputs which matech with the original shapes.
+  SetShape(0, {2});
+  SetShape(1, {2});
+  SetShape(2, {2});
+  SetShape(3, {2});
+  SetValues(0, {1.1f, 2.2f});
+  SetValues(1, {3.3f, 4.4f});
+  SetValues(2, {1.1f, 2.2f});
+  SetValues(3, {3.3f, 4.4f});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(6), ElementsAre(2));
+  ASSERT_THAT(GetValues(6), ElementsAre(14.52f, 38.72f));
+  ASSERT_EQ(GetType(6), kTfLiteFloat32);
+  // Since shapes are consistent, static output tensor is used.
+  ASSERT_FALSE(IsDynamicTensor(6));
+}
+
+TEST_F(DelegateTest, StaticOutputRFFT) {
+  // Define the graph with input, output shapes of [3, 257].
+  AddTensors(4, {0, 1}, {3}, kTfLiteFloat32, {3, 257});
+  int32_t rfft_length[] = {512};
+  SetConstTensor(1, {1}, kTfLiteInt32,
+                 reinterpret_cast<const char*>(&rfft_length),
+                 sizeof(rfft_length));
+
+  AddTfOp(testing::kRfft, {0, 1}, {2});
+  AddTfOp(testing::kImag, {2}, {3});
+
+  // Apply the delegate.
+  ConfigureDelegate();
+
+  // Define inputs.
+  SetShape(0, {3, 512});
+  SetValues(0, std::vector<float>(3 * 512, 1.0f));
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_EQ(GetType(3), kTfLiteFloat32);
+  // Since shapes are consistent, static output tensor is used.
+  ASSERT_FALSE(IsDynamicTensor(3));
+}
+
+TEST_F(DelegateTest, DynamicOutputAfterReshape) {
+  // Define the graph.
+  AddTensors(9, {0, 3}, {8}, kTfLiteFloat32, {3});
+
+  AddTfOp(testing::kUnpack, {0}, {1, 2});
+  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTfOp(testing::kAdd, {1, 4}, {6});
+  AddTfOp(testing::kAdd, {2, 5}, {7});
+  AddTfOp(testing::kMul, {6, 7}, {8});
+
+  // Apply the delegate.
+  ConfigureDelegate();
+
+  // Define inputs with reshape.
+  SetShape(0, {2, 2, 1});
+  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
+  SetShape(3, {2, 2, 1});
+  SetValues(3, {1.1f, 2.2f, 3.3f, 4.4f});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
+  ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
+  ASSERT_EQ(GetType(8), kTfLiteFloat32);
+  // Since shapes are inconsistent, dynamic output tensor is used.
+  ASSERT_TRUE(IsDynamicTensor(8));
 }
 
 }  // namespace

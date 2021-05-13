@@ -28,11 +28,19 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.platform import test
 
 
 class AstUtilTest(test.TestCase):
+
+  def assertAstMatches(self, actual_node, expected_node_src):
+    expected_node = gast.parse('({})'.format(expected_node_src)).body[0]
+    msg = 'AST did not match expected:\n{}\nActual:\n{}'.format(
+        pretty_printer.fmt(expected_node),
+        pretty_printer.fmt(actual_node))
+    self.assertTrue(ast_util.matches(actual_node, expected_node), msg)
 
   def setUp(self):
     super(AstUtilTest, self).setUp()
@@ -44,10 +52,12 @@ class AstUtilTest(test.TestCase):
 
     node = ast_util.rename_symbols(
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
+    source = parser.unparse(node, include_encoding_marker=False)
+    expected_node_src = 'renamed_a + b'
 
     self.assertIsInstance(node.value.left.id, str)
-    source = parser.unparse(node, include_encoding_marker=False)
-    self.assertEqual(source.strip(), '(renamed_a + b)')
+    self.assertAstMatches(node, source)
+    self.assertAstMatches(node, expected_node_src)
 
   def test_rename_symbols_attributes(self):
     node = parser.parse('b.c = b.c.d')
@@ -89,6 +99,14 @@ class AstUtilTest(test.TestCase):
                                    {qual_names.QN('a'): qual_names.QN('b')})
 
     self.assertIs(anno.getanno(node, 'foo'), orig_anno)
+
+  def test_rename_symbols_function(self):
+    node = parser.parse('def f():\n  pass')
+    node = ast_util.rename_symbols(node,
+                                   {qual_names.QN('f'): qual_names.QN('f1')})
+
+    source = parser.unparse(node, include_encoding_marker=False)
+    self.assertEqual(source.strip(), 'def f1():\n    pass')
 
   def test_copy_clean(self):
     node = parser.parse(
@@ -226,37 +244,6 @@ class AstUtilTest(test.TestCase):
       self.assertIn(
           parser.unparse(node.body, include_encoding_marker=False).strip(),
           expected_bodies)
-
-  def test_find_matching_definitions_lambda(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-  def test_find_matching_definitions_lambda_multiple_matches(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda x: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1', '2'))
-
-  def test_find_matching_definitions_lambda_uses_arg_names(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda y: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-    f = lambda y: y
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('2',))
 
 
 if __name__ == '__main__':

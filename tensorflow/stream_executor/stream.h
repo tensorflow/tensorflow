@@ -24,6 +24,7 @@ limitations under the License.
 #include <complex>
 #include <functional>
 #include <memory>
+#include <type_traits>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
@@ -38,7 +39,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
+#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 
@@ -73,6 +79,19 @@ class AlgorithmDesc;
 
 class StreamExecutor;
 class ScratchAllocator;
+
+namespace detail {
+
+// Helper class to prevent a template function argument from being deduced. This
+// is identical to std::type_identity in C++20.
+template <typename T>
+struct NonDeduced {
+  using type = T;
+};
+template <typename T>
+using NonDeducedType = typename NonDeduced<T>::type;
+
+}  // namespace detail
 
 // Convert a type to the corresponding QuantizedActivationMode.
 template <typename ElementType>
@@ -308,62 +327,62 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output_data);
 
-  Stream &ThenConvolveWithAlgorithm(
+  template <typename InputType, typename OutputType>
+  port::Status ConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<double> &input_data,
+      const DeviceMemory<InputType> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
+      const DeviceMemory<InputType> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    DeviceMemory<uint8> scratch_memory;
+    dnn::AlgorithmDesc algorithm_desc;
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
+          dnn::ConvolutionKind::FORWARD, this, input_descriptor, input_data,
+          filter_descriptor, filter_data, output_descriptor, *output,
+          convolution_descriptor, algorithm_config, scratch_allocator,
+          &algorithm_desc, &scratch_memory));
+      return dnn->DoConvolve(
+          dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
+          dnn::ToDataType<OutputType>::value, this, input_descriptor,
+          input_data, filter_descriptor, filter_data, output_descriptor,
+          *output, convolution_descriptor, algorithm_desc, scratch_memory,
+          output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenConvolveWithAlgorithm(
+  template <typename InputType, typename OutputType>
+  port::Status ConvolveWithExecutionPlan(
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
+      const DeviceMemory<InputType> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<InputType> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
+          dnn::ToDataType<OutputType>::value, this, input_descriptor,
+          input_data, filter_descriptor, filter_data, output_descriptor,
+          *output, convolution_descriptor, plan_config, scratch_allocator,
+          output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<int8> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<int8> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenFusedConvolveWithAlgorithm(
+  port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<double> &conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -377,7 +396,7 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenFusedConvolveWithAlgorithm(
+  port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<float> &conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -391,7 +410,7 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenFusedConvolveWithAlgorithm(
+  port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -406,7 +425,7 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenFusedConvolveWithAlgorithm(
+  port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -420,7 +439,7 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenFusedConvolveWithAlgorithm(
+  port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -444,77 +463,125 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
 
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
+  template <typename ElementType>
+  port::Status ConvolveBackwardDataWithExecutionPlan(
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
+      const DeviceMemory<ElementType> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> backward_output_data,
+      DeviceMemory<ElementType> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<double> *backward_input_data,
+      DeviceMemory<ElementType> *backward_input_data,
       ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::BACKWARD_DATA,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          *backward_input_data, filter_descriptor, filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          plan_config, scratch_allocator, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
+  template <typename ElementType>
+  port::Status ConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<ElementType> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
+      DeviceMemory<ElementType> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data,
+      DeviceMemory<ElementType> *backward_input_data,
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    DeviceMemory<uint8> scratch_memory;
+    dnn::AlgorithmDesc algorithm_desc;
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
+          dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
+          *backward_input_data, filter_descriptor, filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          algorithm_config, scratch_allocator, &algorithm_desc,
+          &scratch_memory));
+      return dnn->DoConvolve(
+          dnn::ConvolutionKind::BACKWARD_DATA,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          *backward_input_data, filter_descriptor, filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          algorithm_desc, scratch_memory, output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
+  template <typename ElementType>
+  port::Status ConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<Eigen::half> *backward_input_data,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<ElementType> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<ElementType> *backward_filter_data,
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    DeviceMemory<uint8> scratch_memory;
+    dnn::AlgorithmDesc algorithm_desc;
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
+          dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
+          input_data, filter_descriptor, *backward_filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          algorithm_config, scratch_allocator, &algorithm_desc,
+          &scratch_memory));
+      return dnn->DoConvolve(
+          dnn::ConvolutionKind::BACKWARD_FILTER,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          input_data, filter_descriptor, *backward_filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          algorithm_desc, scratch_memory, output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenConvolveBackwardFilterWithAlgorithm(
+  template <typename ElementType>
+  port::Status ConvolveBackwardFilterWithExecutionPlan(
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<double> &input_data,
+      const DeviceMemory<ElementType> &input_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> backward_output_data,
+      DeviceMemory<ElementType> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<double> *backward_filter_data,
+      DeviceMemory<ElementType> *backward_filter_data,
       ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<float> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
+          dnn::ConvolutionKind::BACKWARD_FILTER,
+          dnn::ToDataType<ElementType>::value,
+          dnn::ToDataType<ElementType>::value, this, input_descriptor,
+          input_data, filter_descriptor, *backward_filter_data,
+          output_descriptor, backward_output_data, convolution_descriptor,
+          plan_config, scratch_allocator, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
                                    const DeviceMemory<double> &input_data,
@@ -1289,40 +1356,58 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *x, int incx);
 
-  // See BlasSupport::DoBlasGemm.
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, float alpha,
-                                 const DeviceMemory<Eigen::half> &a, int lda,
-                                 const DeviceMemory<Eigen::half> &b, int ldb,
-                                 float beta, DeviceMemory<Eigen::half> *c,
-                                 int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, float alpha,
-                                 const DeviceMemory<float> &a, int lda,
-                                 const DeviceMemory<float> &b, int ldb,
-                                 float beta, DeviceMemory<float> *c, int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k, double alpha,
-                                 const DeviceMemory<double> &a, int lda,
-                                 const DeviceMemory<double> &b, int ldb,
-                                 double beta, DeviceMemory<double> *c, int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k,
-                                 std::complex<float> alpha,
-                                 const DeviceMemory<std::complex<float>> &a,
-                                 int lda,
-                                 const DeviceMemory<std::complex<float>> &b,
-                                 int ldb, std::complex<float> beta,
-                                 DeviceMemory<std::complex<float>> *c, int ldc);
-  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                                 uint64 m, uint64 n, uint64 k,
-                                 std::complex<double> alpha,
-                                 const DeviceMemory<std::complex<double>> &a,
-                                 int lda,
-                                 const DeviceMemory<std::complex<double>> &b,
-                                 int ldb, std::complex<double> beta,
-                                 DeviceMemory<std::complex<double>> *c,
-                                 int ldc);
+  template <typename InputType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64 m, uint64 n, uint64 k,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            DeviceMemory<InputType> *c, int ldc) {
+    InputType alpha{1.0};
+    InputType beta{0.0};
+    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
+                        ldc);
+  }
+
+  template <typename InputType, typename ConstantType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64 m, uint64 n, uint64 k, ConstantType alpha,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            ConstantType beta, DeviceMemory<InputType> *c,
+                            int ldc) {
+    static_assert(!std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<ConstantType, float>::value ||
+                      std::is_same<ConstantType, Eigen::half>::value,
+                  "If input is Eigen::half, constant has to be either "
+                  "Eigen::half or float");
+    static_assert(
+        std::is_same<InputType, Eigen::half>::value ||
+            std::is_same<InputType, ConstantType>::value,
+        "If input is not Eigen::half, constant and input types have to match");
+    static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, float>::value ||
+                      std::is_same<InputType, double>::value ||
+                      std::is_same<InputType, std::complex<float>>::value ||
+                      std::is_same<InputType, std::complex<double>>::value,
+                  "Input can be half, float, double, std::complex<float> or "
+                  "std::complex<double>");
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return port::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+
+    return blas->DoBlasGemm(this, transa, transb, m, n, k,
+                            blas::ToDataType<InputType>::value, alpha_ptr, a,
+                            lda, b, ldb, beta_ptr, c, ldc);
+  }
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
@@ -1362,58 +1447,76 @@ class Stream {
       std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
       blas::ProfileResult *output_profile_result);
 
-  // See BlasSupport::DoBlasGemmWithAlgorithm.
-  Stream &ThenBlasGemmWithAlgorithm(
+  template <typename InputType, typename OutputType>
+  port::Status ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<Eigen::half> &alpha,
-      const DeviceMemory<Eigen::half> &a, int lda,
-      const DeviceMemory<Eigen::half> &b, int ldb,
-      const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
+      uint64 k, const DeviceMemory<InputType> &a, int lda,
+      const DeviceMemory<InputType> &b, int ldb, DeviceMemory<OutputType> *c,
       int ldc, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
+      blas::ProfileResult *output_profile_result) {
+    OutputType alpha{1};
+    OutputType beta{0};
+    return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
+                                     ldb, beta, c, ldc, computation_type,
+                                     algorithm, output_profile_result);
+  }
+
+  template <typename InputType, typename OutputType, typename ConstantType>
+  port::Status ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<int> &alpha,
-      const DeviceMemory<int8> &a, int lda, const DeviceMemory<int8> &b,
-      int ldb, const HostOrDeviceScalar<int> &beta, DeviceMemory<int> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<float> &alpha,
-      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
-      int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<double> &alpha,
-      const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
-      int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<std::complex<float>> &alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &b, int ldb,
-      const HostOrDeviceScalar<std::complex<float>> &beta,
-      DeviceMemory<std::complex<float>> *c, int ldc,
+      uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
+      const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
+      DeviceMemory<OutputType> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const HostOrDeviceScalar<std::complex<double>> &alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &b, int ldb,
-      const HostOrDeviceScalar<std::complex<double>> &beta,
-      DeviceMemory<std::complex<double>> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
+      blas::ProfileResult *output_profile_result) {
+    static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, float>::value ||
+                      std::is_same<InputType, double>::value ||
+                      std::is_same<InputType, int8>::value ||
+                      std::is_same<InputType, std::complex<float>>::value ||
+                      std::is_same<InputType, std::complex<double>>::value,
+                  "The only buffer types supported are: Eigen::half, float, "
+                  "double, int8, std::complex<float> and std::complex<double>");
+    static_assert(
+        std::is_same<InputType, OutputType>::value ||
+            (std::is_same<InputType, int8>::value &&
+             std::is_same<OutputType, int32>::value),
+        "Input and output buffer types should be the same unless input is "
+        "int8 and output is int32");
+    static_assert(std::is_same<ConstantType, OutputType>::value ||
+                      (std::is_same<ConstantType, float>::value &&
+                       std::is_same<OutputType, Eigen::half>::value),
+                  "Constant and output types should match");
+    blas::ComputationType expected_computation_type =
+        blas::ToComputationType<ConstantType>::value;
+    if (expected_computation_type != computation_type &&
+        !(computation_type == blas::ComputationType::kF32 &&
+          expected_computation_type == blas::ComputationType::kF16)) {
+      return port::InternalError(absl::StrCat(
+          "Alpha/beta type and computation type have to match, got ",
+          blas::ComputationTypeString(computation_type),
+          " for computation type, expected: ",
+          blas::ComputationTypeString(expected_computation_type)));
+    }
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return port::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+    port::Status st = blas->DoBlasGemmWithAlgorithm(
+        this, transa, transb, m, n, k, &alpha, a,
+        blas::ToDataType<InputType>::value, lda, b,
+        blas::ToDataType<InputType>::value, ldb, &beta, c,
+        blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
+        output_profile_result);
+    if (output_profile_result) {
+      // The error is recorded in the profile.
+      return port::Status::OK();
+    }
+    return st;
+  }
 
   // See BlasSupport::DoBlasGemmBatched.
   Stream &ThenBlasGemmBatched(
@@ -1490,38 +1593,41 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmStridedBatched(
+
+  template <typename InputType, typename ConstantType>
+  port::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, float alpha, const DeviceMemory<Eigen::half> &a, int lda,
-      int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
-      int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
-      int64 stride_c, int batch_count);
-  Stream &ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
-      int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
-      float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
-      int batch_count);
-  Stream &ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-      int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
-      double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
-      int batch_count);
-  Stream &ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
-      const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      int64 stride_c, int batch_count);
-  Stream &ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
-      const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      int64 stride_c, int batch_count);
+      uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
+      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
+      ConstantType beta, DeviceMemory<InputType> *c, int ldc, int64 stride_c,
+      int batch_count) {
+    static_assert((std::is_same<InputType, Eigen::half>::value &&
+                   std::is_same<ConstantType, float>::value) ||
+                      ((std::is_same<InputType, float>::value ||
+                        std::is_same<InputType, Eigen::half>::value ||
+                        std::is_same<InputType, double>::value ||
+                        std::is_same<InputType, std::complex<float>>::value ||
+                        std::is_same<InputType, std::complex<double>>::value) &&
+                       std::is_same<ConstantType, InputType>::value),
+                  "Input or constant type mismatch");
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return port::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+
+    return blas->DoBlasGemmStridedBatched(
+        this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
+        alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
+        stride_c, batch_count);
+  }
 
   // See BlasSupport::DoBlasHemm.
   Stream &ThenBlasHemm(blas::Side side, blas::UpperLower uplo, uint64 m,
@@ -1665,6 +1771,25 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
+  // See BlasSupport::DoBlatLtMatmul.
+  // Note that we prevent alpha and beta from being used to deduce CType so that
+  // they can be constructed implicitly from values of type CType. Without this,
+  // type deduction would fail when this function is called with a value of type
+  // CType for alpha or beta.
+  template <typename ABType, typename CType>
+  Stream &ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan *plan,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &alpha,
+      const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &beta,
+      DeviceMemory<CType> *c, ScratchAllocator *scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm *algorithm,
+      const DeviceMemory<CType> &bias = {},
+      blas::ProfileResult *output_profile_result = nullptr) {
+    return ThenBlasLtMatmulImpl(plan, alpha, a, b, beta, c, scratch_allocator,
+                                algorithm, bias, output_profile_result);
+  }
+
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
                   const DeviceMemory<std::complex<float>> &input,
@@ -1780,6 +1905,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<Eigen::half> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<Eigen::half> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1799,6 +1925,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<float> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<float> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1817,6 +1944,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<double> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<double> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1838,6 +1966,7 @@ class Stream {
       const dnn::RnnDescriptor &rnn_desc,
       const dnn::RnnSequenceTensorDescriptor &input_desc,
       const DeviceMemory<Eigen::half> &input_data,
+      const DeviceMemory<int> &seq_lengths_data,
       const dnn::RnnStateTensorDescriptor &input_h_desc,
       const DeviceMemory<Eigen::half> &input_h_data,
       const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1863,6 +1992,7 @@ class Stream {
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
                           const DeviceMemory<float> &input_data,
+                          const DeviceMemory<int> &seq_lengths_data,
                           const dnn::RnnStateTensorDescriptor &input_h_desc,
                           const DeviceMemory<float> &input_h_data,
                           const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1888,6 +2018,7 @@ class Stream {
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
                           const DeviceMemory<double> &input_data,
+                          const DeviceMemory<int> &seq_lengths_data,
                           const dnn::RnnStateTensorDescriptor &input_h_desc,
                           const DeviceMemory<double> &input_h_data,
                           const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1998,7 +2129,7 @@ class Stream {
   Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
-  // stream (or after the Stream does BlockHostUntilDone iin its destructor).
+  // stream (or after the Stream does BlockHostUntilDone in its destructor).
   // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
   // some use cases.
   Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);
@@ -2026,7 +2157,7 @@ class Stream {
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
-    return !ok_;
+    return !status_.ok();
   }
 
   // Sets the error state if operation_retcode is false.
@@ -2036,7 +2167,7 @@ class Stream {
       return;
     }
     absl::MutexLock lock(&mu_);
-    ok_ = false;
+    status_ = port::InternalError("Unknown error");
   }
 
   // Checks the status and logs the error message, if any.
@@ -2070,9 +2201,8 @@ class Stream {
   // See StreamExecutor::AllocateStream.
   bool allocated_ TF_GUARDED_BY(mu_);
 
-  // Whether all operations have entrained successfully to the current program
-  // point.
-  bool ok_ TF_GUARDED_BY(mu_);
+  // The last error (if any) of all method calls.
+  port::Status status_ TF_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
@@ -2098,11 +2228,66 @@ class Stream {
       const dnn::BatchDescriptor &bias_descriptor,
       DeviceMemory<T> *backward_bias_data);
 
+  // Implementation of ThenBlasLtMatmul that is shared by all types.
+  template <typename ABType, typename CType>
+  Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
+                               const HostOrDeviceScalar<CType> &alpha,
+                               const DeviceMemory<ABType> &a,
+                               const DeviceMemory<ABType> &b,
+                               const HostOrDeviceScalar<CType> &beta,
+                               DeviceMemory<CType> *c,
+                               ScratchAllocator *scratch_allocator,
+                               const blas::IBlasLtMatmulAlgorithm *algorithm,
+                               const DeviceMemory<CType> &bias,
+                               blas::ProfileResult *output_profile_result);
+
+  // Non-extended BLAS interface requires alpha/beta to be floats when input
+  // type is Eigen::half. However, for consistency purposes it is convenient
+  // for the interface to accept Eigen::half.
+  template <typename T>
+  void UpcastHalfToFloat(void **alpha_ptr, void **beta_ptr,
+                         float *alpha_storage, float *beta_storage) {
+    if (std::is_same<T, Eigen::half>::value) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    }
+  }
+
   SE_DISALLOW_COPY_AND_ASSIGN(Stream);
 };
 
 ////////////
 // Inlines
+
+template <typename... Params, typename... Args>
+inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
+                                  const TypedKernel<Params...> &kernel,
+                                  Args... args) {
+  KernelInvocationChecker<std::tuple<Params...>,
+                          std::tuple<Args...>>::CheckAllStaticAssert();
+  if (ok()) {
+    // This is the core that allows type-safe kernel launching.
+    // Since the platforms take kernel arguments as tuples of (void *, size),
+    // we pack the variadic parameters passed as ...args into the desired
+    // tuple form and pass that packed form to the StreamExecutor::Launch()
+    // implementation.
+    KernelArgsArray<sizeof...(args)> kernel_args;
+    kernel.PackParams(&kernel_args, args...);
+    DCHECK(parent_ != nullptr);
+    bool ok =
+        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
+            .ok();
+    if (!ok) {
+      SetError();
+      LOG(WARNING) << "parent failed to launch kernel: " << &kernel;
+    }
+  }
+  return *this;
+}
 
 template <typename T>
 inline port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>

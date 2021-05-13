@@ -20,6 +20,6 @@ extern "C" void DebugLog(const char* s) {
       "mov r1, %[str]\n"
       "bkpt #0xAB\n"
       :
-      : [ str ] "r"(s)
+      : [str] "r"(s)
       : "r0", "r1");
 }

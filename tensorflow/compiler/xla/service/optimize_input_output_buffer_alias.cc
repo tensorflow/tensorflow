@@ -75,9 +75,8 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
             const ShapeIndex& output_index = index;
             if (!alias_config->ParameterHasAlias(0, input_index) &&
                 !alias_config->OutputHasAlias(output_index)) {
-              TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
-                  output_index, 0, input_index,
-                  HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+              TF_RETURN_IF_ERROR(
+                  alias_config->SetUpAlias(output_index, 0, input_index));
             }
             entry.used = true;
             break;

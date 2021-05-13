@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -50,8 +51,8 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k = 0);
 // Places diag along the kth diagonal of target.
 XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k = 0);
 
-// Returns a lower-triangular mask, i.e., true below the `diagonal`-th diagonal
-// and false above that diagonal.
+// Returns a lower-triangular mask, i.e., true below and including the
+// `diagonal`-th diagonal and false above that diagonal.
 XlaOp TriangleMask(XlaOp x, int diagonal);
 
 // Get the upper or lower triangle part of the last two dimensions
@@ -62,6 +63,13 @@ XlaOp UpperTriangle(XlaOp x);
 
 // Get the lower triangle part of the last two dimensions
 XlaOp LowerTriangle(XlaOp x);
+
+// If x is an array of shape [..., n, n], symmetrizes the matrix by replacing
+// the upper triangle with the transpose of the lower triangle (if lower is
+// True, vice-versa otherwise). If the type of `x` is complex, makes the matrix
+// Hermitian by taking the conjugate of the complex part and setting the
+// complex diagonal to zero.
+XlaOp Symmetrize(XlaOp x, bool lower);
 
 // Multiplies slices of two tensors in batches.
 
@@ -82,10 +90,12 @@ XlaOp LowerTriangle(XlaOp x);
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 xla::XlaOp BatchDot(
     xla::XlaOp x, xla::XlaOp y,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 xla::XlaOp BatchDot(
     xla::XlaOp x, bool transpose_x, xla::XlaOp y, bool transpose_y,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 
 // Parse an einsum string into dimension numbers:
 //   "ab,cb->ac"
@@ -112,25 +122,15 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
 // Returns an empty string if the einsum string already has an ->.
 std::string NormalizeEinsumString(absl::string_view einsum_config);
 
-// Determine if each dimension label is in at least two inputs.
-//
-// NOTE: This function is meant for testing, there is no need to call it
-// directly.
-Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
-                                       absl::Span<const int64> y_config,
-                                       absl::Span<const int64> output_config);
-
 // Supports two operand einsum notation like "ab,cb->ac".
 xla::XlaOp Einsum(
     xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 xla::XlaOp Einsum(
     xla::XlaOp x, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
-// Handles repeated indices within an operand by taking the tensor diagonal of
-// the input.
-xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config);
 
 // Same as above but supporting numeric labels on dimensions. So "ab,cb->ac"
 // becomes:
@@ -140,7 +140,8 @@ xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config);
 xla::XlaOp Einsum(
     xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::Span<const int64> y_config, absl::Span<const int64> output_config,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
+    absl::optional<PrimitiveType> preferred_element_type = absl::nullopt);
 
 // Transposes a stack of matrices `x` by swapping the last two dimensions.
 xla::XlaOp TransposeInMinorDims(xla::XlaOp x);

@@ -52,7 +52,7 @@ struct SessionOptions {
   ///
   /// If the session disconnects from the remote process during its
   /// lifetime, session calls may fail immediately.
-  string target;
+  std::string target;
 
   /// Configuration options.
   ConfigProto config;

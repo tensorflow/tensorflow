@@ -48,7 +48,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertAllClose([0.0, 0.0], self.evaluate(var0))
         self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -85,7 +85,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
@@ -116,7 +116,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
@@ -147,7 +147,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=2.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))

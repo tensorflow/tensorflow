@@ -124,6 +124,41 @@ REGISTER_OP("StatelessRandomBinomial")
     .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
     .SetShapeFn(StatelessShape);
 
+REGISTER_OP("StatelessParameterizedTruncatedNormal")
+    .Input("shape: S")
+    .Input("seed: Tseed")
+    .Input("means: dtype")
+    .Input("stddevs: dtype")
+    .Input("minvals: dtype")
+    .Input("maxvals: dtype")
+    .Output("output: dtype")
+    .Attr("S: {int32, int64}")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .Attr("dtype: {float16, float32, float64}")
+    .SetShapeFn([](InferenceContext* c) {
+      // Check seed shape
+      ShapeHandle seed;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seed));
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(seed, 0), 2, &unused_dim));
+
+      ShapeHandle bcast_means_stddevs;
+      ShapeHandle bcast_except_maxvals;
+      ShapeHandle bcast_all;
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, c->input(2), c->input(3), true, &bcast_means_stddevs));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, c->input(4), bcast_means_stddevs, true, &bcast_except_maxvals));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, c->input(5), bcast_except_maxvals, true, &bcast_all));
+
+      // Set output shape
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
 REGISTER_OP("StatelessRandomPoisson")
     .Input("shape: T")
     .Input("seed: Tseed")

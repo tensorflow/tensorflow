@@ -122,23 +122,31 @@ DebugEventsWriter::~DebugEventsWriter() { Close().IgnoreError(); }
 
 // static
 DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
-    const string& dump_root, int64 circular_buffer_size) {
+    const string& dump_root, const string& tfdbg_run_id,
+    int64 circular_buffer_size) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
   std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
       DebugEventsWriter::GetDebugEventsWriterMap();
   if (writer_pool->find(dump_root) == writer_pool->end()) {
     std::unique_ptr<DebugEventsWriter> writer(
-        new DebugEventsWriter(dump_root, circular_buffer_size));
+        new DebugEventsWriter(dump_root, tfdbg_run_id, circular_buffer_size));
     writer_pool->insert(std::make_pair(dump_root, std::move(writer)));
   }
   return (*writer_pool)[dump_root].get();
 }
 
 // static
-DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
-    const string& dump_root) {
-  return DebugEventsWriter::GetDebugEventsWriter(dump_root,
-                                                 kDefaultCyclicBufferSize);
+Status DebugEventsWriter::LookUpDebugEventsWriter(
+    const string& dump_root, DebugEventsWriter** debug_events_writer) {
+  mutex_lock l(DebugEventsWriter::factory_mu_);
+  std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
+      DebugEventsWriter::GetDebugEventsWriterMap();
+  if (writer_pool->find(dump_root) == writer_pool->end()) {
+    return errors::FailedPrecondition(
+        "No DebugEventsWriter has been created at dump root ", dump_root);
+  }
+  *debug_events_writer = (*writer_pool)[dump_root].get();
+  return Status::OK();
 }
 
 Status DebugEventsWriter::Init() {
@@ -179,7 +187,8 @@ Status DebugEventsWriter::Init() {
   metadata->set_tensorflow_version(TF_VERSION_STRING);
   metadata->set_file_version(
       strings::Printf("%s%d", kVersionPrefix, kCurrentFormatVersion));
-  SerializeAndWriteDebugEvent(&debug_event, METADATA);
+  metadata->set_tfdbg_run_id(tfdbg_run_id_);
+  TF_RETURN_IF_ERROR(SerializeAndWriteDebugEvent(&debug_event, METADATA));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       metadata_writer_->Flush(), "Failed to flush debug event metadata writer");
 
@@ -189,38 +198,38 @@ Status DebugEventsWriter::Init() {
   return Status::OK();
 }
 
-void DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
+Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
   DebugEvent debug_event;
   debug_event.set_allocated_source_file(source_file);
-  SerializeAndWriteDebugEvent(&debug_event, SOURCE_FILES);
+  return SerializeAndWriteDebugEvent(&debug_event, SOURCE_FILES);
 }
 
-void DebugEventsWriter::WriteStackFrameWithId(
+Status DebugEventsWriter::WriteStackFrameWithId(
     StackFrameWithId* stack_frame_with_id) {
   DebugEvent debug_event;
   debug_event.set_allocated_stack_frame_with_id(stack_frame_with_id);
-  SerializeAndWriteDebugEvent(&debug_event, STACK_FRAMES);
+  return SerializeAndWriteDebugEvent(&debug_event, STACK_FRAMES);
 }
 
-void DebugEventsWriter::WriteGraphOpCreation(
+Status DebugEventsWriter::WriteGraphOpCreation(
     GraphOpCreation* graph_op_creation) {
   DebugEvent debug_event;
   debug_event.set_allocated_graph_op_creation(graph_op_creation);
-  SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
+  return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
-void DebugEventsWriter::WriteDebuggedGraph(DebuggedGraph* debugged_graph) {
+Status DebugEventsWriter::WriteDebuggedGraph(DebuggedGraph* debugged_graph) {
   DebugEvent debug_event;
   debug_event.set_allocated_debugged_graph(debugged_graph);
-  SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
+  return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
-void DebugEventsWriter::WriteExecution(Execution* execution) {
+Status DebugEventsWriter::WriteExecution(Execution* execution) {
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
     debug_event.set_allocated_execution(execution);
-    SerializeAndWriteDebugEvent(&debug_event, EXECUTION);
+    return SerializeAndWriteDebugEvent(&debug_event, EXECUTION);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
@@ -234,16 +243,18 @@ void DebugEventsWriter::WriteExecution(Execution* execution) {
     if (execution_buffer_.size() > circular_buffer_size_) {
       execution_buffer_.pop_front();
     }
+    return Status::OK();
   }
 }
 
-void DebugEventsWriter::WriteGraphExecutionTrace(
+Status DebugEventsWriter::WriteGraphExecutionTrace(
     GraphExecutionTrace* graph_execution_trace) {
+  TF_RETURN_IF_ERROR(Init());
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
     debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
-    SerializeAndWriteDebugEvent(&debug_event, GRAPH_EXECUTION_TRACES);
+    return SerializeAndWriteDebugEvent(&debug_event, GRAPH_EXECUTION_TRACES);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
@@ -257,15 +268,14 @@ void DebugEventsWriter::WriteGraphExecutionTrace(
     if (graph_execution_trace_buffer_.size() > circular_buffer_size_) {
       graph_execution_trace_buffer_.pop_front();
     }
+    return Status::OK();
   }
 }
 
-void DebugEventsWriter::WriteGraphExecutionTrace(const string& tfdbg_context_id,
-                                                 const string& device_name,
-                                                 const string& op_name,
-                                                 int32 output_slot,
-                                                 int32 tensor_debug_mode,
-                                                 const Tensor& tensor_value) {
+Status DebugEventsWriter::WriteGraphExecutionTrace(
+    const string& tfdbg_context_id, const string& device_name,
+    const string& op_name, int32 output_slot, int32 tensor_debug_mode,
+    const Tensor& tensor_value) {
   std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
   trace->set_tfdbg_context_id(tfdbg_context_id);
   if (!op_name.empty()) {
@@ -279,7 +289,7 @@ void DebugEventsWriter::WriteGraphExecutionTrace(const string& tfdbg_context_id,
   }
   trace->set_device_name(device_name);
   tensor_value.AsProtoTensorContent(trace->mutable_tensor_proto());
-  WriteGraphExecutionTrace(trace.release());
+  return WriteGraphExecutionTrace(trace.release());
 }
 
 void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
@@ -393,6 +403,13 @@ string DebugEventsWriter::FileName(DebugEventFileType type) {
 }
 
 Status DebugEventsWriter::Close() {
+  {
+    mutex_lock l(initialization_mu_);
+    if (!is_initialized_) {
+      return Status::OK();
+    }
+  }
+
   std::vector<string> failed_to_close_files;
 
   if (metadata_writer_ != nullptr) {
@@ -456,9 +473,11 @@ DebugEventsWriter::GetDebugEventsWriterMap() {
 }
 
 DebugEventsWriter::DebugEventsWriter(const string& dump_root,
+                                     const string& tfdbg_run_id,
                                      int64 circular_buffer_size)
     : env_(Env::Default()),
       dump_root_(dump_root),
+      tfdbg_run_id_(tfdbg_run_id),
       is_initialized_(false),
       initialization_mu_(),
       circular_buffer_size_(circular_buffer_size),
@@ -487,8 +506,8 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   return Status::OK();
 }
 
-void DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
-                                                    DebugEventFileType type) {
+Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
+                                                      DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
   if (writer != nullptr) {
@@ -497,6 +516,11 @@ void DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
     string str;
     debug_event->AppendToString(&str);
     (*writer)->WriteSerializedDebugEvent(str);
+    return Status::OK();
+  } else {
+    return errors::Internal(
+        "Unable to find debug events file writer for DebugEventsFileType ",
+        type);
   }
 }
 

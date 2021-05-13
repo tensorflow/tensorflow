@@ -1,9 +1,9 @@
 """Loads pasta python package."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "pasta",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/pasta/archive/v0.1.8.tar.gz",

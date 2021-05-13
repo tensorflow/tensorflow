@@ -15,12 +15,51 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/register_types.h"
-
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+struct DataTypeHasher {
+  std::size_t operator()(const DataType& k) const {
+    return std::hash<int>()(static_cast<int>(k));
+  }
+};
+
+// Mapping from some of the DType fields, for backward compatibility. All other
+// dtypes are mapped to TFT_ANY, but can be added here if a counterpart is
+// defined.
+auto* DT_TO_FT = new std::unordered_map<DataType, FullTypeId, DataTypeHasher>({
+    {DT_FLOAT, TFT_FLOAT},
+    {DT_DOUBLE, TFT_DOUBLE},
+    {DT_INT32, TFT_INT32},
+    {DT_UINT8, TFT_UINT8},
+    {DT_INT16, TFT_INT16},
+    {DT_INT8, TFT_INT8},
+    {DT_STRING, TFT_STRING},
+    {DT_COMPLEX64, TFT_COMPLEX64},
+    {DT_INT64, TFT_INT64},
+    {DT_BOOL, TFT_BOOL},
+    {DT_UINT16, TFT_UINT16},
+    {DT_COMPLEX128, TFT_COMPLEX128},
+    {DT_HALF, TFT_HALF},
+    {DT_UINT32, TFT_UINT32},
+    {DT_UINT64, TFT_UINT64},
+});
+
+void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t) {
+  t->set_type_id(TFT_TENSOR);
+  // If the dtype is not mapped, assume it's not supported and use
+  // TFT_ANY, for compatibility. See DT_TO_FT for more details.
+  const auto& mapped = DT_TO_FT->find(dtype);
+  auto* arg = t->add_args();
+  if (mapped != DT_TO_FT->end()) {
+    arg->set_type_id(mapped->second);
+  } else {
+    arg->set_type_id(TFT_ANY);
+  }
+}
 
 bool DeviceType::operator<(const DeviceType& other) const {
   return type_ < other.type_;
@@ -38,16 +77,13 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
+const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 string DataTypeStringInternal(DataType dtype) {
@@ -238,11 +274,6 @@ int DataTypeSize(DataType dt) {
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
 
-    // uint32 and uint64 aren't included in TF_CALL_POD_TYPES because we
-    // don't want to define kernels for them at this stage to avoid binary
-    // bloat.
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     default:
       return 0;
   }

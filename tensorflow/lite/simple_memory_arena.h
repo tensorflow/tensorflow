@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
+#include <stddef.h>
+
 #include <cstdint>
-#include <list>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 
@@ -112,7 +114,7 @@ class SimpleMemoryArena {
   std::unique_ptr<char[]> underlying_buffer_;
   size_t underlying_buffer_size_;
   char* underlying_buffer_aligned_ptr_;
-  std::list<ArenaAllocWithUsageInterval> ordered_allocs_;
+  std::vector<ArenaAllocWithUsageInterval> ordered_allocs_;
 };
 
 }  // namespace tflite

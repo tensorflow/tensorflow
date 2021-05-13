@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_GRAPH_OPTIMIZATION_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_GRAPH_OPTIMIZATION_PASS_H_
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
@@ -24,7 +24,7 @@ namespace tensorflow {
 // Create a module pass that will execute the given TF GraphOptimization passes
 // in sequence.
 // Pass requires that the module ran on is convertible to TF Graph.
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTensorFlowGraphOptimizationPass(
     std::vector<tensorflow::GraphOptimizationPass*> tf_passes);
 
@@ -32,7 +32,7 @@ CreateTensorFlowGraphOptimizationPass(
 // passes are queried, if a TF graph optimization pass is not found in registry
 // then the pass fails.
 // Pass requires that the module ran on is convertible to TF Graph.
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTensorFlowGraphOptimizationPass(
     const std::vector<std::string>& pass_names);
 

@@ -22,6 +22,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.Arrays;
 
 /**
@@ -31,6 +32,7 @@ import java.util.Arrays;
  * not needed to be closed by the client. However, once the {@code NativeInterpreterWrapper} has
  * been closed, the tensor handle will be invalidated.
  */
+// TODO(b/153882978): Add scalar getters similar to TF's Java API.
 public final class Tensor {
 
   /**
@@ -167,6 +169,42 @@ public final class Tensor {
   }
 
   /**
+   * Returns a read-only {@code ByteBuffer} view of the tensor data.
+   *
+   * <p>In general, this method is most useful for obtaining a read-only view of output tensor data,
+   * *after* inference has been executed (e.g., via {@link Interpreter#run(Object,Object)}). In
+   * particular, some graphs have dynamically shaped outputs, which can make feeding a predefined
+   * output buffer to the {@link Interpreter} awkward. Example usage:
+   *
+   * <pre>{@code
+   * interpreter.run(input, null);
+   * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
+   * // Copy or read from outputBuffer.
+   * }</pre>
+   *
+   * <p>WARNING: If the tensor has not yet been allocated, e.g., before inference has been executed,
+   * the result is undefined. Note that the underlying tensor pointer may also change when the
+   * tensor is invalidated in any way (e.g., if inference is executed, or the graph is resized), so
+   * it is *not* safe to hold a reference to the returned buffer beyond immediate use directly
+   * following inference. Example *bad* usage:
+   *
+   * <pre>{@code
+   * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
+   * interpreter.run(input, null);
+   * // Copy or read from outputBuffer (which may now be invalid).
+   * }</pre>
+   *
+   * <p>WARNING: This is an experimental interface that is subject to change.
+   *
+   * @throws IllegalArgumentException if the tensor data has not been allocated.
+   */
+  public ByteBuffer asReadOnlyBuffer() {
+    // Note that the ByteBuffer order is not preserved when duplicated or marked read only, so
+    // we have to repeat the call.
+    return buffer().asReadOnlyBuffer().order(ByteOrder.nativeOrder());
+  }
+
+  /**
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
@@ -184,16 +222,22 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwIfDataIsIncompatible(src);
+    throwIfTypeIsIncompatible(src);
+    throwIfSrcShapeIsIncompatible(src);
     if (isBuffer(src)) {
       setTo((Buffer) src);
-    } else {
+    } else if (dtype == DataType.STRING && shapeCopy.length == 0) {
+      // Update scalar string input with 1-d byte array.
+      writeScalar(nativeHandle, src);
+    } else if (src.getClass().isArray()) {
       writeMultiDimensionalArray(nativeHandle, src);
+    } else {
+      writeScalar(nativeHandle, src);
     }
   }
 
   private void setTo(Buffer src) {
-    // Note that we attempt to use zero-copy optimization for direct, native-ordered buffers.
+    // Note that we attempt to use a direct memcpy optimization for direct, native-ordered buffers.
     // There are no base Buffer#order() or Buffer#put() methods, so again we have to ugly cast.
     if (src instanceof ByteBuffer) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
@@ -223,6 +267,13 @@ public final class Tensor {
       } else {
         buffer().asIntBuffer().put(srcBuffer);
       }
+    } else if (src instanceof ShortBuffer) {
+      ShortBuffer srcBuffer = (ShortBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asShortBuffer().put(srcBuffer);
+      }
     } else {
       throw new IllegalArgumentException("Unexpected input buffer type: " + src);
     }
@@ -231,8 +282,11 @@ public final class Tensor {
   /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
-   * @param dst the destination buffer, either an explicitly-typed array, a {@link ByteBuffer} or
-   *     {@code null} iff the tensor has an underlying delegate buffer handle.
+   * @param dst the destination buffer, either an explicitly-typed array, a compatible {@link
+   *     Buffer} or {@code null} iff the tensor has an underlying delegate buffer handle. If
+   *     providing a (multi-dimensional) array, its shape must match the tensor shape *exactly*. If
+   *     providing a {@link Buffer}, its capacity must be at least as large as the source tensor's
+   *     capacity.
    * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
    *     mismatched data types or shapes).
    */
@@ -244,7 +298,8 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwIfDataIsIncompatible(dst);
+    throwIfTypeIsIncompatible(dst);
+    throwIfDstShapeIsIncompatible(dst);
     if (isBuffer(dst)) {
       copyTo((Buffer) dst);
     } else {
@@ -263,6 +318,8 @@ public final class Tensor {
       ((LongBuffer) dst).put(buffer().asLongBuffer());
     } else if (dst instanceof IntBuffer) {
       ((IntBuffer) dst).put(buffer().asIntBuffer());
+    } else if (dst instanceof ShortBuffer) {
+      ((ShortBuffer) dst).put(buffer().asShortBuffer());
     } else {
       throw new IllegalArgumentException("Unexpected output buffer type: " + dst);
     }
@@ -297,22 +354,54 @@ public final class Tensor {
   }
 
   /** Returns the type of the data. */
-  static DataType dataTypeOf(Object o) {
+  DataType dataTypeOf(Object o) {
     if (o != null) {
       Class<?> c = o.getClass();
-      while (c.isArray()) {
-        c = c.getComponentType();
-      }
-      if (float.class.equals(c) || o instanceof FloatBuffer) {
-        return DataType.FLOAT32;
-      } else if (int.class.equals(c) || o instanceof IntBuffer) {
-        return DataType.INT32;
-      } else if (byte.class.equals(c)) {
-        return DataType.UINT8;
-      } else if (long.class.equals(c) || o instanceof LongBuffer) {
-        return DataType.INT64;
-      } else if (String.class.equals(c)) {
-        return DataType.STRING;
+      // For arrays, the data elements must be a *primitive* type, e.g., an
+      // array of floats is fine, but not an array of Floats.
+      if (c.isArray()) {
+        while (c.isArray()) {
+          c = c.getComponentType();
+        }
+        if (float.class.equals(c)) {
+          return DataType.FLOAT32;
+        } else if (int.class.equals(c)) {
+          return DataType.INT32;
+        } else if (short.class.equals(c)) {
+          return DataType.INT16;
+        } else if (byte.class.equals(c)) {
+          // Byte array can be used for storing string tensors, especially for ParseExample op.
+          if (dtype == DataType.STRING) {
+            return DataType.STRING;
+          }
+          return DataType.UINT8;
+        } else if (long.class.equals(c)) {
+          return DataType.INT64;
+        } else if (boolean.class.equals(c)) {
+          return DataType.BOOL;
+        } else if (String.class.equals(c)) {
+          return DataType.STRING;
+        }
+      } else {
+        // For scalars, the type will be boxed.
+        if (Float.class.equals(c) || o instanceof FloatBuffer) {
+          return DataType.FLOAT32;
+        } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
+          return DataType.INT32;
+        } else if (Short.class.equals(c) || o instanceof ShortBuffer) {
+          return DataType.INT16;
+        } else if (Byte.class.equals(c)) {
+          // Note that we don't check for ByteBuffer here; ByteBuffer payloads
+          // are allowed to map to any type, and should be handled earlier
+          // in the input/output processing pipeline.
+          return DataType.UINT8;
+        } else if (Long.class.equals(c) || o instanceof LongBuffer) {
+          return DataType.INT64;
+        } else if (Boolean.class.equals(c)) {
+          return DataType.BOOL;
+        } else if (String.class.equals(c)) {
+          return DataType.STRING;
+        }
       }
     }
     throw new IllegalArgumentException(
@@ -320,8 +409,21 @@ public final class Tensor {
   }
 
   /** Returns the shape of an object as an int array. */
-  static int[] computeShapeOf(Object o) {
+  int[] computeShapeOf(Object o) {
     int size = computeNumDimensions(o);
+    if (dtype == DataType.STRING) {
+      Class<?> c = o.getClass();
+      if (c.isArray()) {
+        while (c.isArray()) {
+          c = c.getComponentType();
+        }
+        // If the given string data is stored in byte streams, the last array dimension should be
+        // treated as a value.
+        if (byte.class.equals(c)) {
+          --size;
+        }
+      }
+    }
     int[] dimensions = new int[size];
     fillShape(o, 0, dimensions);
     return dimensions;
@@ -364,11 +466,6 @@ public final class Tensor {
     }
   }
 
-  private void throwIfDataIsIncompatible(Object o) {
-    throwIfTypeIsIncompatible(o);
-    throwIfShapeIsIncompatible(o);
-  }
-
   private void throwIfTypeIsIncompatible(Object o) {
     // ByteBuffer payloads can map to any type, so exempt it from the check.
     if (isByteBuffer(o)) {
@@ -390,29 +487,58 @@ public final class Tensor {
     }
   }
 
-  private void throwIfShapeIsIncompatible(Object o) {
-    if (isBuffer(o)) {
-      Buffer oBuffer = (Buffer) o;
+  private void throwIfSrcShapeIsIncompatible(Object src) {
+    if (isBuffer(src)) {
+      Buffer srcBuffer = (Buffer) src;
       int bytes = numBytes();
       // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
       // In such cases, we only care that the raw byte capacity matches the tensor byte capacity.
-      int oBytes = isByteBuffer(o) ? oBuffer.capacity() : oBuffer.capacity() * dtype.byteSize();
-      if (bytes != oBytes) {
+      int srcBytes =
+          isByteBuffer(src) ? srcBuffer.capacity() : srcBuffer.capacity() * dtype.byteSize();
+      if (bytes != srcBytes) {
         throw new IllegalArgumentException(
             String.format(
-                "Cannot convert between a TensorFlowLite buffer with %d bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (%s) with %d bytes from a "
                     + "Java Buffer with %d bytes.",
-                bytes, oBytes));
+                name(), bytes, srcBytes));
       }
       return;
     }
-    int[] oShape = computeShapeOf(o);
-    if (!Arrays.equals(oShape, shapeCopy)) {
+    int[] srcShape = computeShapeOf(src);
+    if (!Arrays.equals(srcShape, shapeCopy)) {
       throw new IllegalArgumentException(
           String.format(
-              "Cannot copy between a TensorFlowLite tensor with shape %s and a Java object "
+              "Cannot copy to a TensorFlowLite tensor (%s) with shape %s from a Java object "
                   + "with shape %s.",
-              Arrays.toString(shapeCopy), Arrays.toString(oShape)));
+              name(), Arrays.toString(shapeCopy), Arrays.toString(srcShape)));
+    }
+  }
+
+  private void throwIfDstShapeIsIncompatible(Object dst) {
+    if (isBuffer(dst)) {
+      Buffer dstBuffer = (Buffer) dst;
+      int bytes = numBytes();
+      // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
+      // In such cases, we only care that the raw byte capacity fits the tensor byte capacity.
+      // This is subtly different than Buffer *inputs*, where the size should be exact.
+      int dstBytes =
+          isByteBuffer(dst) ? dstBuffer.capacity() : dstBuffer.capacity() * dtype.byteSize();
+      if (bytes > dstBytes) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot copy from a TensorFlowLite tensor (%s) with %d bytes to a "
+                    + "Java Buffer with %d bytes.",
+                name(), bytes, dstBytes));
+      }
+      return;
+    }
+    int[] dstShape = computeShapeOf(dst);
+    if (!Arrays.equals(dstShape, shapeCopy)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot copy from a TensorFlowLite tensor (%s) with shape %s to a Java object "
+                  + "with shape %s.",
+              name(), Arrays.toString(shapeCopy), Arrays.toString(dstShape)));
     }
   }
 
@@ -465,6 +591,8 @@ public final class Tensor {
   private static native void readMultiDimensionalArray(long handle, Object dst);
 
   private static native void writeMultiDimensionalArray(long handle, Object src);
+
+  private static native void writeScalar(long handle, Object src);
 
   private static native int index(long handle);
 

@@ -25,9 +25,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
-#if TOCO_SUPPORT_PORTABLE_PROTOS
-#include "third_party/protobuf/include/google/protobuf/text_format.h"
-#endif  // TOCO_SUPPORT_PORTABLE_PROTOS
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
@@ -54,44 +51,45 @@ constexpr int kLogLevelModelUnchanged = 2;
 
 absl::string_view FindLongestCommonPrefix(absl::string_view a,
                                           absl::string_view b);
-string LogName(const Operator& op);
+std::string LogName(const Operator& op);
 
-string ArrayDataTypeName(ArrayDataType data_type);
+std::string ArrayDataTypeName(ArrayDataType data_type);
 
 // Returns true if the given array is specified as a model input array.
-bool IsInputArray(const Model& model, const string& array_name);
+bool IsInputArray(const Model& model, const std::string& array_name);
 // Returns true if the given array is specified as a model output array.
-bool IsOutputArray(const Model& model, const string& array_name);
+bool IsOutputArray(const Model& model, const std::string& array_name);
 
-bool IsArrayConsumed(const Model& model, const string& name);
+bool IsArrayConsumed(const Model& model, const std::string& name);
 int CountTrueOutputs(const Model& model, const Operator& op);
 
-int CountOpsWithInput(const Model& model, const string& array_name);
-bool DeleteArrayIfUnused(const string& array_name, Model* model);
+int CountOpsWithInput(const Model& model, const std::string& array_name);
+bool DeleteArrayIfUnused(const std::string& array_name, Model* model);
 
 // Deletes the op and any of its input and output arrays if they are unused
 // after the op has been deleted.
 void DeleteOpAndArrays(Model* model, const Operator* op);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
-    const Model& model, const string& array_name);
-Operator* GetOpWithOutput(const Model& model, const string& array_name);
+    const Model& model, const std::string& array_name);
+Operator* GetOpWithOutput(const Model& model, const std::string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::iterator FindOpWithOutput(
-    Model& model, const string& array_name);
+    Model& model, const std::string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
-    const Model& model, const string& array_name);
+    const Model& model, const std::string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
-    Model& model, const string& array_name);
+    Model& model, const std::string& array_name);
 
-Operator* GetOpWithInput(const Model& model, const string& array_name);
-Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
+Operator* GetOpWithInput(const Model& model, const std::string& array_name);
+Operator* GetFirstOpWithInput(const Model& model,
+                              const std::string& array_name);
 
 // Replaces all uses of the |old_array_name| with the |new_array_name|.
-void ReplaceArrayUsage(Model* model, const string& old_array_name,
-                       const string& new_array_name);
+void ReplaceArrayUsage(Model* model, const std::string& old_array_name,
+                       const std::string& new_array_name);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op);
@@ -99,15 +97,15 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
                                                         const Operator* op);
 
 const char* OperatorTypeName(OperatorType type);
-string HelpfulOperatorTypeName(const Operator& op);
+std::string HelpfulOperatorTypeName(const Operator& op);
 
 // Whether the operator can be fused with an activation function. Note that this
 // will return false by default for new operators; fusing support is opt-in.
 bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);
-void LogDump(int log_level, const string& message, const Model& model);
-void LogSummary(int log_level, const string& message, const Model& model);
+void LogDump(int log_level, const std::string& message, const Model& model);
+void LogSummary(int log_level, const std::string& message, const Model& model);
 
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void ExtendShape(Shape* shape, int new_shape_size);
@@ -143,12 +141,12 @@ inline ::tflite::RuntimeShape ToRuntimeShape(const Shape& shape) {
   return ::tflite::RuntimeShape(shape.dimensions_count(), shape.dims().data());
 }
 
-bool IsArrayFullyConnectedWeights(const Model& model, const string& name);
+bool IsArrayFullyConnectedWeights(const Model& model, const std::string& name);
 
 // If there is a wildcard dimension (-1), this may return a negative value.
 int RequiredBufferSizeForShape(const Shape& shape);
 
-bool IsConstantParameterArray(const Model& model, const string& name);
+bool IsConstantParameterArray(const Model& model, const std::string& name);
 
 // Compares two constant parameter arrays for exact equality.
 bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array);
@@ -193,12 +191,12 @@ void CopyArrayBuffer(const Array& source_array, Array* target_array) {
 
 // Inserts a no-op reshape operator between the source array and the target
 // array. This effectively just copies the data.
-void InsertCopyOperator(Model* model, const string& source_array_name,
-                        const string& target_array_name);
+void InsertCopyOperator(Model* model, const std::string& source_array_name,
+                        const std::string& target_array_name);
 
 // Clones an array with all data and parameters.
-void CloneArray(Model* model, const string& source_array_name,
-                const string& target_array_name);
+void CloneArray(Model* model, const std::string& source_array_name,
+                const std::string& target_array_name);
 
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
@@ -245,32 +243,33 @@ inline std::vector<int> ReverseOffset(const Shape& shape, int index) {
 
 int ElementSize(ArrayDataType data_type);
 
-void DropMinMax(Model* model, const string& array_name);
+void DropMinMax(Model* model, const std::string& array_name);
 
-bool IsAllocatableTransientArray(const Model& model, const string& array_name);
+bool IsAllocatableTransientArray(const Model& model,
+                                 const std::string& array_name);
 
-void CreateOrCheckRnnStateArray(const string& name, int size,
+void CreateOrCheckRnnStateArray(const std::string& name, int size,
                                 int state_num_dims, Model* model);
 
-string AvailableArrayName(const Model& model, const string& name);
+std::string AvailableArrayName(const Model& model, const std::string& name);
 
 // Formats a shape as a string: [ dims(0), dims(1), ..., dims(num_dims-1) ].
-string ShapeToString(const Shape& shape);
+std::string ShapeToString(const Shape& shape);
 
-void PrintArrayShape(Model* model, const string& name);
+void PrintArrayShape(Model* model, const std::string& name);
 
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
                    std::vector<int>* out_dims);
 
 // Defines a constant int32 array with the provided values formatted for use
 // as op parameters.
-string CreateInt32Array(Model* model, const string& param_name,
-                        const std::vector<int>& value);
+std::string CreateInt32Array(Model* model, const std::string& param_name,
+                             const std::vector<int>& value);
 
 bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
                                 int64* result);
 bool EstimateArithmeticOpsCount(const Model& model, int64* result);
-string FormattedNumber(int64 x);
+std::string FormattedNumber(int64 x);
 
 int AxesCount(AxesOrder axes_order);
 
@@ -297,7 +296,7 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
 // that array. The idea is that we can't ever discard arrays that are either
 // an input or an output of the whole graph, or that appear in RNN back-edges,
 // as that would undercut explicit flags that the user might pass.
-bool IsDiscardableArray(const Model& model, const string& array_name);
+bool IsDiscardableArray(const Model& model, const std::string& array_name);
 
 void CheckFinalDataTypesSatisfied(const Model& model);
 
@@ -362,7 +361,7 @@ void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
 
 // Delete Array if it's discardable and not referenced as input or output array
 // by any other op than the specified op.
-bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+bool DeleteArrayIfUnusedOutsideOfOp(const std::string& array_name,
                                     const Operator* op, Model* model);
 
 }  // namespace toco

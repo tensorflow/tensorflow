@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string.h>
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 
 TfLiteStatus ResetVariableTensor(TfLiteTensor* tensor) {

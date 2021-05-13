@@ -18,6 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
 
+#if !defined(IS_MOBILE_PLATFORM) || !defined(TENSORFLOW_INCLUDED_FROM_SAMPLER_H)
+// If this header file were included directly, and something else included its
+// non-mobile counterpart, there could be an unchecked ODR violation on the
+// classes below.
+#error do not include mobile_sampler.h directly; use sampler.h to include it instead
+#endif  // !defined(IS_MOBILE_PLATFORM) ||
+        // !defined(TENSORFLOW_INCLUDED_FROM_SAMPLER_H)
+
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"

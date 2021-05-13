@@ -349,15 +349,16 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, kRagged> RaggedFloat;
 // B == batch_size, K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
 #define BM_ParseExample(TYPE, B, K, F)                                    \
-  static void BM_ParseExample##_##TYPE##_##B##_##K##_##F(int iters) {     \
+  static void BM_ParseExample##_##TYPE##_##B##_##K##_##F(                 \
+      ::testing::benchmark::State& state) {                               \
     int64 items_per_iter = static_cast<int64>(B) * K * F;                 \
-    testing::UseRealTime();                                               \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);  \
     test::Benchmark("cpu", ParseExample<TYPE>(B, K, F), nullptr, nullptr, \
-                    nullptr, "SINGLE_THREADED_EXECUTOR")                  \
-        .Run(iters);                                                      \
+                    nullptr, "SINGLE_THREADED_EXECUTOR", false)           \
+        .Run(state);                                                      \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *      \
+                            items_per_iter);                              \
   }                                                                       \
-  BENCHMARK(BM_ParseExample##_##TYPE##_##B##_##K##_##F);
+  BENCHMARK(BM_ParseExample##_##TYPE##_##B##_##K##_##F)->UseRealTime();
 
 #define BM_AllParseExample(Type)       \
   BM_ParseExample(Type, 1, 10, 1);     \
@@ -385,15 +386,17 @@ BM_AllParseExample(VarLenDenseFloat);
 // K must be one of 10, 100, 1000
 // B=0 indicates that a scalar input should be used (instead of a vector).
 #define BM_ParseExampleV2(TYPE, B, K, F)                                    \
-  static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(int iters) {     \
+  static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(                 \
+      ::testing::benchmark::State& state) {                                 \
     int64 items_per_iter = static_cast<int64>(std::max(B, 1)) * K * F;      \
-    testing::UseRealTime();                                                 \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);    \
     test::Benchmark("cpu", ParseExampleV2<TYPE>(B, K, F), nullptr, nullptr, \
-                    nullptr, "SINGLE_THREADED_EXECUTOR")                    \
-        .Run(iters);                                                        \
+                    nullptr, "SINGLE_THREADED_EXECUTOR",                    \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *        \
+                            items_per_iter);                                \
   }                                                                         \
-  BENCHMARK(BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F);
+  BENCHMARK(BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F)->UseRealTime();
 
 #define BM_AllParseExampleV2(Type)        \
   /* Vector Inputs */                     \
@@ -437,15 +440,17 @@ BM_AllParseExampleV2(RaggedFloat);
 // K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
 #define BM_ParseSingleExample(TYPE, K, F)                                    \
-  static void BM_ParseSingleExample##_##TYPE##_1_##K##_##F(int iters) {      \
+  void BM_ParseSingleExample##_##TYPE##_1_##K##_##F(                         \
+      ::testing::benchmark::State& state) {                                  \
     int64 items_per_iter = K * F;                                            \
-    testing::UseRealTime();                                                  \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);     \
     test::Benchmark("cpu", ParseSingleExample<TYPE>(K, F), nullptr, nullptr, \
-                    nullptr, "SINGLE_THREADED_EXECUTOR")                     \
-        .Run(iters);                                                         \
+                    nullptr, "SINGLE_THREADED_EXECUTOR",                     \
+                    /*old_benchmark_api=*/false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *         \
+                            items_per_iter);                                 \
   }                                                                          \
-  BENCHMARK(BM_ParseSingleExample##_##TYPE##_1_##K##_##F);
+  BENCHMARK(BM_ParseSingleExample##_##TYPE##_1_##K##_##F)->UseRealTime();
 
 #define BM_AllParseSingleExample(Type)     \
   BM_ParseSingleExample(Type, 10, 1);      \

@@ -15,18 +15,25 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace ops {
 namespace custom {
 
-TfLiteRegistration* Register_RFFT2D();
+TfLiteRegistration* Register_ATAN2();
 TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
-}
+TfLiteRegistration* Register_IRFFT2D();
+TfLiteRegistration* Register_MULTINOMIAL();
+TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
+TfLiteRegistration* Register_RANDOM_UNIFORM();
+TfLiteRegistration* Register_RANDOM_UNIFORM_INT();
+TfLiteRegistration* Register_SIGN();
+
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
 

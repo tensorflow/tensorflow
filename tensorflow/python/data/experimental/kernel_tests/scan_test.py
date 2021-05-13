@@ -23,6 +23,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -184,7 +185,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     start = empty_ta
     start = start.write(0, -1)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError,
         r"construct a new TensorArray inside the function"):
       dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
@@ -226,7 +227,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       return constant_op.constant(1, dtype=dtypes.int64), state
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         "The element types for the new state must match the initial state."):
       dataset.apply(
@@ -239,7 +240,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       return constant_op.constant(1, dtype=dtypes.int64)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         "The scan function must return a pair comprising the new state and the "
         "output value."):
@@ -289,6 +290,19 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIn(b"CPU:0", self.evaluate(get_next()))
     else:
       self.assertIn(b"GPU:0", self.evaluate(get_next()))
+
+
+class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                         parameterized.TestCase):
+
+  def _build_dataset(self, num_elements):
+    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
+        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testScanCore(self):
+    num_output = 5
+    self.run_core_tests(lambda: self._build_dataset(num_output), num_output)
 
 
 if __name__ == "__main__":

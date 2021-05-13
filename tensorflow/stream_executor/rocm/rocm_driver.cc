@@ -558,10 +558,17 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,
-                                          GpuStreamHandle* stream) {
+                                          GpuStreamHandle* stream,
+                                          int priority) {
   ScopedActivateContext activated{context};
-  hipError_t res = tensorflow::wrap::hipStreamCreateWithFlags(
-      stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
+  hipError_t res;
+  if (priority == 0) {
+    res = tensorflow::wrap::hipStreamCreateWithFlags(
+        stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
+  } else {
+    res = tensorflow::wrap::hipStreamCreateWithPriority(
+        stream, hipStreamDefault, priority);  // switch to hipStreamNonBlocking?
+  }
   if (res != hipSuccess) {
     LOG(ERROR) << "could not allocate ROCM stream for device "
                << context->device_ordinal() << ": " << ToString(res);
@@ -1071,6 +1078,42 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       port::error::INTERNAL,
       absl::StrFormat("failed to determine AMDGpu ISA version for device %d",
                       device)};
+}
+
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(
+    hipDevice_t device, std::string* gcnArchName) {
+  hipDeviceProp_t props;
+  hipError_t result = tensorflow::wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    *gcnArchName = props.gcnArchName;
+    return port::Status::OK();
+  }
+  *gcnArchName = "";
+  return port::Status{
+      port::error::INTERNAL,
+      absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
+                      device)};
+}
+
+/* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
+  hipDeviceProp_t props;
+  int dev = 0;
+  hipError_t result = hipGetDevice(&dev);
+  result = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
+  if (result == hipSuccess) {
+    std::string gcnArchName = props.gcnArchName;
+    VLOG(1) << "GCN arch name " << gcnArchName;
+    auto pos = gcnArchName.find(":");
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
+    pos = gcnArchName.find("gfx");
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
+    VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
+    return ((gcnArchName == "908") || (gcnArchName == "909"));
+  }
+  return port::Status{
+      port::error::INTERNAL,
+      absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
+                      dev)};
 }
 
 // Helper function that turns the integer output of hipDeviceGetAttribute to

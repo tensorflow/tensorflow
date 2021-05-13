@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -229,7 +229,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             // Run the key function on the input element.
             std::vector<Tensor> key_func_output;
             TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
-                ctx, next_input_element, &key_func_output));
+                ctx, next_input_element, &key_func_output, model_node()));
 
             if (key_func_output.size() != 1 ||
                 key_func_output[0].dtype() != DT_INT64 ||
@@ -244,7 +244,8 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
               // Run the init function to create the initial state.
               std::vector<Tensor> init_func_output;
               TF_RETURN_IF_ERROR(instantiated_init_func_->Run(
-                  ctx, std::move(key_func_output), &init_func_output));
+                  ctx, std::move(key_func_output), &init_func_output,
+                  model_node()));
               states_[key] = init_func_output;
             }
 
@@ -258,7 +259,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
             std::vector<Tensor> reduce_func_output;
             TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
-                ctx, std::move(args), &reduce_func_output));
+                ctx, std::move(args), &reduce_func_output, model_node()));
             states_[key] = reduce_func_output;
           } else {
             keys_.resize(states_.size());
@@ -274,7 +275,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
         TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
-            ctx, states_[keys_[keys_index_++]], out_tensors));
+            ctx, states_[keys_[keys_index_++]], out_tensors, model_node()));
         *end_of_sequence = false;
         return Status::OK();
       }
@@ -285,16 +286,18 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeUnknownRatioNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->CheckExternalState());
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_init_func_->CheckExternalState());
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->CheckExternalState());
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_finalize_func_->CheckExternalState());
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_key_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_init_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_reduce_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_finalize_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(

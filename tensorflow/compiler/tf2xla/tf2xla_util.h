@@ -212,6 +212,18 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
 Status RewriteTensorListWithConstElement(Graph* g,
                                          FunctionLibraryDefinition* fld);
 
+extern const char kTpuReplicateAttrName[];
+
+inline bool IsConstTraversableOpType(const Node* node) {
+  return node->type_string() == "Identity" ||
+         node->type_string() == "IdentityN" || node->IsWhileNode();
+}
+
+// Determines whether a loop body is invariant for the given argument index.
+xla::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_UTIL_H_

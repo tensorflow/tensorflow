@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_PADDING_H_
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
-// TODO(renjieliu): Migrate others to use ComputePaddingWithLeftover.
 inline int ComputePadding(int stride, int dilation_rate, int in_size,
                           int filter_size, int out_size) {
   int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
@@ -44,6 +44,11 @@ inline int ComputePaddingWithOffset(int stride, int dilation_rate, int in_size,
 inline int ComputeOutSize(TfLitePadding padding, int image_size,
                           int filter_size, int stride, int dilation_rate = 1) {
   int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
+
+  // TODO(b/186448822): This uses 0 since the function has no other way to
+  // report error case
+  if (stride == 0) return 0;
+
   switch (padding) {
     case kTfLitePaddingSame:
       return (image_size + stride - 1) / stride;
@@ -65,6 +70,36 @@ inline TfLitePaddingValues ComputePaddingHeightWidth(
 
   TfLitePaddingValues padding_values;
   int offset = 0;
+  padding_values.height =
+      ComputePaddingWithOffset(stride_height, dilation_rate_height, in_height,
+                               filter_height, *out_height, &offset);
+  padding_values.height_offset = offset;
+  padding_values.width =
+      ComputePaddingWithOffset(stride_width, dilation_rate_width, in_width,
+                               filter_width, *out_width, &offset);
+  padding_values.width_offset = offset;
+  return padding_values;
+}
+
+inline Padding3DValues ComputePadding3DValues(
+    int stride_height, int stride_width, int stride_depth,
+    int dilation_rate_height, int dilation_rate_width, int dilation_rate_depth,
+    int in_height, int in_width, int in_depth, int filter_height,
+    int filter_width, int filter_depth, TfLitePadding padding, int* out_height,
+    int* out_width, int* out_depth) {
+  *out_width = ComputeOutSize(padding, in_width, filter_width, stride_width,
+                              dilation_rate_width);
+  *out_height = ComputeOutSize(padding, in_height, filter_height, stride_height,
+                               dilation_rate_height);
+  *out_depth = ComputeOutSize(padding, in_depth, filter_depth, stride_depth,
+                              dilation_rate_depth);
+
+  Padding3DValues padding_values;
+  int offset = 0;
+  padding_values.depth =
+      ComputePaddingWithOffset(stride_depth, dilation_rate_depth, in_depth,
+                               filter_depth, *out_depth, &offset);
+  padding_values.depth_offset = offset;
   padding_values.height =
       ComputePaddingWithOffset(stride_height, dilation_rate_height, in_height,
                                filter_height, *out_height, &offset);

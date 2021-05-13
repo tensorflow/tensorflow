@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_linux_x86_64",
@@ -23,7 +24,7 @@ package(
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.

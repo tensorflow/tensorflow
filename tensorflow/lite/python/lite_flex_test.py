@@ -18,19 +18,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
+import os
 
+from absl.testing import parameterized
+import numpy as np
+
+from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
+from tensorflow.lite.python import test_util as tflite_test_util
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.testdata import double_op
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.tracking import tracking
 
 
@@ -41,8 +50,7 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('DisableMlirConverter', False))  # disable mlir
   def testFlexMode(self, enable_mlir):
     with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      in_tensor = array_ops.placeholder(shape=[1, 4], dtype=dtypes.float32)
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
@@ -54,19 +62,22 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    # Ensures the model contains TensorFlow ops.
-    # TODO(nupurgarg): Check values once there is a Python delegate interface.
+    # Check the model works with TensorFlow ops.
     interpreter = Interpreter(model_content=tflite_model)
-    with self.assertRaises(RuntimeError) as error:
-      interpreter.allocate_tensors()
-    self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter.',
-        str(error.exception))
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
 
   def testDeprecatedFlags(self):
     with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      in_tensor = array_ops.placeholder(shape=[1, 4], dtype=dtypes.float32)
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
@@ -83,14 +94,18 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    # Ensures the model contains TensorFlow ops.
-    # TODO(nupurgarg): Check values once there is a Python delegate interface.
+    # Check the model works with TensorFlow ops.
     interpreter = Interpreter(model_content=tflite_model)
-    with self.assertRaises(RuntimeError) as error:
-      interpreter.allocate_tensors()
-    self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter.',
-        str(error.exception))
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
 
 
 class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
@@ -114,14 +129,100 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
 
-    # Ensures the model contains TensorFlow ops.
-    # TODO(nupurgarg): Check values once there is a Python delegate interface.
+    # Check the model works with TensorFlow ops.
     interpreter = Interpreter(model_content=tflite_model)
-    with self.assertRaises(RuntimeError) as error:
-      interpreter.allocate_tensors()
-    self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter.',
-        str(error.exception))
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([4.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([24.0], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
+
+
+class WithCustomOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def _createGraphWithCustomOp(self, opname='CustomAdd'):
+    custom_opdefs_str = (
+        'name: \'' + opname + '\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+        'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
+        '\'Output\' type: DT_FLOAT}')
+
+    # Create a graph that has one add op.
+    new_graph = graph_pb2.GraphDef()
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='input')
+        out_tensor = in_tensor + in_tensor
+        inputs = {'x': in_tensor}
+        outputs = {'z': out_tensor}
+
+        new_graph.CopyFrom(sess.graph_def)
+
+    # Rename Add op name to opname.
+    for node in new_graph.node:
+      if node.op.startswith('Add'):
+        node.op = opname
+        del node.attr['T']
+
+    # Register custom op defs to import modified graph def.
+    register_custom_opdefs([custom_opdefs_str])
+
+    return (new_graph, inputs, outputs)
+
+  def testFlexWithCustomOp(self):
+    new_graph, inputs, outputs = self._createGraphWithCustomOp(
+        opname='CustomAdd4')
+
+    # Import to load the custom opdef.
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        import_graph_def(new_graph, name='')
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
+    converter.target_spec.experimental_select_user_tf_ops = ['CustomAdd4']
+    tflite_model = converter.convert()
+
+    self.assertIn('FlexCustomAdd4', tflite_test_util.get_ops_list(tflite_model))
+
+  def testFlexWithDoubleOp(self):
+    # Create a graph that has one double op.
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'model2')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 4], dtype=dtypes.int32, name='input')
+        out_tensor = double_op.double(in_tensor)
+        inputs = {'x': in_tensor}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
+    converter.target_spec.experimental_select_user_tf_ops = ['Double']
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn('FlexDouble', tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works with TensorFlow ops.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.int32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.int32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
 
 
 if __name__ == '__main__':

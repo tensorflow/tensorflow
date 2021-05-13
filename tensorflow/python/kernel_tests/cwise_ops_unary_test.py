@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -60,6 +61,8 @@ def _default_tolerance(dtype):
   Args:
     dtype: A datatype.
   """
+  if dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+    return 5e-3
   if dtype == np.float16:
     return 5e-3
   elif dtype in (np.float32, np.complex64):
@@ -80,12 +83,7 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      if x.dtype in (np.float32, np.float64,
-                     dtypes_lib.bfloat16.as_numpy_dtype):
-        y = 1.1 * tf_func(inx)
-        np_ans *= 1.1
-      else:
-        y = tf_func(inx)
+      y = tf_func(inx)
       tf_cpu = self.evaluate(y)
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
@@ -98,7 +96,7 @@ class UnaryOpTest(test.TestCase):
       if x.dtype in (np.complex64, np.complex128) and tf_func == math_ops.sign:
         return  # Return early
 
-      if x.dtype == np.float16:
+      if x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
         s = list(np.shape(x))
         jacob_t, _ = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x)
@@ -107,7 +105,7 @@ class UnaryOpTest(test.TestCase):
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(
             inxf, s, yf, s, x_init_value=xf, delta=1e-2)
-        jacob_n = jacob_n.astype(np.float16)
+        jacob_n = jacob_n.astype(x.dtype)
         self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
@@ -141,10 +139,10 @@ class UnaryOpTest(test.TestCase):
     with test_util.use_gpu():
       result = tf_func(ops.convert_to_tensor(x))
       tf_gpu = self.evaluate(result)
-    if x.dtype == np.float16:
-      self.assertAllClose(np_ans, tf_gpu, rtol=1e-3, atol=1e-3)
-    else:
-      self.assertAllClose(np_ans, tf_gpu)
+      # Slightly increase the tolerance for float64 computations. This is
+      # desired for specifically lgamma but shouldn't be of concern for other
+      # functions.
+      self.assertAllCloseAccordingToType(np_ans, tf_gpu, atol=2e-6)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
   def _compareSparseGpu(self, x, np_func, tf_func, tol):
@@ -228,8 +226,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -281,8 +279,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arctan, math_ops.atan)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -335,8 +333,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.tan, math_ops.tan)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -375,13 +373,6 @@ class UnaryOpTest(test.TestCase):
         math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
-    try:
-      from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
-    except ImportError as e:
-      tf_logging.warn("Cannot test special functions: %s" % str(e))
-
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
@@ -390,21 +381,50 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf, tol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testBFloat16Basic(self):
+    def compute_f32(np_func):
+      """Decorator to compute Numpy function with float32 math."""
+      def f(x):
+        y = np_func(x.astype(np.float32))
+        return y.astype(x.dtype)
+      return f
+
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.arange(-6, 6,
                   2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
+    y = (x + .5).astype(bfloat16)  # no zero
+    z = (x + 15.5).astype(bfloat16)  # all positive
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
+    self._compareCpu(y, compute_f32(self._inv), math_ops.reciprocal)
+    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareCpu(x, np.expm1, math_ops.expm1)
+    self._compareCpu(z, compute_f32(np.log), math_ops.log)
+    self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
+    self._compareCpu(y, np.sign, math_ops.sign)
+    self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
+    self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
+    self._compareBoth(x, compute_f32(np.tan), math_ops.tan)
+    self._compareBoth(x, compute_f32(np.sinh), math_ops.sinh)
+    self._compareBoth(x, compute_f32(np.cosh), math_ops.cosh)
+    self._compareBoth(x, compute_f32(np.tanh), math_ops.tanh)
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
 
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -446,7 +466,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, math_ops.reciprocal)
+    self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
@@ -491,7 +511,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, math_ops.reciprocal)
+    self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)

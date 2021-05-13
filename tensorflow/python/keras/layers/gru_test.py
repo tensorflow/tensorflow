@@ -14,9 +14,7 @@
 # ==============================================================================
 """Tests for GRU layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import copy
 
 from absl.testing import parameterized
 import numpy as np
@@ -24,7 +22,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -46,10 +43,11 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_v2_only
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Double type is not yet supported in ROCm')
+  @testing_utils.run_v2_only
   def test_float64_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Double type is yet not supported in ROCm')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -132,9 +130,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='MIOpen only supports packed input output')
   def test_with_masking_layer_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('MIOpen only supports packed input output')
     layer_class = keras.layers.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -148,9 +147,10 @@ class GRULayerTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='MIOpen only supports packed input output')
   def test_statefulness_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('MIOpen only supports packed input output')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -221,8 +221,7 @@ class GRULayerTest(keras_parameterized.TestCase):
     initial_state = cell.get_initial_state(
         batch_size=batch_size, dtype=dtypes.float32)
     _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
-    self.assertLen(state, 1)
-    self.assertEqual(state[0].shape, initial_state.shape)
+    self.assertEqual(state.shape, initial_state.shape)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -253,6 +252,12 @@ class GRULayerGenericTest(test.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+  def test_deep_copy_GRU(self):
+    cell = keras.layers.GRUCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
 
   def test_regularizers_GRU(self):
     embedding_dim = 4

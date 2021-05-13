@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <tuple>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -80,6 +81,7 @@ class ShapeIndex {
 
   // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
+  void pop_front() { indices_.erase(indices_.begin()); }
 
   using container_type = absl::InlinedVector<int64, 2>;
 
@@ -92,6 +94,9 @@ class ShapeIndex {
 
   int64 back() const { return indices_.back(); }
   int64& back() { return indices_.back(); }
+
+  int64 front() const { return indices_.front(); }
+  int64& front() { return indices_.front(); }
 
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
@@ -246,6 +251,11 @@ class ShapeUtil {
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the LHS and RHS shapes have the same rank; note: does
+  // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
+  static bool SameRank(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes have the same element type.
   static bool SameElementType(const Shape& lhs, const Shape& rhs) {
     return lhs.element_type() == rhs.element_type();
@@ -266,13 +276,8 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    if (SameElementType(a, b)) {
-      return a.element_type();
-    }
-    return primitive_util::BitWidth(a.element_type()) <
-                   primitive_util::BitWidth(b.element_type())
-               ? b.element_type()
-               : a.element_type();
+    return primitive_util::HigherPrecisionType(a.element_type(),
+                                               b.element_type());
   }
 
   // Returns true if the rank, dimension sizes, and element type are
@@ -284,6 +289,11 @@ class ShapeUtil {
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the tuple tree shapes and leaf ranks are identical.
+  // Leaf dimensions, element type, and layout are ignored. Tuple elements are
+  // compared recursively for compatibility.
+  static bool CompatibleKind(const Shape& lhs, const Shape& rhs);
 
   // As Compatible, but allow one of lhs and rhs to be BF16 while the other
   // being F32. Tuple elements are compared recursively for compatibility.
@@ -297,6 +307,16 @@ class ShapeUtil {
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
+
+  // Two shapes have same structure if all subshape indices of lhs are presented
+  // on rhs and vice versa.
+  // A nested tuple shape of (F32, (S32[2], F32[2, 2])) is structurally equal to
+  // (S32, (F32[3], S32[2])) as their structures are both (,(,))
+  //
+  // In contrast, (F32, (F32, F32)) is structurally different from
+  // ((F32, F32), F32) as the former has structure (,(,)) while the latter has
+  // ((,),)
+  static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -339,6 +359,9 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
+  // Retursn a shape with same dimensions but with all dimensions set to static.
+  static Shape MakeStaticShape(const Shape& original);
+
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
@@ -363,6 +386,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Copy the dynamic dimensions property from one shape to another.
+  static void CopyDynamicDimensions(Shape* to, const Shape& from);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
@@ -415,6 +441,12 @@ class ShapeUtil {
                                    absl::Span<const Tile> tiles = {},
                                    int64 element_size_in_bits = 0,
                                    int64 memory_space = 0);
+
+  // Constructs a new shape with the given dimension `dim` as the most major
+  // dimension in the layout. If the shape does not have a layout, assumes a
+  // default layout. If the shape is a tuple, apply this to all the leaf shapes
+  // of the tuple.
+  static Shape MoveDimToMajor(const Shape& shape, int64 dim);
 
   // Returns the same shape except with all dimensions set to be static.
   static Shape MakeShapeWithStaticDimensions(const Shape& shape);
@@ -548,13 +580,13 @@ class ShapeUtil {
   static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
   // Postcondition: For any valid permutation,
   //
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
-  //                      InversePermutation(permutation)).
+  //                      permutation).
   static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 
@@ -643,12 +675,20 @@ class ShapeUtil {
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
 
-  // Iterates through all the shape indexes, in minor to major order, starting
-  // from the base indexes, incrementing by the incr steps, up to count
-  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
-  // current index.
-  // The visitor_function visitor function should return true if it wants to
-  // continue, or false otherwise.
+  // Returns true if `dynamic_shape` has dimensions that are less-equal to the
+  // "bounded_shape". Shapes must be arrays.
+  static bool DynamicArrayShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                            const xla::Shape& bounded_shape);
+
+  // Same as DynamicArrayShapeIsCompatible() but supports tuples.
+  static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                       const xla::Shape& bounded_shape);
+
+  // Iterates through all the shape indexes, in minor to major order,
+  // starting from the base indexes, incrementing by the incr steps, up to
+  // count (index[i] < base[i] + count[i]), and calls the visitor_function
+  // with the current index. The visitor_function visitor function should
+  // return true if it wants to continue, or false otherwise.
   //
   // visitor_function must be a callable of type
   // StatusOr<bool>(absl::Span<int64>) or compatible.
@@ -751,7 +791,20 @@ class ShapeUtil {
   static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
                                                              const Shape& b);
 
+  // Strips device-specific information, namely tiling and memory-space
+  // information, from a shape.
+  static Shape DeviceShapeToHostShape(Shape s);
+
+  // Returns true iff element type of shape `from` can be safely upcasted to
+  // element type of shape `to`.
+  static bool ElementCanUpcast(const Shape& from, const Shape& to);
+
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

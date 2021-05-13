@@ -21,14 +21,14 @@ limitations under the License.
 #include <CL/cl_ext.h>
 #include <CL/cl_gl.h>
 #include <CL/cl_platform.h>
+#include "tensorflow/lite/delegates/gpu/cl/default/qcom_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status LoadOpenCL();
-void LoadOpenCLFunctions(void *libopencl, bool is_pixel);
+absl::Status LoadOpenCL();
 
 typedef cl_int(CL_API_CALL *PFN_clGetPlatformIDs)(
     cl_uint /* num_entries */, cl_platform_id * /* platforms */,
@@ -640,7 +640,7 @@ extern PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 extern PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 extern PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
 
-// For convinient image creation
+// For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)
 // otherwise it will use legacy clCreateImage2D
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,

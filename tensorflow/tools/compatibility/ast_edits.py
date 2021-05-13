@@ -213,8 +213,8 @@ class APIChangeSpec(object):
   """
 
   def preprocess(self, root_node):  # pylint: disable=unused-argument
-    """Preprocess a parse tree. Return any produced logs and errors."""
-    return [], []
+    """Preprocess a parse tree. Return a preprocessed node, logs and errors."""
+    return root_node, [], []
 
   def clear_preprocessing(self):
     """Restore this APIChangeSpec to before it preprocessed a file.
@@ -942,7 +942,7 @@ class ASTCodeUpgrader(object):
       log = ["ERROR: Failed to parse.\n" + traceback.format_exc()]
       return 0, "", log, []
 
-    preprocess_logs, preprocess_errors = self._api_change_spec.preprocess(t)
+    t, preprocess_logs, preprocess_errors = self._api_change_spec.preprocess(t)
 
     visitor = _PastaEditVisitor(self._api_change_spec)
     visitor.visit(t)

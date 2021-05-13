@@ -122,10 +122,10 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       self.assertIs(initial_value, cyclic)
 
   def testIterable(self):
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegex(TypeError, "not iterable"):
       for _ in variables.Variable(0.0):
         pass
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegex(TypeError, "not iterable"):
       for _ in variables.Variable([0.0, 1.0]):
         pass
 
@@ -150,7 +150,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testResourceAssignments(self):
-    with self.session(use_gpu=True):
+    with self.session():
       var = resource_variable_ops.ResourceVariable(0.0)
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)
@@ -170,8 +170,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testAssignDifferentShapesEagerNotAllowed(self):
     with context.eager_mode():
       var = variables.Variable(np.zeros(shape=[1, 1]))
-      with self.assertRaisesRegexp(ValueError,
-                                   "Shapes.*and.*are incompatible"):
+      with self.assertRaisesRegex(ValueError, "shape.*and.*are incompatible"):
         var.assign(np.zeros(shape=[2, 2]))
 
   @test_util.run_in_graph_and_eager_modes
@@ -271,10 +270,10 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       self.evaluate(v2.initializer)
       self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors_impl.OpError, "uninitialized"):
         self.evaluate(v0)
       # We should not be able to run 'add' yet.
-      with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors_impl.OpError, "uninitialized"):
         self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
       self.evaluate(v0.initializer)
@@ -291,7 +290,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       v = variables.Variable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+    with self.assertRaisesRegex(ValueError, "inside a control-flow"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   @test_util.run_deprecated_v1
@@ -654,14 +653,14 @@ class IsInitializedTest(test.TestCase):
       self.assertAllEqual(np.array([b"v", b"w"]), self.evaluate(uninited))
       self.evaluate(w.initializer)
       self.assertAllEqual(np.array([b"v"]), self.evaluate(uninited))
-      v.initializer.run()
+      self.evaluate(v.initializer)
       self.assertEqual(0, self.evaluate(uninited).size)
 
   def testZeroSizeVarInitialized(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.Variable(array_ops.zeros([0, 2]), name="v")
       uninited = variables.report_uninitialized_variables()
-      v.initializer.run()  # not strictly necessary
+      self.evaluate(v.initializer)  # not strictly necessary
       self.assertEqual(0, self.evaluate(uninited).size)
 
   def testTrainingWithZeroSizeVar(self):
@@ -705,7 +704,7 @@ class ObsoleteIsInitializedTest(test.TestCase):
       self.evaluate(w.initializer)
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         inited.op.run()
-      v.initializer.run()
+      self.evaluate(v.initializer)
       inited.op.run()
 
 
@@ -742,7 +741,7 @@ class PartitionedVariableTest(test.TestCase):
 
   def testPartitionedVariableFailures(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "empty"):
+      with self.assertRaisesRegex(ValueError, "empty"):
         variables.PartitionedVariable(
             name="fail",
             shape=2,
@@ -750,7 +749,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[],
             partitions=[])
 
-      with self.assertRaisesRegexp(ValueError, "must have a save_slice_info"):
+      with self.assertRaisesRegex(ValueError, "must have a save_slice_info"):
         v0 = variables.Variable([0])
         partitions = [1]
         variables.PartitionedVariable(
@@ -760,7 +759,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[v0],
             partitions=partitions)
 
-      with self.assertRaisesRegexp(ValueError, "full shapes must match"):
+      with self.assertRaisesRegex(ValueError, "full shapes must match"):
         v0 = variables.Variable([0])
         v1 = variables.Variable([1])
         v0._set_save_slice_info(
@@ -776,7 +775,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[v1, v0],
             partitions=partitions)
 
-      with self.assertRaisesRegexp(ValueError, "must be positive"):
+      with self.assertRaisesRegex(ValueError, "must be positive"):
         v0 = variables.Variable([0])
         v0._set_save_slice_info(
             variables.Variable.SaveSliceInfo(v0.name, [2], [0], [1]))

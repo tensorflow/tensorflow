@@ -138,6 +138,15 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
     """
+    parameters = dict(
+        col=col,
+        row=row,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[row, col]):
       self._row = linear_operator_util.convert_nonref_to_tensor(row, name="row")
@@ -150,12 +159,13 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
 
       super(LinearOperatorToeplitz, self).__init__(
           dtype=self._row.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
+
       self._set_graph_parents([self._row, self._col])
 
   def _check_row_col(self, row, col):
@@ -209,8 +219,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     # for more details.
     x = linalg.adjoint(x) if adjoint_arg else x
     expanded_x = array_ops.concat([x, array_ops.zeros_like(x)], axis=-2)
-    col = ops.convert_to_tensor(self.col)
-    row = ops.convert_to_tensor(self.row)
+    col = ops.convert_to_tensor_v2_with_dispatch(self.col)
+    row = ops.convert_to_tensor_v2_with_dispatch(self.row)
     circulant_col = array_ops.concat(
         [col,
          array_ops.zeros_like(col[..., 0:1]),
@@ -236,8 +246,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         [self.domain_dimension_tensor()], self.dtype)
 
   def _to_dense(self):
-    row = ops.convert_to_tensor(self.row)
-    col = ops.convert_to_tensor(self.col)
+    row = ops.convert_to_tensor_v2_with_dispatch(self.row)
+    col = ops.convert_to_tensor_v2_with_dispatch(self.col)
     total_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(row), array_ops.shape(col))
     n = array_ops.shape(row)[-1]

@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XRT_XRT_DEVICE_H_
 
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
@@ -30,6 +31,9 @@ namespace tensorflow {
 class XRTGenericDeviceAccessor {
  public:
   static Status GetResourceManager(OpKernelContext* ctx, ResourceMgr** rm);
+
+  static xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
+      OpKernelContext* ctx, int64 max_number_of_entries);
 
   // We use a ScopedRef pattern here even though it's not strictly necessary,
   // just so that templated uses of this and the TPU accessor class will be as

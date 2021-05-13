@@ -128,7 +128,7 @@ void ProfileSummarizer::ProcessProfiles(
   int64_t delegate_internal_total_us = 0;
 
   for (auto event : events) {
-    const auto subgraph_index = event->event_subgraph_index;
+    const auto subgraph_index = event->extra_event_metadata;
     auto stats_calculator = GetStatsCalculator(subgraph_index);
     int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
@@ -168,13 +168,17 @@ void ProfileSummarizer::ProcessProfiles(
           node_name_in_stats, "DelegateOpInvoke", node_num, start_us,
           node_exec_time, 0 /*memory */);
     } else {
-      // TODO(b/139812778) consider use a different stats_calculator to record
+      // Note: a different stats_calculator could be used to record
       // non-op-invoke events so that these could be separated from
       // op-invoke-events in the final profiling stats report.
       const memory::MemoryUsage node_mem_usage =
           event->end_mem_usage - event->begin_mem_usage;
       std::string node_name(event->tag);
-      node_name += "/" + std::to_string(event->event_subgraph_index);
+      if (node_name == "Invoke") {
+        // Don't count the overall Invoke for profiling.
+        continue;
+      }
+      node_name += "/" + std::to_string(event->extra_event_metadata);
       stats_calculator->AddNodeStats(node_name, event->tag, node_num, start_us,
                                      node_exec_time,
                                      node_mem_usage.max_rss_kb * 1000.0);

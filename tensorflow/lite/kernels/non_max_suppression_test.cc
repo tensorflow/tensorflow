@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -74,7 +77,7 @@ class NonMaxSuppressionV4OpModel : public BaseNMSOp {
       input_max_output_size_ =
           AddConstInput(TensorType_INT32, {max_output_size});
     } else {
-      input_max_output_size_ = AddInput(TensorType_INT32, {});
+      input_max_output_size_ = AddInput(TensorType_INT32);
     }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});
@@ -165,7 +168,7 @@ class NonMaxSuppressionV5OpModel : public BaseNMSOp {
       input_max_output_size_ =
           AddConstInput(TensorType_INT32, {max_output_size});
     } else {
-      input_max_output_size_ = AddInput(TensorType_INT32, {});
+      input_max_output_size_ = AddInput(TensorType_INT32);
     }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});

@@ -38,7 +38,7 @@ namespace {
 constexpr char kNHWC[] = "NHWC";
 constexpr char kNCHW[] = "NCHW";
 constexpr float kVoltaGPURatioThreshold = 0.5;
-constexpr float kConv2DGPUFP16Threshold = 0.5;
+constexpr float kConvGPUFP16Threshold = 0.5;
 
 struct MutableNodeViewFormatter {
   void operator()(std::string* out, utils::MutableNodeView* node_view) const {
@@ -69,15 +69,15 @@ inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
   return {num_gpus, num_volta};
 }
 
-inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
+inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     const TransposeContext& context, absl::string_view device,
     const DataType& data_type) {
-  int num_conv2d_gpu = 0;
-  int num_conv2d_gpu_fp16 = 0;
+  int num_conv_gpu = 0;
+  int num_conv_gpu_fp16 = 0;
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
-    if (!IsConv2D(*node_def)) {
+    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
     const string& device_name =
@@ -89,20 +89,20 @@ inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
                            absl::AsciiStrToLower(device))) {
       continue;
     }
-    num_conv2d_gpu++;
+    num_conv_gpu++;
     const auto* t_attr = node.GetAttr("T");
     if (t_attr == nullptr) {
       continue;
     }
     if (t_attr->type() == data_type) {
-      num_conv2d_gpu_fp16++;
+      num_conv_gpu_fp16++;
     }
   }
 
-  if (num_conv2d_gpu == 0) return false;
+  if (num_conv_gpu == 0) return false;
 
-  return (static_cast<float>(num_conv2d_gpu_fp16) /
-          static_cast<float>(num_conv2d_gpu)) >= kConv2DGPUFP16Threshold;
+  return (static_cast<float>(num_conv_gpu_fp16) /
+          static_cast<float>(num_conv_gpu)) >= kConvGPUFP16Threshold;
 }
 
 inline std::pair<string, string> GetSrcAndDstDataFormats(
@@ -111,7 +111,7 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
   string dst_format = kNCHW;
   if (((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
        kVoltaGPURatioThreshold) &&
-      NumConv2DOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
+      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
     std::swap(src_format, dst_format);
   }
   return {src_format, dst_format};
@@ -384,7 +384,11 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
   const int num_nodes = graph_view->NumNodes();
   for (int i = 0; i < num_nodes; ++i) {
-    mutation->RemoveNodeAttr(graph_view->GetNode(i), kAttrOutputShape);
+    auto* node = graph_view->GetNode(i);
+    if (IsArg(*node->node())) {
+      continue;
+    }
+    mutation->RemoveNodeAttr(node, kAttrOutputShape);
     TF_RETURN_IF_ERROR(mutation->Apply());
   }
   return Status::OK();
@@ -392,6 +396,10 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
 
 }  // namespace
 
+// When there is a GPU, the computation graph is converted to NCHW format.
+// When there is only CPU, there will be no conversion by default, unless user
+// chose to convert the graph to a desired format. Currently, NCHW -> NHWC
+// format conversion is available on CPU.
 Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
                                         const GrapplerItem& item,
                                         GraphDef* output) {
@@ -402,22 +410,37 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   }
   const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
   const int num_gpus = num_gpus_and_num_volta.first;
-  if (num_gpus < 1) {
-    return errors::Aborted(
-        "No GPUs found: GenericLayoutOptimizer is currently only tuned for "
-        "GPU.");
-  }
 
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   TransposeContext context;
-  TF_RETURN_IF_ERROR(
-      TransposeContext::InitializeTransposeContext(item, cluster, &context));
+  if (num_gpus > 0) {
+    TF_RETURN_IF_ERROR(
+        TransposeContext::InitializeTransposeContext(item, cluster, &context));
 
-  const auto src_dst_formats =
-      GetSrcAndDstDataFormats(context, num_gpus, num_gpus_and_num_volta.second);
-  context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
-                                     src_dst_formats.second);
+    const auto src_dst_formats = GetSrcAndDstDataFormats(
+        context, num_gpus, num_gpus_and_num_volta.second);
+    context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
+                                       src_dst_formats.second);
+  } else {
+    TF_RETURN_IF_ERROR(
+        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    switch (cpu_layout_conversion_) {
+      case RewriterConfig::NCHW_TO_NHWC:
+        context.AssignDeviceAndDataFormats(kCPU, kNCHW, kNHWC);
+        break;
+      // TODO(intel-tf): Add functionality for NHWC_TO_NCHW layout conversion on
+      // CPU.
+      case RewriterConfig::NHWC_TO_NCHW:
+        return errors::Aborted(
+            "Conversion from NHWC to NCHW is currently not  available for "
+            "CPU.");
+      default:
+        *output = item.graph;
+        VLOG(2) << "No layout conversion will take place for CPU.";
+        return Status::OK();
+    }
+  }
 
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));

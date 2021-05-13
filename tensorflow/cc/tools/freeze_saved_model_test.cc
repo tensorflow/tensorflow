@@ -138,7 +138,7 @@ class FreezeTest : public ::testing::Test {
     }
 
     TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-    // "c" isnt dependent on the variable, so nothing should be frozen.
+    // "c" isn't dependent on the variable, so nothing should be frozen.
     TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 
@@ -183,7 +183,7 @@ class FreezeTest : public ::testing::Test {
     }
     Output c = ops::Mul(scope.WithOpName("c"), a, read_var);
     TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-    // "c" isnt dependent on the variable, so nothing should be frozen.
+    // "c" isn't dependent on the variable, so nothing should be frozen.
     TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 
@@ -244,7 +244,7 @@ class FreezeTest : public ::testing::Test {
 
     Output c = ops::Mul(scope.WithOpName("c"), a, read_var);
     TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-    // "c" isnt dependent on the variable, so nothing should be frozen.
+    // "c" isn't dependent on the variable, so nothing should be frozen.
     TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 

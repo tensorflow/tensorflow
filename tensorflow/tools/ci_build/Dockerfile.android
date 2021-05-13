@@ -42,7 +42,7 @@ RUN cd ${ANDROID_DEV_HOME} && \
     echo y | android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r17c-linux-x86_64.zip
+ENV ANDROID_NDK_FILENAME android-ndk-r18b-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}

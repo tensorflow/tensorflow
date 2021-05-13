@@ -25,17 +25,21 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-TEST(ShuffleAndRepeatFusionTest, FuseShuffleAndRepeatNodesIntoOne) {
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
+
+TEST(ShuffleAndRepeatFusionTest, FuseShuffleV1AndRepeat) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
   std::vector<std::pair<string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
-  SetAttrValue("output_shapes", &shapes_attr);
-  common_attrs[0] = std::make_pair("output_shapes", shapes_attr);
+  SetAttrValue(kOutputShapes, &shapes_attr);
+  common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
   AttrValue types_attr;
-  SetAttrValue("output_types", &types_attr);
-  common_attrs[1] = std::make_pair("output_types", types_attr);
+  SetAttrValue(kOutputTypes, &types_attr);
+  common_attrs[1] = std::make_pair(kOutputTypes, types_attr);
 
   NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
@@ -59,6 +63,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleAndRepeatNodesIntoOne) {
   shuffle_inputs[3] = seed2_node->name();
   NodeDef *shuffle_node = graph_utils::AddNode(
       "", "ShuffleDataset", shuffle_inputs, common_attrs, &graph);
+  (*shuffle_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
 
   NodeDef *count_node = graph_utils::AddScalarConstNode<int64>(-1, &graph);
   std::vector<string> repeat_inputs(2);
@@ -85,12 +90,148 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleAndRepeatNodesIntoOne) {
   EXPECT_EQ(shuffle_and_repeat_node.input(2), shuffle_node->input(2));
   EXPECT_EQ(shuffle_and_repeat_node.input(3), shuffle_node->input(3));
   EXPECT_EQ(shuffle_and_repeat_node.input(4), repeat_node->input(1));
+  for (const auto &attr :
+       {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
+    EXPECT_TRUE(AreAttrValuesEqual(shuffle_and_repeat_node.attr().at(attr),
+                                   shuffle_node->attr().at(attr)));
+  }
+}
+
+TEST(ShuffleAndRepeatFusionTest, FuseShuffleV2AndRepeat) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  AttrValue shapes_attr;
+  SetAttrValue(kOutputShapes, &shapes_attr);
+  common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
+  AttrValue types_attr;
+  SetAttrValue(kOutputTypes, &types_attr);
+  common_attrs[1] = std::make_pair(kOutputTypes, types_attr);
+
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+
+  std::vector<string> range_inputs(3);
+  range_inputs[0] = start_node->name();
+  range_inputs[1] = stop_node->name();
+  range_inputs[2] = step_node->name();
+  NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
+                                             common_attrs, &graph);
+
+  NodeDef *buffer_size_node =
+      graph_utils::AddScalarConstNode<int64>(128, &graph);
+  NodeDef *seed_generator_node =
+      graph_utils::AddScalarConstNode<StringPiece>("dummy_resource", &graph);
+  std::vector<string> shuffle_inputs(3);
+  shuffle_inputs[0] = range_node->name();
+  shuffle_inputs[1] = buffer_size_node->name();
+  shuffle_inputs[2] = seed_generator_node->name();
+  NodeDef *shuffle_node = graph_utils::AddNode(
+      "", "ShuffleDatasetV2", shuffle_inputs, common_attrs, &graph);
+
+  NodeDef *count_node = graph_utils::AddScalarConstNode<int64>(-1, &graph);
+  std::vector<string> repeat_inputs(2);
+  repeat_inputs[0] = shuffle_node->name();
+  repeat_inputs[1] = count_node->name();
+  NodeDef *repeat_node = graph_utils::AddNode(
+      "", "RepeatDataset", repeat_inputs, common_attrs, &graph);
+
+  ShuffleAndRepeatFusion optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_FALSE(
+      graph_utils::ContainsGraphNodeWithName(shuffle_node->name(), output));
+  EXPECT_FALSE(
+      graph_utils::ContainsGraphNodeWithName(repeat_node->name(), output));
   EXPECT_TRUE(
-      AreAttrValuesEqual(shuffle_and_repeat_node.attr().at("output_shapes"),
-                         repeat_node->attr().at("output_shapes")));
+      graph_utils::ContainsNodeWithOp("ShuffleAndRepeatDatasetV2", output));
+  NodeDef shuffle_and_repeat_node = output.node(
+      graph_utils::FindGraphNodeWithOp("ShuffleAndRepeatDatasetV2", output));
+  EXPECT_EQ(shuffle_and_repeat_node.input_size(), 6);
+  EXPECT_EQ(shuffle_and_repeat_node.input(0), shuffle_node->input(0));
+  EXPECT_EQ(shuffle_and_repeat_node.input(1), shuffle_node->input(1));
+  EXPECT_EQ(shuffle_and_repeat_node.input(4), repeat_node->input(1));
+  EXPECT_EQ(shuffle_and_repeat_node.input(5), shuffle_node->input(2));
+  for (const auto &attr : {kOutputShapes, kOutputTypes}) {
+    EXPECT_TRUE(AreAttrValuesEqual(shuffle_and_repeat_node.attr().at(attr),
+                                   shuffle_node->attr().at(attr)));
+  }
+  EXPECT_TRUE(shuffle_and_repeat_node.attr().at(kReshuffleEachIteration).b());
+}
+
+TEST(ShuffleAndRepeatFusionTest, FuseShuffleV3AndRepeat) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  AttrValue shapes_attr;
+  SetAttrValue(kOutputShapes, &shapes_attr);
+  common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
+  AttrValue types_attr;
+  SetAttrValue(kOutputTypes, &types_attr);
+  common_attrs[1] = std::make_pair(kOutputTypes, types_attr);
+
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+
+  std::vector<string> range_inputs(3);
+  range_inputs[0] = start_node->name();
+  range_inputs[1] = stop_node->name();
+  range_inputs[2] = step_node->name();
+  NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
+                                             common_attrs, &graph);
+
+  NodeDef *buffer_size_node =
+      graph_utils::AddScalarConstNode<int64>(128, &graph);
+  NodeDef *seed_node = graph_utils::AddScalarConstNode<int64>(-1, &graph);
+  NodeDef *seed2_node = graph_utils::AddScalarConstNode<int64>(-1, &graph);
+  NodeDef *seed_generator_node =
+      graph_utils::AddScalarConstNode<StringPiece>("dummy_resource", &graph);
+  std::vector<string> shuffle_inputs(5);
+  shuffle_inputs[0] = range_node->name();
+  shuffle_inputs[1] = buffer_size_node->name();
+  shuffle_inputs[2] = seed_node->name();
+  shuffle_inputs[3] = seed2_node->name();
+  shuffle_inputs[4] = seed_generator_node->name();
+  NodeDef *shuffle_node = graph_utils::AddNode(
+      "", "ShuffleDatasetV3", shuffle_inputs, common_attrs, &graph);
+  (*shuffle_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
+
+  NodeDef *count_node = graph_utils::AddScalarConstNode<int64>(-1, &graph);
+  std::vector<string> repeat_inputs(2);
+  repeat_inputs[0] = shuffle_node->name();
+  repeat_inputs[1] = count_node->name();
+  NodeDef *repeat_node = graph_utils::AddNode(
+      "", "RepeatDataset", repeat_inputs, common_attrs, &graph);
+
+  ShuffleAndRepeatFusion optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_FALSE(
+      graph_utils::ContainsGraphNodeWithName(shuffle_node->name(), output));
+  EXPECT_FALSE(
+      graph_utils::ContainsGraphNodeWithName(repeat_node->name(), output));
   EXPECT_TRUE(
-      AreAttrValuesEqual(shuffle_and_repeat_node.attr().at("output_types"),
-                         repeat_node->attr().at("output_types")));
+      graph_utils::ContainsNodeWithOp("ShuffleAndRepeatDatasetV2", output));
+  NodeDef shuffle_and_repeat_node = output.node(
+      graph_utils::FindGraphNodeWithOp("ShuffleAndRepeatDatasetV2", output));
+  EXPECT_EQ(shuffle_and_repeat_node.input_size(), 6);
+  EXPECT_EQ(shuffle_and_repeat_node.input(0), shuffle_node->input(0));
+  EXPECT_EQ(shuffle_and_repeat_node.input(1), shuffle_node->input(1));
+  EXPECT_EQ(shuffle_and_repeat_node.input(2), shuffle_node->input(2));
+  EXPECT_EQ(shuffle_and_repeat_node.input(3), shuffle_node->input(3));
+  EXPECT_EQ(shuffle_and_repeat_node.input(4), repeat_node->input(1));
+  EXPECT_EQ(shuffle_and_repeat_node.input(5), shuffle_node->input(4));
+  for (const auto &attr :
+       {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
+    EXPECT_TRUE(AreAttrValuesEqual(shuffle_and_repeat_node.attr().at(attr),
+                                   shuffle_node->attr().at(attr)));
+  }
 }
 
 TEST(ShuffleAndRepeatFusionTest, NoChange) {
@@ -99,11 +240,11 @@ TEST(ShuffleAndRepeatFusionTest, NoChange) {
 
   std::vector<std::pair<string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
-  SetAttrValue("output_shapes", &shapes_attr);
-  common_attrs[0] = std::make_pair("output_shapes", shapes_attr);
+  SetAttrValue(kOutputShapes, &shapes_attr);
+  common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
   AttrValue types_attr;
-  SetAttrValue("output_types", &types_attr);
-  common_attrs[1] = std::make_pair("output_types", types_attr);
+  SetAttrValue(kOutputTypes, &types_attr);
+  common_attrs[1] = std::make_pair(kOutputTypes, types_attr);
 
   NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);

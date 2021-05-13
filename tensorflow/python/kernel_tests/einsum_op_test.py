@@ -35,6 +35,8 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS')
 class EinsumOpTest(test.TestCase):
 
   def _check(self, s, *input_shapes, **kwargs):
@@ -42,10 +44,11 @@ class EinsumOpTest(test.TestCase):
     r = np.random.RandomState(0)
     inputs = []
     for shape in input_shapes:
-      arr = np.array(r.randn(*shape)).astype(dtype)
-      if dtype == np.complex64 or dtype == np.complex128:
-        arr += 1j * np.array(r.randn(*shape)).astype(dtype)
-      inputs.append(arr)
+      with self.subTest(s=s, shape=shape):
+        arr = np.array(r.randn(*shape)).astype(dtype)
+        if dtype == np.complex64 or dtype == np.complex128:
+          arr += 1j * np.array(r.randn(*shape)).astype(dtype)
+        inputs.append(arr)
     input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
     a = np.einsum(s, *inputs)
     b = self.evaluate(gen_linalg_ops.einsum(input_tensors, s))
@@ -160,10 +163,11 @@ class EinsumOpTest(test.TestCase):
       input_shapes = [(2, 2), (2, 2)]
       inputs = []
       for shape in input_shapes:
-        arr = np.array(r.randn(*shape)).astype(dtype)
-        if dtype == np.complex64 or dtype == np.complex128:
-          arr += 1j * np.array(r.randn(*shape)).astype(dtype)
-        inputs.append(arr)
+        with self.subTest(dtype=dtype, shape=shape):
+          arr = np.array(r.randn(*shape)).astype(dtype)
+          if dtype == np.complex64 or dtype == np.complex128:
+            arr += 1j * np.array(r.randn(*shape)).astype(dtype)
+          inputs.append(arr)
       input_tensors = [constant_op.constant(x) for x in inputs]
       if dtype == bfloat16:
         # np.einsum doesn't support bfloat16.
@@ -199,14 +203,15 @@ class EinsumOpTest(test.TestCase):
         ('...ij,...jk->ik', r.randn(2, 2, 3), r.randn(3, 4)),
     ]
     for args in cases:
-      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
-        _ = self.evaluate(gen_linalg_ops.einsum(args[1:], args[0]))
+      with self.subTest(args=args):
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          _ = self.evaluate(gen_linalg_ops.einsum(args[1:], args[0]))
 
-      placeholders = [
-          array_ops.placeholder_with_default(x, shape=None) for x in args[1:]
-      ]
-      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
-        _ = self.evaluate(gen_linalg_ops.einsum(placeholders, args[0]))
+        placeholders = [
+            array_ops.placeholder_with_default(x, shape=None) for x in args[1:]
+        ]
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          _ = self.evaluate(gen_linalg_ops.einsum(placeholders, args[0]))
 
   @test_util.run_in_graph_and_eager_modes
   def testPlaceholder(self):
@@ -216,10 +221,12 @@ class EinsumOpTest(test.TestCase):
       inputs = []
       input_placeholders = []
       for actual_shape, placeholder_shape in input_and_placeholder_shapes:
-        input_np = np.array(r.randn(*actual_shape))
-        inputs.append(input_np)
-        input_placeholders.append(
-            array_ops.placeholder_with_default(input_np, placeholder_shape))
+        with self.subTest(equation=equation, actual_shape=actual_shape,
+                          placeholder_shape=placeholder_shape):
+          input_np = np.array(r.randn(*actual_shape))
+          inputs.append(input_np)
+          input_placeholders.append(
+              array_ops.placeholder_with_default(input_np, placeholder_shape))
 
       a = np.einsum(equation, *inputs)
       b = self.evaluate(gen_linalg_ops.einsum(input_placeholders, equation))
@@ -232,7 +239,6 @@ class EinsumOpTest(test.TestCase):
           ((4, 3), (None, 3)))
     check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
 
-  @test_util.disable_xla('b/131919749')
   def testOutputRepeatedLabels(self):
     # This is the reverse operation of generalized traces, to be used for
     # computing symbolic gradients of einsum. Note: this operation is not
@@ -259,7 +265,6 @@ class EinsumOpTest(test.TestCase):
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
 
-  @test_util.disable_xla('b/131919749')
   def testEmptyWithRepeatedLabels(self):
 
     def check(equation, input_shapes, output_shape):
@@ -282,19 +287,31 @@ class EinsumOpTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    "Tests einsum's gradient, which sometimes does a matmul with cuBLAS")
 class EinsumGradTest(test.TestCase):
 
   def _check_gradient(self, s, *input_shapes):
     with self.cached_session():
-      r = np.random.RandomState(0)
-      inputs = [np.array(r.randn(*shape), np.float64) for shape in input_shapes]
-      input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
-      analytical, numerical = gradient_checker_v2.compute_gradient(
-          lambda *xs: gen_linalg_ops.einsum(xs, s), input_tensors)
-      self.assertLess(
-          gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+      r = np.random.RandomState(seed=0)
+      for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+        with self.subTest(s=s, dtype=dtype):
+          tol = 10 * np.sqrt(np.finfo(dtype).resolution)
+          if dtype in (np.complex64, np.complex128):
+            inputs = [
+                np.array(r.randn(*shape), dtype) +
+                1j * np.array(r.randn(*shape), dtype) for shape in input_shapes
+            ]
+          else:
+            inputs = [
+                np.array(r.randn(*shape), dtype) for shape in input_shapes]
+          input_tensors = [
+              constant_op.constant(x, shape=x.shape) for x in inputs]
+          analytical, numerical = gradient_checker_v2.compute_gradient(
+              lambda *xs: gen_linalg_ops.einsum(xs, s), input_tensors)
+          self.assertLess(
+              gradient_checker_v2.max_error(analytical, numerical), tol)
 
-  @test_util.disable_xla('b/131919749')
   def testUnary(self):
     # Unary cases.
     self._check_gradient('->', ())
@@ -303,7 +320,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aabcd->add', (3, 3, 5, 4, 4))
     self._check_gradient('abcd->da', (3, 5, 4, 2))
 
-  @test_util.disable_xla('b/131919749')
   def testUnaryEllipsis(self):
     self._check_gradient('...->...', ())
     self._check_gradient('...->', ())
@@ -346,11 +362,9 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('ijkm,ijln->ijmn', (2, 3, 3, 4), (2, 3, 3, 2))
     self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
 
-  @test_util.disable_xla('b/131919749')
   def testReducedIndicesWithRepeatedLabels(self):
     self._check_gradient('abce,badf->bcba', (1, 2, 3, 4), (2, 1, 4, 3))
 
-  @test_util.disable_xla('b/131919749')
   def testRepeatedLabels(self):
     # Repeated indices.
     self._check_gradient('aba,a->b', (3, 4, 3), (3,))
@@ -360,7 +374,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
     self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testEmptyWithRepeatedLabels(self):
     self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
     self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
@@ -372,7 +385,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
     self._check_gradient('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcastingWithRepeatedLabels(self):
     self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
@@ -419,7 +431,7 @@ class EinsumBenchmark(test.Benchmark):
           input_shape = (dim,) * len(subscript)
           input_vars.append(
               variables.Variable(np.array(r.randn(*input_shape), np.float32)))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Call einsum_v1.
         self.run_op_benchmark(

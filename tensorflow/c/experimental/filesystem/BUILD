@@ -1,10 +1,12 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental filesystem C APIs for TensorFlow.
 # Will be moved in proper place once all filesystems are converted to the
 # modular framework.
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # This is only for plugins
@@ -24,9 +26,14 @@ cc_library(
     srcs = [
         "modular_filesystem.cc",
         "modular_filesystem_registration.cc",
+    ],
+    hdrs = [
+        "modular_filesystem.h",
         "modular_filesystem_registration.h",
     ],
-    hdrs = ["modular_filesystem.h"],
+    # TODO(mihaimaruseac): Visibility should be more restrictive once we
+    # convert to modular filesystems everywhere
+    visibility = ["//visibility:public"],
     deps = [
         ":filesystem_interface",
         "//tensorflow/c:tf_status_helper",

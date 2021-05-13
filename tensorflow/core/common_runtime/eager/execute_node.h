@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -54,19 +55,36 @@ class ExecuteNodeArgs : public EagerKernelArgs {
               const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
               const core::RefCountPtr<KernelAndDevice>& kernel);
 
-  bool HasRemoteInputs() const override { return has_remote_inputs_; };
+  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
+
+  bool HasRemoteOrPackedInputs() const override {
+    return has_remote_inputs_ || has_packed_inputs_;
+  };
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetRemoteArg(const int index,
+  Status GetRemoteArg(const FunctionArgIndex& index,
                       eager::RemoteTensorHandle* val) const override {
     return serialize_remote_handle_(index, val);
   }
 #endif  // IS_MOBILE_PLATFORM
 
  private:
-  bool has_remote_inputs_ = false;
 #if !defined(IS_MOBILE_PLATFORM)
-  std::function<Status(const int, eager::RemoteTensorHandle*)>
+  // Returns whether `handle` is a remote handle or has a remote mirror on
+  // `input_device`
+  bool IsRemote(EagerContext* ctx, Device* input_device, TensorHandle* handle);
+#endif  // IS_MOBILE_PLATFORM
+
+  // Initialize a packed TensorHandle which is the `index`-th argument.
+  Status InitPackedHandle(const int index, EagerContext* ctx,
+                          Device* input_device, TensorHandle* packed_handle);
+
+  bool has_remote_inputs_ = false;
+  bool has_packed_inputs_ = false;
+  // Maps from the index of a packed arg to a list of sub-args.
+  absl::flat_hash_map<int, gtl::InlinedVector<TensorValue, 4>> packed_args_;
+#if !defined(IS_MOBILE_PLATFORM)
+  std::function<Status(const FunctionArgIndex&, eager::RemoteTensorHandle*)>
       serialize_remote_handle_;
 #endif  // IS_MOBILE_PLATFORM
 };
@@ -79,7 +97,8 @@ class ExecuteNode : public EagerNode {
       const core::RefCountPtr<KernelAndDevice>& kernel,
       GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals)
+      absl::Span<TensorHandle*> retvals,
+      absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -87,7 +106,8 @@ class ExecuteNode : public EagerNode {
         kernel_(kernel),
         graph_collector_(graph_collector),
         cancellation_manager_(cancellation_manager),
-        retvals_(retvals) {}
+        retvals_(retvals),
+        stack_trace_(stack_trace) {}
 
   Status Run() override {
     int i = 0;
@@ -102,8 +122,8 @@ class ExecuteNode : public EagerNode {
       ++i;
     }
     return EagerKernelExecute(ctx_, inputs_, remote_func_params_, kernel_,
-                              graph_collector_, cancellation_manager_,
-                              retvals_);
+                              graph_collector_, cancellation_manager_, retvals_,
+                              stack_trace_);
   }
 
   void Abort(Status status) override {}
@@ -122,6 +142,7 @@ class ExecuteNode : public EagerNode {
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
   absl::Span<TensorHandle*> retvals_;
+  absl::optional<ManagedStackTrace> stack_trace_;
 };
 
 class AsyncExecuteNode : public EagerNode {
@@ -132,14 +153,16 @@ class AsyncExecuteNode : public EagerNode {
       core::RefCountPtr<KernelAndDevice> kernel,
       GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals)
+      absl::Span<TensorHandle*> retvals,
+      absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
         remote_func_params_(remote_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
-        cancellation_manager_(cancellation_manager) {
+        cancellation_manager_(cancellation_manager),
+        stack_trace_(stack_trace) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
@@ -176,10 +199,14 @@ class AsyncExecuteNode : public EagerNode {
       }
       ++i;
     }
-    const Status status = EagerKernelExecute(
+    Status status = EagerKernelExecute(
         ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
-        cancellation_manager_, absl::MakeSpan(retvals_));
+        cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
+      if (stack_trace_.has_value()) {
+        status = Status(status.code(), status.error_message(),
+                        stack_trace_->ToStackFrames());
+      }
       Abort(status);
       return status;
     }
@@ -209,6 +236,7 @@ class AsyncExecuteNode : public EagerNode {
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
+  absl::optional<ManagedStackTrace> stack_trace_;
   absl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

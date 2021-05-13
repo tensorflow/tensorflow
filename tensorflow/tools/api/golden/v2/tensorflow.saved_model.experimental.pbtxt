@@ -1,0 +1,11 @@
+path: "tensorflow.saved_model.experimental"
+tf_module {
+  member {
+    name: "TrackableResource"
+    mtype: "<type \'type\'>"
+  }
+    member {
+    name: "VariablePolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+}

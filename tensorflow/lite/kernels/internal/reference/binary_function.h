@@ -23,10 +23,7 @@ namespace tflite {
 
 namespace reference_ops {
 
-// TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
-// generalized and efficient BroadcastBinaryFunction.
-//
-// Also appears to duplicte MinimumMaximum.
+// Also appears to duplicate MinimumMaximum.
 //
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
 template <typename R, typename T1, typename T2>
@@ -63,7 +60,6 @@ inline void BroadcastBinaryFunction4DSlow(
 }
 
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
-// TODO(renjieliu): Refactor other binary functions to use this one.
 template <typename R, typename T1, typename T2>
 inline void BinaryFunction(const RuntimeShape& input1_shape,
                            const T1* input1_data,

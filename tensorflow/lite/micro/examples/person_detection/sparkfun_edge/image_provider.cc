@@ -13,12 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
+#if defined(ARDUINO)
+#include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
+#endif  // defined(ARDUINO)
+
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
 
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h"
+#include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
@@ -180,7 +189,7 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 // Capture single frame.  Frame pointer passed in to reduce memory usage.  This
 // allows the input tensor to be used instead of requiring an extra copy.
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
-                      int frame_height, int channels, uint8_t* frame) {
+                      int frame_height, int channels, int8_t* frame) {
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {
@@ -204,3 +213,5 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
 
   return kTfLiteOk;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

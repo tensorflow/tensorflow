@@ -29,8 +29,8 @@ namespace xla {
 class XlaComputation {
  public:
   XlaComputation() : unique_id_(-1) {}
-  XlaComputation(const HloModuleProto& proto)
-      : unique_id_(proto.id()), proto_(proto) {}
+  XlaComputation(HloModuleProto proto)
+      : unique_id_(proto.id()), proto_(std::move(proto)) {}
 
   ~XlaComputation() {}
 
@@ -46,6 +46,7 @@ class XlaComputation {
   StatusOr<ProgramShape> GetProgramShape() const;
 
   const HloModuleProto& proto() const { return proto_; }
+  HloModuleProto* mutable_proto() { return &proto_; }
 
   // Requests that we snapshot the computation into a serializable protocol
   // buffer form.
@@ -56,7 +57,6 @@ class XlaComputation {
 
  private:
   XlaComputation(const int64 unique_id) : unique_id_(unique_id) {}
-  HloModuleProto* mutable_proto() { return &proto_; }
   friend class XlaBuilder;
 
   int64 unique_id_;

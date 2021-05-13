@@ -12,18 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Embedding layer.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Embedding layer."""
+# pylint: disable=g-classes-have-attributes
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import embedding_ops
@@ -41,37 +37,34 @@ class Embedding(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Embedding(1000, 64, input_length=10))
-  # the model will take as input an integer matrix of size (batch,
-  # input_length).
-  # the largest integer (i.e. word index) in the input should be no larger
-  # than 999 (vocabulary size).
-  # now model.output_shape == (None, 10, 64), where None is the batch
-  # dimension.
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Embedding(1000, 64, input_length=10))
+  >>> # The model will take as input an integer matrix of size (batch,
+  >>> # input_length), and the largest integer (i.e. word index) in the input
+  >>> # should be no larger than 999 (vocabulary size).
+  >>> # Now model.output_shape is (None, 10, 64), where `None` is the batch
+  >>> # dimension.
+  >>> input_array = np.random.randint(1000, size=(32, 10))
+  >>> model.compile('rmsprop', 'mse')
+  >>> output_array = model.predict(input_array)
+  >>> print(output_array.shape)
+  (32, 10, 64)
 
-  input_array = np.random.randint(1000, size=(32, 10))
-
-  model.compile('rmsprop', 'mse')
-  output_array = model.predict(input_array)
-  assert output_array.shape == (32, 10, 64)
-  ```
-
-  Arguments:
-    input_dim: int > 0. Size of the vocabulary,
+  Args:
+    input_dim: Integer. Size of the vocabulary,
       i.e. maximum integer index + 1.
-    output_dim: int >= 0. Dimension of the dense embedding.
-    embeddings_initializer: Initializer for the `embeddings` matrix.
+    output_dim: Integer. Dimension of the dense embedding.
+    embeddings_initializer: Initializer for the `embeddings`
+      matrix (see `keras.initializers`).
     embeddings_regularizer: Regularizer function applied to
-      the `embeddings` matrix.
+      the `embeddings` matrix (see `keras.regularizers`).
     embeddings_constraint: Constraint function applied to
-      the `embeddings` matrix.
-    mask_zero: Whether or not the input value 0 is a special "padding"
+      the `embeddings` matrix (see `keras.constraints`).
+    mask_zero: Boolean, whether or not the input value 0 is a special "padding"
       value that should be masked out.
       This is useful when using recurrent layers
       which may take variable length input.
-      If this is `True` then all subsequent layers
+      If this is `True`, then all subsequent layers
       in the model need to support masking or an exception will be raised.
       If mask_zero is set to True, as a consequence, index 0 cannot be
       used in the vocabulary (input_dim should equal size of
@@ -86,6 +79,28 @@ class Embedding(Layer):
 
   Output shape:
     3D tensor with shape: `(batch_size, input_length, output_dim)`.
+
+  **Note on variable placement:**
+  By default, if a GPU is available, the embedding matrix will be placed on
+  the GPU. This achieves the best performance, but it might cause issues:
+
+  - You may be using an optimizer that does not support sparse GPU kernels.
+  In this case you will see an error upon training your model.
+  - Your embedding matrix may be too large to fit on your GPU. In this case
+  you will see an Out Of Memory (OOM) error.
+
+  In such cases, you should place the embedding matrix on the CPU memory.
+  You can do so with a device scope, as such:
+
+  ```python
+  with tf.device('cpu:0'):
+    embedding_layer = Embedding(...)
+    embedding_layer.build()
+  ```
+
+  The pre-built `embedding_layer` instance can then be added to a `Sequential`
+  model (e.g. `model.add(embedding_layer)`), called in a Functional model
+  (e.g. `x = embedding_layer(x)`), or used in a subclassed model.
   """
 
   def __init__(self,
@@ -103,13 +118,21 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    dtype = kwargs.pop('dtype', K.floatx())
+    if input_dim <= 0 or output_dim <= 0:
+      raise ValueError('Both `input_dim` and `output_dim` should be positive, '
+                       'found input_dim {} and output_dim {}'.format(
+                           input_dim, output_dim))
+    if (not base_layer_utils.v2_dtype_behavior_enabled() and
+        'dtype' not in kwargs):
+      # In TF1, the dtype defaults to the input dtype which is typically int32,
+      # so explicitly set it to floatx
+      kwargs['dtype'] = backend.floatx()
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
     # before casting to int32 might cause the int32 values to be different due
     # to a loss of precision.
     kwargs['autocast'] = False
-    super(Embedding, self).__init__(dtype=dtype, **kwargs)
+    super(Embedding, self).__init__(**kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -120,37 +143,21 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.supports_masking = mask_zero
     self.input_length = input_length
-    self._supports_ragged_inputs = True
 
   @tf_utils.shape_type_conversion
-  def build(self, input_shape):
-    # Note: most sparse optimizers do not have GPU kernels defined. When
-    # building graphs, the placement algorithm is able to place variables on CPU
-    # since it knows all kernels using the variable only exist on CPU.
-    # When eager execution is enabled, the placement decision has to be made
-    # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
-      with ops.device('cpu:0'):
-        self.embeddings = self.add_weight(
-            shape=(self.input_dim, self.output_dim),
-            initializer=self.embeddings_initializer,
-            name='embeddings',
-            regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint)
-    else:
-      self.embeddings = self.add_weight(
-          shape=(self.input_dim, self.output_dim),
-          initializer=self.embeddings_initializer,
-          name='embeddings',
-          regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint)
+  def build(self, input_shape=None):
+    self.embeddings = self.add_weight(
+        shape=(self.input_dim, self.output_dim),
+        initializer=self.embeddings_initializer,
+        name='embeddings',
+        regularizer=self.embeddings_regularizer,
+        constraint=self.embeddings_constraint,
+        experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
     if not self.mask_zero:
       return None
-
     return math_ops.not_equal(inputs, 0)
 
   @tf_utils.shape_type_conversion
@@ -178,10 +185,14 @@ class Embedding(Layer):
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)
 
   def call(self, inputs):
-    dtype = K.dtype(inputs)
+    dtype = backend.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
+    out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
+    if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
+      # Instead of casting the variable as in most layers, cast the output, as
+      # this is mathematically equivalent but is faster.
+      out = math_ops.cast(out, self._dtype_policy.compute_dtype)
     return out
 
   def get_config(self):

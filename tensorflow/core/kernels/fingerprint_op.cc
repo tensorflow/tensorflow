@@ -91,7 +91,12 @@ class FingerprintOp : public OpKernel {
                                 input.shape()));
 
     const int64 dim0 = input.shape().dim_size(0);
-    const int64 dim1 = input.shape().num_elements() / dim0;
+    int64 dim1;
+    if (dim0 == 0) {
+      dim1 = 0;
+    } else {
+      dim1 = input.shape().num_elements() / dim0;
+    }
 
     Tensor* output;
     OP_REQUIRES_OK(context,

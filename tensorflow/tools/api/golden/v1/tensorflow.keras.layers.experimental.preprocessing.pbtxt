@@ -1,7 +1,23 @@
 path: "tensorflow.keras.layers.experimental.preprocessing"
 tf_module {
   member {
+    name: "CategoryCrossing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoryEncoding"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CenterCrop"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Discretization"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Hashing"
     mtype: "<type \'type\'>"
   }
   member {
@@ -50,10 +66,6 @@ tf_module {
   }
   member {
     name: "Resizing"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TextVectorization"
     mtype: "<type \'type\'>"
   }
 }

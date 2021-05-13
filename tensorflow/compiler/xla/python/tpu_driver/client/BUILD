@@ -1,8 +1,14 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -11,7 +17,9 @@ cc_library(
     hdrs = [
         "tpu_client.h",
     ],
+    compatible_with = [],
     deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -19,19 +27,21 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/python:local_client",
-        "//tensorflow/compiler/xla/python:semaphore",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:direct_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:grpc_tpu_driver",
+        "//tensorflow/compiler/xla/python/tpu_driver:pod_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:allocator",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
@@ -56,6 +66,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/python:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
@@ -67,7 +78,7 @@ py_library(
     srcs = [
         "tpu_client.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client_extension",

@@ -94,9 +94,8 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion &&
-      consumer->ReusesOperandElements(operand_index) &&
-      is_expensive(*producer)) {
+  if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
+      ReusesOperandElements(consumer, operand_index)) {
     VLOG(2) << "Fusion is not profitable.";
     return false;
   }
@@ -133,7 +132,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       fusion_node_evaluations_.emplace(consumer,
                                        FusionNodeIndexingEvaluation(consumer));
     }
-    if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
+    if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
             producer)) {
       return false;
     }

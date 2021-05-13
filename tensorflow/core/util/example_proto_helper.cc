@@ -155,11 +155,13 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
   CHECK_EQ(dtype, values->dtype());
 
   // Update indices.
-  auto ix_t = indices->matrix<int64>();
-  int64* ix_p = &ix_t(offset, 0);
-  for (int64 i = 0; i < num_elements; ++i, ix_p += 2) {
-    *ix_p = batch;    // Column 0 stores the batch entry
-    *(ix_p + 1) = i;  // Column 1 stores the index in the batch
+  if (num_elements > 0) {
+    auto ix_t = indices->matrix<int64>();
+    int64* ix_p = &ix_t(offset, 0);
+    for (int64 i = 0; i < num_elements; ++i, ix_p += 2) {
+      *ix_p = batch;    // Column 0 stores the batch entry
+      *(ix_p + 1) = i;  // Column 1 stores the index in the batch
+    }
   }
 
   // Copy values over.
