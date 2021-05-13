@@ -22,7 +22,8 @@ namespace gpu {
 
 void Texture2DDescriptor::Release() { data.clear(); }
 
-GPUResources Texture2DDescriptor::GetGPUResources() const {
+GPUResources Texture2DDescriptor::GetGPUResources(
+    const GpuInfo& gpu_info) const {
   GPUResources resources;
   GPUImage2DDescriptor desc;
   desc.data_type = element_type;
