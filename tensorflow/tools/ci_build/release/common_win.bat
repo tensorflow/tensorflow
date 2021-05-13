@@ -31,7 +31,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 @REM deps depend on numpy without an upper bound, we must install numpy before
 @REM everything else.
 @REM TODO(mihaimaruseac): Convert to requirements.txt
-%PY_EXE% -m pip install "numpy >= 1.19.2"
+%PY_EXE% -m pip install "numpy ~= 1.19.2"
 @REM Now, install the deps, as listed in setup.py
 %PY_EXE% -m pip install "absl-py ~= 0.10"
 %PY_EXE% -m pip install "astunparse ~= 1.6.3"
