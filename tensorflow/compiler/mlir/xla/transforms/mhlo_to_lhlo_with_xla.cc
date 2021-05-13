@@ -1020,7 +1020,11 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     // the allocated buffer slice for this constant if need be.
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         assignment_.GetUniqueTopLevelSlice(instr));
-    global_var->setAttr("lmhlo.alloc", builder_.getIndexAttr(slice.index()));
+    global_var->setAttr(
+        "lmhlo.alloc",
+        builder_.getIndexAttr(allocations_.find(slice.allocation())
+                                  ->second.cast<BlockArgument>()
+                                  .getArgNumber()));
     TF_RET_CHECK(slice.offset() == 0)
         << "Each constant should have its own allocation from BufferAssignment";
     TF_RET_CHECK(slice.allocation()->size() == slice.size())
@@ -1735,7 +1739,6 @@ Status LhloDialectEmitter::Initialize() {
     }
     block->addArgument(arg_type);
     allocations_[alloc] = block->getArguments().back();
-    arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
     if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
