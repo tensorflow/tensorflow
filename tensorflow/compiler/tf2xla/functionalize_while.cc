@@ -41,8 +41,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using xla::StatusOr;
-
 // Copies a subgraph from `graph` to `output` by performing a reverse DFS
 // starting at nodes in vector `stack`.
 // `node_map` is a vector indexed by source node ID to dest nodes.

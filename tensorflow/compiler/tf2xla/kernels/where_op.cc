@@ -38,7 +38,7 @@ class WhereOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp condition = ctx->Input(0);
-    xla::StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(condition);
+    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(condition);
     OP_REQUIRES_OK(ctx, input_shape.status());
     // Use S32 as indices first, then convert to S64 in the end if needed.
     auto iota_shape = input_shape.ValueOrDie();

@@ -30,7 +30,7 @@ bool NodeCmpByNameResourcesLast::operator()(const Node* lhs,
          std::tie(rhs_is_resource, rhs->name());
 }
 
-xla::StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph) {
+StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph) {
   Status status;
   Node* inserted_node = graph->AddNode(node_def, &status);
   if (!status.ok()) {
@@ -39,7 +39,7 @@ xla::StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph) {
   return inserted_node;
 }
 
-xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
+StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   const char* const kRetValOp = "_Retval";
   NodeDef ret_def;
   ret_def.set_op(kRetValOp);

@@ -136,8 +136,7 @@ uint64 XlaCompilationCache::Signature::Hash::operator()(
   return h;
 }
 
-xla::StatusOr<XlaCompilationCache::Signature>
-XlaCompilationCache::BuildSignature(
+StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
     const NameAttrList& function,
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
@@ -226,7 +225,7 @@ static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
-xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+StatusOr<std::unique_ptr<Graph>> CreateGraph(
     const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const DataType> result_types) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including

@@ -49,7 +49,7 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 
 // Populates tensor array gradients for compiled branches, returns whether the
 // set of found tensor array gradients is non-empty.
-static xla::StatusOr<bool> PopulateTensorArrayGradients(
+static StatusOr<bool> PopulateTensorArrayGradients(
     XlaOpKernelContext* ctx, xla::XlaBuilder* b,
     absl::Span<XlaCompiler::Argument> arguments,
     XlaCompiler::CompilationResult* then_result,
@@ -251,7 +251,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
-  xla::StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
+  StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
       ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);
   OP_REQUIRES_OK(ctx, has_tensor_array_gradients.status());
 
@@ -298,7 +298,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
     if (VLOG_IS_ON(2)) {
-      xla::StatusOr<xla::Shape> shape = b->GetShape(output_handle);
+      StatusOr<xla::Shape> shape = b->GetShape(output_handle);
       VLOG(2) << "Setting output " << i << " with shape "
               << (shape.ok() ? shape->ToString() : "<unknown>");
     }
