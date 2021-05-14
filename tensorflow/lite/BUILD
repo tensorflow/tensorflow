@@ -244,6 +244,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "model_builder",
+    srcs = ["model_builder.cc"],
+    hdrs = ["model_builder.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    visibility = internal_visibility_allowlist(),
+    deps = [
+        ":allocation",
+        ":mutable_op_resolver",
+        ":stderr_reporter",
+        ":string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
 # The library that implements the full C++ API.
 # See also 'framework' below, which is the corresponding public target.
 cc_library(
@@ -262,6 +283,7 @@ cc_library(
         ":kernel_api",
         ":macros",
         ":memory_planner",
+        ":model_builder",
         ":mutable_op_resolver",
         ":optional_debug_tools",
         ":stderr_reporter",
@@ -295,6 +317,7 @@ cc_library(
         ":framework_lib",
         ":graph_info",
         ":memory_planner",
+        ":model_builder",
         ":string",
         ":type_to_tflitetype",
         ":util",
@@ -316,7 +339,6 @@ cc_library(
         "graph_info.cc",
         "interpreter.cc",
         "interpreter_builder.cc",
-        "model_builder.cc",
     ],
     hdrs = [
         "core/subgraph.h",
@@ -342,6 +364,7 @@ cc_library(
         ":macros",
         ":memory_planner",
         ":minimal_logging",
+        ":model_builder",
         ":mutable_op_resolver",
         ":shared_library",
         ":simple_memory_arena",
