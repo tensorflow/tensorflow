@@ -17,6 +17,37 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
+  let summary = "Legalize from TF dialect's oo HLO dialect's control flow.";
+
+  let description = [{
+    Legalizes from TF dialect to HLO dialect. When allow_partial_conversion is
+    false, emits an error if there is any operation that can't be legalized.
+    When `tf2xla_fallback_device_type` is not `None`, also uses legalization
+    patterns from TF2XLA fallback for provided device type (see
+    legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
+    used.
+  }];
+  let options = [
+    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
+        /*default=*/"false",
+        "Allow operations that can't be legalized.">,
+    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
+        "Legalizes intermediate chlo ops to hlo">,
+    Option<"use_tf2xla_fallback_", "use-tf2xla-fallback", "bool",
+        /*default=*/"false",
+        "Use TF2XLA fallback for legalization">,
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type used by TF2XLA fallback. Must be specified if "
+        "use-tf2xla-fallback is true, otherwise not used">
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFPass()";
+  let dependentDialects = ["chlo::HloClientDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "StandardOpsDialect"];
+}
+
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
   let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
 
