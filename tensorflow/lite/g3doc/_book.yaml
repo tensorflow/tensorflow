@@ -32,6 +32,8 @@ upper_tabs:
       - title: "Image classification on Raspberry Pi"
         path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
         status: external
+      - title: "Transfer learning for object detection"
+        path: /lite/tutorials/model_maker_object_detection
       - title: "Object Detection on Raspberry Pi"
         path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
         status: external
