@@ -3012,7 +3012,7 @@ XlaOp XlaBuilder::CollectivePermute(
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(
         Shape shape,
-        ShapeInference::InferCollectivePermuteShape(*operand_shape));
+        ShapeInference::InferCollectivePermuteShape({operand_shape}));
     *instr.mutable_shape() = shape.ToProto();
 
     for (const auto& pair : source_target_pairs) {

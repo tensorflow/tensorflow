@@ -323,6 +323,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         max_tokens=max_tokens,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
+        mask_token="",
         output_mode=output_mode if output_mode is not None else INT,
         vocabulary_size=vocabulary_size)
 

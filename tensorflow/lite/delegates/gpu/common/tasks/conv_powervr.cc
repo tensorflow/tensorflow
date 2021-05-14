@@ -247,10 +247,12 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
-  if (definition_.precision == CalculationsPrecision::F16) {
-    if (gpu_info.IsPowerVR() || gpu_info.IsMali()) {
-      compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
-    }
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+  }
+  if (gpu_info.IsMali()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl20);
@@ -1211,7 +1213,13 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       if (dst_depth == 1 || dst_depth == 3) {
         conv_params.block_size = int4(2, 2, 1, 1);
       } else {
-        conv_params.block_size = int4(2, 1, 1, 2);
+        conv_params.block_size = int4(2, 1, 1, 1);
+        if (definition.precision == CalculationsPrecision::F32 &&
+            gpu_info.mali_info.IsValhall()) {
+          conv_params.block_size.y = 2;
+        } else {
+          conv_params.block_size.w = 2;
+        }
       }
     } else if (block_size == 2) {
       conv_params.block_size = int4(2, 1, 1, 1);
@@ -1322,15 +1330,17 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   }
   if (conv_params.AreWeightsBuffer()) {
     if (gpu_info.IsApple()) {
-      conv_params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+      conv_params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
-      conv_params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+      conv_params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
     }
   } else {
     if (gpu_info.IsApple()) {
-      conv_params.weights_layout = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+      conv_params.weights_layout =
+          WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
     } else {
-      conv_params.weights_layout = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+      conv_params.weights_layout =
+          WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
     }
   }
 

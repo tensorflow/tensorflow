@@ -568,6 +568,26 @@ cc_library(
 )
 
 cc_library(
+    name = "intrusive_ptr",
+    hdrs = ["intrusive_ptr.h"],
+    deps = [],
+)
+
+tf_cc_test(
+    name = "intrusive_ptr_test",
+    size = "small",
+    srcs = [
+        "intrusive_ptr_test.cc",
+    ],
+    deps = [
+        ":intrusive_ptr",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -1536,6 +1556,7 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
+        "intrusive_ptr.h",
         "platform.h",
         "protobuf_internal.h",
         "refcount.h",
@@ -1662,6 +1683,7 @@ filegroup(
         "hash.h",
         "host_info.h",
         "init_main.h",
+        "intrusive_ptr.h",
         "load_library.h",
         "logging.h",
         "macros.h",

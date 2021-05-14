@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.
 //
@@ -130,7 +131,7 @@ XlaOp Hypot(XlaOp x, XlaOp y) {
 //   same_sign = (same_sign == which_max_abs)
 //   cosine, sine = (np.where(same_sign, -sine, cosine),
 //                   np.where(same_sign, cosine, sine))
-//   return rt1, rt2, cosine, sine
+//   return rt1, rt2, cosine, -sine
 StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
                                                  XlaOp w_br) {
   TF_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
@@ -408,7 +409,9 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
                          "EighJacobiSweeps", builder);
 }
 
-StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
+}  // namespace
+
+Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
@@ -427,10 +430,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return std::make_pair(v, w);
+  return Status::OK();
 }
-
-}  // namespace
 
 // This is the cyclic Jacobi iteration.
 //
@@ -485,7 +486,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
 //     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
 //             frobenius_norm + diag_norm)
 //   return A, V
-XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
+XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
+                              bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -586,7 +588,9 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
 
-    TF_ASSIGN_OR_RETURN(std::tie(v, w), SortByEigenvalues(v, w));
+    if (sort_eigenvalues) {
+      TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
+    }
     return Tuple(builder, {v, w});
   });
 }
@@ -627,14 +631,16 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
         absl::StrSplit(instruction->raw_backend_config_string(), ',');
     int lower;
     int64 max_iter;
+    int sort_eigenvalues;
     float tol;
-    if (config_strs.size() != 3 || !absl::SimpleAtoi(config_strs[0], &lower) ||
-        !absl::SimpleAtoi(config_strs[1], &max_iter) ||
-        !absl::SimpleAtof(config_strs[2], &tol)) {
+    if (config_strs.size() != 4 || !absl::SimpleAtoi(config_strs[0], &lower) ||
+        !absl::SimpleAtoi(config_strs[1], &sort_eigenvalues) ||
+        !absl::SimpleAtoi(config_strs[2], &max_iter) ||
+        !absl::SimpleAtof(config_strs[3], &tol)) {
       return Internal("Unable to parse arguments to Eigh custom call, got: %s",
                       instruction->raw_backend_config_string());
     }
-    XlaOp result = BuildEigh(a, lower, max_iter, tol);
+    XlaOp result = BuildEigh(a, lower, max_iter, tol, sort_eigenvalues);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
 
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,

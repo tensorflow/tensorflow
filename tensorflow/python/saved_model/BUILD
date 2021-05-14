@@ -345,6 +345,7 @@ py_strict_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
@@ -557,6 +558,7 @@ py_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:function_def_to_graph",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:op_def_registry",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
@@ -650,5 +652,24 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_test(
+    name = "deferred_init_vars_test",
+    srcs = ["deferred_init_vars_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":load",
+        ":save",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//third_party/py/numpy",
     ],
 )

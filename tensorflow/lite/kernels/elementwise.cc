@@ -33,14 +33,24 @@ namespace builtin {
 namespace elementwise {
 namespace {
 
-constexpr char kAbsName[] = "Abs";
-constexpr char kSinName[] = "Sin";
-constexpr char kCosName[] = "Cos";
-constexpr char kLogName[] = "Log";
-constexpr char kSqrtName[] = "Sqrt";
-constexpr char kRsqrtName[] = "Rsqrt";
-constexpr char kSquareName[] = "Square";
-constexpr char kNotName[] = "Not";
+// TODO(b/170332730): Avoid this by removing the use of const char* as a
+// template argument (a lambda can be used instead).
+#if defined(_MSC_VER)
+// Required due to MSVC2017 compiler bug related to templates with constexpr
+// arguments.
+#define TFLITE_CONST const
+#else
+#define TFLITE_CONST constexpr
+#endif  // defined(_MSC_VER)
+
+TFLITE_CONST char kAbsName[] = "Abs";
+TFLITE_CONST char kSinName[] = "Sin";
+TFLITE_CONST char kCosName[] = "Cos";
+TFLITE_CONST char kLogName[] = "Log";
+TFLITE_CONST char kSqrtName[] = "Sqrt";
+TFLITE_CONST char kRsqrtName[] = "Rsqrt";
+TFLITE_CONST char kSquareName[] = "Square";
+TFLITE_CONST char kNotName[] = "Not";
 
 struct OpData {
   int32_t multiplier;

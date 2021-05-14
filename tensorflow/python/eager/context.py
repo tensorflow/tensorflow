@@ -1469,11 +1469,6 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
-  # TODO(reedwm): Remove this function
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
-    return self.get_memory_info(dev)["current"]
-
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()

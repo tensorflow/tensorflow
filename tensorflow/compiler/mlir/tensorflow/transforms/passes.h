@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
 
@@ -47,6 +48,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 // ops within device cluster.
 std::unique_ptr<OperationPass<FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass();
+
+// Creates a pass that moves writes to replicate invariant resource variables
+// outside tf_device.replicate op.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateHoistReplicateInvariantResourceWritesPass();
 
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
@@ -258,7 +264,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass();
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
 // region before outlining.
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
+    llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();

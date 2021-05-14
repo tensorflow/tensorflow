@@ -790,7 +790,7 @@ TfrtCpuBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(tracked_device_buffer_ != nullptr);
   } else {
     if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }

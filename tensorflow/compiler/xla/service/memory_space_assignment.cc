@@ -114,6 +114,19 @@ FindCrossProgramPrefetchCandidate(
   // worse choices than just picking the largest buffer.
   // TODO(b/152421603): Investigate.
   auto size_compare = [](const auto& x, const auto& y) {
+    if (x.size == y.size) {
+      // When both buffers are of same size, we prefer the one that is used to
+      // produce larger tensors in its consumer instructions.
+      auto get_use_size =
+          [](const MemorySpaceAssignment::BufferInterval& bi) -> int64 {
+        int64 use_size = 0;
+        for (const auto& use : bi.buffer->uses()) {
+          use_size += ShapeUtil::ElementsInRecursive(use.instruction->shape());
+        }
+        return use_size;
+      };
+      return get_use_size(x) < get_use_size(y);
+    }
     return x.size < y.size;
   };
   auto& compare = options.default_cross_program_prefetch_heuristic &&
@@ -1814,8 +1827,8 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
-  // Go through the parameters, outputs, and constants and pin them to the
-  // corresponding memory by adding a required assignment.
+  // Go through the parameters and outputs and pin them to the corresponding
+  // memory by adding a required assignment.
   const HloModule& module = alias_analysis_.dataflow_analysis().module();
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   HloComputation* entry_computation = module.entry_computation();
@@ -1867,33 +1880,6 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
           }
         }
       });
-
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kConstant) {
-        auto constant_instruction_it = instruction_schedule.find(instruction);
-        if (constant_instruction_it == instruction_schedule.end()) {
-          continue;
-        }
-        int64_t constant_instruction_time = constant_instruction_it->second;
-        for (const auto& indexed_shape :
-             ShapeUtil::GetLeafShapes(instruction->shape())) {
-          const ShapeIndex& index = indexed_shape.index;
-          for (const HloBuffer* buffer :
-               alias_analysis_.ComputeBuffersAt(instruction, index)) {
-            for (const HloValue* value : buffer->values()) {
-              VLOG(3) << "Adding required assignment for constant value = "
-                      << value->ToShortString()
-                      << " time = " << constant_instruction_time
-                      << " space = def";
-              required_assignments_[value].push_back(
-                  {MemorySpace::kDefault, /*time=*/constant_instruction_time});
-            }
-          }
-        }
-      }
-    }
-  }
 }
 
 bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
@@ -2821,7 +2807,6 @@ Status MemorySpaceAssignment::FindAllocationSequence(
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
-  heap_simulator_options.alloc_constants = true;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
                                         module_->schedule(), alias_analysis,
                                         options_.size_fn,

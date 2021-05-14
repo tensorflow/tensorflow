@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
     default_visibility = [":test_friends"],
@@ -56,40 +56,43 @@ td_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
-            "-gen-op-decls",
+            ["-gen-op-decls"],
             "lib/Dialect/Test/TestOps.h.inc",
         ),
         (
-            "-gen-op-defs",
+            ["-gen-op-defs"],
             "lib/Dialect/Test/TestOps.cpp.inc",
         ),
         (
-            "-gen-dialect-decls -dialect=test",
+            [
+                "-gen-dialect-decls",
+                "-dialect=test",
+            ],
             "lib/Dialect/Test/TestOpsDialect.h.inc",
         ),
         (
-            "-gen-enum-decls",
+            ["-gen-enum-decls"],
             "lib/Dialect/Test/TestOpEnums.h.inc",
         ),
         (
-            "-gen-enum-defs",
+            ["-gen-enum-defs"],
             "lib/Dialect/Test/TestOpEnums.cpp.inc",
         ),
         (
-            "-gen-struct-attr-decls",
+            ["-gen-struct-attr-decls"],
             "lib/Dialect/Test/TestOpStructs.h.inc",
         ),
         (
-            "-gen-struct-attr-defs",
+            ["-gen-struct-attr-defs"],
             "lib/Dialect/Test/TestOpStructs.cpp.inc",
         ),
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "lib/Dialect/Test/TestPatterns.inc",
         ),
     ],
@@ -101,24 +104,24 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "TestInterfacesIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
-            "-gen-type-interface-decls",
+            ["-gen-type-interface-decls"],
             "lib/Dialect/Test/TestTypeInterfaces.h.inc",
         ),
         (
-            "-gen-type-interface-defs",
+            ["-gen-type-interface-defs"],
             "lib/Dialect/Test/TestTypeInterfaces.cpp.inc",
         ),
         (
-            "-gen-op-interface-decls",
+            ["-gen-op-interface-decls"],
             "lib/Dialect/Test/TestOpInterfaces.h.inc",
         ),
         (
-            "-gen-op-interface-defs",
+            ["-gen-op-interface-defs"],
             "lib/Dialect/Test/TestOpInterfaces.cpp.inc",
         ),
     ],
@@ -131,16 +134,16 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "TestAttrDefsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
-            "-gen-attrdef-decls",
+            ["-gen-attrdef-decls"],
             "lib/Dialect/Test/TestAttrDefs.h.inc",
         ),
         (
-            "-gen-attrdef-defs",
+            ["-gen-attrdef-defs"],
             "lib/Dialect/Test/TestAttrDefs.cpp.inc",
         ),
     ],
@@ -152,16 +155,16 @@ gentbl(
     test = True,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "TestTypeDefsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
-            "-gen-typedef-decls",
+            ["-gen-typedef-decls"],
             "lib/Dialect/Test/TestTypeDefs.h.inc",
         ),
         (
-            "-gen-typedef-defs",
+            ["-gen-typedef-defs"],
             "lib/Dialect/Test/TestTypeDefs.cpp.inc",
         ),
     ],

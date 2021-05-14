@@ -24,7 +24,12 @@ exports_files([
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "portable_all_op_kernels",
-    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc", "lookup_ops.cc"),
+    srcs = [
+        "lookup_ops.cc",
+        "take_while_dataset_op.cc",
+        "threadpool_dataset_op.cc",
+        "threadpool_dataset_op.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

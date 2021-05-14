@@ -70,7 +70,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

@@ -682,7 +682,7 @@ absl::Status RunGraphTransforms(GraphFloat32* graph) {
   auto merge_padding_transform = NewMergePaddingWithAdd();
   auto add_bias_transform = NewAddBias();
   auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(graph, /*reporter=*/nullptr);
+  ModelTransformer transformer(graph);
   if (!transformer.Apply("add_bias", add_bias_transform.get())) {
     return absl::InternalError("Invalid add_bias transform");
   }

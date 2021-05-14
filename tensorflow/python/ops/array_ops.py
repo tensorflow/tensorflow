@@ -431,7 +431,7 @@ def expand_dims_v2(input, axis, name=None):
     inserted at the index specified by `axis`.
 
   Raises:
-    ValueError: If `axis` is not specified.
+    TypeError: If `axis` is not specified.
     InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)

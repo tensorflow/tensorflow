@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_graph.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
@@ -33,46 +34,6 @@ limitations under the License.
 #define TFLITE_SCHEMA_VERSION (3)
 
 namespace tflite {
-
-namespace internal {
-
-// A helper class to encapsulate the implementation of APIs in Context.
-// context->impl_ points to an instance of this class.
-// Check tensorflow/lite/c/common.h for detailed descriptions.
-// TODO(b/16157777): Consider rolling this class into MicroInterpreter.
-class ContextHelper {
- public:
-  explicit ContextHelper(ErrorReporter* error_reporter,
-                         MicroAllocator* allocator, const Model* model);
-
-  // Functions that will be assigned to function pointers on TfLiteContext:
-  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
-  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
-                                                  size_t bytes,
-                                                  int* buffer_idx);
-  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-  static void ReportOpError(struct TfLiteContext* context, const char* format,
-                            ...);
-  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
-                                 int tensor_idx);
-  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
-                                         int tensor_idx);
-
-  // Sets the pointer to a list of TfLiteEvalTensor instances.
-  void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
-
-  // Sets the pointer to a list of ScratchBufferHandle instances.
-  void SetScratchBufferHandles(ScratchBufferHandle* scratch_buffer_handles);
-
- private:
-  MicroAllocator* allocator_ = nullptr;
-  ErrorReporter* error_reporter_ = nullptr;
-  const Model* model_ = nullptr;
-  TfLiteEvalTensor* eval_tensors_ = nullptr;
-  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
-};
-
-}  // namespace internal
 
 class MicroInterpreter {
  public:
@@ -108,22 +69,12 @@ class MicroInterpreter {
   // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
-  size_t tensors_size() const { return context_.tensors_size; }
-  TfLiteTensor* tensor(size_t tensor_index);
-  template <class T>
-  T* typed_tensor(int tensor_index) {
-    if (TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
-        return GetTensorData<T>(tensor_ptr);
-      }
-    }
-    return nullptr;
-  }
-
   TfLiteTensor* input(size_t index);
-  size_t inputs_size() const { return subgraph_->inputs()->Length(); }
+  size_t inputs_size() const {
+    return model_->subgraphs()->Get(0)->inputs()->size();
+  }
   const flatbuffers::Vector<int32_t>& inputs() const {
-    return *subgraph_->inputs();
+    return *model_->subgraphs()->Get(0)->inputs();
   }
   TfLiteTensor* input_tensor(size_t index) { return input(index); }
   template <class T>
@@ -137,9 +88,11 @@ class MicroInterpreter {
   }
 
   TfLiteTensor* output(size_t index);
-  size_t outputs_size() const { return subgraph_->outputs()->Length(); }
+  size_t outputs_size() const {
+    return model_->subgraphs()->Get(0)->outputs()->size();
+  }
   const flatbuffers::Vector<int32_t>& outputs() const {
-    return *subgraph_->outputs();
+    return *model_->subgraphs()->Get(0)->outputs();
   }
   TfLiteTensor* output_tensor(size_t index) { return output(index); }
   template <class T>
@@ -157,12 +110,15 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return subgraph_->operators()->size(); }
-
-  // For debugging only.
-  const NodeAndRegistration node_and_registration(int node_index) const {
-    return node_and_registrations_[node_index];
+  size_t operators_size() const {
+    return model_->subgraphs()->Get(0)->operators()->size();
   }
+
+  // Populates node and registration pointers representing the inference graph
+  // of the model from values inside the flatbuffer (loaded from the TfLiteModel
+  // instance). Persistent data (e.g. operator data) is allocated from the
+  // arena.
+  TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer();
 
   // For debugging only.
   // Returns the actual used arena in bytes. This method gives the optimal arena
@@ -181,23 +137,35 @@ class MicroInterpreter {
   // error reporting during initialization.
   void Init(MicroProfiler* profiler);
 
-  NodeAndRegistration* node_and_registrations_ = nullptr;
+  // Gets the current subgraph index used from within context methods.
+  int get_subgraph_index() { return graph_.GetCurrentSubgraphIndex(); }
+
+  // Static functions that are bound to the TfLiteContext instance:
+  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
+  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
+                                                  size_t bytes,
+                                                  int* buffer_idx);
+  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
+  static void ReportOpError(struct TfLiteContext* context, const char* format,
+                            ...);
+  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
+                                 int tensor_idx);
+  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
+                                         int tensor_idx);
+  static TfLiteStatus GetGraph(struct TfLiteContext* context,
+                               TfLiteIntArray** args);
 
   const Model* model_;
   const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
   MicroAllocator& allocator_;
+  MicroGraph graph_;
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
 
-  const SubGraph* subgraph_ = nullptr;
-  TfLiteEvalTensor* eval_tensors_ = nullptr;
   ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
-
-  // TODO(b/16157777): Drop this reference:
-  internal::ContextHelper context_helper_;
 
   // TODO(b/162311891): Clean these pointers up when this class supports buffers
   // from TfLiteEvalTensor.

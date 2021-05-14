@@ -2003,6 +2003,29 @@ absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     return absl::nullopt;
   }
 
+  // Skip elementwise unary operations applied to inst, returning
+  // a list of applied operations that were skipped.
+  auto skip_elementwise_ops = [&](const HloInstruction* inst) {
+    std::vector<const HloInstruction*> modifiers;
+    while (inst->IsElementwise() && inst->operand_count() == 1 &&
+           inst->user_count() == 1) {
+      if (inst->opcode() != HloOpcode::kCopy) {
+        modifiers.push_back(inst);
+      }
+      inst = inst->operand(0);
+    }
+    return std::make_pair(modifiers, inst);
+  };
+
+  PadWithWrapPattern pad_pattern;
+  auto skip_result = skip_elementwise_ops(lhs);
+  pad_pattern.lhs_modifiers = std::move(skip_result.first);
+  lhs = skip_result.second;
+
+  skip_result = skip_elementwise_ops(rhs);
+  pad_pattern.rhs_modifiers = std::move(skip_result.first);
+  rhs = skip_result.second;
+
   const int64 dim = concat->concatenate_dimension();
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
@@ -2012,7 +2035,6 @@ absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
       lhs->sharding() != concat->sharding()) {
     return absl::nullopt;
   }
-  PadWithWrapPattern pad_pattern;
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
   pad_pattern.rhs_slice_start = rhs->slice_starts(dim);
   return pad_pattern;

@@ -563,14 +563,14 @@ __global__ void SetZero(const int count, T* __restrict__ ptr) {
 }
 
 // Helper to set all tensor entries to a specific value.
-template <typename T, typename Tvalue = T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
+template <typename T>
+__global__ void SetToValue(const int count, T* __restrict__ ptr, T value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
-    ptr[i] = static_cast<T>(value);
+    ptr[i] = value;
   }
 }
 

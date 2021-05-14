@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/op_resolver_internal.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -114,6 +115,25 @@ void MutableOpResolver::AddAll(const MutableOpResolver& other) {
 
 void MutableOpResolver::ChainOpResolver(const OpResolver* other) {
   other_op_resolvers_.push_back(other);
+}
+
+bool MutableOpResolver::MayContainUserDefinedOps() const {
+  // Note that `AddBuiltin(op, nullptr, version)` is a no-op.
+  // So `builtins_` can be empty even when there are calls to
+  // AddBuiltin, if the calls to AddBuiltin have null values for
+  // the `registration` argument.
+  if (!builtins_.empty()) {
+    return true;
+  }
+  if (!custom_ops_.empty()) {
+    return true;
+  }
+  for (const OpResolver* other : other_op_resolvers_) {
+    if (OpResolverInternal::MayContainUserDefinedOps(*other)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace tflite

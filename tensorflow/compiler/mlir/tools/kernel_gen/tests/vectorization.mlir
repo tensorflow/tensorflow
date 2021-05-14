@@ -16,6 +16,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-DAG:       %[[C4:.*]] = constant 4 : index
 // CHECK-DAG:       %[[C0:.*]] = constant 0 : index
 // CHECK-DAG:       %[[FULL_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
+// CHECK-DAG:       %[[STORE_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
 // CHECK-NEXT:      %[[SIZE:.*]] = memref.dim %[[BUF]], %[[C0]] : memref<?xf64>
 // CHECK-NEXT:      %[[REM:.*]] = remi_unsigned %[[SIZE]], %[[C4]] : index
 // CHECK-NEXT:      %[[SPLIT_POINT:.*]] = subi %[[SIZE]], %[[REM]] : index
@@ -34,7 +35,11 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:        memref.store %[[VAL_20]], %[[VAL_21]][] : memref<vector<4xf64>>
 // CHECK-NEXT:        %[[INPUT_TILE:.*]] = vector.transfer_read %[[FULL_BUF:.*]]{{\[}}%[[C0]]], %[[CF0]] {in_bounds = [true]} : memref<4xf64>, vector<4xf64>
 // CHECK-NEXT:        %[[ABS1:.*]] = absf %[[INPUT_TILE]] : vector<4xf64>
-// CHECK-NEXT:        vector.transfer_write %[[ABS1]], %[[SUBVIEW]]{{\[}}%[[C0]]] : vector<4xf64>, memref<?xf64, #map0>
+// CHECK-NEXT:        vector.transfer_write %[[ABS1]], %[[STORE_BUF]]{{\[}}%[[C0]]] {in_bounds = [true]}
+// CHECK-SAME:            : vector<4xf64>, memref<4xf64>
+// CHECK-NEXT:        %[[VAL_12:.*]] = vector.type_cast %[[STORE_BUF]] : memref<4xf64> to memref<vector<4xf64>>
+// CHECK-NEXT:        %[[VAL_13:.*]] = memref.load %[[VAL_12]][] : memref<vector<4xf64>>
+// CHECK-NEXT:        vector.transfer_write %[[VAL_13]], %[[SUBVIEW]][%[[C0]]] : vector<4xf64>, memref<?xf64, #map0>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }

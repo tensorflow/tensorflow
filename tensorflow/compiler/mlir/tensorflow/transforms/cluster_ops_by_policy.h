@@ -227,16 +227,24 @@ tf_device::ClusterOp CreateClusterOp(Cluster& cluster, StringAttr policy = {});
 // Helper functions for value constraints propagations and analysis.
 // -------------------------------------------------------------------------- //
 
-// Propagates initial constraints on the values in the `region` to the other
-// values in the same region, using user provided set of clustering policies.
+// Propagates initial constraints on the values defined by the `constraints` set
+// with operations in the `root` as a starting point, using user provided set of
+// clustering policies.
 //
-// Initially constrained values must be defined by operations in the `region`,
-// propagating constraints through block arguments is not currently supported.
+// Filter predicate specifies if constraints should be propagated across the
+// given operation. Operations in the root set will be also filtered using
+// the `filter` predicate.
 //
 // Returns failure if constraints can't be propagated through some of the
-// operations (there is no clustering policy for an operation, or constraints
-// can't be satisfied by the policy), and attaches error diagnostics to the
-// operation that prevented constraints propagation.
+// operations accepted by the filter (there is no clustering policy for an
+// operation, or constraints can't be satisfied by the policy), and attaches
+// error diagnostics to the operation that prevented constraints propagation.
+mlir::LogicalResult PropagateValuesConstraints(
+    llvm::ArrayRef<Operation*> root, std::function<bool(Operation*)> filter,
+    const ClusteringPolicySet& policies, ValuesConstraintSet& constraints);
+
+// Propagates initial constraints on the values in the `region` to the other
+// values in the same region, using user provided set of clustering policies.
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region& region, const ClusteringPolicySet& policies,
     ValuesConstraintSet& constraints);

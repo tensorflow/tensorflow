@@ -227,6 +227,8 @@ class _Node(_Convertible):
       return _Merge(node, function, enclosing_graph)
     elif node.op == "PartitionedCall":
       return _PartitionedCall(node, function, enclosing_graph)
+    elif node.op == "StatefulPartitionedCall":
+      return _PartitionedCall(node, function, enclosing_graph)
     elif node.op == "ReadVariableOp":
       return _ReadVariable(node, function, enclosing_graph)
     elif node.op == "ResourceGather":

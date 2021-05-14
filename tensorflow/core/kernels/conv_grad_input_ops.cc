@@ -149,15 +149,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                           a_ptr, k, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
+                                             b_ptr, k, a_ptr, k, &c_ptr, n));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -182,15 +175,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                           a_ptr, k, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
+                                             b_ptr, k, a_ptr, k, &c_ptr, n));
     return;
   }
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 
 using testing::HasSubstr;
+using tflite::delegates::test_utils::SimpleDelegate;
 using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
@@ -294,9 +295,3 @@ TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
 }
 
 }  // namespace
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

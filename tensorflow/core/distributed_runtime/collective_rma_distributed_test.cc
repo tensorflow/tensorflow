@@ -21,13 +21,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -42,20 +45,33 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static std::unique_ptr<Device> NewDevice(const string& type,
-                                         const string& name) {
+class FakeAllocator : public Allocator {
+ public:
+  string Name() override { return "fake"; }
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return port::AlignedMalloc(num_bytes, alignment);
+  }
+  void DeallocateRaw(void* ptr) override { return port::AlignedFree(ptr); }
+};
+
+static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
+                                         Allocator* allocator) {
   class FakeDevice : public Device {
    public:
-    explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
+    explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
+        : Device(nullptr, attr), allocator_(allocator) {}
     Status Sync() override { return Status::OK(); }
-    Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
+    Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
+
+   private:
+    Allocator* const allocator_;
   };
   DeviceAttributes attr;
   attr.set_name(name);
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
   attr.set_incarnation(random::New64());
-  return absl::make_unique<FakeDevice>(attr);
+  return absl::make_unique<FakeDevice>(attr, allocator);
 }
 
 static int64 kStepId = 123;
@@ -63,12 +79,14 @@ static int64 kStepId = 123;
 class FakeWorker : public TestWorkerInterface {
  public:
   FakeWorker(const string& name, DeviceMgr* dev_mgr,
-             DeviceResolverDistributed* dres, bool is_failed)
+             DeviceResolverDistributed* dres, bool is_failed,
+             bool set_tensor_in_extra)
       : name_(name),
         device_mgr_(dev_mgr),
         device_resolver_(dres),
         buf_rendezvous_(kStepId, dev_mgr),
-        is_failed_(is_failed) {}
+        is_failed_(is_failed),
+        set_tensor_in_extra_(set_tensor_in_extra) {}
 
   // Direct access to a BufRendezvous that holds whatever the remote
   // worker is supposed to have.
@@ -112,17 +130,29 @@ class FakeWorker : public TestWorkerInterface {
     buf_rendezvous_.ConsumeBuf(
         request->buf_rendezvous_key(), request->src_device(),
         request->src_incarnation(),
-        [opts, response, done](const Status& s, BufRendezvous::Hook* h) {
+        [this, opts, request, response, done](const Status& status,
+                                              BufRendezvous::Hook* h) {
+          Status s = status;
           if (s.ok()) {
             opts->ClearCancelCallback();
-            // Since this is not really RDMA into pre-allocated memory send the
-            // bytes in the response.
-            RecvBufRespExtra extra;
             int64 num_bytes = h->prod_value->TotalBytes();
-            extra.add_tensor_content(string(
-                reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
-                num_bytes));
-            response->mutable_transport_options()->PackFrom(extra);
+
+            if (set_tensor_in_extra_) {
+              // Since this is not really RDMA into pre-allocated memory send
+              // the bytes in the response.
+              RecvBufRespExtra extra;
+              extra.add_tensor_content(string(
+                  reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
+                  num_bytes));
+              response->mutable_transport_options()->PackFrom(extra);
+            } else {
+              if (request->num_bytes() != num_bytes) {
+                s = errors::Internal("Tensor Size Mismatch.");
+              } else {
+                memcpy(reinterpret_cast<void*>(request->buf_ptr()),
+                       DMAHelper::base(h->prod_value), num_bytes);
+              }
+            }
           }
           done(s);
           if (h) BufRendezvous::DoneWithHook(h);
@@ -136,6 +166,7 @@ class FakeWorker : public TestWorkerInterface {
   DeviceResolverDistributed* device_resolver_;
   BufRendezvous buf_rendezvous_;
   bool is_failed_;
+  const bool set_tensor_in_extra_;
 };
 
 class FakeCache : public TestWorkerCache {
@@ -179,7 +210,19 @@ class FakeCache : public TestWorkerCache {
   }
 };
 
-class CollRMADistTest : public ::testing::Test {
+enum TEST_PARAM_DEVICE_TYPE {
+  TEST_PARAM_DEVICE_TYPE_CPU = 0,
+  TEST_PARAM_DEVICE_TYPE_GPU,
+};
+
+enum TEST_PARAM_TENSOR_LOC {
+  TEST_PARAM_TENSOR_LOC_AT_BUF_PTR = 0,
+  TEST_PARAM_TENSOR_LOC_IN_EXTRA,
+};
+
+class CollRMADistTest
+    : public ::testing::TestWithParam<
+          std::tuple<TEST_PARAM_DEVICE_TYPE, TEST_PARAM_TENSOR_LOC>> {
  protected:
   CollRMADistTest()
       : work_queue_(
@@ -217,11 +260,16 @@ class CollRMADistTest : public ::testing::Test {
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});
     to_tensor_ = Tensor(DT_FLOAT, {kNumElts});
+    large_response_ = Tensor(DT_FLOAT, {2 * kNumElts});
     auto exp_alias = expected_value_.flat<float>();
     auto to_alias = to_tensor_.flat<float>();
+    auto large_response_alias = large_response_.flat<float>();
     for (int i = 0; i < kNumElts; ++i) {
       exp_alias(i) = i;
       to_alias(i) = -1;
+    }
+    for (int i = 0; i < 2 * kNumElts; ++i) {
+      large_response_alias(i) = -2;
     }
   }
 
@@ -243,7 +291,8 @@ class CollRMADistTest : public ::testing::Test {
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
           device_type,
-          strings::StrCat(worker_name, "/device:", device_type, ":", i)));
+          strings::StrCat(worker_name, "/device:", device_type, ":", i),
+          &fake_allocator_));
     }
     DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
@@ -254,7 +303,12 @@ class CollRMADistTest : public ::testing::Test {
     }
     DeviceResolverDistributed* dev_res = new DeviceResolverDistributed(dev_mgr);
     dev_resolvers_[worker_name] = dev_res;
-    FakeWorker* fw = new FakeWorker(worker_name, dev_mgr, dev_res, is_failed);
+    FakeWorker* fw =
+        new FakeWorker(worker_name, dev_mgr, dev_res, is_failed,
+                       /*set_tensor_in_extra=*/
+                       std::get<TEST_PARAM_TENSOR_LOC>(GetParam()) ==
+                           TEST_PARAM_TENSOR_LOC_IN_EXTRA);
+
     workers_.push_back(fw);
     wc_.AddWorker(worker_name, fw);
   }
@@ -280,6 +334,19 @@ class CollRMADistTest : public ::testing::Test {
     }
   }
 
+  void ValidateResultTensorUnchanged() {
+    for (int i = 0; i < to_tensor_.NumElements(); ++i) {
+      EXPECT_FLOAT_EQ(-1, to_tensor_.flat<float>()(i));
+    }
+  }
+
+  void MaybeSetGPUDevice(Device* dst_device) {
+    if (std::get<TEST_PARAM_DEVICE_TYPE>(GetParam()) ==
+        TEST_PARAM_DEVICE_TYPE_GPU) {
+      dst_device->set_tensorflow_gpu_device_info(&gpu_device_info_);
+    }
+  }
+
   FakeCache wc_;
   CancellationManager cm_;
   std::vector<DeviceMgr*> device_mgrs_;
@@ -292,13 +359,16 @@ class CollRMADistTest : public ::testing::Test {
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
   Tensor expected_value_;
+  Tensor large_response_;
   Tensor to_tensor_;
   CallOptions opts_;
   DeviceLocality device_locality_;
   AllocatorAttributes alloc_attr_;
+  FakeAllocator fake_allocator_;
+  DeviceBase::GpuDeviceInfo gpu_device_info_;
 };
 
-TEST_F(CollRMADistTest, ProdFirstOK) {
+TEST_P(CollRMADistTest, ProdFirstOK) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
@@ -318,6 +388,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   DeviceContext* to_device_ctx = nullptr;
+  MaybeSetGPUDevice(dst_device);
   rma_->RecvFromPeer(
       "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
       "/job:worker/replica:0/task:1",                     // peer_task
@@ -336,7 +407,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
   ValidateResultTensor();
 }
 
-TEST_F(CollRMADistTest, ConsFirstOK) {
+TEST_P(CollRMADistTest, ConsFirstOK) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
@@ -347,6 +418,7 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;
   rma_->RecvFromPeer(
       "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
@@ -374,7 +446,7 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
   ValidateResultTensor();
 }
 
-TEST_F(CollRMADistTest, ConsFirstAbort) {
+TEST_P(CollRMADistTest, ConsFirstAbort) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Status consumer_status;
@@ -382,6 +454,7 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;
   rma_->RecvFromPeer(
       "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
@@ -399,7 +472,47 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
   EXPECT_EQ(consumer_status.error_message(), "Cancelled");
 }
 
-TEST_F(CollRMADistTest, WorkerRestart) {
+TEST_P(CollRMADistTest, ResponseTooLarge) {
+  ResolveDeviceAttributes();
+  Notification consumer_note;
+  Notification producer_note;
+  Status consumer_status;
+  Status producer_status;
+  FakeWorker* wi = workers_[1];
+  const string kBufKey = "fake_buf_key";
+  wi->buf_rendezvous()->ProvideBuf(
+      kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &large_response_,
+      AllocatorAttributes(),
+      [&producer_note, &producer_status](const Status& s) {
+        producer_status.Update(s);
+        producer_note.Notify();
+      },
+      nullptr /*cancellation_manager*/);
+  Device* dst_device = nullptr;
+  string dev_name = "CPU:0";
+  TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  DeviceContext* to_device_ctx = nullptr;
+  MaybeSetGPUDevice(dst_device);
+  rma_->RecvFromPeer(
+      "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
+      "/job:worker/replica:0/task:1",                     // peer_task
+      false,                                              // peer_is_local
+      kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
+      device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
+      [&consumer_status, &consumer_note](const Status& s) {
+        consumer_status = s;
+        consumer_note.Notify();
+      });
+  consumer_note.WaitForNotification();
+  EXPECT_THAT(consumer_status.error_message(),
+              ::testing::HasSubstr("Tensor Size Mismatch"));
+  producer_note.WaitForNotification();
+  TF_EXPECT_OK(producer_status);
+  ValidateResultTensorUnchanged();
+}
+
+TEST_P(CollRMADistTest, WorkerRestart) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
@@ -410,6 +523,7 @@ TEST_F(CollRMADistTest, WorkerRestart) {
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;
   rma_->RecvFromPeer(
       "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
@@ -454,7 +568,7 @@ TEST_F(CollRMADistTest, WorkerRestart) {
   EXPECT_TRUE(errors::IsFailedPrecondition(consumer_status));
 }
 
-TEST_F(CollRMADistTest, CheckHealthOKWithCachedAttr) {
+TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   ResolveDeviceAttributes();
   Status check_health_status;
   Notification check_health_done;
@@ -468,7 +582,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   TF_EXPECT_OK(check_health_status);
 }
 
-TEST_F(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
+TEST_P(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
@@ -481,7 +595,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
   EXPECT_TRUE(check_health_status.ok());
 }
 
-TEST_F(CollRMADistTest, CheckHealthRestarted) {
+TEST_P(CollRMADistTest, CheckHealthRestarted) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
 
@@ -497,7 +611,7 @@ TEST_F(CollRMADistTest, CheckHealthRestarted) {
   EXPECT_TRUE(errors::IsFailedPrecondition(check_health_status));
 }
 
-TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
+TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1,
                 /*is_failed*/ true);
@@ -514,7 +628,7 @@ TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
   EXPECT_TRUE(errors::IsUnavailable(check_health_status));
 }
 
-TEST_F(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
+TEST_P(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "GPU", /*num_devices*/ 1);
   Status check_health_status;
@@ -528,6 +642,13 @@ TEST_F(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   check_health_done.WaitForNotification();
   EXPECT_TRUE(errors::IsFailedPrecondition(check_health_status));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    TensorInBufPtrOrExtra, CollRMADistTest,
+    ::testing::Combine(::testing::Values(TEST_PARAM_TENSOR_LOC_AT_BUF_PTR,
+                                         TEST_PARAM_TENSOR_LOC_IN_EXTRA),
+                       ::testing::Values(TEST_PARAM_DEVICE_TYPE_CPU,
+                                         TEST_PARAM_DEVICE_TYPE_GPU)));
 
 }  // namespace
 }  // namespace tensorflow

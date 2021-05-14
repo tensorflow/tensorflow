@@ -782,6 +782,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
 
+    result_type = this->typeConverter->convertType(result_type)
+                      .template cast<ShapedType>();
+
     // Compute the reassociation maps for the linalg operation.
     ArrayRef<int64_t> src_shape =
         (operand_type.getRank() > result_type.getRank()
