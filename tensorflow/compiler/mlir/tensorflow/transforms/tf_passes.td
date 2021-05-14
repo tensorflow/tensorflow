@@ -933,3 +933,19 @@ def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {
   let constructor = "TF::CreateTensorDeviceCopyConversionPass()";
 }
 
+def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", "ModuleOp"> {
+  let summary = "Decompose tensor array operations into local variable operations.";
+
+  let description = [{
+A pass that converts tensor array operations to tensor operations and
+read/assign ops on local variables. A later resource lifting pass can further
+remove the local variables.
+
+This pass requires that the full shape of the tensor array can be inferred:
+1) the size needs to be a constant, 2) it specifies the full element shape,
+or that can be inferred from a later write, and 3) all elements have the same
+shape.
+  }];
+
+  let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
+}
