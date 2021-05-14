@@ -61,6 +61,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops);
 
+// Creates an instance of the TensorFlow Lite optimize op order pass.
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass();
+
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
@@ -124,6 +127,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
 // Creates a pass which is responsible for initializing Tensorflow variables
 // as Tensorflow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
+
+// Creates get arithmetic count pass, which will calculate the arithmetic count
+// for each ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
 }  // namespace TFL
 
 }  // namespace mlir

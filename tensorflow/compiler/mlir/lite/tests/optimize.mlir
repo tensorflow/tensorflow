@@ -1402,6 +1402,26 @@ func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: return %[[RESULT]]
 }
 
+func @ConvertPowHalfToSqrt(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.500000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPowHalfToSqrt
+// CHECK: %[[RESULT:.*]] = "tfl.sqrt"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
+func @ConvertPowMinusHalfToRsqrt(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<-0.500000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPowMinusHalfToRsqrt
+// CHECK: %[[RESULT:.*]] = "tfl.rsqrt"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
 func @ConvertIdentityGatherNdOp(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
   %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
   %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3xf32>, tensor<4x1xi32>) -> tensor<4x3xf32>
@@ -1647,7 +1667,17 @@ func @DontConvertMul12ToIdentity(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: ConvertMul1WithBroadcastToIdentity
+// If the broadcast doesn't change the dimensions (i.e. constant is smaller than input)
+func @ConvertMul1WithBroadcastToIdentity(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2xf32>
+  %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+  // CHECK: return %arg0
+}
+
 // CHECK-LABEL: DontConvertMul1WithBroadcastToIdentity
+// If the broadcast changes the dimensions (i.e. constant is larger than input)
 func @DontConvertMul1WithBroadcastToIdentity(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
   %cst = constant dense<1.0> : tensor<2x2xf32>
   %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>

@@ -1371,7 +1371,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (auto iter : clone.function_defs_) {
     s = AddHelper(iter.second, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1384,7 +1387,10 @@ Status FunctionLibraryDefinition::AddLibrary(
     grad.set_gradient_func(iter.second);
     s = AddGradientDefHelper(grad, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1406,7 +1412,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (const FunctionDef& fdef : lib_def.function()) {
     s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1416,7 +1425,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (const GradientDef& grad : lib_def.gradient()) {
     s = AddGradientDefHelper(grad, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1476,17 +1488,23 @@ Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::Remove(
+Status FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
+  Status s;
   for (const string& f : funcs) {
-    Status s = RemoveFunctionHelper(f);
-    DCHECK(s.ok());
+    s = RemoveFunctionHelper(f);
+    if (!s.ok()) {
+      return s;
+    }
   }
   for (const string& f : funcs_with_grads) {
-    Status s = RemoveGradient(f);
-    DCHECK(s.ok());
+    s = RemoveGradient(f);
+    if (!s.ok()) {
+      return s;
+    }
   }
+  return Status::OK();
 }
 
 string FunctionLibraryDefinition::FindGradient(const string& func) const {
@@ -1794,7 +1812,7 @@ FunctionDefHelper::AttrValueWrapper FunctionDefHelper::FunctionRef(
 NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   NodeDef n;
   n.set_op(this->op);
-  n.set_name(this->ret[0]);
+  n.set_name(GetName());
   for (const auto& a : this->attr) {
     n.mutable_attr()->insert({a.first, a.second.proto});
   }
@@ -1899,14 +1917,14 @@ FunctionDef FunctionDefHelper::Define(const string& name,
   for (const auto& src : node_def) {
     NodeDef* n = fdef.add_node_def();
     n->set_op(src.op);
-    n->set_name(src.ret[0]);
+    n->set_name(src.GetName());
     for (const auto& a : src.attr) {
       n->mutable_attr()->insert({a.first, a.second.proto});
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
       CHECK(iter != ret_index.end())
-          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
+          << "Node input '" << a << "' in '" << n->name() << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {
@@ -1921,11 +1939,11 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     TF_CHECK_OK(NameRangesForNode(*n, *op_def, nullptr, &output_names));
     for (const auto& o : output_names) {
       CHECK_LE(o.second.second, src.ret.size())
-          << "Missing ret for output '" << o.first << "' in '" << src.ret[0]
+          << "Missing ret for output '" << o.first << "' in '" << n->name()
           << "' of " << name;
       for (int i = o.second.first; i < o.second.second; ++i) {
         ret_index[src.ret[i]] =
-            strings::StrCat(src.ret[0], ":", o.first, ":", i - o.second.first);
+            strings::StrCat(n->name(), ":", o.first, ":", i - o.second.first);
       }
     }
     if (op_def->is_stateful()) fdef.mutable_signature()->set_is_stateful(true);

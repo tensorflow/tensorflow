@@ -42,7 +42,6 @@ using mlir::ModuleOp;
 using mlir::TranslateFromMLIRRegistration;
 using std::string;
 using tensorflow::Status;
-using xla::StatusOr;
 
 // Translates the given MLIR module in the TFJS dialect to TFJS JSON
 // format. Returns false on success.

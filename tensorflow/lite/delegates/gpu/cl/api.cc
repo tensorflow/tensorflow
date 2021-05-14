@@ -539,6 +539,13 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    for (const auto& output : outputs_) {
+      if (output->def().external_def.object_def.object_type ==
+          ObjectType::CPU_MEMORY) {
+        clFinish(queue_->queue());
+        break;
+      }
+    }
     return absl::OkStatus();
   }
 
@@ -662,6 +669,11 @@ class InferenceBuilderImpl : public InferenceBuilder {
       create_info.hints.Add(ModelHints::kFastTuning);
     } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
       create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    }
+    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 

@@ -440,6 +440,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._use_tfrt_distributed_runtime = None
     self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -543,6 +544,11 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        # pylint: disable=g-backslash-continuation
+        if self._use_tfrt is not None and \
+            self._use_tfrt_distributed_runtime is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
+              opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
             opts, self._run_eager_op_as_function)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -686,14 +692,9 @@ class Context(object):
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels.
-
-    Raises:
-      ValueError: if context is not initialized.
     """
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
-    else:
-      raise ValueError("Context is not initialized.")
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -1468,11 +1469,6 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
-  # TODO(reedwm): Remove this function
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
-    return self.get_memory_info(dev)["current"]
-
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()
@@ -1748,6 +1744,28 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
+
+  @property
+  def use_tfrt_distributed_runtime(self):
+    return self._use_tfrt_distributed_runtime
+
+  @use_tfrt_distributed_runtime.setter
+  def use_tfrt_distributed_runtime(self, enable):
+    """Sets whether to use TFRT distributed runtime.
+
+    This is only effective when use_tfrt is also true. Note that currently TFRT
+    distributed runtime is not function complete and this config is for testing
+    only.
+    Args:
+      enable: A boolean to set whether to use TFRT distributed runtime.
+    """
+    if not isinstance(enable, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(enable))
+
+    if self._use_tfrt_distributed_runtime != enable:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt_distributed_runtime = enable
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.

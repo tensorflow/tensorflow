@@ -152,29 +152,17 @@ string ThunkSchedule::ToString() const {
     return "No thunks.";
   }
 
-  auto thunk_with_longest_kind = absl::c_max_element(
-      TotalOrder(),
-      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
-        return ThunkKindToString(a->kind()).length() <
-               ThunkKindToString(b->kind()).length();
-      });
-  int64 max_thunk_kind_len =
-      ThunkKindToString(thunk_with_longest_kind->get()->kind()).length();
-
-  string result = "Total order:\n";
-  for (const std::unique_ptr<Thunk>& thunk : TotalOrder()) {
-    // Write out the thunk kind, padded out to max_thunk_kind_len.
-    absl::string_view kind_str = ThunkKindToString(thunk->kind());
-    absl::StrAppend(&result, kind_str,
-                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+  auto get_thunk_annotation = [&](const Thunk* thunk) -> std::string {
     auto iter = thunk_to_hlo_.find(thunk);
     if (iter != thunk_to_hlo_.end() && iter->second != nullptr) {
-      absl::StrAppend(&result, iter->second->ToString());
+      return iter->second->ToString();
     } else {
-      absl::StrAppend(&result, "(no HloInstruction)");
+      return "(no HloInstruction)";
     }
-    absl::StrAppend(&result, "\n");
-  }
+  };
+
+  string result = "Total order:\n";
+  absl::StrAppend(&result, thunks_->ToString(0, get_thunk_annotation));
   absl::StrAppend(&result, "\nDependencies:\n");
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;

@@ -133,7 +133,7 @@ cc_test(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -244,6 +244,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "model_builder",
+    srcs = ["model_builder.cc"],
+    hdrs = ["model_builder.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    visibility = internal_visibility_allowlist(),
+    deps = [
+        ":allocation",
+        ":mutable_op_resolver",
+        ":stderr_reporter",
+        ":string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
 # The library that implements the full C++ API.
 # See also 'framework' below, which is the corresponding public target.
 cc_library(
@@ -262,6 +283,7 @@ cc_library(
         ":kernel_api",
         ":macros",
         ":memory_planner",
+        ":model_builder",
         ":mutable_op_resolver",
         ":optional_debug_tools",
         ":stderr_reporter",
@@ -295,6 +317,7 @@ cc_library(
         ":framework_lib",
         ":graph_info",
         ":memory_planner",
+        ":model_builder",
         ":string",
         ":type_to_tflitetype",
         ":util",
@@ -316,7 +339,6 @@ cc_library(
         "graph_info.cc",
         "interpreter.cc",
         "interpreter_builder.cc",
-        "model_builder.cc",
     ],
     hdrs = [
         "core/subgraph.h",
@@ -342,6 +364,7 @@ cc_library(
         ":macros",
         ":memory_planner",
         ":minimal_logging",
+        ":model_builder",
         ":mutable_op_resolver",
         ":shared_library",
         ":simple_memory_arena",
@@ -443,6 +466,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -498,8 +522,9 @@ cc_library(
     name = "tflite_with_xnnpack_default",
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
-    # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
-    # once we have a good testing coverage on these two platforms.
+    # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
+    # configuration conditions will make TFLite interpreter to apply XNNPACK
+    # delegate by default.
     deps = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
@@ -542,7 +567,7 @@ cc_test(
         ":string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -578,7 +603,6 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
         "tflite_smoke_test",
     ],
     deps = [
@@ -594,7 +618,7 @@ cc_test(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -608,7 +632,7 @@ cc_test(
         ":framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -622,7 +646,7 @@ cc_test(
         ":simple_memory_arena",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -643,6 +667,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/unsupported_recursion.bin",
         "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [
@@ -659,7 +684,7 @@ cc_test(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -684,7 +709,7 @@ tf_cc_test(
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -728,7 +753,7 @@ cc_test(
     deps = [
         ":allocation",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -743,7 +768,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -753,6 +778,24 @@ cc_test(
     deps = [
         ":stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "optional_debug_tools_test",
+    size = "small",
+    srcs = ["optional_debug_tools_test.cc"],
+    data = ["testdata/add.bin"],
+    tags = [
+        "nomsan",  # TODO(b/186359792)
+    ],
+    deps = [
+        ":framework",
+        ":optional_debug_tools",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -795,7 +838,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -856,12 +899,9 @@ cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/173711739)
-    ],
     deps = [
         ":minimal_logging",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

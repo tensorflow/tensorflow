@@ -31,10 +31,14 @@ struct ModelHints {
   // Can improve tuning time, but inference can be slower.
   static constexpr ModelHint kFastTuning = 0x00000002;
 
-  // Experimental.
   // Can improve performance and memory consumption, but slow down
-  // initialization a lot and create more unique kernels.
+  // initialization and create more unique kernels.
   static constexpr ModelHint kAllowSpecialKernels = 0x00000004;
+
+  // By default we apply Winograd optimized kernels and it improves performance.
+  // But it also can increase memory usage and decrease precision.
+  // This hint can disable Winograd optimizations.
+  static constexpr ModelHint kNoWinogradOptimizations = 0x00000008;
 
   void Add(ModelHint hint) {
     if (hint == kFastestInference) {

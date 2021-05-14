@@ -848,6 +848,7 @@ class FeatureConfig(object):
   def __init__(self,
                table: TableConfig,
                max_sequence_length: int = 0,
+               validate_weights_and_indices: bool = True,
                name: Optional[Text] = None):
     """Feature configuration.
 
@@ -858,6 +859,9 @@ class FeatureConfig(object):
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
+      validate_weights_and_indices: If true, uses safe_embedding_lookup
+        during serving which ensures there are no empty rows and all weights
+        and ids are positive at the expense of extra compute cost.
       name: An optional name for the feature, useful for debugging.
 
     Returns:
@@ -880,16 +884,17 @@ class FeatureConfig(object):
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
+    self.validate_weights_and_indices = validate_weights_and_indices
 
   def __repr__(self):
-    return (
-        "FeatureConfig(table={table!r}, "
-        "max_sequence_length={max_sequence_length!r}, name={name!r})"
-        .format(
-            table=self.table,
-            max_sequence_length=self.max_sequence_length,
-            name=self.name)
-    )
+    return ("FeatureConfig(table={table!r}, "
+            "max_sequence_length={max_sequence_length!r}, "
+            "validate_weights_and_indices={"
+            "validate_weights_and_indices!r}, name={name!r})".format(
+                table=self.table,
+                max_sequence_length=self.max_sequence_length,
+                validate_weights_and_indices=self.validate_weights_and_indices,
+                name=self.name))
 
 
 def log_tpu_embedding_configuration(

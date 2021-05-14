@@ -121,3 +121,10 @@ def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
 }
+
+/// Rank specialization passes.
+
+def RankSpecializationClusterPass
+    : Pass<"mhlo-rank-specialization-cluster", "FuncOp"> {
+  let constructor = "createRankSpecializationClusterPass()";
+}

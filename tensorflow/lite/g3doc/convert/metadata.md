@@ -435,7 +435,7 @@ Flatbuffers library.
 
 To use the Metadata Extractor library in your Android app, we recommend using
 the
-[TensorFlow Lite Metadata AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-metadata).
+[TensorFlow Lite Metadata AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-metadata).
 It contains the `MetadataExtractor` class, as well as the FlatBuffers Java
 bindings for the
 [metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
@@ -449,6 +449,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](../guide/build_android#use_nightly_snapshots).
 
 You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
 to the model:

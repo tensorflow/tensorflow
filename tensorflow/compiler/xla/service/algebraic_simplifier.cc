@@ -1411,12 +1411,23 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   }
 
   // If a literal is an increasing sequence from zero, replace it with an iota.
-  if (constant->shape().rank() == 1 &&
-      ShapeUtil::ElementsIn(constant->shape()) > 1 &&
+  if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsR1Iota()) {
     return ReplaceWithNewInstruction(
         constant, HloInstruction::CreateIota(constant->shape(), 0));
   }
+
+  if (absl::optional<int64> stride = constant->literal().IsR1StridedIota()) {
+    // Replace the constant with iota * stride.
+    HloInstruction* stride_hlo = MakeScalarLike(constant, *stride);
+    HloInstruction* iota = computation_->AddInstruction(
+        HloInstruction::CreateIota(constant->shape(), 0));
+    return ReplaceWithNewInstruction(
+        constant,
+        HloInstruction::CreateBinary(constant->shape(), HloOpcode::kMultiply,
+                                     iota, stride_hlo));
+  }
+
   return Status::OK();
 }
 
@@ -2545,8 +2556,10 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     };
     auto result = get_value(0);
     auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
+    simplifier_->UpdateLayout(&pred_shape);
     auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
                                                    index_shape.element_type());
+    simplifier_->UpdateLayout(&iter_shape);
     for (int64 i = 0; i < operand_elements; ++i) {
       auto index_mask =
           computation_->AddInstruction(HloInstruction::CreateCompare(
@@ -2565,7 +2578,7 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
 namespace {
 StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
     HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
-    HloInstruction* clamp_upper_bound_bcast) {
+    HloInstruction* clamp_upper_bound_bcast, AlgebraicSimplifier* simplifier) {
   HloInstruction* clamp_lower_bound;
   CHECK(Match(clamp_lower_bound_bcast,
               m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
@@ -2581,16 +2594,22 @@ StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
   const Literal& upper_bound =
       Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
 
+  TF_ASSIGN_OR_RETURN(Literal lower_bound_literal_reshaped,
+                      lower_bound.Reshape({}));
+  TF_ASSIGN_OR_RETURN(Literal upper_bound_literal_reshaped,
+                      upper_bound.Reshape({}));
   std::unique_ptr<HloInstruction> lower_bound_instr =
-      HloInstruction::CreateConstant(lower_bound.Clone());
+      HloInstruction::CreateConstant(std::move(lower_bound_literal_reshaped));
   std::unique_ptr<HloInstruction> upper_bound_instr =
-      HloInstruction::CreateConstant(upper_bound.Clone());
+      HloInstruction::CreateConstant(std::move(upper_bound_literal_reshaped));
 
+  Shape compare_shape =
+      ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED);
+  simplifier->UpdateLayout(&compare_shape);
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateCompare(
-          ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED),
-          lower_bound_instr.get(), upper_bound_instr.get(),
-          ComparisonDirection::kLt);
+      HloInstruction::CreateCompare(compare_shape, lower_bound_instr.get(),
+                                    upper_bound_instr.get(),
+                                    ComparisonDirection::kLt);
 
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(auto result,
@@ -2620,7 +2639,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(maximum, std::move(clamp));
     }
@@ -2660,7 +2679,7 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(minimum, std::move(clamp));
     }
@@ -2681,6 +2700,26 @@ Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
                                m::Op().Is(clamp_upper_bound))) &&
       ReplaceInstructionIfSameShape(clamp, to_clamp)) {
     return Status::OK();
+  }
+
+  // Eliminate redundant clamping of replica-id or partition-id.
+  if ((Match(to_clamp, m::PartitionId()) || Match(to_clamp, m::ReplicaId())) &&
+      Match(clamp_lower_bound, m::ConstantScalar(0U)) &&
+      Match(clamp_upper_bound, m::ConstantScalar())) {
+    int64 upper_bound = Cast<HloConstantInstruction>(clamp_upper_bound)
+                            ->literal()
+                            .GetFirstElement<uint32_t>();
+    const HloModuleConfig& config = clamp->GetModule()->config();
+    int64 runtime_bound = Match(to_clamp, m::PartitionId())
+                              ? config.num_partitions()
+                              : config.replica_count();
+
+    // If num_partitions or replica_count is 1, infer it as unknown.
+    // pid/rid < runtime_bound => The clamp(0, pid/rid, upper_bound) is
+    // redundant if the runtime_bound <= upper_bound + 1;
+    if (runtime_bound != 1 && runtime_bound <= upper_bound + 1) {
+      return ReplaceInstruction(clamp, to_clamp);
+    }
   }
 
   return Status::OK();
@@ -3701,10 +3740,11 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
 
+      Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
+      simplifier->UpdateLayout(&compare_shape);
       auto* dividend_is_negative =
           computation->AddInstruction(HloInstruction::CreateCompare(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
-              ComparisonDirection::kLt));
+              compare_shape, a, zero_like_a, ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -4416,6 +4456,80 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         HloInstruction::CreateSlice(dynamic_slice->shape(), operand,
                                     slice_starts, slice_limits, slice_strides));
   }
+
+  // Convert the dynamic slice of an iota to just a reference to the index
+  // (possibly clamped and scaled). Index is always a scalar integer. Output
+  // should be a rank 1 array of size 1 with element type matching that of the
+  // scalar index (except the signedness).
+  const PrimitiveType element_type = dynamic_slice->shape().element_type();
+  if (operand->shape().rank() == 1 && dynamic_slice->shape().rank() == 1 &&
+      dynamic_slice->shape().dimensions(0) == 1 &&
+      (element_type == S32 || element_type == U32)) {
+    // Match multiply(x, broadcast(scalar)) and return the scalar
+    // constant.
+    auto match_multiply_with_scalar =
+        [&](HloInstruction* hlo) -> HloInstruction* {
+      if (hlo->opcode() != HloOpcode::kMultiply) {
+        return nullptr;
+      }
+      HloInstruction* broadcast = hlo->mutable_operand(1);
+      if (broadcast->opcode() == HloOpcode::kBroadcast &&
+          broadcast->dimensions().empty() &&
+          ShapeUtil::IsScalar(broadcast->operand(0)->shape())) {
+        return broadcast->mutable_operand(0);
+      }
+      return nullptr;
+    };
+
+    HloInstruction* multiplier = match_multiply_with_scalar(operand);
+    if (multiplier) {
+      operand = operand->mutable_operand(0);
+    }
+
+    if (operand->opcode() == HloOpcode::kIota) {
+      // This dynamic_slice will have a single start_index operand (since its
+      // operand is rank 1).
+      HloInstruction* index = dynamic_slice->mutable_operand(1);
+      const PrimitiveType index_type = index->shape().element_type();
+
+      auto create_constant = [&](int64 value) {
+        if (index_type == S32) {
+          return MakeScalarLike<int32_t>(index, value);
+        } else {
+          return MakeScalarLike<uint32_t>(index, value);
+        }
+      };
+
+      if (index_type == S32 || index_type == U32) {
+        // Clamp the index to the range of the iota.
+        int64 iota_size = operand->shape().dimensions(0);
+        HloInstruction* low = create_constant(0);
+        HloInstruction* high = create_constant(iota_size - 1);
+        HloInstruction* clamped =
+            computation_->AddInstruction(HloInstruction::CreateTernary(
+                index->shape(), HloOpcode::kClamp, low, index, high));
+
+        // Convert the clamped index from index_type to element_type and
+        // multiply with the multiplier.
+        HloInstruction* result = clamped;
+        if (index_type != element_type) {
+          result = computation_->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeScalarShape(element_type), clamped));
+        }
+
+        if (multiplier) {
+          result = computation_->AddInstruction(HloInstruction::CreateBinary(
+              result->shape(), HloOpcode::kMultiply, result, multiplier));
+        }
+
+        return ReplaceWithNewInstruction(
+            dynamic_slice,
+            HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(element_type, {1}), result));
+      }
+    }
+  }
+
   return Status::OK();
 }
 

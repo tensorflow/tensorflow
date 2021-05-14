@@ -292,6 +292,39 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
 
 // -----
 
+// Do not merge assuming ops if witness will not dominate use.
+// CHECK: @do_not_merge_assuming_ops
+func @do_not_merge_assuming_ops() {
+  // CHECK: shape.assuming
+  // CHECK: shape.assuming
+  %0 = "some.witness"() : () -> !shape.witness
+  %1 = shape.assuming %0 -> (!shape.witness) {
+    %2 = "some.witness"() : () -> !shape.witness
+    shape.assuming_yield %2 : !shape.witness
+  }
+  shape.assuming %1 {
+    "some.op"() : () -> ()
+    shape.assuming_yield
+  }
+  return
+}
+
+// -----
+
+// CHECK:      @eliminate_extent_tensor_cast
+// CHECK-SAME: (%[[ARG:.*]]: tensor<2x?x4xf32>)
+func @eliminate_extent_tensor_cast(%arg : tensor<2x?x4xf32>) {
+  // CHECK-NOT:  shape_of
+  // CHECK:      %[[RESULT:.*]] = shape.shape_of %[[ARG]] : tensor<2x?x4xf32> -> tensor<3xindex>
+  // CHECK-NEXT: "use"(%[[RESULT]]) : (tensor<3xindex>) -> ()
+  %0 = shape.shape_of %arg : tensor<2x?x4xf32> -> tensor<?xindex>
+  %1 = tensor.cast %0 : tensor<?xindex> to tensor<3xindex>
+  "use"(%1) : (tensor<3xindex>) -> ()
+  return
+}
+
+// -----
+
 // Exemplary IR as it appears in the lowering of two subsequent `tf.Sub` ops.
 // CHECK-LABEL: @sub_sub
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)
@@ -304,7 +337,6 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   // CHECK-DAG:  %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE2]], %[[SHAPE0]], %[[SHAPE1]]
   // CHECK-DAG:  %[[COMBINED_WITNESS:.*]] = shape.assuming_all %[[WITNESS0]], %[[WITNESS1]]
   // CHECK:      %[[ASSUMING_RESULT:.*]] = shape.assuming %[[COMBINED_WITNESS]]
-  // CHECK-SAME: {
   // CHECK:        %[[BCASTED_SHAPE01:.*]] = shape.broadcast %[[SHAPE0]], %[[SHAPE1]]
   // CHECK:        %[[BCASTED_SHAPE012:.*]] = shape.broadcast %[[SHAPE2]], %[[BCASTED_SHAPE01]]
   // CHECK:        %[[BCASTED_ARG2:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG2]], %[[BCASTED_SHAPE012]]) {broadcast_dimensions = dense<[0, 1, 2]>
@@ -313,7 +345,6 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   // CHECK:        %[[TMP:.*]] = mhlo.subtract %[[BCASTED_ARG0]], %[[BCASTED_ARG1]]
   // CHECK:        %[[RESULT:.*]] = mhlo.subtract %[[BCASTED_ARG2]], %[[TMP]]
   // CHECK:        shape.assuming_yield %[[RESULT]]
-  // CHECK:      }
   // CHECK:      return %[[ASSUMING_RESULT]]
   %0 = shape.shape_of %arg0 : tensor<?x32xf16> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?x32xf16> -> tensor<2xindex>
@@ -321,9 +352,10 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   %3 = shape.assuming %2 -> (tensor<?x32xf16>) {
     %8 = shape.shape_of %arg0 : tensor<?x32xf16> -> tensor<2xindex>
     %9 = shape.shape_of %arg1 : tensor<?x32xf16> -> tensor<2xindex>
-    %10 = shape.broadcast %8, %9 : tensor<2xindex>, tensor<2xindex> -> tensor<2xindex>
-    %12 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %10) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<2xindex>) -> tensor<?x32xf16>
-    %13 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %10) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<2xindex>) -> tensor<?x32xf16>
+    %10 = shape.broadcast %8, %9 : tensor<2xindex>, tensor<2xindex> -> tensor<?xindex>
+    %11 = tensor.cast %10 : tensor<?xindex> to tensor<2xindex>
+    %12 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %11) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<2xindex>) -> tensor<?x32xf16>
+    %13 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %11) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<2xindex>) -> tensor<?x32xf16>
     %14 = mhlo.subtract %12, %13 : tensor<?x32xf16>
     shape.assuming_yield %14 : tensor<?x32xf16>
   }
@@ -333,9 +365,10 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   %7 = shape.assuming %6 -> (tensor<?x?x32xf16>) {
     %8 = shape.shape_of %arg2 : tensor<?x?x32xf16> -> tensor<3xindex>
     %9 = shape.shape_of %3 : tensor<?x32xf16> -> tensor<2xindex>
-    %10 = shape.broadcast %8, %9 : tensor<3xindex>, tensor<2xindex> -> tensor<3xindex>
-    %12 = "mhlo.dynamic_broadcast_in_dim"(%arg2, %10) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<?x?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
-    %13 = "mhlo.dynamic_broadcast_in_dim"(%3, %10) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
+    %10 = shape.broadcast %8, %9 : tensor<3xindex>, tensor<2xindex> -> tensor<?xindex>
+    %11 = tensor.cast %10 : tensor<?xindex> to tensor<3xindex>
+    %12 = "mhlo.dynamic_broadcast_in_dim"(%arg2, %11) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<?x?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
+    %13 = "mhlo.dynamic_broadcast_in_dim"(%3, %11) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
     %14 = mhlo.subtract %12, %13 : tensor<?x?x32xf16>
     shape.assuming_yield %14 : tensor<?x?x32xf16>
   }

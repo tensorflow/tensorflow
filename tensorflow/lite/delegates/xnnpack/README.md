@@ -13,7 +13,7 @@ for floating-point inference.
 
 ### Enable XNNPACK via Java API on Android (recommended on Android)
 
-Pre-built [nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_jcenter)
+Pre-built [nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_mavencentral)
 include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
 method in `Interpreter.Options` class to enable it:
 
@@ -201,7 +201,6 @@ Below is the list of current operators and limitations:
 ### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Bias is mandatory.
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.

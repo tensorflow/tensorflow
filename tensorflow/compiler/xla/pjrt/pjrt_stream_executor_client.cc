@@ -1175,7 +1175,7 @@ PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(device_buffer_ != nullptr);
   } else {
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }
@@ -1278,6 +1278,26 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
   RecordUsage(std::move(device_buffer), local_device, local_device, usage_event,
               stream,
               /*prefer_to_retain_reference=*/true);
+}
+
+StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
+  absl::MutexLock lock(&mu_);
+  if (device_buffer_ == nullptr) {
+    return InvalidArgument(
+        "GetOnDeviceSizeInBytes called on deleted or donated buffer");
+  }
+  if (device_buffer_->device_memory().size() != 1) {
+    return InvalidArgument(
+        "GetOnDeviceSizeInBytes called on tuple-shaped buffer");
+  }
+  return device_buffer_->device_memory()[0].size();
+}
+
+Status PjRtStreamExecutorBuffer::CopyRawToHost(
+    void* dst, int64 offset, int64 transfer_size,
+    std::function<void(Status)> on_ready) {
+  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
+                                         std::move(on_ready));
 }
 
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {

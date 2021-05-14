@@ -941,6 +941,7 @@ tf_xla_py_test(
     tags = [
         "no_mac",
         "no_pip",
+        "no_tfrt",  # TODO(b/185944215)
         "no_windows",
     ],
     use_xla_device = False,

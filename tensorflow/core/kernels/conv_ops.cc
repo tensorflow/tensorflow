@@ -260,6 +260,11 @@ struct LaunchConv2DOp<CPUDevice, T> {
     const int64 out_depth = output->dim_size(3);
     const int64 patch_depth = filter.dim_size(2);
 
+    if (patch_depth <= 0) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "filter depth must be stricly positive, got ", patch_depth));
+      return;
+    }
     if (in_depth % patch_depth != 0) {
       ctx->SetStatus(errors::InvalidArgument(
           "input depth must be evenly divisible by filter depth: ", in_depth,
@@ -268,6 +273,11 @@ struct LaunchConv2DOp<CPUDevice, T> {
     }
 
     const int64 num_groups = in_depth / patch_depth;
+    if (num_groups <= 0) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "number of groups must be stricly positive, got ", num_groups));
+      return;
+    }
     if (out_depth % num_groups != 0 || out_depth < num_groups) {
       ctx->SetStatus(errors::InvalidArgument(
           "output depth must be evenly divisible by number of groups: ",
@@ -536,6 +546,9 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
               errors::InvalidArgument("Patch depth too large"));
   const int in_depth = static_cast<int>(in_depth_raw);
   const int patch_depth = static_cast<int>(patch_depth_raw);
+  TF_REQUIRES(patch_depth > 0,
+              errors::InvalidArgument(
+                  "filter depth must be stricly positive, got ", patch_depth));
   TF_REQUIRES(in_depth % patch_depth == 0,
               errors::InvalidArgument(
                   "input depth must be evenly divisible by filter depth: ",
@@ -804,15 +817,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
-                           a_ptr, k, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
+                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
              !is_grouped_convolution && row_dilation == 1 &&
@@ -832,15 +838,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
-                           a_ptr, k, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
+                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
     return;
   }
 

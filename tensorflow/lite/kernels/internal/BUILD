@@ -432,7 +432,7 @@ cc_test(
     srcs = ["transpose_utils_test.cc"],
     deps = [
         ":transpose_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -509,6 +509,7 @@ cc_library(
         "reference/quantize.h",
         "reference/reduce.h",
         "reference/requantize.h",
+        "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",

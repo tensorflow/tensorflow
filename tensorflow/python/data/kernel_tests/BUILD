@@ -47,6 +47,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "bucket_by_sequence_length_test",
+    size = "small",
+    srcs = ["bucket_by_sequence_length_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.py"],
@@ -366,6 +384,28 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "group_by_window_test",
+    size = "small",
+    srcs = ["group_by_window_test.py"],
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
@@ -665,6 +705,20 @@ tf_py_test(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "random_dataset_test",
+    size = "small",
+    srcs = ["random_dataset_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

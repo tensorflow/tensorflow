@@ -5786,5 +5786,51 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
             5);
 }
 
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
+  // This tests the scenario where there is an op that takes a long time (tanh
+  // in this example) and as a result the earliest and latest times both fall
+  // inside this long-running op. In this case, we should still return a valid
+  // prefetch interval just before the long-running op.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    negate = f32[2,4] negate(param0)
+    tanh = f32[2,4] tanh(param0)
+    ROOT add = f32[2,4] add(tanh, negate)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  cost_analysis->SetOverrideForGetInstructionElapsed(
+      [](const HloInstruction& hlo) {
+        if (hlo.opcode() == HloOpcode::kTanh) {
+          return 20.0;
+        }
+        return 1.0;
+      });
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/4.0,
+      /*preferred_async_copy_to_overlap_ratio=*/2.0,
+      /*buffer_size_for_max_async_copy=*/0);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
+  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3);
+
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_FALSE(interval_picker.Done());
+  EXPECT_EQ(interval_picker.Next(), 1);
+  EXPECT_TRUE(interval_picker.Done());
+}
+
 }  // namespace
 }  // namespace xla

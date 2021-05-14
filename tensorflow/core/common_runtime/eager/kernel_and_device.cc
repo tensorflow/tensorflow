@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -66,12 +67,12 @@ Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
 }
 
 std::vector<Tensor> EagerKernelArgs::GetLocalTensors() const {
-  std::vector<Tensor> lcoal_inputs;
-  lcoal_inputs.reserve(tensor_args_.size());
+  std::vector<Tensor> local_inputs;
+  local_inputs.reserve(tensor_args_.size());
   for (const TensorValue& tensor_value : tensor_args_) {
-    lcoal_inputs.push_back(*tensor_value.tensor);
+    local_inputs.push_back(*tensor_value.tensor);
   }
-  return lcoal_inputs;
+  return local_inputs;
 }
 
 std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
@@ -318,29 +319,12 @@ Status KernelAndDeviceOp::Run(
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::Run(
-    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<EagerKernelRet>* outputs,
+std::shared_ptr<FunctionLibraryRuntime::Options>
+KernelAndDeviceFunc::PrepareForRun(
+    ScopedStepContainer* step_container, std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace) {
-  Notification n;
-  Status status;
-  RunAsync(step_container, inputs, outputs, cancellation_manager,
-           remote_func_params, [&status, &n](const Status& s) {
-             status = s;
-             n.Notify();
-           });
-  n.WaitForNotification();
-  return status;
-}
-
-void KernelAndDeviceFunc::RunAsync(
-    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<EagerKernelRet>* outputs,
-    CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-    std::function<void(const Status&)> done) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (remote_func_params.has_value()) {
     const EagerRemoteFunctionParams& params = remote_func_params.value();
@@ -377,8 +361,7 @@ void KernelAndDeviceFunc::RunAsync(
   if (cancellation_manager) {
     opts->cancellation_manager = cancellation_manager;
   } else {
-    local_cm = std::make_shared<CancellationManager>();
-    opts->cancellation_manager = local_cm.get();
+    opts->cancellation_manager = new CancellationManager;
   }
   opts->allow_dead_tensors = true;
   opts->step_container = step_container;
@@ -389,13 +372,68 @@ void KernelAndDeviceFunc::RunAsync(
   opts->runner = get_runner();
 
   outputs->clear();
+  return opts;
+}
 
-  pflr_->Run(*opts, handle_, inputs, outputs,
-             [opts, rendezvous, local_cm, step_container, this,
-              done = std::move(done)](const Status& s) {
-               rendezvous->Unref();
-               done(s);
+Status KernelAndDeviceFunc::Run(
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
+  profiler::TraceMe activity("KernelAndDeviceFunc::Run",
+                             profiler::TraceMeLevel::kInfo);
+  // Don't try to handle packed or remote inputs synchronously.
+  if (inputs.HasRemoteOrPackedInputs() || remote_func_params.has_value()) {
+    Notification n;
+    Status status;
+    RunAsync(step_container, inputs, outputs, cancellation_manager,
+             remote_func_params, [&status, &n](Status s) {
+               status = s;
+               n.Notify();
              });
+    n.WaitForNotification();
+    return status;
+  }
+  std::shared_ptr<FunctionLibraryRuntime::Options> opts =
+      PrepareForRun(step_container, outputs, cancellation_manager,
+                    remote_func_params, stack_trace);
+
+  std::vector<Tensor> rets;
+  Status s = pflr_->RunSync(*opts, handle_, inputs.GetLocalTensors(), &rets);
+
+  if (cancellation_manager == nullptr) {
+    delete opts->cancellation_manager;
+  }
+  static_cast<Rendezvous*>(opts->rendezvous)->Unref();
+  outputs->reserve(rets.size());
+  for (auto& v : rets) {
+    outputs->push_back(std::move(v));
+  }
+  return s;
+}
+
+void KernelAndDeviceFunc::RunAsync(
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    std::function<void(const Status&)> done) {
+  profiler::TraceMe activity("KernelAndDeviceFunc::RunAsync",
+                             profiler::TraceMeLevel::kInfo);
+  std::shared_ptr<FunctionLibraryRuntime::Options> opts =
+      PrepareForRun(step_container, outputs, cancellation_manager,
+                    remote_func_params, absl::nullopt);
+
+  pflr_->Run(
+      *opts, handle_, inputs, outputs,
+      [opts, cancellation_manager, done = std::move(done)](const Status& s) {
+        if (cancellation_manager == nullptr) {
+          delete opts->cancellation_manager;
+        }
+        static_cast<Rendezvous*>(opts->rendezvous)->Unref();
+        done(s);
+      });
 }
 
 tensorflow::Device* KernelAndDeviceOp::OutputDevice(int idx) const {

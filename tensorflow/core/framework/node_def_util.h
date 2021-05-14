@@ -399,6 +399,12 @@ Status MaybeAddPrefixToColocationConstraints(
     const std::unordered_set<string>& match, StringPiece prefix,
     NodeDef* node_def);
 
+// Updates the colocation constraint name with the one provided in the map (if
+// it exists in the map) for node_def.
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
+    NodeDef* node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

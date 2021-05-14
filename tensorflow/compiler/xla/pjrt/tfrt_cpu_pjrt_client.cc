@@ -43,6 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -788,7 +790,7 @@ TfrtCpuBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(tracked_device_buffer_ != nullptr);
   } else {
     if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }
@@ -1140,6 +1142,14 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
+  auto hlo_cost_analysis =
+      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  // Cache to avoid std::map lookup in flop_count() on critical path.
+  // The magic constant 1000 is determined by correlating computation with flop
+  // estimate. It is a crude heuristic to find computation less than the thread
+  // context switch time (~5us).
+  cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
+
   const auto& computation_layout =
       cpu_executable_->module().entry_computation_layout();
   if (computation_layout.parameter_count() == 0) {
@@ -1428,9 +1438,16 @@ TfrtCpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(last_collective_launch_event));
   }
 
-  if (input_deps.empty()) {
+  if (input_deps.empty() && cheap_computation_) {
     // Synchronously call generated function.
     execute_event = GetOrCreateReadyEvent(host_context);
+
+    // Set denormal and rounding behavior to match the default TF
+    // ThreadPool behavior.
+    tensorflow::port::ScopedFlushDenormal flush;
+    tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+
+    // Call generated function.
     cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
                                        buffer_pointers.data(), nullptr);
   } else {
@@ -1466,6 +1483,11 @@ TfrtCpuExecutable::ExecuteHelper(
               return;
             }
           }
+
+          // Set denormal and rounding behavior to match the default TF
+          // ThreadPool behavior.
+          tensorflow::port::ScopedFlushDenormal flush;
+          tensorflow::port::ScopedSetRound round(FE_TONEAREST);
 
           // Call generated function.
           cpu_executable->compute_function()(result_buffer, &run_options,

@@ -158,7 +158,7 @@ landing_page:
           <li>
             Try out the different domain tutorials (e.g. vision, speech) from the left navigation
             bar. They show you how to train a model for a specific machine learning task, such as
-            <a href="https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html">object detection</a>
+            <a href="/lite/tutorials/model_maker_object_detection">object detection</a>
             or
             <a href="/lite/tutorials/model_maker_text_classification">sentiment analysis</a>.
           </li>

@@ -26,7 +26,8 @@ namespace gpu {
 
 void TensorLinearDescriptor::Release() { data.clear(); }
 
-GPUResources TensorLinearDescriptor::GetGPUResources() const {
+GPUResources TensorLinearDescriptor::GetGPUResources(
+    const GpuInfo& gpu_info) const {
   GPUResources resources;
   resources.ints.push_back("length");
   if (storage_type == LinearStorageType::BUFFER) {

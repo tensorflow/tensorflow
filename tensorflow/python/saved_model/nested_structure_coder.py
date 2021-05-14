@@ -42,6 +42,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -528,8 +529,7 @@ class _TypeSpecCodec(object):
 
   def can_encode(self, pyobj):
     """Returns true if `pyboj` can be encoded as a TypeSpec."""
-    # pylint: disable=unidiomatic-typecheck
-    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:
+    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:  # pylint: disable=unidiomatic-typecheck
       return True
 
     # Check if it's a registered type.
@@ -540,6 +540,8 @@ class _TypeSpecCodec(object):
       except ValueError:
         return False
 
+    return False
+
   def do_encode(self, type_spec_value, encode_fn):
     """Returns an encoded proto for the given `tf.TypeSpec`."""
     type_spec_class = self.TYPE_SPEC_CLASS_TO_PROTO.get(type(type_spec_value))
@@ -547,12 +549,15 @@ class _TypeSpecCodec(object):
 
     if type_spec_class is None:
       type_spec_class_name = type_spec.get_name(type(type_spec_value))
-      type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
-      # Support for saving registered TypeSpecs is currently experimental.
-      # Issue a warning to indicate the limitations.
-      warnings.warn("Encoding a StructuredValue with type %s; loading this "
-                    "StructuredValue will require that this type be "
-                    "imported and registered." % type_spec_class_name)
+      if isinstance(type_spec_value, extension_type.ExtensionTypeSpec):
+        type_spec_class = struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC
+      else:
+        type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
+        # Support for saving registered TypeSpecs is currently experimental.
+        # Issue a warning to indicate the limitations.
+        warnings.warn("Encoding a StructuredValue with type %s; loading this "
+                      "StructuredValue will require that this type be "
+                      "imported and registered." % type_spec_class_name)
 
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
     encoded_type_spec = struct_pb2.StructuredValue()
@@ -580,6 +585,13 @@ class _TypeSpecCodec(object):
             "The type '%s' has not been registered.  It must be registered "
             "before you load this object (typically by importing its module)."
             % class_name) from e
+    elif type_spec_class_enum == struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC:
+      try:
+        type_spec_class = type_spec.lookup(class_name)
+      except ValueError:
+        type_spec_class = extension_type.AnonymousExtensionTypeSpec
+        warnings.warn("The type %r has not been registered.  Falling back to "
+                      "using AnonymousExtensionTypeSpec instead.")
     else:
       if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
         raise ValueError(

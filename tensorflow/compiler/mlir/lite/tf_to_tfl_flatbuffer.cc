@@ -101,7 +101,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     const GraphImportConfig& specs, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    llvm::SourceMgr* source_mgr, MLIRContext* context) {
+    absl::string_view control_output_arrays, llvm::SourceMgr* source_mgr,
+    MLIRContext* context) {
   // Set up the input file.
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
@@ -122,14 +123,14 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, /*control_output_arrays=*/"",
+        input_shapes, output_arrays, control_output_arrays,
         specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, /*control_output_arrays=*/"",
+      input_shapes, output_arrays, control_output_arrays,
       specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false, context);

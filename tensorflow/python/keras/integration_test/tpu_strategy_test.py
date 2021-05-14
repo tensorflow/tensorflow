@@ -20,6 +20,7 @@ import tempfile
 from absl import flags
 
 import tensorflow as tf
+from tensorflow.python.framework import test_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -111,6 +112,7 @@ class TpuStrategyTest(tf.test.TestCase):
         for i in dataset:
           strategy.run(step_fn, args=(i,))
 
+  @test_util.disable_mlir_bridge("TODO(b/168036682): Support dynamic padder")
   def test_train_and_serve(self):
     strategy = get_tpu_strategy()
     use_adapt = False

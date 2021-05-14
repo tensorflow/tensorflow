@@ -7,6 +7,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -516,6 +517,7 @@ cc_library(
     deps = [
         ":dot_as_convolution_util",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_sharding_util",
@@ -4524,6 +4526,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
     ],
 )
@@ -5768,10 +5771,9 @@ tf_cc_test(
     ],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "hlo_pb2",
-#     api_version = 2,
-#     deps = [":hlo_proto"],
-# )
-# copybara:uncomment_end
+xla_py_proto_library(
+    name = "hlo_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":hlo_proto"],
+)

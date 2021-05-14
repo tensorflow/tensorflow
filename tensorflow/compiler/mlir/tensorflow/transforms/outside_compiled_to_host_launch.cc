@@ -86,13 +86,26 @@ void OutsideCompiledToHostLaunch::runOnOperation() {
     return signalPassFailure();
 
   auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
-    std::string host_device;
-    (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                      &host_device);
-    tpu_cluster.walk([&](Operation* op) {
+    auto inner_result = tpu_cluster.walk([&](Operation* op) {
       if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
-        WrapOpInLaunch(op, host_device);
+        return WalkResult::interrupt();
+      return WalkResult::advance();
     });
+    if (inner_result.wasInterrupted()) {
+      if (tensorflow::HasModelParallelism(tpu_cluster)) {
+        tpu_cluster.emitOpError(
+            "outside compilation is not supported with model parallelism.");
+        return WalkResult::interrupt();
+      }
+      std::string host_device;
+      if (failed(tensorflow::GetHostDeviceOutsideComputation(
+              devices, tpu_cluster, &host_device)))
+        return WalkResult::interrupt();
+      tpu_cluster.walk([&](Operation* op) {
+        if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+          WrapOpInLaunch(op, host_device);
+      });
+    }
     return WalkResult::advance();
   });
   if (result.wasInterrupted()) return signalPassFailure();

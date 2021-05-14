@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace {
@@ -79,6 +80,13 @@ const string& GetModelName(OpKernelContext* ctx) {
 
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
+
+static thread::ThreadPool* GetOrCreateBatchThreadsPool(
+    const string& thread_name, int num_batch_threads) {
+  static thread::ThreadPool* pool =
+      new thread::ThreadPool(Env::Default(), thread_name, num_batch_threads);
+  return pool;
+}
 
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public serving::BatchResourceBase {
@@ -257,6 +265,9 @@ class BatchFunctionKernel : public AsyncOpKernel {
             "adaptive_batch_threads";
         adaptive_shared_batch_scheduler_options.num_batch_threads =
             kMaxInflightBatchesLimit;
+        adaptive_shared_batch_scheduler_options.thread_pool =
+            GetOrCreateBatchThreadsPool(std::string("adaptive_batch_threads"),
+                                        kMaxInflightBatchesLimit);
         // adaptive_shared_batch_scheduler_options.full_batch_scheduling_boost_micros
         // is 0 (default value) intentionally, so tasks are scheduled in a FIFO
         // way.
@@ -276,6 +287,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
             adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
         adaptive_shared_batch_scheduler_options.batches_to_average_over =
             adaptive_batch_scheduler_options_->batches_to_average_over;
+        adaptive_shared_batch_scheduler_options.fifo_scheduling = true;
         std::unique_ptr<BatchResource> new_resource;
         TF_RETURN_IF_ERROR(BatchResource::Create(
             adaptive_shared_batch_scheduler_options, max_batch_size_,

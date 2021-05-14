@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
@@ -293,26 +294,22 @@ std::vector<Node*> FindLoopExitNodes(const Node& loop_cond) {
   return loop_exit_nodes;
 }
 
-// Find any one of switch nodes in the while loop by traversing the graph
-// from while loop condition node.
-xla::StatusOr<Node*> GetLoopSwitchNode(const Node& loop_cond_node) {
-  Node* loop_switch_node;
+// Returns or creates a node in that is executed before each loop iteration
+// in the while loop.
+// TODO(mdan): Inject this node between the Enter and Merge nodes instead.
+// See AddNoOpAfterLastIteration for an example.
+Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
+                                          Graph* graph, Node** node_out) {
+  Node* loop_switch_node = nullptr;
   for (auto n : loop_cond_node.out_nodes()) {
     if (n->IsSwitch()) {
       loop_switch_node = n;
       break;
     }
   }
-
-  TF_RET_CHECK(loop_switch_node->IsSwitch())
+  TF_RET_CHECK(loop_switch_node != nullptr)
       << "Unable to find any switch nodes.";
-  return loop_switch_node;
-}
 
-// Returns or creates a node in that is executed before each loop iteration
-// in the while loop.
-Status GetOrCreateBeforeEachIterationNode(Graph* graph, Node* loop_switch_node,
-                                          Node** node_out) {
   // If while loop switch node already has a outgoing data to true brach
   // of the switch op, then reuse that node.
   for (const auto out_edge : loop_switch_node->out_edges()) {
@@ -342,43 +339,61 @@ Status GetOrCreateBeforeEachIterationNode(Graph* graph, Node* loop_switch_node,
   return Status::OK();
 }
 
-// Injects NoOp node in that is executed after the very last iteration
+// Injects a NoOp node in that is executed after the very last iteration
 // of the while loop but before the while loop exit node.
-Status AddNoOpAfterLastIteration(Graph* graph, Node* loop_switch_node,
+// This node is positioned between the False output of all Switch nodes (
+// meaning, it executes after the loop ended all its iterations) and their
+// corresponding Exit nodes (meaning, before the loop finally completed).
+// See the white paper for details:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
                                  Node** node_out) {
-  // Find the exit node from loop switch node.
-  Node* exit_node;
-  for (const auto out_node : loop_switch_node->out_nodes()) {
-    if (out_node->IsExit()) {
-      exit_node = out_node;
-      break;
-    }
-  }
+  NodeDef after_last_iteration;
+  after_last_iteration.set_op("NoOp");
 
-  TF_RET_CHECK(exit_node != nullptr)
-      << "Cannot find exit node connected to switch node :"
-      << loop_switch_node->name();
-
-  // Create NoOp that represents execution at the end of while loop
-  // last iteration.
-  NodeDef after_last_loop_iteration;
-  after_last_loop_iteration.set_op("Identity");
-  DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(loop_switch_node->def(), "T", &dtype));
-
-  AddNodeAttr("T", dtype, &after_last_loop_iteration);
-  after_last_loop_iteration.set_name(graph->NewName(strings::StrCat(
-      "TPUVariableReshard/last_iteration", "/_", internal::GetNodeId())));
+  after_last_iteration.set_name(graph->NewName(strings::StrCat(
+      "TPUVariableReshard/after_last_iteration", "/_", internal::GetNodeId())));
 
   Status status;
   Node* after_last_iteration_node =
-      graph->AddNode(after_last_loop_iteration, &status);
+      graph->AddNode(after_last_iteration, &status);
   TF_RETURN_IF_ERROR(status);
 
-  // Newly created node must be executed once after last iteration of the while
-  // loop and before while loop exits.
-  graph->AddEdge(loop_switch_node, 0, after_last_iteration_node, 0);
-  graph->AddControlEdge(after_last_iteration_node, exit_node);
+  for (auto switch_node : loop_cond_node.out_nodes()) {
+    if (!switch_node->IsSwitch()) {
+      continue;
+    }
+
+    NodeDef switch_exit;
+    switch_exit.set_op("Identity");
+
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(switch_node->def(), "T", &dtype));
+    AddNodeAttr("T", dtype, &switch_exit);
+    auto name = strings::StrCat("TPUVariableReshard/switch_exit/", "/_",
+                                internal::GetNodeId());
+    switch_exit.set_name(graph->NewName(name));
+    // Introducing identity nodes risks a device copy, which isn't guaranteed
+    // to be available for all types. Hence the colocation constraint.
+    AddNodeAttr(kColocationAttrName,
+                std::vector<string>{
+                    absl::StrCat(kColocationGroupPrefix, switch_node->name())},
+                &switch_exit);
+
+    Status status;
+    Node* after_switch_node = graph->AddNode(switch_exit, &status);
+    TF_RETURN_IF_ERROR(status);
+
+    graph->AddEdge(switch_node, 0, after_switch_node, 0);
+    graph->AddControlEdge(after_switch_node, after_last_iteration_node);
+
+    for (const auto out_node : switch_node->out_nodes()) {
+      if (out_node->IsExit()) {
+        graph->AddControlEdge(after_last_iteration_node, out_node);
+      }
+    }
+  }
+
   *node_out = after_last_iteration_node;
   return Status::OK();
 }
@@ -483,18 +498,17 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
 
   // In order to make sure that shard/unshard operations are invoked
   // at the start of every loop body and at the end of last iteration
-  // of the loop, respectively, traverse the graph and find a switch node
-  // of the host training loop.
-  TF_ASSIGN_OR_RETURN(Node * switch_node,
-                      GetLoopSwitchNode(*loop_condition_node));
+  // of the loop, respectively, create a pair of guiding nodes, which
+  // guaranteed to execute before each iteration and respectively after
+  // all iterations.
 
   Node* after_last_iteration_node;
-  TF_RETURN_IF_ERROR(AddNoOpAfterLastIteration(graph, switch_node,
+  TF_RETURN_IF_ERROR(AddNoOpAfterLastIteration(*loop_condition_node, graph,
                                                &after_last_iteration_node));
 
   Node* before_loop_iteration_node;
   TF_RETURN_IF_ERROR(GetOrCreateBeforeEachIterationNode(
-      graph, switch_node, &before_loop_iteration_node));
+      *loop_condition_node, graph, &before_loop_iteration_node));
 
   // Create const op that represents default sharding value
   // (i.e. no-op sharding).

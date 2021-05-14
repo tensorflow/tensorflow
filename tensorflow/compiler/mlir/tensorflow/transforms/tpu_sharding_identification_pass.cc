@@ -36,13 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
-constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kReplicateSharding[] = "";
+constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 struct TPUShardingIdentificationPass
     : public PassWrapper<TPUShardingIdentificationPass,
@@ -118,11 +120,11 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(Value value) {
 // op.
 void IdentifyXlaShardingForComputationInputs(
     StringRef logical_core_0_sharding, bool use_spmd,
-    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder) {
+    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder,
+    llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args) {
   // Look up function definition from module.
   Block& function_block = func.front();
 
-  llvm::SmallVector<llvm::StringRef, 8> sharding_for_args;
   sharding_for_args.reserve(function_block.getNumArguments());
 
   // Iterate through operands of `cluster_func`.
@@ -146,12 +148,9 @@ void IdentifyXlaShardingForComputationInputs(
        llvm::zip(cluster_func.operands(), function_block.getArguments())) {
     Value operand = std::get<0>(operand_and_arg);
     BlockArgument arg = std::get<1>(operand_and_arg);
-    const int index = arg.getArgNumber();
 
     if (auto operand_sharding = GetXlaShardingFromOperand(operand)) {
       sharding_for_args.push_back(operand_sharding.getValue());
-      func.setArgAttr(index, kShardingAttr,
-                      builder->getStringAttr(operand_sharding.getValue()));
       continue;
     }
 
@@ -160,27 +159,18 @@ void IdentifyXlaShardingForComputationInputs(
       // inputs should take on replicate sharding, unless another sharding is
       // set via a TPUPartitionedInput op.
       sharding_for_args.push_back(kReplicateSharding);
-      func.setArgAttr(index, kShardingAttr,
-                      builder->getStringAttr(kReplicateSharding));
       continue;
     }
 
     auto arg_sharding = GetXlaShardingFromArg(arg);
     if (arg_sharding) {
       sharding_for_args.push_back(arg_sharding.getValue());
-      func.setArgAttr(index, kShardingAttr,
-                      builder->getStringAttr(arg_sharding.getValue()));
       continue;
     }
 
     // Default to maximal sharding core 0 if no sharding is present.
     sharding_for_args.push_back(logical_core_0_sharding);
-    func.setArgAttr(index, kShardingAttr,
-                    builder->getStringAttr(logical_core_0_sharding));
   }
-
-  cluster_func->setAttr(tensorflow::kInputShardingAttr,
-                        builder->getStrArrayAttr(sharding_for_args));
 }
 
 // Returns XLA sharding from TPUPartitionedOutput or TPUPartitionedInput (via
@@ -245,10 +235,10 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
 // TPUPartitionedOutput op connected to the retvals/results.
 void IdentifyXlaShardingForComputationOutputs(
     StringRef logical_core_0_sharding, bool use_spmd,
-    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder) {
+    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder,
+    llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_rets) {
   Block& function_block = func.front();
   Operation* terminator = function_block.getTerminator();
-  llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets;
   sharding_for_rets.reserve(terminator->getNumOperands());
 
   // Iterate through results of `cluster_func`. For output ops, look for
@@ -264,12 +254,9 @@ void IdentifyXlaShardingForComputationOutputs(
        llvm::zip(cluster_func.results(), terminator->getOpOperands())) {
     Value result = std::get<0>(result_and_retval);
     OpOperand& retval = std::get<1>(result_and_retval);
-    const int index = retval.getOperandNumber();
 
     if (auto result_sharding = GetXlaShardingFromResult(result)) {
       sharding_for_rets.push_back(result_sharding.getValue());
-      func.setResultAttr(index, kShardingAttr,
-                         builder->getStringAttr(result_sharding.getValue()));
       continue;
     }
 
@@ -277,26 +264,17 @@ void IdentifyXlaShardingForComputationOutputs(
       // If XLA SPMD is enabled, outputs all should have replicate sharding,
       // unless another sharding is set via a TPUPartitionedOutput op.
       sharding_for_rets.push_back(kReplicateSharding);
-      func.setResultAttr(index, kShardingAttr,
-                         builder->getStringAttr(kReplicateSharding));
       continue;
     }
 
     if (auto retval_sharding = GetXlaShardingFromRetval(retval.get())) {
       sharding_for_rets.push_back(retval_sharding.getValue());
-      func.setResultAttr(index, kShardingAttr,
-                         builder->getStringAttr(retval_sharding.getValue()));
       continue;
     }
 
     // Default to maximal sharding core 0 if no sharding is present.
     sharding_for_rets.push_back(logical_core_0_sharding);
-    func.setResultAttr(index, kShardingAttr,
-                       builder->getStringAttr(logical_core_0_sharding));
   }
-
-  cluster_func->setAttr(tensorflow::kOutputShardingAttr,
-                        builder->getStrArrayAttr(sharding_for_rets));
 }
 
 // Extracts input/output sharding configuration of `cluster_func` by parsing
@@ -313,15 +291,69 @@ void IdentifyXlaShardingForTPUComputation(
       xla::sharding_builder::AssignDevice(0).SerializeAsString();
 
   bool use_spmd = false;
-  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(
-          "use_spmd_for_xla_partitioning"))
+  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(kUseSpmdAttr))
     use_spmd = use_spmd_attr.getValue();
 
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_args;
   IdentifyXlaShardingForComputationInputs(logical_core_0_sharding, use_spmd,
-                                          cluster_func, func, builder);
+                                          cluster_func, func, builder,
+                                          sharding_for_args);
 
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets;
   IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding, use_spmd,
-                                           cluster_func, func, builder);
+                                           cluster_func, func, builder,
+                                           sharding_for_rets);
+
+  auto has_maximal_sharding = [](llvm::StringRef sharding_string) -> bool {
+    xla::OpSharding sharding;
+    sharding.ParseFromString(sharding_string.str());
+    return sharding.type() == xla::OpSharding::MAXIMAL;
+  };
+
+  // XLA SPMD only supports cases where all inputs/outputs exist on every
+  // partition (sharded or replicated). If any of the inputs/outputs have
+  // maximal sharding, then fallback to MPMD.
+  if (use_spmd && (absl::c_any_of(sharding_for_args, has_maximal_sharding) ||
+                   absl::c_any_of(sharding_for_rets, has_maximal_sharding))) {
+    LOG(WARNING) << "XLA SPMD only supports cases where all inputs/outputs "
+                    "exist on every partition (sharded or replicated). If any "
+                    "of the inputs/outputs have maximal sharding, then "
+                    "fallback to MPMD.";
+    sharding_for_args.clear();
+    sharding_for_rets.clear();
+    cluster_func->setAttr(kUseSpmdAttr, builder->getBoolAttr(false));
+    IdentifyXlaShardingForComputationInputs(logical_core_0_sharding,
+                                            /*use_spmd=*/false, cluster_func,
+                                            func, builder, sharding_for_args);
+    IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding,
+                                             /*use_spmd=*/false, cluster_func,
+                                             func, builder, sharding_for_rets);
+  }
+
+  // Update sharding on function arguments and returns.
+  Block& function_block = func.front();
+  for (auto sharding_and_arg :
+       llvm::zip(sharding_for_args, function_block.getArguments())) {
+    StringRef sharding = std::get<0>(sharding_and_arg);
+    BlockArgument arg = std::get<1>(sharding_and_arg);
+    func.setArgAttr(arg.getArgNumber(), kShardingAttr,
+                    builder->getStringAttr(sharding));
+  }
+
+  Operation* terminator = function_block.getTerminator();
+  for (auto sharding_and_retval :
+       llvm::zip(sharding_for_rets, terminator->getOpOperands())) {
+    StringRef sharding = std::get<0>(sharding_and_retval);
+    OpOperand& retval = std::get<1>(sharding_and_retval);
+    func.setResultAttr(retval.getOperandNumber(), kShardingAttr,
+                       builder->getStringAttr(sharding));
+  }
+
+  // Update input/output sharding attributes on tf_device.cluster_func op.
+  cluster_func->setAttr(tensorflow::kInputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_args));
+  cluster_func->setAttr(tensorflow::kOutputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_rets));
 }
 
 void TPUShardingIdentificationPass::runOnOperation() {

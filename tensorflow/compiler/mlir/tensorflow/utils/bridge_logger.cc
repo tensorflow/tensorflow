@@ -114,11 +114,12 @@ bool BridgeLoggerConfig::ShouldPrint(mlir::Pass* pass, mlir::Operation* op) {
   return true;
 }
 
-void BridgeTimingConfig::printTiming(PrintCallbackFn printCallback) {
+BridgeTimingConfig::BridgeTimingConfig() {
   std::string name = "mlir_bridge_pass_timing.txt";
-  std::unique_ptr<llvm::raw_ostream> os;
   std::string filepath;
-  if (CreateFileForDumping(name, &os, &filepath).ok()) printCallback(*os);
+  if (CreateFileForDumping(name, &file_, &filepath).ok()) {
+    setOutput(*file_);
+  }
 }
 
 }  // namespace tensorflow

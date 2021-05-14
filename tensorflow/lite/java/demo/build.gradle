@@ -17,6 +17,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 

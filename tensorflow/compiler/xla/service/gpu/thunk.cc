@@ -30,7 +30,7 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
   }
 }
 
-absl::string_view ThunkKindToString(Thunk::Kind kind) {
+/*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
   switch (kind) {
     case Thunk::kCholesky:
       return "kCholesky";
@@ -86,7 +86,36 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
-  return os << ThunkKindToString(kind);
+  return os << Thunk::KindToString(kind);
+}
+
+std::string ThunkSequence::ToString(
+    int indent,
+    std::function<std::string(const Thunk*)> get_thunk_annotation) const {
+  const std::string indent_str(" ", indent * 2);
+  if (empty()) return indent_str + "No thunks.";
+
+  auto thunk_with_longest_kind = absl::c_max_element(
+      *this,
+      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
+        return Thunk::KindToString(a->kind()).length() <
+               Thunk::KindToString(b->kind()).length();
+      });
+  int64 max_thunk_kind_len =
+      Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
+  std::string result;
+  for (const std::unique_ptr<Thunk>& thunk : *this) {
+    // Write out the thunk kind, padded out to max_thunk_kind_len.
+    absl::string_view kind_str = Thunk::KindToString(thunk->kind());
+    absl::StrAppend(&result, indent_str, kind_str,
+                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+    if (get_thunk_annotation) {
+      absl::StrAppend(&result, get_thunk_annotation(thunk.get()));
+    }
+    absl::StrAppend(&result, thunk->ToStringExtra(indent));
+    absl::StrAppend(&result, "\n");
+  }
+  return result;
 }
 
 }  // namespace gpu

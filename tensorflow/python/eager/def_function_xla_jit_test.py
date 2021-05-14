@@ -663,11 +663,11 @@ class DefFunctionTest(xla_test.XLATestCase):
       arg1 = random_ops.random_normal([2])
       arg2 = random_ops.random_normal([2])
 
-      initial_usage = context.context().get_total_memory_usage(
-          v.device) if on_gpu else 0
+      initial_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
       update_var(arg1, arg2)
-      final_usage = context.context().get_total_memory_usage(
-          v.device) if on_gpu else 0
+      final_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
   @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
@@ -716,13 +716,13 @@ class DefFunctionTest(xla_test.XLATestCase):
       b = random_ops.random_normal([10, 10])
 
       on_gpu = 'gpu' in self.device.lower()
-      initial_usage = context.context().get_total_memory_usage(
-          b.backing_device) if on_gpu else 0
+      initial_usage = context.context().get_memory_info(
+          b.backing_device)['current'] if on_gpu else 0
 
       f(a, b)
 
-      final_usage = context.context().get_total_memory_usage(
-          b.backing_device) if on_gpu else 0
+      final_usage = context.context().get_memory_info(
+          b.backing_device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
   def testGetCompilerIrConstants(self):

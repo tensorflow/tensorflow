@@ -15,11 +15,12 @@
 # ==============================================================================
 """Tests for ClusterCoordinator and Keras models."""
 
+import os
 import random
 import tempfile
 
 from absl.testing import parameterized
-
+import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -222,6 +223,58 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     prediction1 = loaded_serving_fn(
         constant_op.constant(["ironman", "ironman", "unkonwn"]))["output_0"]
     self.assertIn(prediction1, ("yes", "no"))
+
+
+class KPLCreatedInDatasetsFromFunctionTest(test.TestCase,
+                                           parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(KPLCreatedInDatasetsFromFunctionTest, cls).setUpClass()
+    cls.coordinator = coordinator_lib.ClusterCoordinator(
+        parameter_server_strategy_v2.ParameterServerStrategyV2(
+            multi_worker_testing_utils.make_parameter_server_cluster(3, 2)))
+
+  def testKPLCreatedInDatasetsFromFunction(self):
+
+    filepath = os.path.join(self.get_temp_dir(), "vocab")
+    with open(filepath, "w") as f:
+      f.write("\n".join(["earth", "wind", "and", "fire"]))
+
+    def per_worker_dataset_fn():
+
+      def dataset_fn(input_context):
+        del input_context
+        lookup_layer = string_lookup.StringLookup(
+            num_oov_indices=1, vocabulary=filepath)
+        x = np.array([["earth", "wind", "and", "fire"],
+                      ["fire", "and", "earth", "michigan"]])
+        y = np.array([0, 1])
+        map_fn = lambda x, y: (lookup_layer(x), y)
+        return dataset_ops.DatasetV2.from_tensor_slices(
+            (x, y)).shuffle(10).repeat().batch(2).map(map_fn)
+
+      return self.coordinator.strategy.distribute_datasets_from_function(
+          dataset_fn)
+
+    per_worker_distribute_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    per_worker_iter = iter(per_worker_distribute_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+
+      def replica_fn(data):
+        return data
+
+      return self.coordinator.strategy.run(replica_fn, args=(next(iterator),))
+
+    result = []
+    for _ in range(10):
+      result.append(
+          self.coordinator.schedule(worker_fn, args=(per_worker_iter,)))
+
+    self.coordinator.join()
 
 
 class ShardedVariableTest(test.TestCase):

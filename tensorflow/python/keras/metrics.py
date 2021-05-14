@@ -2000,7 +2000,7 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    num_labels: (Optional) The number of labels, used when `multi_label' is
+    num_labels: (Optional) The number of labels, used when `multi_label` is
       True. If `num_labels` is not specified, then state variables get created
       on the first call to `update_state`.
     label_weights: (Optional) list, array, or tensor of non-negative weights
@@ -2024,8 +2024,8 @@ class AUC(Metric):
   >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
   >>> # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
-  >>> # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
-  >>> # auc = ((((1+0.5)/2)*(1-0))+ (((0.5+0)/2)*(0-0))) = 0.75
+  >>> # tp_rate = recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
+  >>> # auc = ((((1+0.5)/2)*(1-0)) + (((0.5+0)/2)*(0-0))) = 0.75
   >>> m.result().numpy()
   0.75
 
@@ -2428,8 +2428,8 @@ class CosineSimilarity(MeanMetricWrapper):
 
   Standalone usage:
 
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414, 1./1.414]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414, 1./1.414]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #        = ((0. + 0.) +  (0.5 + 0.5)) / 2
@@ -3380,7 +3380,7 @@ def accuracy(y_true, y_pred):
   [y_pred, y_true], _ = \
       metrics_utils.ragged_assert_compatible_and_get_flat_values(
           [y_pred, y_true])
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
+  y_true.shape.assert_is_compatible_with(y_pred.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
@@ -3631,7 +3631,7 @@ def get(identifier):
   <class 'function'>
   >>> metric = tf.keras.metrics.get("CategoricalCrossentropy")
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   You can also specify `config` of the metric to this function by passing dict
   containing `class_name` and `config` as an identifier. Also note that the
@@ -3641,7 +3641,7 @@ def get(identifier):
   ...               "config": {"from_logits": True}}
   >>> metric = tf.keras.metrics.get(identifier)
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   Args:
     identifier: A metric identifier. One of None or string name of a metric
