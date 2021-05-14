@@ -286,6 +286,24 @@ int64 MaxVLogLevelFromEnv() {
 #endif
 }
 
+VlogFileMgr::VlogFileMgr() {
+  vlog_file_name = getenv("TF_CPP_VLOG_FILENAME");
+  vlog_file_ptr =
+      vlog_file_name == nullptr ? nullptr : fopen(vlog_file_name, "w");
+
+  if (vlog_file_ptr == nullptr) {
+    vlog_file_ptr = stderr;
+  }
+}
+
+VlogFileMgr::~VlogFileMgr() {
+  if (vlog_file_ptr != stderr) {
+    fclose(vlog_file_ptr);
+  }
+}
+
+FILE* VlogFileMgr::FilePtr() const { return vlog_file_ptr; }
+
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
@@ -494,6 +512,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
     abort();
   }
 #else   // PLATFORM_POSIX_ANDROID
+  static internal::VlogFileMgr vlog_file;
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
   uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
@@ -534,9 +553,11 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   }
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
-          sev, tid_buffer, entry.FName().c_str(), entry.Line(),
-          entry.ToString().c_str());
+  mutex mu;
+  mutex_lock l(mu);
+  fprintf(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
+          micros_remainder, sev, tid_buffer, entry.FName().c_str(),
+          entry.Line(), entry.ToString().c_str());
 #endif  // PLATFORM_POSIX_ANDROID
 }
 
