@@ -2891,6 +2891,52 @@ LogicalResult Verify(StridedSliceOp op) {
   return success();
 }
 
+OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
+  // Currently only support all masks being 0.
+  if (begin_mask() != 0 || end_mask() != 0 || ellipsis_mask() != 0 ||
+      new_axis_mask() != 0 || shrink_axis_mask() != 0)
+    return {};
+
+  auto input_type = input().getType().dyn_cast_or_null<RankedTensorType>();
+  if (!input_type || !input_type.hasStaticShape()) return {};
+
+  // Begin has to be all 0s.
+  DenseIntElementsAttr begin_dense_elem_attr;
+  if (!matchPattern(begin(), m_Constant(&begin_dense_elem_attr))) {
+    return {};
+  }
+  for (auto begin_ele : begin_dense_elem_attr) {
+    if (begin_ele.getSExtValue() != 0) {
+      return {};
+    }
+  }
+
+  // Strides has to be all 1s.
+  DenseIntElementsAttr strides_dense_elem_attr;
+  if (!matchPattern(strides(), m_Constant(&strides_dense_elem_attr))) {
+    return {};
+  }
+  for (auto stride_ele : strides_dense_elem_attr) {
+    if (stride_ele.getSExtValue() != 1) {
+      return {};
+    }
+  }
+  // End has to map the input shape.
+  DenseIntElementsAttr end_dense_elem_attr;
+  if (!matchPattern(end(), m_Constant(&end_dense_elem_attr))) {
+    return {};
+  }
+  int i = 0;
+  for (auto end_ele : end_dense_elem_attr) {
+    if (end_ele.getSExtValue() != input_type.getDimSize(i)) {
+      return {};
+    }
+    ++i;
+  }
+
+  return input();
+}
+
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//

@@ -3526,6 +3526,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 // If there is a change in supporting more types in the TFLite cast op kernel,
