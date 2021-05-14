@@ -2846,6 +2846,26 @@ static LogicalResult Verify(TransposeConvOp op) {
   return success();
 }
 
+int64_t TransposeConvOp::GetArithmeticCount(Operation *op) {
+  int64_t count = -1;
+  auto transpose_conv = llvm::dyn_cast<TransposeConvOp>(op);
+  auto input_type = transpose_conv.input()
+                        .getType()
+                        .dyn_cast_or_null<mlir::RankedTensorType>();
+  auto weight_type = transpose_conv.weights()
+                         .getType()
+                         .dyn_cast_or_null<mlir::RankedTensorType>();
+  if (input_type && weight_type && input_type.hasStaticShape() &&
+      weight_type.hasStaticShape()) {
+    // Compute op count from the seven nested loops of
+    // tflite::reference_ops::TransposeConv():
+    count = 2 * input_type.getNumElements() * weight_type.getDimSize(0) *
+            weight_type.getDimSize(1) * weight_type.getDimSize(2);
+  }
+
+  return count;
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
@@ -3282,6 +3302,22 @@ int64_t MaxPool2DOp::GetArithmeticCount(Operation *op) {
   if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
     auto max_pool = llvm::dyn_cast<MaxPool2DOp>(op);
     return max_pool.filter_height() * max_pool.filter_width() * count;
+  }
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// L2NormalizationOp
+//===----------------------------------------------------------------------===//
+
+int64_t L2NormalizationOp::GetArithmeticCount(Operation *op) {
+  int64_t count;
+  // Computing the squared L2 norm is N multiply-adds so 2N ops,
+  // then the single inverse-sqrt is negligible, then we multiply each
+  // value by the resulting multiplier, so an extra N ops. count 3N ops.
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
+    return 3 * count;
   }
 
   return -1;

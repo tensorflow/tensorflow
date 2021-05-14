@@ -657,7 +657,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
     AffineQuantizedOpInterface, AffineOpCoefficient<0, 1>,
-    TFL_SparseOp]> {
+    TFL_SparseOp,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -1776,7 +1777,8 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "L2 Normalize Operator";
 
   let description = [{
