@@ -5980,6 +5980,36 @@ def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
   let results = (outs);
 }
 
+def TF_InitializeTableFromTextFileOp : TF_Op<"InitializeTableFromTextFile", []> {
+  let summary = "Initializes a table from a text file.";
+
+  let description = [{
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}]>:$table_handle,
+    Arg<TF_StrTensor, [{Filename of a vocabulary text file.}]>:$filename,
+
+    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
+    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
+    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
+    DefaultValuedAttr<StrAttr, "\t">:$delimiter,
+    DefaultValuedAttr<I64Attr, "0">:$offset
+  );
+
+  let results = (outs);
+}
+
 def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
   let summary = "Initializes a table from a text file.";
 
@@ -7399,6 +7429,32 @@ def TF_LookupTableExportV2Op : TF_Op<"LookupTableExportV2", []> {
   TF_DerivedResultTypeAttr Tvalues = TF_DerivedResultTypeAttr<1>;
 }
 
+def TF_LookupTableFindOp : TF_Op<"LookupTableFind", []> {
+  let summary = "Looks up keys in a table, outputs the corresponding values.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Handle to the table.}]>:$table_handle,
+    Arg<TF_Tensor, [{Any shape.  Keys to look up.}]>:$keys,
+    TF_Tensor:$default_value
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{Same shape as `keys`.  Values found in the table, or `default_values`
+for missing keys.}]>:$values
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_LookupTableFindV2Op : TF_Op<"LookupTableFindV2", []> {
   let summary = "Looks up keys in a table, outputs the corresponding values.";
 
@@ -7483,6 +7539,18 @@ already in the table are silently ignored.
   let results = (outs);
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_LookupTableSizeOp : TF_Op<"LookupTableSize", []> {
+  let summary = "Computes the number of elements in the given table.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Handle to the table.}]>:$table_handle
+  );
+
+  let results = (outs
+    Res<TF_Int64Tensor, [{Scalar that contains number of elements in the table.}]>:$size
+  );
 }
 
 def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
