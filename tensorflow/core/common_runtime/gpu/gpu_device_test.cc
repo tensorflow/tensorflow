@@ -71,7 +71,8 @@ class GPUDeviceTest : public ::testing::Test {
       const string& visible_device_list = "",
       double per_process_gpu_memory_fraction = 0, int gpu_device_count = 1,
       const std::vector<std::vector<float>>& memory_limit_mb = {},
-      const std::vector<std::vector<int32>>& priority = {}) {
+      const std::vector<std::vector<int32>>& priority = {},
+      const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
     (*config->mutable_device_count())["GPU"] = gpu_device_count;
@@ -79,6 +80,7 @@ class GPUDeviceTest : public ::testing::Test {
     gpu_options->set_visible_device_list(visible_device_list);
     gpu_options->set_per_process_gpu_memory_fraction(
         per_process_gpu_memory_fraction);
+    gpu_options->set_use_cuda_malloc_async(use_cuda_malloc_async);
     for (int i = 0; i < memory_limit_mb.size(); ++i) {
       auto virtual_devices =
           gpu_options->mutable_experimental()->add_virtual_devices();
@@ -113,6 +115,31 @@ class GPUDeviceTest : public ::testing::Test {
         gpu_tensor, /*tensor_name=*/"", device, cpu_tensor));
   }
 };
+
+TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
+                                           /*use_cuda_malloc_async=*/true);
+  std::vector<std::unique_ptr<Device>> devices;
+  Status status;
+  { // The new scope is to trigger the destruction of the object.
+    status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+        opts, kDeviceNamePrefix, &devices);
+    EXPECT_EQ(devices.size(), 1);
+    Device* device = devices[0].get();
+    auto* device_info = device->tensorflow_gpu_device_info();
+    CHECK(device_info);
+    DeviceContext* device_context = device_info->default_context;
+
+    AllocatorAttributes allocator_attributes = AllocatorAttributes();
+    allocator_attributes.set_gpu_compatible(true);
+    Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
+    void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment,
+                                       1024);
+    EXPECT_NE(ptr, nullptr);
+    allocator->DeallocateRaw(ptr);
+  }
+  EXPECT_EQ(status.code(), error::OK);
+}
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
