@@ -71,7 +71,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
 
   TF_RET_CHECK(context->input_dtype(num_vars_ + 1) == DT_RESOURCE);
   const ResourceHandle& handle = HandleFromInput(context, num_vars_ + 1);
-  Var* format_state_var;
+  core::RefCountPtr<Var> format_state_var;
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
         *ptr = new Var(new_format_key->dtype());

@@ -1687,8 +1687,9 @@ Status LhloDialectEmitter::Initialize() {
                      allocation_comparator);
   }
 
-  absl::flat_hash_map<const BufferAllocation*, xla::ShapeIndex>
-      allocation_to_output_index;
+  absl::flat_hash_map<const BufferAllocation*,
+                      std::pair<const Shape*, xla::ShapeIndex>>
+      allocation_to_output_info;
   TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
       computation_.root_instruction()->shape(),
       [&](const Shape& sub_shape, xla::ShapeIndex index) -> Status {
@@ -1698,7 +1699,7 @@ Status LhloDialectEmitter::Initialize() {
         const BufferAllocation* alloc = slice.allocation();
         TF_RET_CHECK(slice.offset() == 0);
         TF_RET_CHECK(slice.size() == alloc->size());
-        allocation_to_output_index[alloc] = index;
+        allocation_to_output_info[alloc] = std::make_pair(&sub_shape, index);
         return Status::OK();
       }));
 
@@ -1737,8 +1738,7 @@ Status LhloDialectEmitter::Initialize() {
     } else {
       arg_type = MemRefType::get({alloc->size()}, i8_type_);
     }
-    block->addArgument(arg_type);
-    allocations_[alloc] = block->getArguments().back();
+
     if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
@@ -1759,19 +1759,26 @@ Status LhloDialectEmitter::Initialize() {
           builder_.getStringAttr(
               xla::llvm_ir::ConstantBufferAllocationToGlobalName(*alloc)));
     }
-    auto iter = allocation_to_output_index.find(alloc);
-    if (iter != allocation_to_output_index.end()) {
+    auto iter = allocation_to_output_info.find(alloc);
+    if (iter != allocation_to_output_info.end()) {
+      const Shape* sub_shape = iter->second.first;
+      const xla::ShapeIndex& shape_index = iter->second.second;
+      if (!sub_shape->IsArray()) {
+        continue;
+      }
       arg_attr_list.set("lmhlo.output_index",
                         builder_.getI64TensorAttr(llvm::makeArrayRef(
-                            iter->second.begin(), iter->second.end())));
+                            shape_index.begin(), shape_index.end())));
       if (auto alias = computation_.parent()
                            ->input_output_alias_config()
-                           .GetAliasedParameter(iter->second)) {
+                           .GetAliasedParameter(shape_index)) {
         if (alias->must_alias()) {
           arg_attr_list.set("lmhlo.must_alias", builder_.getUnitAttr());
         }
       }
     }
+    block->addArgument(arg_type);
+    allocations_[alloc] = block->getArguments().back();
     args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
   }
 

@@ -28,7 +28,7 @@ from tensorflow.python.platform import gfile
 
 @ds_combinations.generate(
     combinations.combine(
-        strategy=strategy_combinations.parameter_server_strategies,
+        strategy=strategy_combinations.parameter_server_strategies_multi_worker,
         mode="eager"))
 class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     test_base.DatasetCreatorModelFitTestBase):
@@ -108,6 +108,29 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     self.assertTrue(gfile.Exists(log_dir))
     files = gfile.ListDirectory(log_dir)
     self.assertGreaterEqual(len(files), 1)
+
+  def testModelEvaluateWithDatasetInstance(self, strategy):
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        "Only `tf.keras.utils.experimental.DatasetCreator` input is supported "
+        "with `ParameterServerStrategy` at this time. Please see "
+        "`tf.keras.utils.experimental.DatasetCreator` class docstring for more "
+        "information."):
+      self._model_evaluate(
+          strategy,
+          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+
+  def testModelEvaluateErrorOnBatchLevelCallbacks(self, strategy):
+
+    class BatchLevelCallback(callbacks_lib.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        pass
+
+    with self.assertRaisesRegex(ValueError,
+                                "Batch-level `Callback`s are not supported"):
+      callbacks = [BatchLevelCallback()]
+      self._model_evaluate(strategy, callbacks=callbacks)
 
 
 if __name__ == "__main__":

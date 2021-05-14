@@ -704,7 +704,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
-    nums = np.array([np.iinfo(dtype).min, -1, 1,
+    # TODO(b/188032141): remove +1 to test true overflow case, but this can
+    # only be done if ASAN is disabled.
+    nums = np.array([np.iinfo(dtype).min + 1, -1, 1,
                      np.iinfo(dtype).max],
                     dtype=dtype).reshape([4, 1])
     divs = nums.reshape([1, 4])

@@ -232,6 +232,11 @@ class FloatValueEquals<string val> : Constraint<CPred<
 def FloatValueGreaterThanZero : Constraint<CPred<
   "$0.isa<SplatElementsAttr>() && "
   "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative()">>;
+def FloatValueIsReciprocal : Constraint<CPred<
+  "$0.isa<SplatElementsAttr>() && $1.isa<SplatElementsAttr>() &&"
+  "($0.cast<SplatElementsAttr>().getSplatValue<APFloat>() * "
+  "$1.cast<SplatElementsAttr>().getSplatValue<APFloat>()).isExactlyValue(1.0)">>;
+def FloatTensorIsSign : Constraint<CPred<"FloatTensorIsSign($_builder, $0, $1)">>;
 def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
   "!$0 || $0.getValue() == \"FLOAT\"">>;
@@ -400,6 +405,65 @@ def : Pat<
 [(FloatValueEquals<"0.0"> $cst),
 (FloatValueEquals<"-1.0"> $cst_neg1),
 (SameValue $div, $div1),
+(SameValue $rem, $rem1),
+(SameValue $rem, $rem2),
+(FloatOrDefaultCompare $compare_type),
+(FloatOrDefaultCompare $compare_type1)]>;
+
+// Converts a soup of HLOs representing floor_div with a splat constant to
+// tf.FloorDiv. The pattern matched executes the following computation:
+// This particular pattern matches multiplication with the reciprocal of the
+// constant instead of dividing by the constant.
+// rem = remainder(arg0, cst)
+// for i in 0 to len(arg0):
+//    rem[i] = (arg0[i] - rem[i]) * 1 / cst
+//    if (rem[i] != 0 && sign(cst) != sign(rem[i]))
+//       rem[i] -= 1.0
+// return round_nearest_afz(rem)
+// As a dag this looks like the following:
+//                       round
+//                         |
+//              -------- select
+//              |           |     \
+//             &&           +     mul
+//           /   |         / \
+//        !=    !=        mul -1
+//       / |   /  |       / |
+//    rem 0.0 cs1 sn1   -  cs2
+//   / |           |   / |
+// $0 cst         rem $0 rem
+// cs1 == sign(cst)
+// cs2 = 1 / cst i.e. the reciprocal
+// Note that named operators like 'sn' and 'sn1' are different values produced by
+// the same function in this case the sign function. Named values like 'div'
+// refer to the same value produced by the same function, in this case division.
+// Mathematical symbols do not indicate a re-use of the value.
+def : Pat<
+(HLO_RoundOp
+  (HLO_SelectOp
+    (HLO_AndOp
+      (HLO_CompareOp
+        (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
+        (HLO_ConstOp $cst_zero),
+        HLO_COMPARISON_DIRECTION_NE,
+        $compare_type),
+      (HLO_CompareOp
+        (HLO_ConstOp $cst_sgn),
+        (HLO_SignOp $rem1),
+        HLO_COMPARISON_DIRECTION_NE,
+        $compare_type1)),
+    (HLO_AddOp
+      (HLO_MulOp:$mul
+        (HLO_SubOp $arg0, $rem2),
+        (HLO_ConstOp $cst_recip)),
+      (HLO_ConstOp $cst_neg1)),
+    $mul1)),
+(TF_FloorDivOp $arg0, $cst),
+[(FloatValueEquals<"0.0"> $cst_zero),
+(FloatValueEquals<"-1.0"> $cst_neg1),
+(FloatTensorIsSign $cstv, $cst_sgn),
+(FloatValueIsReciprocal $cstv, $cst_recip),
+(SameValue $mul, $mul1),
 (SameValue $rem, $rem1),
 (SameValue $rem, $rem2),
 (FloatOrDefaultCompare $compare_type),

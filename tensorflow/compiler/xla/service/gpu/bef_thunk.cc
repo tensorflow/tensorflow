@@ -130,9 +130,11 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
         params.buffer_allocations->GetDeviceAddress(slice);
     tfrt::gpu::wrapper::Pointer<void> pointer(
         data.opaque(), tfrt::gpu::wrapper::Platform::CUDA);
-    auto buffer = tfrt::gpu::GpuBuffer::Borrow(pointer, data.size());
+    auto allocator =
+        tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
+            host, pointer);
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuBuffer>(
-        host, std::move(buffer));
+        host, std::move(allocator), pointer, data.size());
   };
 
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt::gpu::GpuBuffer>, 4> inputs;

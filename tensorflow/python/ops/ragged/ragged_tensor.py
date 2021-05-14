@@ -1319,7 +1319,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         if axis == 0:
           return array_ops.shape(nested_splits[0], out_type=out_type)[0] - 1
         elif axis == 1:
-          return math_ops.maximum(math_ops.reduce_max(self.row_lengths()), 0)
+          result = math_ops.maximum(math_ops.reduce_max(self.row_lengths()), 0)
+          if out_type != self._row_partition.dtype:
+            result = math_ops.cast(result, out_type)
+          return result
 
       splits_shape = array_ops.shape(self.row_splits, out_type=out_type)
       flat_values_shape = array_ops.shape(rt_flat_values, out_type=out_type)

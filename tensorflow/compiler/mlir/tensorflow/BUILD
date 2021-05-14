@@ -21,6 +21,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
@@ -2174,6 +2175,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

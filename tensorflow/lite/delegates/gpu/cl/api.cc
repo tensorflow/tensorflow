@@ -670,6 +670,11 @@ class InferenceBuilderImpl : public InferenceBuilder {
     } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
       create_info.hints.Add(ModelHints::kAllowSpecialKernels);
     }
+    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
+    }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
 #ifdef CL_DELEGATE_ALLOW_GL

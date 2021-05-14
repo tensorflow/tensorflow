@@ -404,20 +404,21 @@ class ReLU(Layer):
     max_value: Float >= 0. Maximum activation value. Default to None, which
       means unlimited.
     negative_slope: Float >= 0. Negative slope coefficient. Default to 0.
-    threshold: Float. Threshold value for thresholded activation. Default to 0.
+    threshold: Float >= 0. Threshold value for thresholded activation. Default
+      to 0.
   """
 
   def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):
     super(ReLU, self).__init__(**kwargs)
     if max_value is not None and max_value < 0.:
-      raise ValueError('max_value of Relu layer '
-                       'cannot be negative value: ' + str(max_value))
-    if negative_slope < 0.:
-      raise ValueError('negative_slope of Relu layer '
-                       'cannot be negative value: ' + str(negative_slope))
-    if threshold is None:
-      raise ValueError('threshold of Relu layer '
-                       'cannot be None. Required a float')
+      raise ValueError('max_value of a ReLU layer cannot be a negative '
+                       'value. Got: %s' % max_value)
+    if negative_slope is None or negative_slope < 0.:
+      raise ValueError('negative_slope of a ReLU layer cannot be a negative '
+                       'value. Got: %s' % negative_slope)
+    if threshold is None or threshold < 0.:
+      raise ValueError('threshold of a ReLU layer cannot be a negative '
+                       'value. Got: %s' % threshold)
 
     self.supports_masking = True
     if max_value is not None:
