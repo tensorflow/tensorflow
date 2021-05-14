@@ -58,7 +58,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=LegalizeTf",
+                "-name=XLA",
             ],
             "transforms/xla_legalize_tf_passes.h.inc",
         ),
@@ -80,7 +80,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=Xla",
+                "-name=XLA",
             ],
             "transforms/xla_passes.h.inc",
         ),
@@ -104,8 +104,6 @@ cc_library(
     name = "xla_passes",
     srcs = [
         "transforms/prepare_for_export.cc",
-        "transforms/xla_legalize_tf_passes.h.inc",
-        "transforms/xla_passes.h.inc",
         "transforms/xla_passes_detail.h",
     ],
     hdrs = [
@@ -130,9 +128,7 @@ cc_library(
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
-        "transforms/xla_legalize_tf_passes.h.inc",
         "transforms/xla_legalize_tf_passes_detail.h",
-        "transforms/xla_passes.h.inc",
     ],
     hdrs = [
         "transforms/passes.h",

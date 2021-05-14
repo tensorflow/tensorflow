@@ -28,5 +28,5 @@ def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
     canonicalization may undo transformations.
   }];
 
-  let constructor = "::mlir::mhlo::CreatePrepareForExport()";
+  let constructor = "::mlir::mhlo::PrepareForExport()";
 }

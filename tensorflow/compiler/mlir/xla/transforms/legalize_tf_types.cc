@@ -164,6 +164,10 @@ void LegalizeTfTypesPass::runOnOperation() {
     return signalPassFailure();
 }
 
+static PassRegistration<LegalizeTfTypesPass> registration(
+    "xla-legalize-tf-types",
+    "Replace TensorFlow types with types that are legal in the MHLO dialect");
+
 }  // namespace
 
 std::unique_ptr<OperationPass<>> CreateLegalizeTfTypesPass() {
