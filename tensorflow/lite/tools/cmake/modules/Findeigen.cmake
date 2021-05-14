@@ -19,6 +19,23 @@ include(eigen)
 if(eigen_POPULATED)
   set(EIGEN_FOUND TRUE)
   get_target_property(EIGEN_INCLUDE_DIRS eigen INTERFACE_DIRECTORIES)
+  # If using MSVC2015 (14) or below force Eigen to C++11.
+  if(MSVC_VERSION LESS_EQUAL 1900)
+    set(COMPILE_DEFINITIONS "EIGEN_MAX_CPP_VER=11")
+    get_target_property(EIGEN_COMPILE_DEFINITIONS eigen
+      INTERFACE_COMPILE_DEFINITIONS
+    )
+    if(EIGEN_COMPILE_DEFINITIONS)
+      list(APPEND COMPILE_DEFINITIONS ${EIGEN_COMPILE_DEFINITIONS})
+    endif()
+    set_property(
+      TARGET
+        eigen
+      PROPERTY
+        INTERFACE_COMPILE_DEFINITIONS
+        ${COMPILE_DEFINITIONS}
+    )
+  endif()
   set(EIGEN_LIBRARIES Eigen3::Eigen)
 endif()
 
