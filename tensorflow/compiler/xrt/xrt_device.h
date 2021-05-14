@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -52,10 +53,7 @@ class XRTGenericDeviceAccessor {
     xla::LocalClient* client() const { return client_; }
     xla::Backend* backend() { return client_->mutable_backend(); }
     int device_ordinal() const { return ordinal_; }
-    // XRTCompileOp needs to use a memory allocator constructed with stream.
-    se::DeviceMemoryAllocator* GetMemoryAllocator(OpKernelContext* ctx);
-    // GetMemoryAllocator with no args is for other XRT ops.
-    se::DeviceMemoryAllocator* GetMemoryAllocator();
+    se::DeviceMemoryAllocator* allocator() { return allocator_; }
 
    private:
     // XRTGenericDeviceAccessor::InitScopedRef is the only way to initialize
@@ -63,20 +61,39 @@ class XRTGenericDeviceAccessor {
     friend class XRTGenericDeviceAccessor;
 
     void Acquire(xla::LocalClient* client, int ordinal,
-                 const std::string& platform_name) {
+                 const std::string& platform_name, OpKernelContext* ctx) {
       client_ = client;
       ordinal_ = ordinal;
       platform_name_ = platform_name;
+      if (platform_name_ != "CUDA") {
+        allocator_ = client_->mutable_backend()->memory_allocator();
+      } else {
+        auto stream = ctx->op_device_context()->stream();
+        if (!cuda_allocators_.count(stream)) {
+          mutex_lock lock(mutex_);
+          if (!cuda_allocators_.count(stream)) {
+            GPUOptions gpu_options;
+            Allocator* raw_allocator =
+                GPUProcessState::singleton()->GetGPUAllocator(
+                    TfDeviceId(ordinal_));
+            cuda_allocators_[stream] = std::make_unique<se::TfAllocatorAdapter>(
+                raw_allocator, stream,
+                /*allow_async_dealloc=*/false);
+          }
+        }
+        allocator_ = static_cast<se::DeviceMemoryAllocator*>(
+            cuda_allocators_[stream].get());
+      }
     }
 
     xla::LocalClient* client_ = nullptr;
     int ordinal_ = 0;
     std::string platform_name_;
+    se::DeviceMemoryAllocator* allocator_ = nullptr;
     static mutex mutex_;
     static std::map<stream_executor::Stream*,
                     std::unique_ptr<se::TfAllocatorAdapter>>
-        compile_cuda_allocators_;
-    static std::unique_ptr<se::TfAllocatorAdapter> general_cuda_allocator_;
+        cuda_allocators_;
   };
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,

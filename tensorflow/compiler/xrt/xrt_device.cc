@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -77,7 +76,7 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
                             metadata->device_ordinal());
   }
   scoped_ref->Acquire(metadata->client(), device_ordinal,
-                      metadata->platform()->Name());
+                      metadata->platform()->Name(), ctx);
   return Status::OK();
 }
 
@@ -86,55 +85,11 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
   const XlaDevice::Metadata* metadata;
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
   scoped_ref->Acquire(metadata->client(), metadata->device_ordinal(),
-                      metadata->platform()->Name());
+                      metadata->platform()->Name(), ctx);
   return Status::OK();
 }
 
 mutex XRTGenericDeviceAccessor::ScopedRef::mutex_;
 std::map<stream_executor::Stream*, std::unique_ptr<se::TfAllocatorAdapter>>
-    XRTGenericDeviceAccessor::ScopedRef::compile_cuda_allocators_;
-std::unique_ptr<se::TfAllocatorAdapter>
-    XRTGenericDeviceAccessor::ScopedRef::general_cuda_allocator_;
-
-se::DeviceMemoryAllocator*
-XRTGenericDeviceAccessor::ScopedRef::GetMemoryAllocator() {
-  if (platform_name_ != "CUDA") {
-    return client_->mutable_backend()->memory_allocator();
-  }
-  if (!general_cuda_allocator_) {
-    mutex_lock lock(mutex_);
-    if (!general_cuda_allocator_) {
-      se::Platform* platform =
-          se::MultiPlatformManager::PlatformWithName(platform_name_)
-              .ValueOrDie();
-      GPUOptions gpu_options;
-      Allocator* raw_allocator =
-          GPUProcessState::singleton()->GetGPUAllocator(TfDeviceId(ordinal_));
-      general_cuda_allocator_ = std::make_unique<se::TfAllocatorAdapter>(
-          raw_allocator, platform, /*allow_async_dealloc=*/false);
-    }
-  }
-  return general_cuda_allocator_.get();
-}
-
-se::DeviceMemoryAllocator*
-XRTGenericDeviceAccessor::ScopedRef::GetMemoryAllocator(OpKernelContext* ctx) {
-  if (platform_name_ != "CUDA") {
-    return client_->mutable_backend()->memory_allocator();
-  }
-  auto stream = ctx->op_device_context()->stream();
-  if (!compile_cuda_allocators_.count(stream)) {
-    mutex_lock lock(mutex_);
-    if (!compile_cuda_allocators_.count(stream)) {
-      GPUOptions gpu_options;
-      Allocator* raw_allocator =
-          GPUProcessState::singleton()->GetGPUAllocator(TfDeviceId(ordinal_));
-      compile_cuda_allocators_[stream] =
-          std::make_unique<se::TfAllocatorAdapter>(
-              raw_allocator, stream,
-              /*allow_async_dealloc=*/false);
-    }
-  }
-  return compile_cuda_allocators_[stream].get();
-}
+    XRTGenericDeviceAccessor::ScopedRef::cuda_allocators_;
 }  // namespace tensorflow

@@ -309,7 +309,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
           executable->executable()->module().input_output_alias_config(),
           input_tuples, input_is_dynamic, release_inputs));
 
-  se::DeviceMemoryAllocator* allocator = device_ref->GetMemoryAllocator();
+  se::DeviceMemoryAllocator* allocator = device_ref->allocator();
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
@@ -390,7 +390,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   // memory, until either the runfn can run, or we run out of freeable memory.
   return memory_manager->Run<RefPtr<XRTTupleAllocation>>(
       runfn, device_ref->backend(), device_ref->device_ordinal(),
-      /*requested_free_size=*/0, device_ref->GetMemoryAllocator());
+      /*requested_free_size=*/0, device_ref->allocator());
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
@@ -404,8 +404,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   TF_ASSIGN_OR_RETURN(
       std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
       GetInputTuples(executable, &working_set, device_ref->backend(),
-                     input_coords, release_inputs,
-                     device_ref->GetMemoryAllocator()));
+                     input_coords, release_inputs, device_ref->allocator()));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
                             executable, input_tuples, release_inputs, stream,
                             rng_seed, config);
@@ -553,7 +552,6 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   if (rng_seed == 0) {
     rng_seed = GetXLARandomSeed();
   }
-
   se::Stream* stream = context->op_device_context()
                            ? context->op_device_context()->stream()
                            : nullptr;
@@ -575,7 +573,7 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),
                         device_ref.device_ordinal(), plan, config, execute_op,
-                        device_ref.GetMemoryAllocator());
+                        device_ref.allocator());
 }
 
 XRTExecuteChainedOp::~XRTExecuteChainedOp() = default;

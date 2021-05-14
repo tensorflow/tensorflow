@@ -44,7 +44,7 @@ class XRTTpuDeviceAccessor {
     xla::Backend* backend() { return node_context_->backend(); }
     int device_ordinal() { return ordinal_; }
 
-    se::DeviceMemoryAllocator* GetMemoryAllocator() {
+    se::DeviceMemoryAllocator* allocator() const {
       return backend()->memory_allocator();
     }
 
