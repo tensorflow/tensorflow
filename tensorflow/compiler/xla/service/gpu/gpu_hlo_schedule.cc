@@ -199,7 +199,7 @@ bool CustomCallWithSchedule(const HloInstruction* instr,
 // relationship of the two calls (typically PerformX is scheduled right after
 // all of its producers have been scheduled and PerformXDone is scheduled right
 // before its first consumer.)
-HloInstructionSequence postprocessor_to_custom_schedule(
+HloInstructionSequence PostprocessorToCustomSchedule(
     const HloInstructionSequence& input) {
   // Schedule `EARLIEST`.
   std::deque<HloInstruction*> earliest_scheduled;
@@ -208,9 +208,8 @@ HloInstructionSequence postprocessor_to_custom_schedule(
     auto is_scheduled = [&](const HloInstruction* instr) -> bool {
       return scheduled.contains(instr);
     };
-    const std::vector<HloInstruction*>& instrs = input.instructions();
-    for (HloInstruction* instr : instrs) {
-      if (scheduled.contains(instr)) {
+    for (HloInstruction* instr : input.instructions()) {
+      if (is_scheduled(instr)) {
         continue;
       }
 
@@ -239,7 +238,7 @@ HloInstructionSequence postprocessor_to_custom_schedule(
     };
     for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
          it++) {
-      if (scheduled.contains(*it)) {
+      if (is_scheduled(*it)) {
         continue;
       }
 
@@ -288,7 +287,7 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             },
             ComputationSchedulerToModuleScheduler(
-                DefaultMemoryScheduler, postprocessor_to_custom_schedule)));
+                DefaultMemoryScheduler, PostprocessorToCustomSchedule)));
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =

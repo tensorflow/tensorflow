@@ -3828,9 +3828,11 @@ StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
   return found->second;
 }
 
-StatusOr<CustomCallSchedule> StringToCustomCallSchedule(const string& name) {
-  static std::unordered_map<string, CustomCallSchedule>* map = [] {
-    static auto* map = new std::unordered_map<string, CustomCallSchedule>;
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
+    absl::string_view name) {
+  static const absl::flat_hash_map<string, CustomCallSchedule>* map = [] {
+    static auto* map =
+        new absl::flat_hash_map<string, CustomCallSchedule>;
     for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
       if (CustomCallSchedule_IsValid(i)) {
         auto value = static_cast<CustomCallSchedule>(i);

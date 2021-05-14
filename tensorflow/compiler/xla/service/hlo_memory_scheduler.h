@@ -35,8 +35,8 @@ namespace xla {
 // Postprocessor of the HloInstructionSequence. This is an opt-in postprocessing
 // function to MemorySchedulerAlgorithm to enforce certain hlo schedule
 // constraints desired for custom-calls.
-typedef std::function<HloInstructionSequence(const HloInstructionSequence&)>
-    MemorySchedulerPostprocessor;
+using MemorySchedulerPostprocessor =
+    std::function<HloInstructionSequence(const HloInstructionSequence&)>;
 
 // A memory scheduler computes an execution sequence for the HLO instructions in
 // 'computation' that minimizes peak memory, given a points-to analysis result

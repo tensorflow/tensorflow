@@ -243,7 +243,8 @@ message HloInstructionProto {
   repeated xla.CustomCallOutputOperandAliasing
       custom_call_output_operand_aliasing = 74;
 
-  // Specifies the desired schedule for the custom-call.
+  // Specifies the desired schedule for the custom-call. The field is only
+  // present for custom-call.
   CustomCallSchedule custom_call_schedule = 76;
 
   // The delta value for kRngGetAndUpdateState.

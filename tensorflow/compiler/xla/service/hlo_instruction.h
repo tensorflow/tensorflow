@@ -2217,7 +2217,7 @@ string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
-StatusOr<CustomCallSchedule> StringToCustomCallSchedule(const string& name);
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
