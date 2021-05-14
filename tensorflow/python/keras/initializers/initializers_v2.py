@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -182,26 +181,13 @@ class Ones(Initializer):
     """
     _validate_kwargs(self.__class__.__name__, kwargs)
     dtype = _get_dtype(dtype)
-    is_complex = dtype is not None and dtype.is_complex
-
-    if is_complex:
-      if dtype == dtypes.complex64:
-        dtype = dtypes.float32
-        complex_type = dtypes.complex64
-      elif dtype == dtypes.complex128:
-        dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
       raise ValueError('Expected numeric or boolean dtype, got %s.' % dtype)
     if _PARTITION_SHAPE in kwargs:
       shape = kwargs[_PARTITION_SHAPE]
 
-    if is_complex:
-      ones = array_ops.ones(shape, dtype)
-      return gen_math_ops._complex(ones, ones, Tout=complex_type)
-    else:
-      return array_ops.ones(shape, dtype)
+    return array_ops.ones(shape, dtype)
 
 
 @keras_export('keras.initializers.Constant',
@@ -304,10 +290,8 @@ class RandomUniform(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _get_dtype(dtype)
     if not dtype.is_floating and not dtype.is_integer:
@@ -317,7 +301,7 @@ class RandomUniform(Initializer):
     uniform = self._random_generator.random_uniform(shape, self.minval,
                                                     self.maxval, dtype)
     if is_complex:
-      return gen_math_ops._complex(uniform, uniform, Tout=complex_type)
+      return math_ops.complex(uniform, uniform)
     else:
       return uniform
 
@@ -380,10 +364,8 @@ class RandomNormal(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _assert_float_dtype(_get_dtype(dtype))
     if _PARTITION_SHAPE in kwargs:
@@ -391,7 +373,7 @@ class RandomNormal(Initializer):
     norm = self._random_generator.random_normal(shape, self.mean,
                                                 self.stddev, dtype)
     if is_complex:
-      return gen_math_ops._complex(norm, norm, Tout=complex_type)
+      return math_ops.complex(norm, norm)
     else:
       return norm
 
@@ -459,10 +441,8 @@ class TruncatedNormal(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _assert_float_dtype(_get_dtype(dtype))
     if _PARTITION_SHAPE in kwargs:
@@ -470,8 +450,8 @@ class TruncatedNormal(Initializer):
     trunc_normal = self._random_generator.truncated_normal(shape, self.mean,
                                                            self.stddev, dtype)
     if is_complex:
-      return gen_math_ops._complex(
-          trunc_normal, trunc_normal, Tout=complex_type)
+      return math_ops.complex(
+          trunc_normal, trunc_normal)
     else:
       return trunc_normal
 
@@ -564,10 +544,8 @@ class VarianceScaling(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _assert_float_dtype(_get_dtype(dtype))
     scale = self.scale
@@ -586,8 +564,7 @@ class VarianceScaling(Initializer):
       trunc_norm = self._random_generator.truncated_normal(shape, 0.0,
                                                            stddev, dtype)
       if is_complex:
-        return gen_math_ops._complex(
-            trunc_norm, trunc_norm, Tout=complex_type)
+        return math_ops.complex(trunc_norm, trunc_norm)
       else:
         return trunc_norm
 
@@ -596,8 +573,7 @@ class VarianceScaling(Initializer):
       untrunc_norm = self._random_generator.random_normal(shape, 0.0,
                                                           stddev, dtype)
       if is_complex:
-        return gen_math_ops._complex(
-            untrunc_norm, untrunc_norm, Tout=complex_type)
+        return math_ops.complex(untrunc_norm, untrunc_norm)
       else:
         return untrunc_norm
 
@@ -606,7 +582,7 @@ class VarianceScaling(Initializer):
       uniform = self._random_generator.random_uniform(shape, -limit,
                                                       limit, dtype)
       if is_complex:
-        return gen_math_ops._complex(uniform, uniform, Tout=complex_type)
+        return math_ops.complex(uniform, uniform)
       else:
         return uniform
 
@@ -680,10 +656,8 @@ class Orthogonal(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _assert_float_dtype(_get_dtype(dtype))
     # Check the shape
@@ -709,7 +683,7 @@ class Orthogonal(Initializer):
       q = array_ops.matrix_transpose(q)
     matrix = self.gain * array_ops.reshape(q, shape)
     if is_complex:
-      return gen_math_ops._complex(matrix, matrix, Tout=complex_type)
+      return math_ops.complex(matrix, matrix)
     else:
       return matrix
 
@@ -761,10 +735,8 @@ class Identity(Initializer):
     if is_complex:
       if dtype == dtypes.complex64:
         dtype = dtypes.float32
-        complex_type = dtypes.complex64
       elif dtype == dtypes.complex128:
         dtype = dtypes.float64
-        complex_type = dtypes.complex128
 
     dtype = _assert_float_dtype(_get_dtype(dtype))
     if len(shape) != 2:
@@ -772,8 +744,7 @@ class Identity(Initializer):
           'Identity matrix initializer can only be used for 2D matrices.')
     initializer = linalg_ops.eye(*shape, dtype=dtype)
     if is_complex:
-      return gen_math_ops._complex(self.gain * initializer,
-                                   self.gain * initializer, Tout=complex_type)
+      return math_ops.complex(self.gain * initializer, self.gain * initializer)
     else:
       return self.gain * initializer
 
