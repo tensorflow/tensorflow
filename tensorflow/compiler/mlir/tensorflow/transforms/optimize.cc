@@ -142,7 +142,6 @@ struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
 
 }  // namespace
 
-// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm,
                               const StandardPipelineOptions &options) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
