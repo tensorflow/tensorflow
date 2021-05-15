@@ -115,3 +115,9 @@ def ResourceOpLiftingForMainFunctionPass :
     "for the main function";
   let constructor = "TFDevice::CreateResourceOpLiftingForMainFunctionPass()";
 }
+
+def AnnotateParameterReplicationPass :
+    Pass<"tf-annotate-parameter-replication", "ModuleOp"> {
+  let summary = "Annotate whether a ClusterFuncOp's parameters have the same data across replicas.";
+  let constructor = "TFDevice::CreateAnnotateParameterReplicationPass()";
+}
