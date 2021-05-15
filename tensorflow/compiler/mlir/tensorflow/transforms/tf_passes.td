@@ -955,3 +955,51 @@ def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
 
   let constructor = "TF::CreateTFOptimizePass()";
 }
+
+def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"> {
+  let summary = "Promote resources reads/writes to function inputs/outputs.";
+  let description = [{
+    This pass promotes resource accesses in the main function to input arguments
+    and outputs of the main function.
+
+    Two types of resources are supported:
+    (1) A function argument of TF::ResourceType type (this pass).
+    (2) A VarHandleOp in the function (tf-promote-var-handles-to-args).
+
+    After the pass,
+
+     . The function will have an input argument for each resource that is
+       already provided as an input argument or is read. The type of the input
+       argument will become the shape of the value represented by the resource.
+
+     . The function will have an output for each resource that is written. The
+       type of the output will become the shape of the resource.
+
+    The information of variable identification and input-output alising is
+    recorded as named attributes of the input argument or output:
+
+     . 'tf.resource_name' matches 'shared_name' of VarHandleOp, which represents
+       the identifier of the corresponding resource. This attribute is added to
+       an input argument if the initial value of the resource is read, or to the
+       output if the initial value is not read.
+
+     . 'tf.aliasing_output' is the index of the function output that is an alias
+       of the input argument. This attribute is added only to the input argument
+       when the initial value of the corresponding resource is read, and the
+       resource is written later.
+
+    Assumption of this pass:
+     . Compound resource operations have already been decomposed.
+     . Dead functions have already been removed, as resource arguments in dead
+       functions can cause the pass to fail.
+  }];
+
+  let constructor = "TF::CreatePromoteResourcesToArgsPass()";
+}
+
+def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "ModuleOp"> {
+  let summary = "Promote tf.VarHandleOps to function arguments.";
+  let description = [{See joint description in promote resources to args.}];
+
+  let constructor = "TF::CreatePromoteVarHandlesToArgsPass()";
+}
