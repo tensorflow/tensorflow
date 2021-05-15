@@ -10,12 +10,10 @@ annotated:
 
 <img src="images/android_apple_banana.png" alt="Screenshot of Android example" width="30%">
 
-*Quick tips*:
-
-*   To integrate an existing model, try
-    [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/object_detector).
-*   To customize a model, try
-    [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker)
+Note: (1) To integrate an existing model, try
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/object_detector).
+(2) To customize a model, try
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
 
 ## Get started
 

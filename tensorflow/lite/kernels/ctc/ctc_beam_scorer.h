@@ -23,13 +23,13 @@ limitations under the License.
 
 // Copied from tensorflow/core/util/ctc/ctc_beam_scorer.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SCORER_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SCORER_H_
 
-#include "tensorflow/lite/experimental/kernels/ctc_beam_entry.h"
+#include "tensorflow/lite/kernels/ctc/ctc_beam_entry.h"
 
 namespace tflite {
-namespace experimental {
+namespace custom {
 namespace ctc {
 
 // Base implementation of a beam scorer used by default by the decoder that can
@@ -73,7 +73,7 @@ class BaseBeamScorer {
 };
 
 }  // namespace ctc
-}  // namespace experimental
+}  // namespace custom
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SCORER_H_

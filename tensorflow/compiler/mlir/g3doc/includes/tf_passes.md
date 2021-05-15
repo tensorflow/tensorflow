@@ -354,6 +354,7 @@ func @unsupported_op() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 ```
+### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-region-control-flow-to-functional`: Transforms region-based control flow operations to their functional counterparts
 This pass transforms region-based control flow operations in the TensorFlow
 dialect to their functional counterparts, i.e., `tf.IfRegion` is transformed to

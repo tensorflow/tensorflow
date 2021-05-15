@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-xla::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
-                                      absl::Span<int64 const> output_dims) {
+StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
+                                 absl::Span<int64 const> output_dims) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
   absl::Span<int64 const> input_dims =

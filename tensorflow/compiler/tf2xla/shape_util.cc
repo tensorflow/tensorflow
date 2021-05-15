@@ -47,8 +47,8 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
 // Populate the output layout unless the minor_to_major array contains all -1
 // value, in which case the layout is considered missing and the API returns
 // false.
-xla::StatusOr<bool> MakeLayout(absl::Span<const int64> minor_to_major,
-                               xla::Layout* layout) {
+StatusOr<bool> MakeLayout(absl::Span<const int64> minor_to_major,
+                          xla::Layout* layout) {
   if (std::all_of(minor_to_major.begin(), minor_to_major.end(),
                   [](int64 dim) { return dim == -1; })) {
     return false;
@@ -164,7 +164,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   return xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
 }
 
-xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
+StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
   std::vector<int> layouts;
   TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(shape, &layouts));
   return layouts;

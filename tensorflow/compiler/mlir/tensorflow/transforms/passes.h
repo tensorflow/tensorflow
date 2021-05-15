@@ -295,6 +295,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass();
 
+// Creates a pass that lifts operations from the main function.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateResourceOpLiftingForMainFunctionPass();
+
 // Lifts resource operations from tf_device.launch_func ops nested in `op`
 // outside. Returns a failure if there are remaining resource-type values that
 // can not be lifted.
@@ -449,6 +453,11 @@ CreateTPUCompileOpReplicationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+namespace TFDevice {
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+}  // namespace TFDevice
 
 }  // namespace mlir
 

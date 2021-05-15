@@ -13,21 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TF_PASSES_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TF_PASSES_DETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_DEVICE_PASS_DETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_DEVICE_PASS_DETAIL_H_
 
-#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 namespace mlir {
-namespace mhlo {
+namespace TFDevice {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 
-}  // namespace mhlo
+}  // namespace TFDevice
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TF_PASSES_DETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_DEVICE_PASS_DETAIL_H_

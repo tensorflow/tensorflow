@@ -310,7 +310,7 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
 
 using GraphCache = absl::flat_hash_map<string, std::unique_ptr<FunctionBody>>;
 
-xla::StatusOr<FunctionBody*> FindOrInsert(
+StatusOr<FunctionBody*> FindOrInsert(
     GraphCache* cache, const NameAttrList& body_attr,
     const FunctionLibraryDefinition* lookup_fld,
     const FunctionLibraryDefinition* fallback_fld) {
@@ -336,14 +336,14 @@ xla::StatusOr<FunctionBody*> FindOrInsert(
   return value.get();
 }
 // Determines whether a loop body is invariant for the given argument index.
-xla::StatusOr<bool> IsLoopInvariant(
-    const FunctionBody* loop_body, int index,
-    const FunctionLibraryDefinition* lookup_fld,
-    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache);
+StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
+                               const FunctionLibraryDefinition* lookup_fld,
+                               const FunctionLibraryDefinition* fallback_fld,
+                               GraphCache* cache);
 
 // Traces backward through non-modifying ops such as Identity and loop-invariant
 // While, to find a preceding source edge.
-xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
+StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
     const Edge* src, const FunctionLibraryDefinition* lookup_fld,
     const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
   const Edge* e = src;
@@ -377,10 +377,10 @@ xla::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
 }
 
 // Determines whether a loop body is invariant for the given argument index.
-xla::StatusOr<bool> IsLoopInvariant(
-    const FunctionBody* loop_body, int index,
-    const FunctionLibraryDefinition* lookup_fld,
-    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
+StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
+                               const FunctionLibraryDefinition* lookup_fld,
+                               const FunctionLibraryDefinition* fallback_fld,
+                               GraphCache* cache) {
   const Edge* e;
   TF_RETURN_IF_ERROR(loop_body->ret_nodes[index]->input_edge(0, &e));
   TF_ASSIGN_OR_RETURN(
@@ -477,9 +477,8 @@ Status PropagateConstIntoAndAroundWhileNode(
 
 }  // namespace
 
-xla::StatusOr<bool> IsLoopInvariant(
-    const FunctionBody* loop_body, int index,
-    const FunctionLibraryDefinition* lookup_fld) {
+StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
+                               const FunctionLibraryDefinition* lookup_fld) {
   GraphCache cache;
   return IsLoopInvariant(loop_body, index, lookup_fld,
                          /*fallback_fld=*/nullptr, &cache);
@@ -887,7 +886,7 @@ Status CachedFunctionHandles::ReleaseAllHandles() {
   return result;
 }
 
-xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
+StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
   // Create the replacement node.
   Status s;
   Node* new_node = g->AddNode(node_def, &s);
@@ -923,9 +922,9 @@ xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
   return new_node;
 }
 
-xla::StatusOr<Node*> BuildIdentityNode(
-    Graph* graph, const string& node_name, DataType dtype, const Node* input,
-    absl::optional<string> requested_device) {
+StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                  DataType dtype, const Node* input,
+                                  absl::optional<string> requested_device) {
   // Create identity node.
   NodeDef ndef;
   ndef.set_name(node_name);

@@ -38,8 +38,8 @@ limitations under the License.
 
 // Copied from tensorflow/core/lib/gtl/top_n.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_TOP_N_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_TOP_N_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_TOP_N_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_TOP_N_H_
 
 #include <stddef.h>
 #include <algorithm>
@@ -338,4 +338,4 @@ void TopN<T, Cmp>::Reset() {
 }  // namespace gtl
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_TOP_N_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_TOP_N_H_
