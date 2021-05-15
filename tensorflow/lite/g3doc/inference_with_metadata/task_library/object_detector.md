@@ -37,6 +37,9 @@ API.
 *   Models created by
     [AutoML Vision Edge Object Detection](https://cloud.google.com/vision/automl/object-detection/docs).
 
+*   Models created by
+    [TensorFlow Lite Model Maker for object detector](https://www.tensorflow.org/lite/guide/model_maker).
+
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
 
