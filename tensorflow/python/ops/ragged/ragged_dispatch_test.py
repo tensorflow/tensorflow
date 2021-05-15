@@ -590,11 +590,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           op=math_ops.reduce_variance,
           kwargs={
               'input_tensor':
-                  ragged_factory_ops.constant_value([[1, 3], [3, 4, 5]]),
+                  ragged_factory_ops.constant_value([[1, 3], [3, 6, 9]]),
               'axis':
                   1
           },
-          expected=[1., 0.66666667]),
+          expected=[1., 6.]),
       dict(
           op=math_ops.reduce_any,
           kwargs={
