@@ -48,6 +48,12 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
                            "shape::ShapeDialect", "StandardOpsDialect"];
 }
 
+def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
+  let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
+
+  let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
+}
+
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
   let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
 
