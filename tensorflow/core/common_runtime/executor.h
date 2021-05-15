@@ -33,15 +33,6 @@ namespace tensorflow {
 
 class StepStatsCollector;
 
-// If this is called, we will sample execution cost for "inexpensive" kernels
-// and switch them to "expensive" when the estimated cost exceeds expensive-ness
-// threshold.
-// This is a temporary flag for validating the performance impact of
-// this feature. For simplicity, a global flag is used and once the flag
-// is turned on, it cannot be turned off. We will remove this flag once this
-// feature is validated.
-void EnableAlwaysTrackKernelExecutionCost();
-
 // Executor runs a graph computation.
 // Example:
 //   Graph* graph = ...;

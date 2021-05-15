@@ -68,7 +68,7 @@ def custom_gradient(f=None):
   ```python
   x = tf.constant(100.)
   y = log1pexp(x)
-  dy = tf.gradients(y, x) # Will be NaN when evaluated.
+  dy_dx = tf.gradients(y, x) # Will be NaN when evaluated.
   ```
 
   The gradient expression can be analytically simplified to provide numerical
@@ -78,26 +78,29 @@ def custom_gradient(f=None):
   @tf.custom_gradient
   def log1pexp(x):
     e = tf.exp(x)
-    def grad(dy):
-      return dy * (1 - 1 / (1 + e))
+    def grad(upstream):
+      return upstream * (1 - 1 / (1 + e))
     return tf.math.log(1 + e), grad
   ```
 
-  With this definition, the gradient at x=100 will be correctly evaluated as
-  1.0.
+  With this definition, the gradient `dy_dx` at `x = 100` will be correctly
+  evaluated as 1.0.
 
-  The variable `dy` is defined as the upstream gradient. i.e. the gradient from
-  all the layers or functions originating from this layer.
+  The variable `upstream` is defined as the upstream gradient. i.e. the gradient
+  from all the layers or functions originating from this layer. The above
+  example has no upstream functions, therefore `upstream = dy/dy = 1.0`.
 
-  By chain rule we know that
-  `dy/dx = dy/dx_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+  Assume that `x_i` is `log1pexp` in the forward pass `x_1 = x_1(x_0)`,
+  `x_2 = x_2(x_1)`, ..., `x_i = x_i(x_i-1)`, ..., `x_n = x_n(x_n-1)`. By
+  chain rule we know that `dx_n/dx_0 = dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... *
+  dx_i/dx_i-1 * ... * dx_1/dx_0`.
 
-  In this case the gradient of our current function defined as 
-  `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
-  `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`. The upstream gradient 
+  In this case the gradient of our current function defined as
+  `dx_i/dx_i-1 = (1 - 1 / (1 + e))`. The upstream gradient `upstream` would be
+  `dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... * dx_i+1/dx_i`. The upstream gradient
   multiplied by the current gradient is then passed downstream.
 
-  In case the function takes multiple variables as input, the `grad` 
+  In case the function takes multiple variables as input, the `grad`
   function must also return  the same number of variables.
   We take the function `z = x * y` as an example.
 
@@ -309,6 +312,10 @@ def _get_dependent_variables(input_ops, output_ops):
   return tf_vars
 
 
+def generate_name():
+  return "CustomGradient-%s" % ops.uid()
+
+
 def _graph_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
@@ -316,7 +323,7 @@ def _graph_mode_decorator(f, args, kwargs):
     raise ValueError(
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
-  name = "CustomGradient-%s" % ops.uid()
+  name = generate_name()
   args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource

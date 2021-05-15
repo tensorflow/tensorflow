@@ -384,6 +384,78 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     run_and_assert(group_size=3, group_key=2)
 
 
+@combinations.generate(
+    combinations.times(
+        combinations.combine(
+            collective_ops=[
+                combinations.NamedObject('v2', CollectiveOpsV2)
+            ],
+            mode='eager',
+            max_subdivs_per_device=[-1, 0, 16]), device_combination))
+class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testReduce(self, collective_ops, device, communication,
+                 max_subdivs_per_device):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_reduce_1device():
+      with ops.device(dev0):
+        in_value = constant_op.constant([1.])
+        group_size = 1
+        group_key = 1
+        instance_key = 1
+        if max_subdivs_per_device == -1:
+          return collective_ops.all_reduce(
+              in_value,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication)
+        else:
+          return collective_ops.all_reduce(
+              in_value,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication,
+              max_subdivs_per_device=max_subdivs_per_device)
+
+    @def_function.function
+    def run_all_reduce_2devices():
+      in_value = constant_op.constant([1.])
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      with ops.device(dev0):
+        collectives.append(
+            collective_ops.all_reduce(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
+        collectives.append(
+            collective_ops.all_reduce(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      return collectives
+
+    self.assertAllClose(run_all_reduce_1device(), [1.], rtol=1e-5, atol=1e-5)
+    for result in run_all_reduce_2devices():
+      self.assertAllClose(result, [2.], rtol=1e-5, atol=1e-5)
+
+
 @combinations.generate(collective_op_combinations)
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 

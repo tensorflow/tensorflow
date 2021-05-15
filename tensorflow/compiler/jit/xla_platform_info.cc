@@ -19,7 +19,28 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status BuildXlaCompilationCache(DeviceBase* device,
+xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+    absl::string_view visible_device_list) {
+  std::set<int> gpu_ids;
+  if (visible_device_list.empty()) {
+    return {{absl::nullopt}};
+  }
+  const std::vector<string> visible_devices =
+      absl::StrSplit(visible_device_list, ',');
+  for (const string& platform_device_id_str : visible_devices) {
+    int32 platform_device_id;
+    if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
+      return errors::InvalidArgument(
+          "Could not parse entry in 'visible_device_list': '",
+          platform_device_id_str,
+          "'. visible_device_list = ", visible_device_list);
+    }
+    gpu_ids.insert(platform_device_id);
+  }
+  return {{gpu_ids}};
+}
+
+Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
   if (platform_info.xla_device_metadata()) {
@@ -35,7 +56,7 @@ Status BuildXlaCompilationCache(DeviceBase* device,
     return platform.status();
   }
 
-  xla::StatusOr<xla::Compiler*> compiler_for_platform =
+  StatusOr<xla::Compiler*> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.ValueOrDie());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
@@ -60,6 +81,13 @@ Status BuildXlaCompilationCache(DeviceBase* device,
   client_options.set_platform(platform.ValueOrDie());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
+
+  string allowed_gpus =
+      flr->config_proto()->gpu_options().visible_device_list();
+  TF_ASSIGN_OR_RETURN(absl::optional<std::set<int>> gpu_ids,
+                      ParseVisibleDeviceList(allowed_gpus));
+  client_options.set_allowed_devices(gpu_ids);
+
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();

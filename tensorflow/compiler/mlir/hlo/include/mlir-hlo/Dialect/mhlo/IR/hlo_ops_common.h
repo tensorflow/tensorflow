@@ -19,6 +19,8 @@ limitations under the License.
 // This file defines functionality shared between chlo/mhlo/lhlo dialects.
 
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 
 namespace mlir {
@@ -26,7 +28,22 @@ namespace hlo {
 
 // Verifies the source target pairs attached to collective permute.
 LogicalResult VerifyCollectivePermuteSourceTargetPairs(
-    Operation *op, DenseIntElementsAttr attr);
+    Operation* op, DenseIntElementsAttr attr);
+
+// Custom formatting for convolution window attributes.
+void printWindowAttributes(OpAsmPrinter& p, Operation* op,
+                           llvm::Optional<DenseIntElementsAttr> window_strides,
+                           llvm::Optional<DenseIntElementsAttr> padding,
+                           llvm::Optional<DenseIntElementsAttr> lhs_dilation,
+                           llvm::Optional<DenseIntElementsAttr> rhs_dilation,
+                           llvm::Optional<DenseElementsAttr> window_reversal);
+
+ParseResult parseWindowAttributes(OpAsmParser& parser,
+                                  DenseIntElementsAttr& window_strides,
+                                  DenseIntElementsAttr& padding,
+                                  DenseIntElementsAttr& lhs_dilation,
+                                  DenseIntElementsAttr& rhs_dilation,
+                                  DenseElementsAttr& window_reversal);
 
 }  // namespace hlo
 }  // namespace mlir

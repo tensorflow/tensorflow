@@ -113,6 +113,115 @@ absl::string_view CollectiveOpGroupModeToString(
   }
 }
 
+StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              CollectiveOpGroupMode group_mode) {
+  int replica_count = device_assignment.replica_count();
+  int partition_count = device_assignment.computation_count();
+
+  std::vector<ReplicaGroup> participating_replica_groups =
+      std::vector<ReplicaGroup>(replica_groups.begin(), replica_groups.end());
+
+  // If replica groups are empty, assume a group with all replicas.
+  if (replica_groups.empty()) {
+    if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
+      // replica groups contain flattened-ids and cannot be empty.
+      TF_RET_CHECK(!replica_groups.empty())
+          << "replica groups cannot be empty for kFlattenedID mode";
+    }
+
+    int total_participant_count;
+    if (group_mode == CollectiveOpGroupMode::kCrossPartition) {
+      // replica group are partition ids.
+      total_participant_count = partition_count;
+    } else {
+      // replica group are replica ids.
+      total_participant_count = replica_count;
+    }
+
+    ReplicaGroup replica_group = ReplicaGroup();
+    for (int id = 0; id < total_participant_count; id++) {
+      replica_group.add_replica_ids(id);
+    }
+    participating_replica_groups.push_back(replica_group);
+  }
+
+  std::vector<std::vector<GlobalDeviceId>> groups;
+  switch (group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica: {
+      for (const auto& replica_group : participating_replica_groups) {
+        // replica_group contains replica id, participants contains all
+        // replica_group's replica_ids for the current partition.
+        for (int partition_id = 0; partition_id < partition_count;
+             partition_id++) {
+          std::vector<GlobalDeviceId> participants;
+          participants.reserve(replica_group.replica_ids().size());
+
+          for (int replica_id : replica_group.replica_ids()) {
+            participants.emplace_back(
+                device_assignment(replica_id, partition_id));
+          }
+          groups.push_back(participants);
+        }
+      }
+      return groups;
+    }
+    case CollectiveOpGroupMode::kCrossPartition: {
+      for (const auto& replica_group : participating_replica_groups) {
+        // replica_group contains partition id, participants contains all
+        // replica_group's partition_ids for the current replica_id.
+        for (int replica_id = 0; replica_id < replica_count; replica_id++) {
+          std::vector<GlobalDeviceId> participants;
+          participants.reserve(replica_group.replica_ids().size());
+
+          for (int partition_id : replica_group.replica_ids()) {
+            participants.emplace_back(
+                device_assignment(replica_id, partition_id));
+          }
+          groups.push_back(participants);
+        }
+      }
+      return groups;
+    }
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+      for (const auto& replica_group : participating_replica_groups) {
+        std::vector<GlobalDeviceId> participants;
+        participants.reserve(replica_group.replica_ids().size() *
+                             partition_count);
+
+        // replica_group contains replica id, participants contains all
+        // replica_group's replica_ids for all partitions.
+        for (int replica_id : replica_group.replica_ids()) {
+          for (int partition_id = 0; partition_id < partition_count;
+               partition_id++) {
+            participants.emplace_back(
+                device_assignment(replica_id, partition_id));
+          }
+        }
+        groups.push_back(participants);
+      }
+      return groups;
+    }
+    case CollectiveOpGroupMode::kFlattenedID: {
+      for (const auto& replica_group : participating_replica_groups) {
+        std::vector<GlobalDeviceId> participants;
+        participants.reserve(replica_group.replica_ids().size());
+
+        for (int flattened_id : replica_group.replica_ids()) {
+          // Map from flattened id back to replica_id, partition_id.
+          int replica_id = flattened_id / partition_count;
+          int partition_id = flattened_id % partition_count;
+          participants.emplace_back(
+              device_assignment(replica_id, partition_id));
+        }
+        groups.push_back(participants);
+      }
+      return groups;
+    }
+  }
+}
+
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,

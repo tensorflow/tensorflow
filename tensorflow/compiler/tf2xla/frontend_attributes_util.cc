@@ -22,12 +22,11 @@ namespace tensorflow {
 
 const char kXlaFrontendAttributesAttrName[] = "_XlaFrontendAttributes";
 
-xla::StatusOr<absl::optional<xla::FrontendAttributes>>
+StatusOr<absl::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
   const AttrValue* attr = attrs.Find(kXlaFrontendAttributesAttrName);
   if (attr == nullptr) {
-    return xla::StatusOr<absl::optional<xla::FrontendAttributes>>(
-        absl::nullopt);
+    return StatusOr<absl::optional<xla::FrontendAttributes>>(absl::nullopt);
   }
   xla::FrontendAttributes attributes;
   if (!attributes.ParseFromString(attr->s())) {

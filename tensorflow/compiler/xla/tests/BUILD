@@ -768,6 +768,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2086,6 +2087,7 @@ xla_test(
         ":test_utils",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",

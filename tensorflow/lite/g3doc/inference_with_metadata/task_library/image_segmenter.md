@@ -10,7 +10,7 @@ classification</a>, which classifies the overall image. See the
 more information about image segmenters.
 
 Use the Task Library `ImageSegmenter` API to deploy your custom image segmenters
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ImageSegmenter API
 
@@ -64,6 +64,10 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
 }
 ```
+
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
 
 ### Step 2: Using the model
 

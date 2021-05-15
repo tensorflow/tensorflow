@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 
+#include <set>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/graph/graph.h"
@@ -30,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
@@ -97,25 +102,76 @@ void BuildFunctionDefProto(const std::string& function_name,
   fdef.mutable_node_def(1)->mutable_attr()->insert({"Tout", tout_attrs});
 }
 
-// Creates a `TFLiteSubgraphResource` for each subgraph (execpt
-// for main subgraph) in the model and adds it in the eager context's resource
-// manager. It also registers a FunctionDef for each subgraph which is used to
-// invoke the subgraph by the function library runtime.
+// Returns a list of subgraph names which have associated function attributes.
+tensorflow::Status GetSubgraphNamesForFunctionExecution(
+    const std::vector<std::unique_ptr<Subgraph>>& subgraphs,
+    std::set<std::string>* result) {
+  tensorflow::NodeDef node_def;
+  for (const auto& subgraph : subgraphs) {
+    for (const auto& node_and_reg : subgraph->nodes_and_registration()) {
+      if (node_and_reg.second.builtin_code != tflite::BuiltinOperator_CUSTOM) {
+        // If this isn't a custom op, skip.
+        continue;
+      }
+      const std::string custom_name = node_and_reg.second.custom_name;
+      if (custom_name.substr(0, strlen(tflite::kFlexCustomCodePrefix)) !=
+          tflite::kFlexCustomCodePrefix) {
+        // Skip if this is not a flex op.
+        continue;
+      }
+      // The flexbuffer contains a vector where the first elements is the
+      // op name and the second is a serialized NodeDef.
+      const flexbuffers::Vector& v =
+          flexbuffers::GetRoot(reinterpret_cast<const uint8_t*>(
+                                   node_and_reg.first.custom_initial_data),
+                               node_and_reg.first.custom_initial_data_size)
+              .AsVector();
+      // TODO(b/181352924): Use proto arena if we see performance regression.
+      if (!node_def.ParseFromString(v[1].AsString().str())) {
+        return tensorflow::Status(tensorflow::error::INTERNAL,
+                                  "could not parse NodeDef");
+      }
+      // Loop through all the attributes in this node to check if it has
+      // function attribute.
+      for (const auto& attr : node_def.attr()) {
+        if (attr.second.has_func()) {
+          result->insert(attr.second.func().name());
+        }
+      }
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
+}  // namespace
+
 tensorflow::Status RegisterFunctionDefForSubgraphs(
-    Subgraph& main_subgraph, tensorflow::ResourceMgr* resource_mgr,
+    Subgraph& main_subgraph,
+    const std::function<tensorflow::Status(
+        const std::vector<std::unique_ptr<Subgraph>>&, std::set<std::string>*)>&
+        select_subgraphs_to_register,
+    tensorflow::ResourceMgr* resource_mgr,
     tensorflow::EagerContext* eager_context) {
   std::vector<std::unique_ptr<Subgraph>>* subgraphs =
       main_subgraph.GetSubgraphs();
   if (!subgraphs) {
-    return tensorflow::Status(tensorflow::error::INTERNAL, "subgraphs is null");
+    // If there are no subgraphs associated with the main subgraph, we will
+    // return ok status because no FunctionDef needs to be registered.
+    return tensorflow::Status::OK();
   }
+  std::set<std::string> function_subgraphs;
+  TF_RETURN_IF_ERROR(
+      select_subgraphs_to_register(*subgraphs, &function_subgraphs));
   for (int i = 0; i < subgraphs->size(); ++i) {
     if (subgraphs->at(i)->GetName() == "main") {
       continue;
     }
-    // TODO(b/181352924): Find a way to only add function def used by dataset
-    // ops.
     const std::string subgraph_name = subgraphs->at(i)->GetName();
+    if (!function_subgraphs.count(subgraph_name)) {
+      continue;
+    }
+    // This is to ensure that we only register FunctionDefs for subgraphs that
+    // are used by TF ops to invoke functions.
     auto* subgraph_resource = new TFLiteSubgraphResource(*(subgraphs->at(i)));
     TF_RETURN_IF_ERROR(resource_mgr->Create<TFLiteSubgraphResource>(
         "flex", subgraph_name, subgraph_resource));
@@ -125,8 +181,6 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
   }
   return tensorflow::Status::OK();
 }
-
-}  // namespace
 
 DelegateData::DelegateData() {}
 
@@ -164,8 +218,8 @@ tensorflow::Status DelegateData::Prepare(
 
   if (main_subgraph) {
     TF_RETURN_IF_ERROR(RegisterFunctionDefForSubgraphs(
-        *main_subgraph, eager_context_->HostCPU()->resource_manager(),
-        eager_context_));
+        *main_subgraph, GetSubgraphNamesForFunctionExecution,
+        eager_context_->HostCPU()->resource_manager(), eager_context_));
   }
   return tensorflow::Status();
 }

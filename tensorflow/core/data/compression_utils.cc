@@ -29,9 +29,10 @@ Status CompressElement(const std::vector<Tensor>& element,
   int64 total_size = 0;
   for (auto& component : element) {
     if (DataTypeCanUseMemcpy(component.dtype())) {
-      // Some datatypes can be memcopied, allowing us to save two copies
-      // (AsProtoTensorContent and SerializeToArray).
-      total_size += DMAHelper::buffer(&component)->size();
+      const TensorBuffer* buffer = DMAHelper::buffer(&component);
+      if (buffer) {
+        total_size += buffer->size();
+      }
     } else {
       non_memcpy_components.emplace_back();
       component.AsProtoTensorContent(&non_memcpy_components.back());
@@ -53,8 +54,10 @@ Status CompressElement(const std::vector<Tensor>& element,
     component.shape().AsProto(metadata->mutable_tensor_shape());
     if (DataTypeCanUseMemcpy(component.dtype())) {
       const TensorBuffer* buffer = DMAHelper::buffer(&component);
-      memcpy(position, buffer->data(), buffer->size());
-      metadata->set_tensor_size_bytes(buffer->size());
+      if (buffer) {
+        memcpy(position, buffer->data(), buffer->size());
+        metadata->set_tensor_size_bytes(buffer->size());
+      }
     } else {
       TensorProto& proto = non_memcpy_components[non_memcpy_component_index++];
       proto.SerializeToArray(position, proto.ByteSizeLong());
@@ -94,8 +97,13 @@ Status UncompressElement(const CompressedElement& compressed,
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
       out->emplace_back(metadata.dtype(), metadata.tensor_shape());
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
-      iov[i].iov_base = buffer->data();
-      iov[i].iov_len = buffer->size();
+      if (buffer) {
+        iov[i].iov_base = buffer->data();
+        iov[i].iov_len = buffer->size();
+      } else {
+        iov[i].iov_base = nullptr;
+        iov[i].iov_len = 0;
+      }
     } else {
       // Allocate an empty Tensor. We will fill it out later after
       // uncompressing into the tensor_proto_str.

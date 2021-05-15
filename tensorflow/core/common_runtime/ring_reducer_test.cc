@@ -637,6 +637,7 @@ TEST_F(RingReducerTest, AutomaticSubdivs) {
   // Test automatic generation of subdiv offsets.
   cp->default_rank = 0;
   cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
   RunSubdivPermsTest(cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {0});
@@ -668,6 +669,7 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
 
   cp->default_rank = 0;
   cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
   cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
   RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
 }
@@ -704,11 +706,26 @@ TEST_F(RingReducerTest, AutomaticSubdivUsesDefault) {
 
   cp->default_rank = 0;
   // When subdiv_offsets is NOT present and max_subdivs_per_device has a
-  // <= 0 value, the default setting of 2 is used.
+  // == 0 value, the default setting of 2 is used.
   cp->instance.impl_details.subdiv_offsets.clear();
   cp->instance.impl_details.max_subdivs_per_device = 0;
   cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
   RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivDisabled) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is NOT present and max_subdivs_per_device = -1 no
+  // subidivision should be done. (old behavior)
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = -1;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}}, {0});
 }
 
 // TODO(b/113171733): change to use TEST_P.

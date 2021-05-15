@@ -45,6 +45,10 @@ we continue enabling more and more use cases.
     *   [BertNLCLassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
 
+*   **Audio APIs**
+
+    *   [AudioClassifier](audio_classifier.md)
+
 *   **Custom APIs**
 
     *   Extend Task API infrastructure and build

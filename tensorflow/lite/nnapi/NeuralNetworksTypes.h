@@ -711,4 +711,8 @@ typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
 typedef int (*ANeuralNetworksExecution_enableInputAndOutputPadding_fn)(
     ANeuralNetworksExecution* execution, bool enable);
 
+typedef int (*ANeuralNetworksExecution_setReusable_fn)(
+    ANeuralNetworksExecution* execution, bool reusable);
+
+typedef int64_t (*ANeuralNetworks_getRuntimeFeatureLevel_fn)();
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

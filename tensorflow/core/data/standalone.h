@@ -110,7 +110,8 @@ class Dataset {
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
           ProcessFunctionLibraryRuntime* pflr,
-          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool);
+          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
+          std::function<void(std::function<void()>)> runner);
 
   DatasetBase* dataset_;  // owned
   std::unique_ptr<DeviceMgr> device_mgr_;

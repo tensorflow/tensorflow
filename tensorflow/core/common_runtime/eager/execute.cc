@@ -596,7 +596,7 @@ Status GetOrCreateKernelAndDevice(
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
-      DVLOG(4) << "Available kernels for " << op->Name() << "are "
+      DVLOG(4) << "Available kernels for " << op->Name() << " are"
                << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
     }
@@ -971,8 +971,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           tensorflow::Device* remote_cpu_device;
           TF_RETURN_IF_ERROR(
               ctx.CPUDeviceOnTask(op_device, &remote_cpu_device));
-          // TODO(b/110044833): It's possible the same tensor gets copied to the
-          // remote device repeatedly.
           // Always copy to the remote CPU so that the actual device can be
           // correctly determined after the kernel is selected/instantiated,
           // since the op might have its inputs on host memory.

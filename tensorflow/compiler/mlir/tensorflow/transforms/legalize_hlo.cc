@@ -1131,6 +1131,19 @@ ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+// Returns whether the splat constant is the sign of the FloatTensor
+bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
+                       ElementsAttr sgn_cst) {
+  if (!(sgn_cst.isa<SplatElementsAttr>() && floatv.isa<SplatElementsAttr>()))
+    return false;
+  auto floatv_spl = floatv.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+  auto sgn_cst_spl = sgn_cst.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+  if (floatv_spl.isNaN() || floatv_spl.isZero())
+    return floatv_spl == sgn_cst_spl;
+  if (floatv_spl.isNegative()) return sgn_cst_spl.isExactlyValue(-1.0);
+  return sgn_cst_spl.isExactlyValue(1.0);
+}
+
 // If index_vector_dim == indices.rank() then insert the implicit extra
 // dimension into indices to normalize everything to index_vector_dim ==
 // indices.rank() - 1.

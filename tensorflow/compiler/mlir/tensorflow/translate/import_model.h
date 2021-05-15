@@ -68,23 +68,24 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
-                          mlir::MLIRContext* context,
-                          MLIRImportOptions options);
+                          mlir::MLIRContext* context, MLIRImportOptions options,
+                          bool lift_variables = true);
 
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect. It does not require a session to be
-// created and it does not perform any graph transformation.
+// created and it does not perform any graph transformation. If `exported_names`
+// is absl::nullopt, all signatures will be imported. Otherwise, only names
+// in `exported_names` are imported.
 //
 // Note that the word `Lite` means it is a lighter version compared to
 // ConvertSavedModelV1ToMlir(), and is not related to TFLite.
 //
 // TODO(b/179683149): Rename this class to avoid confusion with TFLite.
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
-ConvertSavedModelV1ToMlirLite(const MetaGraphDef& meta_graph_def,
-                              const GraphDebugInfo& debug_info,
-                              absl::Span<std::string> exported_names,
-                              mlir::MLIRContext* context,
-                              MLIRImportOptions options);
+ConvertSavedModelV1ToMlirLite(
+    const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
+    absl::optional<absl::Span<const std::string>> exported_names,
+    mlir::MLIRContext* context, MLIRImportOptions options);
 
 // SavedModelMLIRImportInput is an adapter class for users to inject custom
 // graph transformation logic on Tensorflow graphs before importing to MLIR. It
@@ -122,16 +123,20 @@ class SavedModelMLIRImportInput {
 
 // Given the SavedModelMLIRImportInput for a saved model, returns a MLIR module
 // containing the functions, expressed with tf_executor dialect. It does not
-// require a session to be created.
+// require a session to be created. If `exported_names` is absl::nullopt, all
+// signatures will be imported. Otherwise, only names in `exported_names` are
+// imported.
+
 //
 // Note that the word `Lite` means it is a lighter version compared to
 // ConvertSavedModelV1ToMlir(), and is not related to TFLite.
 //
 // TODO(b/179683149): Rename this class to avoid confusion with TFLite.
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
-ConvertSavedModelV1ToMlirLite(SavedModelMLIRImportInput& input,
-                              absl::Span<std::string> exported_names,
-                              mlir::MLIRContext* context);
+ConvertSavedModelV1ToMlirLite(
+    SavedModelMLIRImportInput& input,
+    absl::optional<absl::Span<const std::string>> exported_names,
+    mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

@@ -1093,6 +1093,10 @@ void EagerContext::IncrementContextViewId() {
   context_view_id_ += 1;
 }
 
+Status EagerContext::EnableCollectiveOps(const ServerDef& server_def) {
+  return distributed_manager_->EnableCollectiveOps(server_def);
+}
+
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(

@@ -85,9 +85,11 @@ xla::XlaOp Quantize(xla::XlaBuilder* b, const xla::XlaOp& input,
 // Builds a custom_call to a method named 'fake_quant_with_min_max_vars'.
 // The method will be provided the input, the min/max range from the original
 // TensorFlow op, and the num_bits and narrow_range attributes.
-xla::StatusOr<xla::XlaOp> BuildFakeQuantCustomCall(
-    xla::XlaBuilder* b, xla::XlaOp input, xla::XlaOp input_min,
-    xla::XlaOp input_max, int num_bits, bool narrow_range) {
+StatusOr<xla::XlaOp> BuildFakeQuantCustomCall(xla::XlaBuilder* b,
+                                              xla::XlaOp input,
+                                              xla::XlaOp input_min,
+                                              xla::XlaOp input_max,
+                                              int num_bits, bool narrow_range) {
   xla::XlaOp num_bits_arg =
       XlaHelpers::IntegerLiteral(b, DataType::DT_INT32, num_bits);
   xla::XlaOp narrow_range_arg = narrow_range

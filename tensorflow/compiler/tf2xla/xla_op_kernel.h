@@ -110,8 +110,8 @@ class XlaOpKernelContext {
   xla::XlaOp Input(absl::string_view name);
 
   // Returns the xla input shape for a given index.
-  xla::StatusOr<xla::Shape> InputXlaShape(int index);
-  xla::StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
+  StatusOr<xla::Shape> InputXlaShape(int index);
+  StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.

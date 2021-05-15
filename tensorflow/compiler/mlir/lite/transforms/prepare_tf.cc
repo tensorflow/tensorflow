@@ -110,165 +110,6 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
-template <class TFFakeQuantOp>
-struct FetchConstantMinMaxInputs {
-  using AttrType = DenseFPElementsAttr;
-  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
-                  AttrType &max_value) const {
-    Value min = tf_op.min(), max = tf_op.max();
-
-    // TODO: incomplete  neither IdentityN ops
-    // nor chains of Identity* (not rare) are handled
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
-      min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
-      max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) {
-      return false;
-    }
-    if (!matchPattern(max, m_Constant(&max_value))) {
-      return false;
-    }
-    return true;  // Succesfully matched and fetched.
-  }
-};
-
-template <class TFFakeQuantOp>
-struct FetchMinMaxAttrs {
-  using AttrType = FloatAttr;
-  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
-                  AttrType &max_value) const {
-    min_value = tf_op.minAttr();
-    max_value = tf_op.maxAttr();
-    return true;  // Succesfully matched and fetched.
-  }
-};
-
-// TODO(fengliuai): move this rule to PreparePatterns.td
-// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
-// TODO(b/140968741): propagate the sign from the command line. Currently all
-// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
-// actually INT8.
-// Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
-// tf.FakeQyantWithMinMax{Vars|VarsPerChannel|Args}Op
-// to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
-// "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
-// the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
-// convert the output type to the next op. Here are the transformations:
-//
-// input   min cst       max cst          input   min cst       max cst
-//  \       |             |                \       |             |
-//   \  (tf.Identity) (tf.Identity)   =>    \  (tf.Identity) (tf.Identity)
-//    \     |             |                  \     |             |
-//       tf.FakeQuantWithMinMaxVars       tf.FakeQuantWithMinMaxVars
-//                   |                                 |
-//                                                tf.quantize
-//                                                     |
-//                                                tf.dequantize
-//                                                     |
-// If the input is a constant, the result pattern will eventually converted to
-//
-//            quant-emulated input
-//                   |
-//               tf.quantize
-//                   |
-//              tf.dequantize
-//                   |
-//
-//
-// Warns if the (most likely unwanted, currently not quite correctly handled)
-// case of back-to-back tf.FakeQuant occurs
-//
-//             tf.FakeQuant*
-//                   |
-//             tf.FakeQuant*
-//
-// tf.identity / tf.IdentityN between the tf.FakeQuant* ops
-// need no special treatment are already eliminated before the rewrites / check
-// is applied.
-//
-
-template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
-struct InsertTFLQuantOpsAfterTFFakeQuantOp
-    : public OpRewritePattern<TFFakeQuantOp> {
-  using BaseType =
-      InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>;
-
-  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis,
-                                               FetchMinMax>(MLIRContext *ctx)
-      : OpRewritePattern<TFFakeQuantOp>(ctx) {}
-
-  FetchMinMax fetchMinMax;
-
-  using FetchAttrType = typename FetchMinMax::AttrType;
-  LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                PatternRewriter &rewriter) const override {
-    // We don't want to insert quantize/dequantize if the quantize op exists.
-    auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
-      return failure();
-    }
-
-    // Extract the min/max constant values from the operands. We also consider
-    // a special case that there are tf.Identity ops between the min/max
-    // constants and the tf.FakeQuantWithMinMaxVarsOp.
-
-    FetchAttrType min_value, max_value;
-    if (!fetchMinMax(tf_op, min_value, max_value)) {
-      return failure();
-    }
-
-    int quant_dim = -1;
-    if (PerAxis) {
-      // This is a special case that the quant_dim is the last dimensions.
-      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
-    }
-    // Use the min/max from the operands and the num_bits and narrow_range
-    // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op.getOperation());
-    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
-    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
-    Type res_type = tf_op.getType();
-    TypeAttr qtype = quant::GetQuantizedTypeAttr(
-        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
-        narrow_range, /*is_signed=*/false);
-    if (!qtype) {
-      return failure();
-    }
-
-    // Finally, use the quantization parameter to create the quantize and
-    // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
-    // and its users.
-    Value value = tf_op.outputs();
-    auto quantize = rewriter.create<TFL::QuantizeOp>(
-        tf_op.getLoc(), qtype.getValue(), value, qtype);
-    auto dequantize = rewriter.create<TFL::DequantizeOp>(
-        tf_op.getLoc(), res_type, quantize.output());
-    value.replaceAllUsesWith(dequantize);
-    quantize.getOperation()->replaceUsesOfWith(dequantize, value);
-
-    return success();
-  }
-};
-
-//
-// Three instances of the rule to cover the three different types of
-// TF::FakeQuant operators
-//
-using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
-
-using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsPerChannelOp, /*PerAxis=*/true,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
-
-using PreparePerTensorFakeQuantWithMinMaxArgs =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<
-        TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
-        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
-
 // Transient state for preserving data from match to rewrite
 struct ConvertTFConvOpMatchState {
   IntegerAttr dilation_height_factor;
@@ -952,10 +793,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 // When is_training is set to true, the given variance and mean are not used.
 // In above calculation, they are replaced by new values. These new mean and
 // variance are calculated as following:
-// rest_size = shape(x)[0] * shape(x)[1] * shape(x)[2]
-// new_mean = sum(x, axis=[0, 1, 2]) / rest_size
-// new_variance = sum(squared_difference(x, new_mean), axis=[0, 1, 2])
-//                / rest_size
+// new_mean = mean(x, axis=[0, 1, 2])
+// new_variance = mean(squared_difference(x, new_mean), axis=[0, 1, 2])
 //
 // The DDR rule for the is_training equals true case is as following:
 // def : Pattern<
@@ -970,22 +809,14 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 //                 $scale,
 //                 (TF_RsqrtOp
 //                     (TF_AddOp
-//                         (TF_DivOp:$new_variance
-//                             (TF_SumOp
-//                                 (TF_SquaredDifferenceOp $x, $new_mean),
-//                                 (TF_ConstOp [0,1,2])),
-//                             $rest_size),
+//                         (TF_MeanOp
+//                             (TF_SquaredDifferenceOp $x, $new_mean),
+//                             (TF_ConstOp [0,1,2])),
 //                         (TF_ConstOp $epsilon))))),
 //         (TF_SubOp
 //             $offset,
 //             (TF_MulOp
-//                 (TF_DivOp:$new_mean
-//                     (TF_SumOp $x, (TF_ConstOp [0,1,2])),
-//                     (TF_ProdOp:$rest_size
-//                         (TF_SliceOp
-//                             (TF_ShapeOp $x),
-//                             (TF_ConstOp 0),
-//                             (TF_ConstOp 3)))),
+//                 (TF_MeanOp $x, (TF_ConstOp [0,1,2])),
 //                 $multiplier))),
 //    // We already guaranteed that the last five results have no use so it does
 //    // not matter what value we provide here for replacement.
@@ -1100,8 +931,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
+    int64_t last_dim = -1;
     {
-      int64_t last_dim = -1;
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
@@ -1149,83 +980,54 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       auto input_type = fused_batch_norm_op.x()
                             .getType()
                             .dyn_cast_or_null<RankedTensorType>();
-      if (!input_type || input_type.getRank() != 4 ||
-          !input_type.hasStaticShape()) {
+      if (!input_type || input_type.getRank() != 4) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
               diag << "op 'tf.FusedBatchNormV3' that has 'is_training' equals "
-                      "True is only supported with static input shape";
+                      "True is only supported with input of rank 4";
             });
       }
 
       ::mlir::TF::ConstOp reduce_dim_op;
       {
         auto reduce_dim_type =
-            ::mlir::RankedTensorType::get({3}, rewriter.getIntegerType(64));
-        ::mlir::SmallVector<int64_t, 3> reduce_dim_values = {0, 1, 2};
+            ::mlir::RankedTensorType::get({3}, rewriter.getIntegerType(32));
+        ::mlir::SmallVector<int32_t, 3> reduce_dim_values = {0, 1, 2};
         reduce_dim_op = rewriter.create<TF::ConstOp>(
             odsLoc, ::mlir::DenseIntElementsAttr::get(reduce_dim_type,
                                                       reduce_dim_values));
       }
 
-      ::mlir::TF::ConstOp rest_size_inv_op;
-      {
-        int64_t rest_size = input_type.getDimSize(0) *
-                            input_type.getDimSize(1) * input_type.getDimSize(2);
-        auto rest_size_inv_type =
-            ::mlir::RankedTensorType::get({1}, rewriter.getF32Type());
-        auto rest_size_inv_attr = ::mlir::DenseFPElementsAttr::get(
-            rest_size_inv_type, {1.0f / rest_size});
-        rest_size_inv_op =
-            rewriter.create<::mlir::TF::ConstOp>(odsLoc, rest_size_inv_attr);
-      }
-
-      ::mlir::TF::SumOp sum_op_1;
+      auto new_mean_type =
+          ::mlir::RankedTensorType::get({last_dim}, rewriter.getF32Type());
+      ::mlir::TF::MeanOp mean_op_1;
       {
         ::mlir::Value x_value = (*x.begin());
-        sum_op_1 = rewriter.create<TF::SumOp>(
-            odsLoc, x_value, reduce_dim_op,
+        mean_op_1 = rewriter.create<TF::MeanOp>(
+            odsLoc, new_mean_type, x_value, reduce_dim_op,
             /*keep_dims=*/rewriter.getBoolAttr(false));
-      }
-
-      ::mlir::TF::MulOp mul_op_1;
-      {
-        ::mlir::Value tblgen_value_0 = (*sum_op_1.getODSResults(0).begin());
-        ::mlir::Value tblgen_value_1 =
-            (*rest_size_inv_op.getODSResults(0).begin());
-        mul_op_1 = rewriter.create<::mlir::TF::MulOp>(odsLoc, tblgen_value_0,
-                                                      tblgen_value_1);
       }
 
       ::mlir::TF::SquaredDifferenceOp square_diff_op;
       {
         ::mlir::Value tblgen_value_0 = (*x.begin());
-        ::mlir::Value tblgen_value_1 = (*mul_op_1.getODSResults(0).begin());
-        // If x has shape of [b, h, w, c], the result of mul_op_1 will have
+        ::mlir::Value tblgen_value_1 = (*mean_op_1.getODSResults(0).begin());
+        // If x has shape of [b, h, w, c], the result of mean_op_1 will have
         // shape of [c]. Therefore, their shapes are always compatible.
         square_diff_op = rewriter.create<::mlir::TF::SquaredDifferenceOp>(
             odsLoc, tblgen_value_0, tblgen_value_1);
       }
 
-      ::mlir::TF::SumOp sum_op_2;
+      ::mlir::TF::MeanOp mean_op_2;
       {
         ::mlir::Value input_value = (*square_diff_op.getODSResults(0).begin());
-        sum_op_2 = rewriter.create<TF::SumOp>(
-            odsLoc, input_value, reduce_dim_op,
+        mean_op_2 = rewriter.create<TF::MeanOp>(
+            odsLoc, new_mean_type, input_value, reduce_dim_op,
             /*keep_dims=*/rewriter.getBoolAttr(false));
       }
 
-      ::mlir::TF::MulOp mul_op_2;
-      {
-        ::mlir::Value tblgen_value_0 = (*sum_op_2.getODSResults(0).begin());
-        ::mlir::Value tblgen_value_1 =
-            (*rest_size_inv_op.getODSResults(0).begin());
-        mul_op_2 = rewriter.create<::mlir::TF::MulOp>(odsLoc, tblgen_value_0,
-                                                      tblgen_value_1);
-      }
-
-      mean_value = (*mul_op_1.getODSResults(0).begin());
-      variance_value = (*mul_op_2.getODSResults(0).begin());
+      mean_value = (*mean_op_1.getODSResults(0).begin());
+      variance_value = (*mean_op_2.getODSResults(0).begin());
     }  // End is_training equals true if.
 
     ::llvm::SmallVector<::mlir::Value, 4> replace_values;
@@ -1473,20 +1275,6 @@ void PrepareTFPass::runOnFunction() {
     return;
   }
 
-  // Before the tf.FakeQuant* ops being folded, tfl.quantize and tfl.dequantize
-  // ops are created to preserve the quantization parameters.
-  if (failed(ConvertFakeQuantOps(func, ctx))) {
-    signalPassFailure();
-    return;
-  }
-
-  // This pattern was intented to uses TFL QDQs to preserve the quantization
-  // parameters from the TF Quant ops, thus this pattern should run with the
-  // first `applyPatternsGreedily` method, which would otherwise removes the
-  // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant,
-                  PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
-
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
@@ -1501,12 +1289,24 @@ void PrepareTFPass::runOnFunction() {
   // before converting TF_Conv to TFL_Conv
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
+  // Remove the wrapper of the tf.FakeQuant* ops and also insert the
+  // tfl.quantize and tfl.dequantize to preserve the quantization parameters.
+  // This is done after the first round of optimization to make sure all the
+  // min/max operands of the tf.FakeQuant* are constants to be matched. The
+  // following round of optimization will folding the unwrapped
+  // tf.FakeQuant* ops with the weight constants.
+  if (failed(ConvertFakeQuantOps(func, ctx))) {
+    signalPassFailure();
+    return;
+  }
+
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
     phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
+                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
+                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(
         ctx);
   }
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,

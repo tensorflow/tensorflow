@@ -192,7 +192,7 @@ def selu(x):
         `tf.keras.layers.AlphaDropout` (not regular dropout).
 
   References:
-      - [backendlambauer et al., 2017](https://arxiv.org/abs/1706.02515)
+      - [Klambauer et al., 2017](https://arxiv.org/abs/1706.02515)
   """
   return nn.selu(x)
 
@@ -201,15 +201,15 @@ def selu(x):
 @dispatch.add_dispatch_support
 def softplus(x):
   """Softplus activation function, `softplus(x) = log(exp(x) + 1)`.
-  
+
   Example Usage:
-  
+
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
-  >>> b = tf.keras.activations.softplus(a) 
+  >>> b = tf.keras.activations.softplus(a)
   >>> b.numpy()
   array([2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00,
            2.0000000e+01], dtype=float32)
-  
+
   Args:
       x: Input tensor.
 
@@ -223,9 +223,9 @@ def softplus(x):
 @dispatch.add_dispatch_support
 def softsign(x):
   """Softsign activation function, `softsign(x) = x / (abs(x) + 1)`.
-  
+
   Example Usage:
-  
+
   >>> a = tf.constant([-1.0, 0.0, 1.0], dtype = tf.float32)
   >>> b = tf.keras.activations.softsign(a)
   >>> b.numpy()
@@ -434,6 +434,8 @@ def hard_sigmoid(x):
   """Hard sigmoid activation function.
 
   A faster approximation of the sigmoid activation.
+  Piecewise linear approximation of the sigmoid function.
+  Ref: 'https://en.wikipedia.org/wiki/Hard_sigmoid'
 
   For example:
 
@@ -505,6 +507,14 @@ def serialize(activation):
       activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
   return serialize_keras_object(activation)
+
+
+# Add additional globals so that deserialize can find these common activation
+# functions
+leaky_relu = nn.leaky_relu
+log_softmax = nn.log_softmax
+relu6 = nn.relu6
+silu = nn.swish
 
 
 @keras_export('keras.activations.deserialize')

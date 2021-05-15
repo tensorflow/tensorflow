@@ -1288,8 +1288,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
       optional<int64> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      optional<std::vector<std::vector<int64_t>>> slice_sizes;
+      attrs["slice_sizes"] = {/*required=*/false, AttrTy::kBracedInt64ListList,
+                              &slice_sizes};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       std::vector<std::pair<int64, int64>> pairs(source_targets->size());
@@ -1301,18 +1303,48 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         pairs[i].first = (*source_targets)[i][0];
         pairs[i].second = (*source_targets)[i][1];
       }
-      if (opcode == HloOpcode::kCollectivePermute) {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateCollectivePermute(
-                shape, operands[0], pairs, channel_id));
-      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-        instruction = builder->AddInstruction(
-            HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
-                                                         pairs, channel_id));
+      if (!slice_sizes.has_value()) {
+        if (operands.size() != 1) {
+          return TokenError(
+              "CollectivePermute and CollectivePermuteStart must "
+              "have exactly  one operand (input buffer) unless "
+              "it performs dynamic-slice and in-place update.");
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+                  shape, operands[0], pairs, channel_id));
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = builder->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
+                                                           pairs, channel_id));
+        } else {
+          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                        "CollectivePermuteStart, but got "
+                     << HloOpcodeString(opcode);
+        }
       } else {
-        LOG(FATAL) << "Expect opcode to be CollectivePermute or "
-                      "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+        if (operands.size() != 4) {
+          return TokenError(
+              "CollectivePermute and CollectivePermuteStart must "
+              "have exactly four operands for dynamic-slice and "
+              "in-place update.");
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+                  shape, operands[0], operands[1], operands[2], operands[3],
+                  pairs, *slice_sizes, channel_id));
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = builder->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(
+                  shape, operands[0], operands[1], operands[2], operands[3],
+                  pairs, *slice_sizes, channel_id));
+        } else {
+          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                        "CollectivePermuteStart, but got "
+                     << HloOpcodeString(opcode);
+        }
       }
       break;
     }

@@ -928,6 +928,8 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
     XlaOp is_nan = Or(IsNan(a), IsNan(x));
     XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
     XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
@@ -941,6 +943,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
                                ax, x, a, And(enabled, use_igammac), type),
         IgammaSeries<VALUE>(ax, x, a, And(enabled, Not(use_igammac)), type));
     output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(x_is_infinity, FullLike(output, 1), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
   };
@@ -1078,6 +1081,9 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    result = Select(x_is_infinity, ZerosLike(result), result);
     return Select(out_of_range, FullLike(a, 1), result);
   };
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -1106,6 +1112,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
     return result;
   });
 }
+
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {

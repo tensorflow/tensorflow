@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
 
@@ -47,6 +48,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 // ops within device cluster.
 std::unique_ptr<OperationPass<FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass();
+
+// Creates a pass that moves writes to replicate invariant resource variables
+// outside tf_device.replicate op.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateHoistReplicateInvariantResourceWritesPass();
 
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
@@ -258,7 +264,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass();
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
 // region before outlining.
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
+    llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
@@ -287,6 +294,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
 // variable store operations are all after device computation. After this pass,
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass();
+
+// Creates a pass that lifts operations from the main function.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateResourceOpLiftingForMainFunctionPass();
 
 // Lifts resource operations from tf_device.launch_func ops nested in `op`
 // outside. Returns a failure if there are remaining resource-type values that
@@ -330,6 +341,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
 // TensorFlow dialect op in the body based on its `device` attribute and the
 // `devices` attribute on the `tf_device.replicate`.
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateTFDeviceReplicationPass();
+
+// Creates a pass that extracts ops in tf_device.launch op with host device
+// assignment and adds an `_xla_outside_compilation` attribute value.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateHostLaunchToOutsideCompiledPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -436,6 +453,11 @@ CreateTPUCompileOpReplicationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+namespace TFDevice {
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+}  // namespace TFDevice
 
 }  // namespace mlir
 

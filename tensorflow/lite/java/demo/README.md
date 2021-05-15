@@ -2,7 +2,7 @@
 
 A simple Android example that demonstrates image classification using the camera.
 
-## Building in Android Studio with TensorFlow Lite AAR from JCenter.
+## Building in Android Studio with TensorFlow Lite AAR from MavenCentral.
 The build.gradle is configured to use TensorFlow Lite's nightly build.
 
 If you see a build error related to compatibility with Tensorflow Lite's Java API (example: method X is

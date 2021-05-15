@@ -342,9 +342,6 @@ Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
-// TODO(b/74355905): Add a specialized implementation that avoids
-// copying the tensor when at least two of the {client, master,
-// worker} are in the same process.
 Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
     const RunCallableRequest& run_callable_request, size_t i,
     const string& send_key) {
@@ -489,9 +486,6 @@ Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
-// TODO(b/74355905): Add a specialized implementation that avoids
-// copying the tensor when at least two of the {client, master,
-// worker} are in the same process.
 Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
     const RunCallableRequest& run_callable_request, size_t i,
     const string& send_key) {

@@ -178,6 +178,8 @@ const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
 const OpDef& Node::op_def() const { return *props_->op_def; }
 
+NodeDef* Node::mutable_def() { return &props_->node_def; }
+
 int32 Node::num_inputs() const { return props_->input_types.size(); }
 DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }

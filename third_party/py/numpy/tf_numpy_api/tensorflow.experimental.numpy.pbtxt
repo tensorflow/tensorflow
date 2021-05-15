@@ -134,11 +134,11 @@ tf_module {
   }
   member_method {
     name: "amax"
-    argspec: "args=[\'a\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'a\', \'axis\', \'out\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "amin"
-    argspec: "args=[\'a\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'a\', \'axis\', \'out\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "angle"
@@ -618,7 +618,7 @@ tf_module {
   }
   member_method {
     name: "mean"
-    argspec: "args=[\'a\', \'axis\', \'dtype\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'a\', \'axis\', \'dtype\', \'out\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "meshgrid"

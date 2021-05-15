@@ -22,6 +22,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.layers import core
@@ -29,26 +30,33 @@ from tensorflow.python.platform import test
 
 
 def _mimic_two_cpus():
-  cpus = config.list_physical_devices("CPU")
+  try:
+    cpus = config.list_physical_devices("CPU")
+  except errors_impl.NotFoundError:
+    # Testing device not available. Skip the test.
+    return False
 
   config.set_logical_device_configuration(cpus[0], [
       context.LogicalDeviceConfiguration(),
       context.LogicalDeviceConfiguration(),
   ])
+  return True
+
+
+def get_strategy_with_mimicing_cpus():
+  if not _mimic_two_cpus():
+    return None
+  return (collective_all_reduce_strategy.CollectiveAllReduceStrategy
+          ._from_local_devices(("/device:CPU:0", "/device:CPU:1")))
 
 
 @ds_combinations.generate(
     combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-            ds_combinations.NamedDistribution(
-                "Collective2CPUs",
-                # pylint: disable=g-long-lambda
-                lambda: collective_all_reduce_strategy.
-                CollectiveAllReduceStrategy._from_local_devices((
-                    "/device:CPU:0", "/device:CPU:1")),
-                required_gpus=0)
-        ],
+        distribution=list(
+            filter(None.__ne__, [
+                strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+                get_strategy_with_mimicing_cpus()
+            ])),
         mode=["graph", "eager"]))
 class MirroredVariableCreationTest(test.TestCase):
   """Base class that tests mirrored variable creator.

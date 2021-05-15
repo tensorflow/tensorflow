@@ -518,11 +518,8 @@ func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     -> tensor<3x5x5x4xf32> {
   %c0 = constant 0 : index
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
-  // CHECK: "lmhlo.convolution"(%{{.+}}, %{{.+}}, %[[OUT]])
-  // CHECK-SAME: padding = dense<[
-  // CHECK-SAME:                  [0, 1], [0, 1]]> : tensor<2x2xi64>
-  // CHECK-SAME: rhs_dilation = dense<[1, 2]>
-  // CHECK-SAME: window_strides = dense<[2, 1]>
+  // CHECK: lmhlo.convolution(%{{.+}}, %{{.+}}, %[[OUT]])
+  // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
   %out = "mhlo.convolution"(%filter, %input) {
     batch_group_count = 1 : i64,
     dimension_numbers = {

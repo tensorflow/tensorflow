@@ -21,44 +21,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "choose_fastest_branch_dataset_test",
-    size = "medium",
-    srcs = ["choose_fastest_branch_dataset_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "choose_fastest_dataset_test",
-    size = "small",
-    srcs = ["choose_fastest_dataset_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "filter_fusion_test",
     size = "medium",
     srcs = ["filter_fusion_test.py"],
@@ -214,7 +176,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_vectorization_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_vectorization_test.py"],
     shard_count = 16,
     tags = [
@@ -263,6 +225,32 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "optimization_test",
+    size = "small",
+    srcs = ["optimization_test.py"],
+    shard_count = 2,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:grouping",
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:scan_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

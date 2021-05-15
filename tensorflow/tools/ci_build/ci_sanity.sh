@@ -127,6 +127,12 @@ do_pylint() {
   PYLINT_BIN="python3.8 -m pylint"
 
   echo ""
+  echo "print python version and pip freeze for debugging."
+  echo ""
+  python3.8
+  python3.8 -m pip freeze
+
+  echo ""
   echo "check whether pylint is available or not."
   echo ""
   ${PYLINT_BIN} --version
