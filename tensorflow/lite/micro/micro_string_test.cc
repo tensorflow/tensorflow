@@ -64,6 +64,16 @@ TF_LITE_MICRO_TEST(FormatFloatShouldMatchExpected) {
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
+TF_LITE_MICRO_TEST(FormatCharShouldMatchExpected) {
+  const int kBufferLen = 32;
+  char buffer[kBufferLen];
+  const char golden[] = "Chars: @,Z";
+  int bytes_written =
+      MicroSnprintf(buffer, kBufferLen, "Chars: %c,%c", 64, 'Z');
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
+  TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
+}
+
 TF_LITE_MICRO_TEST(BadlyFormattedStringShouldProduceReasonableString) {
   const int kBufferLen = 32;
   char buffer[kBufferLen];
