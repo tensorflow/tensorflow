@@ -470,24 +470,6 @@ int64 MinLogLevelFromEnv();
 
 int64 MaxVLogLevelFromEnv();
 
-// A class for managing the text file to which VLOG output is written.
-// If the environment variable TF_CPP_VLOG_FILENAME is set, all VLOG
-// calls are redirected from stderr to a file with corresponding name.
-class VlogFileMgr {
- public:
-  // Determines if the env variable is set and if necessary
-  // opens the file for write access.
-  VlogFileMgr();
-  // Closes the file.
-  ~VlogFileMgr();
-  // Returns either a pointer to the file or stderr.
-  FILE* FilePtr() const;
-
- private:
-  FILE* vlog_file_ptr;
-  char* vlog_file_name;
-};
-
 }  // namespace internal
 
 // LogSink support adapted from //base/logging.h
