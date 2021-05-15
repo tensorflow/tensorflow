@@ -32,6 +32,7 @@ int main(int argc, char **argv) {
 
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
+  mlir::TFDevice::registerTensorFlowDevicePasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
