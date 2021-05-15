@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
 
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_string.h"
 
 namespace tflite {
@@ -328,18 +329,14 @@ size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
   return max_size;
 }
 
-void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
+void GreedyMemoryPlanner::PrintMemoryPlan() {
   CalculateOffsetsIfNeeded();
 
   for (int i = 0; i < buffer_count_; ++i) {
-#ifndef TF_LITE_STRIP_ERROR_STRINGS
-    char s[] = {GetOrdinalCharacter(i), 0};
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "%s (id=%d): size=%d, offset=%d, first_used=%d last_used=%d", s, i,
-        requirements_[i].size, buffer_offsets_[i],
-        requirements_[i].first_time_used, requirements_[i].last_time_used);
-#endif
+    MicroPrintf("%c (id=%d): size=%d, offset=%d, first_used=%d last_used=%d",
+                GetOrdinalCharacter(i), i, requirements_[i].size,
+                buffer_offsets_[i], requirements_[i].first_time_used,
+                requirements_[i].last_time_used);
   }
 
   constexpr int kLineWidth = 80;
@@ -388,8 +385,8 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
     }
     line[kLineWidth] = 0;
 
-    TF_LITE_REPORT_ERROR(error_reporter, "%s%d: %s (%dk)", t < 10 ? " " : "", t,
-                         (const char*)line, (memory_use + 1023) / 1024);
+    MicroPrintf("%s%d: %s (%dk)", t < 10 ? " " : "", t, (const char*)line,
+                (memory_use + 1023) / 1024);
   }
 }
 
