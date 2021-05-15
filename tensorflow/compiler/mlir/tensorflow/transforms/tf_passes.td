@@ -949,3 +949,9 @@ shape.
 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
+
+def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
+  let summary = "Optimize TensorFlow module";
+
+  let constructor = "TF::CreateTFOptimizePass()";
+}
