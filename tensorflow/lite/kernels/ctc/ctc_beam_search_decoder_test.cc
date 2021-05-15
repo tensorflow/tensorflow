@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -226,6 +226,7 @@ TEST(CTCBeamSearchTest, NonEqualSequencesTest) {
 }
 
 }  // namespace
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
+

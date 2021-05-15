@@ -15,8 +15,8 @@ limitations under the License.
 
 // Copied from tensorflow/core/util/ctc/ctc_beam_entry.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_ENTRY_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_ENTRY_H_
 
 #include <algorithm>
 #include <memory>
@@ -24,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/experimental/kernels/ctc_loss_util.h"
+#include "tensorflow/lite/kernels/ctc/ctc_loss_util.h"
 
 namespace tflite {
-namespace experimental {
+namespace custom {
 namespace ctc {
 
 // The ctc_beam_search namespace holds several classes meant to be accessed only
@@ -144,7 +144,7 @@ class BeamComparer {
 }  // namespace ctc_beam_search
 
 }  // namespace ctc
-}  // namespace experimental
+}  // namespace custom
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_ENTRY_H_

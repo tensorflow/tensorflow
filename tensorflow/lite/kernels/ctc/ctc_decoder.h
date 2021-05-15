@@ -15,8 +15,8 @@ limitations under the License.
 
 // Copied from tensorflow/core/util/ctc/ctc_decoder.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_DECODER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_DECODER_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_CTC_DECODER_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_CTC_DECODER_H_
 
 #include <memory>
 #include <vector>
@@ -24,7 +24,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
-namespace experimental {
+namespace custom {
 namespace ctc {
 
 // The CTCDecoder is an abstract interface to be implemented when providing a
@@ -108,7 +108,7 @@ class CTCGreedyDecoder : public CTCDecoder {
 };
 
 }  // namespace ctc
-}  // namespace experimental
+}  // namespace custom
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_DECODER_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_CTC_DECODER_H_

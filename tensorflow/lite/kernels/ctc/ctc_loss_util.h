@@ -15,14 +15,14 @@ limitations under the License.
 
 // Copied from tensorflow/core/util/ctc/ctc_loss_util.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_CTC_LOSS_UTIL_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_CTC_LOSS_UTIL_H_
 
 #include <cmath>
 #include <limits>
 
 namespace tflite {
-namespace experimental {
+namespace custom {
 namespace ctc {
 
 const float kLogZero = -std::numeric_limits<float>::infinity();
@@ -44,7 +44,7 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
 }
 
 }  // namespace ctc
-}  // namespace experimental
+}  // namespace custom
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_CTC_LOSS_UTIL_H_
