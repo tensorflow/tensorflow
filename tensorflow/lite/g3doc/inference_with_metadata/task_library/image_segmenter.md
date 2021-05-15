@@ -10,7 +10,7 @@ classification</a>, which classifies the overall image. See the
 more information about image segmenters.
 
 Use the Task Library `ImageSegmenter` API to deploy your custom image segmenters
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ImageSegmenter API
 

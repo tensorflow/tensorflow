@@ -11,7 +11,7 @@ data specifying where each object appears in the image. See the
 for more information about object detectors.
 
 Use the Task Library `ObjectDetector` API to deploy your custom object detectors
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ObjectDetector API
 
