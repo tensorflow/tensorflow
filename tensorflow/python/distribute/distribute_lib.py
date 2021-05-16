@@ -944,6 +944,7 @@ class StrategyBase(object):
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def make_dataset_iterator(self, dataset):
     """DEPRECATED TF 1.x ONLY."""
+    tf_logging.info("Deprecated TF 1.x only")
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
@@ -951,6 +952,7 @@ class StrategyBase(object):
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
     """DEPRECATED TF 1.x ONLY."""
+    tf_logging.info("Deprecated TF 1.x only")
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
@@ -961,6 +963,7 @@ class StrategyBase(object):
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
+    tf_logging.info("Deprecated TF 1.x only")
     with self.scope():
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.run(fn, args=args)
