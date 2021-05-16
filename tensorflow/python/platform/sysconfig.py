@@ -21,6 +21,7 @@ from __future__ import print_function
 import os.path as _os_path
 import platform as _platform
 
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
 from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
 from tensorflow.python.framework.versions import VERSION as _VERSION
@@ -65,6 +66,8 @@ def get_compile_flags():
   flags = []
   flags.append('-I%s' % get_include())
   flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
+  flags.append('-DEIGEN_MAX_ALIGN_BYTES=%d' %
+               pywrap_tf_session.get_eigen_max_align_bytes())
   return flags
 
 

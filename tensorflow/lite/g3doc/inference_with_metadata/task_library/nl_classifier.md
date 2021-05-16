@@ -58,6 +58,10 @@ dependencies {
 }
 ```
 
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
+
 ### Step 2: Run inference using the API
 
 ```java

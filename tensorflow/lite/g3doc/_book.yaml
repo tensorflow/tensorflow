@@ -129,6 +129,8 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/bert_nl_classifier
         - title: "BertQuestionAnswerer"
           path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "AudioClassifier"
+          path: /lite/inference_with_metadata/task_library/audio_classifier
         - title: "Customized API"
           path: /lite/inference_with_metadata/task_library/customized_task_api
       - title: "Customize input and output data processing"

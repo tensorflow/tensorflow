@@ -108,8 +108,9 @@ public final class Interpreter implements AutoCloseable {
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
      *
-     * @deprecated Prefer using {@link
-     *     org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
+     * @deprecated Prefer using <a
+     *     href="https://github.com/tensorflow/tensorflow/blob/5dc7f6981fdaf74c8c5be41f393df705841fb7c5/tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi/NnApiDelegate.java#L127">NnApiDelegate.Options#setAllowFp16(boolean
+     *     enable)</a>.
      */
     @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
@@ -146,7 +147,7 @@ public final class Interpreter implements AutoCloseable {
     /**
      * Advanced: Set if the interpreter is able to be cancelled.
      *
-     * @see {@link Interpreter#setCancelled(boolean)}.
+     * @see #setCancelled(boolean).
      */
     public Options setCancellable(boolean allow) {
       this.allowCancellation = allow;
@@ -238,7 +239,7 @@ public final class Interpreter implements AutoCloseable {
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    *
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
-   *     direct {@link Bytebuffer} of nativeOrder.
+   *     direct {@link ByteBuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
     this(byteBuffer, /* options= */ null);
@@ -283,7 +284,7 @@ public final class Interpreter implements AutoCloseable {
    * direct {@link ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    *
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
-   *     direct {@link Bytebuffer} of nativeOrder.
+   *     direct {@link ByteBuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
@@ -324,7 +325,7 @@ public final class Interpreter implements AutoCloseable {
    *     Tensor} (see also {@link Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if
    *     the graph has dynamically shaped outputs and the caller must query the output {@link
    *     Tensor} shape after inference has been invoked, fetching the data directly from the output
-   *     tensor (via {@link Tensor#readOnlyBuffer()}).
+   *     tensor (via {@link Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code input} is null or empty, or if an error occurs when
    *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
@@ -374,7 +375,7 @@ public final class Interpreter implements AutoCloseable {
    *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or cases where the outputs are
    *     dynamically shaped and the caller must query the output {@link Tensor} shape after
    *     inference has been invoked, fetching the data directly from the output tensor (via {@link
-   *     Tensor#readOnlyBuffer()}).
+   *     Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
    */
@@ -418,9 +419,9 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Same as {@link Interpreter#runSignature(Object, Object, String)} but doesn't require passing a
-   * methodName, assuming the model has one SignatureDef. If the model has more than one
-   * SignatureDef it will throw an exception.
+   * Same as {@link #runSignature(Map, Map, String)} but doesn't require passing a methodName,
+   * assuming the model has one SignatureDef. If the model has more than one SignatureDef it will
+   * throw an exception.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
@@ -517,13 +518,13 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied input name and signature method name.
    *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
    * @param inputName Input name in the signature.
    * @param methodName The exported method name identifying the SignatureDef, can be null if the
    *     model has one signature.
    * @throws IllegalArgumentException if {@code inputName} or {@code methodName} is null or empty,
    *     or invalid name provided.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
    */
   public Tensor getInputTensorFromSignature(String inputName, String methodName) {
     checkNotClosed();
@@ -614,13 +615,13 @@ public final class Interpreter implements AutoCloseable {
    * that are dependent on input *values*, the output shape may not be fully determined until
    * running inference.
    *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
    * @param outputName Output name in the signature.
    * @param methodName The exported method name identifying the SignatureDef, can be null if the
    *     model has one signature.
    * @throws IllegalArgumentException if {@code outputName} or {@code methodName} is null or empty,
    *     or invalid name provided.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
    */
   public Tensor getOutputTensorFromSignature(String outputName, String methodName) {
     checkNotClosed();
@@ -697,7 +698,7 @@ public final class Interpreter implements AutoCloseable {
    *     resume.
    * @throws IllegalStateException if the interpreter is not initialized with the cancellable
    *     option, which is by default off.
-   * @see {@link Interpreter.Options#setCancellable(boolean)}.
+   * @see Interpreter.Options#setCancellable(boolean).
    */
   public void setCancelled(boolean cancelled) {
     wrapper.setCancelled(cancelled);
