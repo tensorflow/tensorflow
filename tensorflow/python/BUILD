@@ -430,6 +430,7 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_session",
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
