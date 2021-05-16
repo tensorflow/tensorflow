@@ -178,9 +178,16 @@ struct NcclManager::Collective : public core::RefCounted {
     // or to manage one non-singleton NcclManager instance.
     // For example, the nccl_manager_test will use both paradigms in the same
     // executable, but not running concurrently (which would hang otherwise).
+    // Temporarily backing out the assert in favor of a warning.
+    // TODO: reinstate the assert with a more targeted conditional.
     if (NcclManager::instance_count > 1) {
-      status = errors::Internal(
-          "ROCm cannot use multi-node NCCL collectives on a single node");
+      static absl::once_flag once;
+      absl::call_once(once, [] {
+        LOG(WARNING) << "More than one concurrent instance of NCCL manager "
+                        "has been instantiated on the same node.  This can "
+                        "sometimes result in a race condition leading to a "
+                        "system hang.";
+      });
     }
 #endif
   }
