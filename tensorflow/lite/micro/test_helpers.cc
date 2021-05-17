@@ -195,7 +195,7 @@ const Model* ModelBuilder::BuildModel(
     buffers[i] = metadata_buffers_[i - 1];
   }
 
-  // TFLM only supports single subgraph.
+  // Default to single subgraph model.
   constexpr size_t subgraphs_size = 1;
 
   // Find out number of subgraph inputs.
@@ -638,6 +638,125 @@ const Model* BuildSimpleMultipleInputsModel() {
   return model;
 }
 
+const Model* BuildSimpleModelWithSubgraphsAndIf() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
+
+  constexpr size_t buffers_size = 1;
+  const Offset<Buffer> buffers[buffers_size] = {
+      CreateBuffer(*builder),
+  };
+  const int32_t condition_tensor_shape[] = {1};
+  const int32_t data_tensor_shape[] = {1, 2};
+  constexpr size_t tensors_size = 4;
+  const Offset<Tensor> subgraph1_tensors[tensors_size] = {
+      CreateTensor(*builder, builder->CreateVector(condition_tensor_shape, 1),
+                   TensorType_BOOL, 0,
+                   builder->CreateString("condition tensor"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor1"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor2"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("output_tensor"), 0, false),
+  };
+  const Offset<Tensor> subgraph2_tensors[tensors_size] = {
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor1"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor2"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("output_tensor"), 0, false),
+  };
+  const Offset<Tensor> subgraph3_tensors[tensors_size] = {
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor1"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("input_tensor2"), 0, false),
+      CreateTensor(*builder, builder->CreateVector(data_tensor_shape, 2),
+                   TensorType_FLOAT32, 0,
+                   builder->CreateString("output_tensor"), 0, false),
+  };
+
+  constexpr size_t if_inputs_size = 3;
+  const int32_t if_inputs[if_inputs_size] = {0, 1, 2};
+  constexpr size_t outputs_size = 1;
+  const int32_t if_outputs[outputs_size] = {3};
+  constexpr size_t operator_inputs_size = 2;
+  const int32_t operator_inputs[operator_inputs_size] = {0, 1};
+  const int32_t operator_outputs[outputs_size] = {2};
+  constexpr size_t operators_size = 1;
+  const Offset<Operator> subgraph1_operators[operators_size] = {
+      CreateOperator(
+          *builder, 0, builder->CreateVector(if_inputs, if_inputs_size),
+          builder->CreateVector(if_outputs, outputs_size),
+          BuiltinOptions_IfOptions, CreateIfOptions(*builder, 1, 2).Union()),
+  };
+  const Offset<Operator> subgraph2_operators[operators_size] = {
+      CreateOperator(
+          *builder, 1,
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator_outputs, outputs_size),
+          BuiltinOptions_NONE),
+  };
+  const Offset<Operator> subgraph3_operators[operators_size] = {
+      CreateOperator(
+          *builder, 2,
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator_outputs, outputs_size),
+          BuiltinOptions_NONE),
+  };
+  constexpr size_t subgraphs_size = 3;
+  const Offset<SubGraph> subgraphs[subgraphs_size] = {
+      CreateSubGraph(*builder, builder->CreateVector(subgraph1_tensors, 4),
+                     builder->CreateVector(if_inputs, if_inputs_size),
+                     builder->CreateVector(if_outputs, outputs_size),
+                     builder->CreateVector(subgraph1_operators, operators_size),
+                     builder->CreateString("if_subgraph")),
+      CreateSubGraph(
+          *builder, builder->CreateVector(subgraph2_tensors, 3),
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator_outputs, outputs_size),
+          builder->CreateVector(subgraph2_operators, operators_size),
+          builder->CreateString("then_subgraph")),
+      CreateSubGraph(
+          *builder, builder->CreateVector(subgraph3_tensors, 3),
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator_outputs, outputs_size),
+          builder->CreateVector(subgraph3_operators, operators_size),
+          builder->CreateString("else_subgraph")),
+  };
+  constexpr size_t operator_codes_size = 3;
+  const Offset<OperatorCode> operator_codes[operator_codes_size] = {
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "multiple_inputs_op",
+                               /*version=*/0, BuiltinOperator_IF),
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "multiple_inputs_op",
+                               /*version=*/0, BuiltinOperator_ADD),
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "multiple_inputs_op",
+                               /*version=*/0, BuiltinOperator_MUL),
+  };
+  const Offset<Model> model_offset = CreateModel(
+      *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
+      builder->CreateVector(subgraphs, subgraphs_size),
+      builder->CreateString("test_model"),
+      builder->CreateVector(buffers, buffers_size));
+  FinishModelBuffer(*builder, model_offset);
+  void* model_pointer = builder->GetBufferPointer();
+  const Model* model = flatbuffers::GetRoot<Model>(model_pointer);
+  return model;
+}
+
 }  // namespace
 
 const TfLiteRegistration* SimpleStatefulOp::getRegistration() {
@@ -847,6 +966,14 @@ const Model* GetSimpleMultipleInputsModel() {
   static Model* model = nullptr;
   if (!model) {
     model = const_cast<Model*>(BuildSimpleMultipleInputsModel());
+  }
+  return model;
+}
+
+const Model* GetSimpleModelWithSubgraphsAndIf() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildSimpleModelWithSubgraphsAndIf());
   }
   return model;
 }
