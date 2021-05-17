@@ -458,6 +458,7 @@ class LocallyConnected2D(Layer):
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
+    self.input_shape = (None, *input_shape)
     if self.data_format == 'channels_last':
       input_row, input_col = input_shape[1:-1]
       input_filter = input_shape[3]
@@ -569,7 +570,18 @@ class LocallyConnected2D(Layer):
     elif self.data_format == 'channels_last':
       return (input_shape[0], rows, cols, self.filters)
 
-  def call(self, inputs):
+  def call(self, inputs=None):
+    if inputs is None:
+      if self.input_shape is not None:
+        input_shape = self.input_shape
+      else:
+        raise ValueError('No inputs passed ever to call()')
+      print("Warning: No inputs are passed to call().")
+      tmp_shape = [1 if x is None else x for x in input_shape]
+      inputs = array_ops.ones(tmp_shape)
+    else:
+      input_shape = inputs.shape
+    pre_computed_output_shape = self.compute_output_shape(input_shape)
     if self.implementation == 1:
       output = backend.local_conv(
           inputs, self.kernel, self.kernel_size, self.strides,
@@ -578,12 +590,12 @@ class LocallyConnected2D(Layer):
 
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
-                                 self.compute_output_shape(inputs.shape))
+                                 pre_computed_output_shape)
 
     elif self.implementation == 3:
       output = local_conv_sparse_matmul(inputs, self.kernel, self.kernel_idxs,
                                         self.kernel_shape,
-                                        self.compute_output_shape(inputs.shape))
+                                        pre_computed_output_shape)
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.' %
