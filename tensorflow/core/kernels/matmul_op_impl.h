@@ -436,56 +436,22 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
               ", k=", k));
         }
       } else {
-<<<<<<< HEAD
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                               static_cast<Coefficient>(alpha), *(b_ptrs[0]),
-                               adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                               adj_x || trans_x ? m : k,
-                               static_cast<Coefficient>(beta), c_ptrs[0], n)
-                .ok();
-        if (!blas_launch_status) {
-          context->SetStatus(errors::Internal(
-              "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-              ", k=", k));
-        }
-      }
-    } else if (use_strided_batched) {
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmStridedBatched(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(alpha), *b_ptrs[0],
-                  adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
-                  adj_x || trans_x ? m : k, a_stride,
-                  static_cast<Coefficient>(beta), c_ptrs[0], n, c_stride,
-                  batch_size)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMStridedBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
-      }
-=======
-        OP_REQUIRES_OK(context,
-                       stream->ThenBlasGemm(
-                           blas_transpose_b, blas_transpose_a, n, m, k,
-                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                           adj_x || trans_x ? m : k, c_ptrs[0], n));
+        OP_REQUIRES_OK(
+            context,
+            stream->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
+                                 static_cast<Coefficient>(alpha), *(b_ptrs[0]),
+                                 adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                                 adj_x || trans_x ? m : k,
+                                 static_cast<Coefficient>(beta), c_ptrs[0], n));
       }
     } else if (use_strided_batched) {
       OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
                                   blas_transpose_b, blas_transpose_a, n, m, k,
-                                  static_cast<Coefficient>(1.0), *b_ptrs[0],
+                                  static_cast<Coefficient>(alpha), *b_ptrs[0],
                                   adj_y || trans_y ? k : n, b_stride,
                                   *a_ptrs[0], adj_x || trans_x ? m : k,
-                                  a_stride, static_cast<Coefficient>(0.0),
+                                  a_stride, static_cast<Coefficient>(beta),
                                   c_ptrs[0], n, c_stride, batch_size));
->>>>>>> google_upstream/master
     } else {
       BlasScratchAllocator scratch_allocator(context);
       bool blas_launch_status =
@@ -602,28 +568,13 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
       // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
       // overhead of the scratch allocator and the batch interface.
       // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-<<<<<<< HEAD
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                             static_cast<Coefficient>(alpha), *(b_ptrs[0]),
-                             adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                             adj_x || trans_x ? m : k,
-                             static_cast<Coefficient>(beta), c_ptrs[0], n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k));
-      }
-=======
-      OP_REQUIRES_OK(context,
-                     stream->ThenBlasGemm(
-                         blas_transpose_b, blas_transpose_a, n, m, k,
-                         *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                         adj_x || trans_x ? m : k, c_ptrs[0], n));
->>>>>>> google_upstream/master
+      OP_REQUIRES_OK(
+          context,
+          stream->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
+                               static_cast<Coefficient>(alpha), *(b_ptrs[0]),
+                               adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                               adj_x || trans_x ? m : k,
+                               static_cast<Coefficient>(beta), c_ptrs[0], n));
     } else if (use_strided_batched) {
       bool blas_launch_status =
           stream
