@@ -1662,7 +1662,6 @@ bool ExpectIsFloatQuant8OrInt32Operator(const TfLiteContext* context,
 }
 
 // When using NN API version 1.0 or 1.1, the condition below must be true for
-// When using NN API version 1.0 or 1.1, the condition below must be true for
 // quantized versions of the following ops:
 // * CONV_2D
 // * DEPTHWISE_CONV_2D
@@ -1680,7 +1679,7 @@ bool ExpectIsRestrictedScalesCompliant(const TfLiteContext* context,
   return Expect(input_scale * filter_scale < output_scale,
                 NNAPIValidationFailureType::kNotRestrictedScaleCompliant,
                 "When using NN API version 1.0 or 1.1, input_scale * "
-                "filter_scale < output_scale:",
+                "filter_scale < output_scale.",
                 val_ctx);
 }
 
