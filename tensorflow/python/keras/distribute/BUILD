@@ -377,6 +377,7 @@ distribute_py_test(
         "no_rocm", # times out on ROCm
         "no_windows_gpu",
         "noguitar",  # TODO(b/172354344)
+        "notpu",  # b/188061768
         "notsan",
     ],
     tpu_tags = [
@@ -927,6 +928,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_test",
+    size = "small",
     srcs = ["dataset_creator_model_fit_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
@@ -954,11 +956,12 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_ps_only_test",
+    size = "small",
     srcs = ["dataset_creator_model_fit_ps_only_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "dataset_creator_model_fit_ps_only_test.py",
-    shard_count = 9,
+    shard_count = 21,
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
@@ -967,6 +970,7 @@ distribute_py_test(
     ],
     deps = [
         ":dataset_creator_model_fit_test_base",
+        ":strategy_combinations",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -1093,7 +1097,6 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -82,11 +82,15 @@ uint64 FastTensorProtoHash(const TensorProto& tp) {
 bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
   Tensor lhs_t(lhs.dtype());
   bool success = lhs_t.FromProto(lhs);
-  DCHECK(success);
+  if (!success) {
+    return false;
+  }
 
   Tensor rhs_t(rhs.dtype());
   success = rhs_t.FromProto(rhs);
-  DCHECK(success);
+  if (!success) {
+    return false;
+  }
 
   TensorProto lhs_tp;
   lhs_t.AsProtoTensorContent(&lhs_tp);

@@ -24,6 +24,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
@@ -86,6 +87,7 @@ public final class TensorTest {
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
     assertThat(tensor.numDimensions()).isEqualTo(4);
     assertThat(tensor.name()).isEqualTo("output");
+    assertThat(tensor.asReadOnlyBuffer().capacity()).isEqualTo(tensor.numBytes());
   }
 
   @Test
@@ -103,6 +105,16 @@ public final class TensorTest {
       tensor.copyTo(null);
       fail();
     } catch (IllegalArgumentException e) {
+      // Success.
+    }
+  }
+
+  @Test
+  public void testModifyReadOnlyBuffer() {
+    try {
+      assertThat(tensor.asReadOnlyBuffer().putFloat(0.f));
+      fail();
+    } catch (ReadOnlyBufferException e) {
       // Success.
     }
   }

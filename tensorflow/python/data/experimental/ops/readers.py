@@ -329,7 +329,7 @@ def make_csv_dataset_v2(
     use_quote_delim=True,
     na_value="",
     header=True,
-    num_epochs=None,
+    num_epochs=None,  # TODO(aaudibert): Change default to 1 when graduating.
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,

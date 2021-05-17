@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
@@ -171,7 +172,6 @@ class TfLiteSubgraphExecute : public OpKernel {
 
   void CopyTFLiteSubgraphResult(OpKernelContext* ctx,
                                 tflite::Subgraph& subgraph_selected) const {
-    // TODO(b/181352924): Handle string/resource/variant type tensors.
     for (int i = 0; i < subgraph_selected.outputs().size(); ++i) {
       OP_REQUIRES(ctx,
                   subgraph_selected.EnsureTensorDataIsReadable(
@@ -180,21 +180,11 @@ class TfLiteSubgraphExecute : public OpKernel {
       // Create an output tensor.
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
-      OP_REQUIRES(ctx,
-                  subgraph_output->type != kTfLiteString &&
-                      subgraph_output->type != kTfLiteVariant &&
-                      subgraph_output->type != kTfLiteResource,
-                  errors::Internal(
-                      "String/Variant/Resource output tensors not supported"));
-      Tensor* output = nullptr;
-      TensorShape output_shape;
-      for (int i = 0; i < subgraph_output->dims->size; ++i) {
-        output_shape.AddDim(subgraph_output->dims->data[i]);
-      }
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(i, output_shape, &output));
-      // TODO(b/181352924): Consider optimize this part to avoid performance
-      // penalty.
-      memcpy(output->data(), subgraph_output->data.raw, subgraph_output->bytes);
+
+      Tensor tensor;
+      OP_REQUIRES_OK(
+          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor));
+      ctx->set_output(i, std::move(tensor));
     }
   }
 };

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/types/optional.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
@@ -1157,6 +1158,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("get_git_version", []() { return tf_git_version(); });
   m.def("get_compiler_version", []() { return tf_compiler_version(); });
   m.def("get_cxx11_abi_flag", []() { return tf_cxx11_abi_flag(); });
+  m.def("get_eigen_max_align_bytes", []() { return EIGEN_MAX_ALIGN_BYTES; });
   m.def("get_monolithic_build", []() { return tf_monolithic_build(); });
   m.def("get_graph_def_version", []() { return TF_GRAPH_DEF_VERSION; });
   m.def("get_graph_def_version_min_consumer",

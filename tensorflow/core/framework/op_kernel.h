@@ -272,13 +272,8 @@ class OpKernelConstruction {
   // Op kernel construction. Scratch tensors should be allocated using
   // allocate_temp below. Some kernels need to keep tensors in between
   // invocations. If such a Tensor is allocated during kernel
-  // construction this must be done using allocate_persistent, and the
-  // Op may only store the returned PersistentTensor object. When the
-  // Tensor is needed in a subsequent invocation, it can be retrieved
-  // from the PersistentTensor using the AccessTensor method. This
-  // ensures that the system is made aware of any use of the tensor's
-  // allocated memory, which is needed for correctness on asynchronous
-  // devices such as GPUs.
+  // construction this also must be done using allocate_temp, and the
+  // Op may only store the returned Tensor object.
 
   // Allocates a temporary Tensor of the specified type and shape. The
   // Tensor must not be used after kernel construction is
@@ -288,6 +283,9 @@ class OpKernelConstruction {
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp, AllocatorAttributes allocator_attr);
 
+  // The following call is obsolete per b/185257650 and kept in place until
+  // it is fully removed form the code base.
+  // Please use Tensor class and allocate_temp instead.
   // Allocates a Tensor of the specified type and shape which the Op
   // plans to maintain as persistent state. out_persistent holds the
   // PersistentTensor which is the object the caller should store. For

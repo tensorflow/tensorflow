@@ -679,6 +679,46 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   return %arg0 : tensor<i64>
 }
 
+// CHECK-LABEL: fold_sign_posi
+func @fold_sign_posi() -> tensor<i32> {
+  // CHECK: %0 = mhlo.constant dense<1> : tensor<i32>
+  %0 = mhlo.constant dense<2> : tensor<i32>
+  %1 = "mhlo.sign"(%0) : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
+// CHECK-LABEL: fold_sign_negi
+func @fold_sign_negi() -> tensor<i32> {
+  // CHECK: %0 = mhlo.constant dense<-1> : tensor<i32>
+  %0 = mhlo.constant dense<-2> : tensor<i32>
+  %1 = "mhlo.sign"(%0) : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
+// CHECK-LABEL: fold_sign_posf
+func @fold_sign_posf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<1.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
+// CHECK-LABEL: fold_sign_negf
+func @fold_sign_negf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<-1.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<-2.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
+// CHECK-LABEL: fold_sign_negzf
+func @fold_sign_negzf() -> tensor<bf16> {
+  // CHECK: %0 = mhlo.constant dense<-0.000000e+00> : tensor<bf16>
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<bf16>
+  %1 = "mhlo.sign"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
 // CHECK-LABEL: fold_compare_same_eq
 func @fold_compare_same_eq(%arg0: tensor<i64>) -> tensor<i1> {
   // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
@@ -745,6 +785,14 @@ func @fold_compare_true_eq() -> tensor<i1> {
   return %2 : tensor<i1>
 }
 
+// CHECK-LABEL: fold_compare_bools_true_eq
+func @fold_compare_bools_true_eq(%arg : tensor<i1>) -> tensor<i1> {
+  %1 = mhlo.constant dense<true> : tensor<i1>
+  // CHECK: return %arg
+  %2 = "mhlo.compare"(%arg, %1) {comparison_direction = "EQ"} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
 // CHECK-LABEL: fold_compare_false_eq_float
 func @fold_compare_false_eq_float() -> tensor<i1> {
   %0 = mhlo.constant dense<0.> : tensor<f32>
@@ -778,6 +826,14 @@ func @fold_compare_true_ne() -> tensor<i1> {
   %1 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
   %2 = "mhlo.compare"(%0, %1) {comparison_direction = "NE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_bools_false_ne
+func @fold_compare_bools_false_ne(%arg : tensor<i1>) -> tensor<i1> {
+  %1 = mhlo.constant dense<false> : tensor<i1>
+  // CHECK: return %arg
+  %2 = "mhlo.compare"(%arg, %1) {comparison_direction = "NE"} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   return %2 : tensor<i1>
 }
 

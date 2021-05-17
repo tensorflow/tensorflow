@@ -53,13 +53,13 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ]),
 )
 

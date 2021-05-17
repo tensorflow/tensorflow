@@ -581,8 +581,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
-  void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads)
+  Status Remove(const std::vector<string>& funcs,
+                const std::vector<string>& funcs_with_grads)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove `func` from the library. Returns non-OK Status unless `func` is in

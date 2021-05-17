@@ -212,9 +212,13 @@ string ConstantFolding::AddControlDependency(const string& input_name,
   if (IsControlInput(input_name)) {
     return input_name;
   }
-  const NodeDef& node = *node_map->GetNode(input_name);
-  if (!IsSwitch(node)) {
-    return AsControlDependency(node);
+  const NodeDef* node = node_map->GetNode(input_name);
+  // Sanity check for missing node.
+  if (!node) {
+    return input_name;
+  }
+  if (!IsSwitch(*node)) {
+    return AsControlDependency(*node);
   } else {
     // We can't anchor control dependencies directly on the switch node: unlike
     // other nodes only one of the outputs of the switch node will be generated
@@ -222,9 +226,9 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    for (const NodeDef* output : node_map->GetOutputs(node.name())) {
+    for (const NodeDef* output : node_map->GetOutputs(node->name())) {
       if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
-        if (IsSameInput(node.input(0), input_name)) {
+        if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*output);
         }
       }
@@ -235,19 +239,19 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     string ctrl_dep_name = ParseNodeName(input_name, &port);
     strings::StrAppend(&ctrl_dep_name, "_", port);
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
-    const DataType output_type = node.attr().at("T").type();
+    const DataType output_type = node->attr().at("T").type();
 
     NodeDef* added_node = node_map->GetNode(ctrl_dep_name);
     if (added_node == nullptr) {
       added_node = graph->add_node();
       added_node->set_name(ctrl_dep_name);
       added_node->set_op("Identity");
-      added_node->set_device(node.device());
+      added_node->set_device(node->device());
 
       (*added_node->mutable_attr())["T"].set_type(output_type);
       *added_node->add_input() = input_name;
       node_map->AddNode(added_node->name(), added_node);
-      node_map->AddOutput(node.name(), added_node->name());
+      node_map->AddOutput(node->name(), added_node->name());
     }
     return AsControlDependency(*added_node);
   }
@@ -1351,9 +1355,12 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
-    CHECK(value->FromProto(raw_val))
-        << "Unable to make Tensor from proto for " << node.name()
-        << " with shape " << raw_val.tensor_shape().DebugString();
+    if (!value->FromProto(raw_val)) {
+      delete (value);
+      return errors::InvalidArgument("Unable to make Tensor from proto for ",
+                                     node.name(), " with shape ",
+                                     raw_val.tensor_shape().DebugString());
+    }
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
   }
@@ -3098,6 +3105,12 @@ bool ConstantFolding::PrepareConstantPushDown(
   }
   NodeDef* left_child = node_map_->GetNode(parent.input(0));
   NodeDef* right_child = node_map_->GetNode(parent.input(1));
+
+  // Sanity check for missing children.
+  if (left_child == nullptr || right_child == nullptr) {
+    return false;
+  }
+
   ctx->left_child_is_const = IsReallyConstant(*left_child);
   ctx->right_child_is_const = IsReallyConstant(*right_child);
   ctx->op_child = ctx->left_child_is_const ? right_child : left_child;

@@ -4771,6 +4771,14 @@ func CTCGreedyDecoderMergeRepeated(value bool) CTCGreedyDecoderAttr {
 	}
 }
 
+// CTCGreedyDecoderBlankIndex sets the optional blank_index attribute to value.
+// If not specified, defaults to -1
+func CTCGreedyDecoderBlankIndex(value int64) CTCGreedyDecoderAttr {
+	return func(m optionalAttr) {
+		m["blank_index"] = value
+	}
+}
+
 // Performs greedy decoding on the logits given in inputs.
 //
 // A note about the attribute merge_repeated: if enabled, when
@@ -19160,9 +19168,9 @@ func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 //
 // ``` python
 // c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 5,  5, 5, 5],
-// #       [5,  6, 7, 8]]
+// tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 5, 5, 5, 5],
+// #       [5, 6, 7, 8]]
 // ```
 //
 //
@@ -47651,15 +47659,15 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 
 // Strip leading and trailing whitespaces from the Tensor.
 //
-// Arguments:
-//	input: A string `Tensor` of any shape.
-//
-// Returns A string `Tensor` of the same shape as the input.
-//
 // Examples:
 //
 // >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
 // array([b'TensorFlow', b'The python library'], dtype=object)
+//
+// Arguments:
+//	input: A string `Tensor` of any shape.
+//
+// Returns A string `Tensor` of the same shape as the input.
 func StringStrip(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return

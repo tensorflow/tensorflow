@@ -4500,6 +4500,10 @@ Status DistributedTPURewritePass::Run(
     for (Node* n : graph->nodes()) {
       if (n->type_string() == kTPUPartitionedInput) graph->RemoveNode(n);
     }
+    VLOG(1) << DumpGraphToFile("distributed_tpu_compilation_after", *graph,
+                               options.flib_def);
+    VLOG(1) << "Replicate nodes are empty. DistributedTPURewritePass::Run() "
+               "finished";
     return Status::OK();
   }
 

@@ -190,7 +190,8 @@ struct ClusteringState {
   //   1. This will not break dominance property of the IR.
   //   2. New clustering policy constraints can be propagated through the
   //      already clustered operations.
-  LogicalResult Union(unsigned a, unsigned b);
+  LogicalResult Union(unsigned a, unsigned b,
+                      const ClusteringPolicySet &policies);
 
   bool IsMember(Operation *op) const;
   unsigned FindRoot(unsigned id);
@@ -201,6 +202,12 @@ struct ClusteringState {
   // insertion point in the block.
   LogicalResult VerifyDominanceProperty(unsigned src_root, unsigned dst_root,
                                         Operation *insertion_point);
+
+  // Verifies that all constraints on the values defined by the `dst_root`
+  // cluster can be propagated through the nodes in the `src_root` cluster, and
+  // updates `src_root` constraints on success.
+  LogicalResult VerifyValueConstraints(unsigned src_root, unsigned dst_root,
+                                       const ClusteringPolicySet &policies);
 };
 
 }  // namespace
@@ -252,7 +259,40 @@ LogicalResult ClusteringState::VerifyDominanceProperty(
   return success();
 }
 
-LogicalResult ClusteringState::Union(unsigned a, unsigned b) {
+LogicalResult ClusteringState::VerifyValueConstraints(
+    unsigned src_root, unsigned dst_root, const ClusteringPolicySet &policies) {
+  // Propagate constraints only through operations in the `src_root` cluster.
+  auto filter = [&](Operation *op) -> bool {
+    auto it = member_ids.find(op);
+    return it != member_ids.end() && FindRoot(it->getSecond()) == src_root;
+  };
+
+  // Start from all operations in the `src_root` cluster.
+  llvm::SmallVector<Operation *> worklist;
+  for (Member &member : members)
+    if (Operation *op = member.source.dyn_cast<Operation *>())
+      if (FindRoot(member.root) == src_root) worklist.emplace_back(op);
+
+  // Collect `dst_root` constraints that are applicable to the values defined in
+  // the `src_root` cluster.
+  ValuesConstraintSet constraints = members[src_root].constraints;
+  members[dst_root].constraints.Walk([&](Value v, ValueConstraint constraint) {
+    Operation *op = v.getDefiningOp();
+    if (op && filter(op)) constraints.Insert(v, constraint);
+  });
+
+  // Update `src_root` constraints only if we can propagate them.
+  if (succeeded(PropagateValuesConstraints(worklist, filter, policies,
+                                           constraints))) {
+    members[src_root].constraints = constraints;
+    return success();
+  }
+
+  return failure();
+}
+
+LogicalResult ClusteringState::Union(unsigned a, unsigned b,
+                                     const ClusteringPolicySet &policies) {
   unsigned a_root = FindRoot(a);
   unsigned b_root = FindRoot(b);
 
@@ -296,8 +336,10 @@ LogicalResult ClusteringState::Union(unsigned a, unsigned b) {
   if (failed(VerifyDominanceProperty(src_root, dst_root, insertion_point)))
     return failure();
 
-  // TODO(ezhulenev): Verify that value constraints after merging clusters can
-  // be satisfied.
+  // Check if `dst_root` constraints can be propagated to the `src_root`
+  // constraints.
+  if (failed(VerifyValueConstraints(src_root, dst_root, policies)))
+    return failure();
 
   // Set `dst_root` as a new root for `src_root`.
   members[src_root].root = dst_root;
@@ -398,7 +440,8 @@ static llvm::SmallVector<Operation *> GetClusteringCandidates(
 
 // Cluster members with their result users. Returns `true` if merged at least a
 // pair of members into a new cluster.
-static bool RunClusteringPass(ClusteringState &state) {
+static bool RunClusteringPass(ClusteringState &state,
+                              const ClusteringPolicySet &policies) {
   bool clustered = false;
 
   for (auto &tuple : llvm::enumerate(state.members)) {
@@ -412,9 +455,11 @@ static bool RunClusteringPass(ClusteringState &state) {
     // the number of dominance property violations.
     llvm::sort(users, [](auto *a, auto *b) { return a->isBeforeInBlock(b); });
 
-    for (Operation *user : users)
-      if (succeeded(state.Union(member_id, state.member_ids.lookup(user))))
+    for (Operation *user : users) {
+      auto user_member_id = state.member_ids.lookup(user);
+      if (succeeded(state.Union(member_id, user_member_id, policies)))
         clustered = true;
+    }
   }
 
   return clustered;
@@ -432,7 +477,7 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
   // to guard from the infinite loop in presence of bugs.
   constexpr int max_iterations = 100;
   for (unsigned i = 0; i < max_iterations; ++i)
-    if (!RunClusteringPass(state)) break;
+    if (!RunClusteringPass(state, policies)) break;
 
   // Form clusters found by the union-find algorithm.
   llvm::DenseMap<unsigned, Cluster> root_clusters;
@@ -450,12 +495,14 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
       cluster.operations.emplace_back(op);
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Found " << root_clusters.size() << " clusters\n");
-
-  // Return found clusters through the output parameters.
   llvm::SmallVector<Cluster> clusters;
-  for (auto &kv : root_clusters)
-    clusters.emplace_back(std::move(kv.getSecond()));
+  for (auto &kv : root_clusters) {
+    Cluster &cluster = kv.getSecond();
+    // Skip degenerate clusters formed by a single basic block argument.
+    if (!cluster.operations.empty()) clusters.emplace_back(std::move(cluster));
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "Found " << clusters.size() << " clusters\n");
 
   return clusters;
 }
@@ -530,32 +577,27 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 // -------------------------------------------------------------------------- //
 
 mlir::LogicalResult PropagateValuesConstraints(
-    mlir::Region &region, const ClusteringPolicySet &policies,
-    ValuesConstraintSet &constraints) {
+    llvm::ArrayRef<Operation *> root, std::function<bool(Operation *)> filter,
+    const ClusteringPolicySet &policies, ValuesConstraintSet &constraints) {
   // A set of constraints for operation results.
   llvm::DenseMap<Operation *, ValuesConstraintSet> op_results_constraints;
+  assert(filter && "filter predicate must be defined");
 
   // Use initial constraints to initialize op results constraints.
   for (std::pair<Value, ValueConstraint> pair : constraints) {
     Value value = pair.first;
     ValueConstraint constraint = pair.second;
 
-    // Value must be defined by an operation.
+    // Value must be defined by an operation and accepted by the filter.
     Operation *op = value.getDefiningOp();
-    assert(op && "value must be defined by an operation");
-    if (!op) return failure();
-
-    // Operation must be in the region.
-    Block *ancestorBlock = region.findAncestorBlockInRegion(*op->getBlock());
-    assert(ancestorBlock && "operation must be in the region");
-    if (!ancestorBlock) return failure();
+    if (!op || !filter(op)) continue;
 
     op_results_constraints[op].Insert(value, constraint);
   }
 
   // Keep a worklist of operations that need their constraints to be updated.
   llvm::SetVector<Operation *> worklist;
-  region.walk([&](Operation *op) { worklist.insert(op); });  // process all ops
+  for (Operation *op : root) worklist.insert(op);
 
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
@@ -589,9 +631,9 @@ mlir::LogicalResult PropagateValuesConstraints(
       if (!updated.second) return;
 
       // Maybe update constaint on the operation result, but do not follow
-      // operations that are outside of the `region`.
+      // operations that are not accepted by the filter predicate.
       Operation *op = value.getDefiningOp();
-      if (!op || !region.findAncestorBlockInRegion(*op->getBlock())) return;
+      if (!op || !filter(op)) return;
 
       // Add updated operation to the worklist.
       auto inserted = op_results_constraints[op].Insert(value, updated.first);
@@ -600,6 +642,21 @@ mlir::LogicalResult PropagateValuesConstraints(
   }
 
   return success();
+}
+
+mlir::LogicalResult PropagateValuesConstraints(
+    mlir::Region &region, const ClusteringPolicySet &policies,
+    ValuesConstraintSet &constraints) {
+  // Propagate constraints for all operations in the region.
+  llvm::SmallVector<Operation *> worklist;
+  region.walk([&](Operation *op) { worklist.emplace_back(op); });
+
+  // Propagate constraints only through operations inside the `region`.
+  auto filter = [&](Operation *op) -> bool {
+    return region.findAncestorBlockInRegion(*op->getBlock());
+  };
+
+  return PropagateValuesConstraints(worklist, filter, policies, constraints);
 }
 
 void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {

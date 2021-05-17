@@ -34,6 +34,7 @@
 ^tensorflow/python/distribute/parallel_device/saving.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/distribute/parameter_server_strategy_test.py.*\[E1111.*assignment-from-no-return
 ^tensorflow/python/distribute/strategy_test_lib.py.*\[E1111.*assignment-from-no-return
+^tensorflow/python/distribute/values_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/eager/function_test.py.*\[C0326.*bad-whitespace
 ^tensorflow/python/eager/pywrap_tfe_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/eager/tensor_test.py.*\[E1120.*no-value-for-parameter

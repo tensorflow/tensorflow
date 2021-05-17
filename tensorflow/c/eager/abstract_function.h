@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_ABSTRACT_FUNCTION_H_
 
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/platform/intrusive_ptr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -39,6 +40,9 @@ class AbstractFunction : public core::RefCounted {
  private:
   const AbstractFunctionKind kind_;
 };
+
+using AbstractFunctionPtr =
+    tensorflow::core::IntrusivePtr<tensorflow::AbstractFunction>;
 
 }  // namespace tensorflow
 

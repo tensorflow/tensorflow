@@ -276,6 +276,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseHardSwish);
   }
 
+  TfLiteStatus AddIf() {
+    return AddBuiltin(BuiltinOperator_IF, tflite::Register_IF(), ParseIf);
+  }
+
   TfLiteStatus AddL2Normalization() {
     return AddBuiltin(BuiltinOperator_L2_NORMALIZATION,
                       tflite::ops::micro::Register_L2_NORMALIZATION(),

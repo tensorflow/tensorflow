@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/Timing.h"  // from @llvm-project
 
 namespace tensorflow {
 
@@ -88,10 +89,12 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
 };
 
 // Logger for logging/dumping pass pipeline timings after completion.
-class BridgeTimingConfig : public mlir::PassManager::PassTimingConfig {
+class BridgeTimingConfig : public mlir::DefaultTimingManager {
  public:
-  // Hook that control how/where is the output produced
-  void printTiming(PrintCallbackFn printCallback) override;
+  BridgeTimingConfig();
+
+ private:
+  std::unique_ptr<llvm::raw_ostream> file_;
 };
 
 }  // namespace tensorflow

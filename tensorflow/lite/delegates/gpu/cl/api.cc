@@ -508,7 +508,8 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Input id ", index, " is an invalid input index."));
     }
-    return inputs_[index]->CopyFromExternalObject();
+    RETURN_IF_ERROR(inputs_[index]->CopyFromExternalObject());
+    return queue_->WaitForCompletion();
   }
 
   absl::Status CopyToExternalOutput(int index) override {
@@ -516,7 +517,8 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Output id ", index, " is an invalid output index"));
     }
-    return outputs_[index]->CopyToExternalObject();
+    RETURN_IF_ERROR(outputs_[index]->CopyToExternalObject());
+    return queue_->WaitForCompletion();
   }
 
   absl::Status Run() override {
@@ -525,26 +527,27 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
 #endif
-    for (int i = 0; i < inputs_.size(); i++) {
-      RETURN_IF_ERROR(CopyFromExternalInput(i));
+    for (const auto& input : inputs_) {
+      RETURN_IF_ERROR(input->CopyFromExternalObject());
     }
 
     RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
 
-    for (int i = 0; i < outputs_.size(); i++) {
-      RETURN_IF_ERROR(CopyToExternalOutput(i));
+    bool has_async_copies = false;
+    for (const auto& output : outputs_) {
+      RETURN_IF_ERROR(output->CopyToExternalObject());
+      if (output->def().external_def.object_def.object_type ==
+          ObjectType::CPU_MEMORY) {
+        has_async_copies = true;
+      }
     }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
-    for (const auto& output : outputs_) {
-      if (output->def().external_def.object_def.object_type ==
-          ObjectType::CPU_MEMORY) {
-        clFinish(queue_->queue());
-        break;
-      }
+    if (has_async_copies) {
+      RETURN_IF_ERROR(queue_->WaitForCompletion());
     }
     return absl::OkStatus();
   }
@@ -669,6 +672,11 @@ class InferenceBuilderImpl : public InferenceBuilder {
       create_info.hints.Add(ModelHints::kFastTuning);
     } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
       create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    }
+    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
