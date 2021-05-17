@@ -1516,6 +1516,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
     if (reg.builtin_code == kTfLiteBuiltinDequantize) continue;
     for (int i = 0; i < node.inputs->size; ++i) {
       const int original_input_idx = node.inputs->data[i];
+      if (original_input_idx == kTfLiteOptionalTensor) continue;
       if (tensors_[original_input_idx].type == kTfLiteFloat16) {
         node.inputs->data[i] = fp16_to_fp32[original_input_idx];
       }
