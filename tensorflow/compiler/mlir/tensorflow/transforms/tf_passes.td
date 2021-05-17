@@ -1037,3 +1037,54 @@ def TPUMergeVariablesWithExecutePass : FunctionPass<"tf-tpu-merge-variables-with
 
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
+
+def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-hoisting"> {
+  let summary = "Hoists replicate invariant operations out of replicate";
+
+  let description = [{
+    This pass looks for replicate invariant ops in a `tf_device.replicate` op
+    region and hoists them out. It also makes `tf.Shape` ops replicate invariant
+    if possible. This currently updates or replaces `tf.Shape` ops of replicated
+    arguments, either tensors or resources.
+
+    For example, the following
+
+    ```mlir
+    tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+      %2 = "tf.Shape"(%ri) : (tensor<*xi32>) -> tensor<?xi32>
+      tf_device.return
+    }
+    ```
+
+    gets converted to
+
+    ```mlir
+    tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+      %2 = "tf.Shape"(%0) : (tensor<*xi32>) -> tensor<?xi32>
+      tf_device.return
+    }
+    ```
+
+    and for resource variables the following
+
+    ```mlir
+    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+      %3 = "tf.Shape"(%2) : (tensor<*xi32>) -> tensor<?xi32>
+      tf_device.return
+    }
+    ```
+
+    gets converted to
+
+    ```mlir
+    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+      %3 = "tf.VariableShape"(%0) : (tensor<*x!tf.resource>) -> tensor<?xi32>
+      tf_device.return
+    }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateReplicateInvariantOpHoistingPass()";
+}
