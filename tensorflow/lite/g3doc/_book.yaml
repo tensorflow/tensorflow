@@ -47,6 +47,10 @@ upper_tabs:
       - title: "BERT Question Answer with Model Maker"
         path: /lite/tutorials/model_maker_question_answer
 
+      - heading: "Audio"
+      - title: "Audio classification with Model Maker"
+        path: /lite/tutorials/model_maker_audio_classification
+
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
         path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
