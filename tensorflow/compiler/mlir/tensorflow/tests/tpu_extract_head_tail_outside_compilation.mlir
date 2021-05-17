@@ -169,6 +169,40 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
 
+  // CHECK-LABEL: func @head_while_op
+  func @head_while_op(%arg0: tensor<i32>) {
+    // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
+    // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"(%[[A_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK-NEXT:   %[[WHILE_OUT:.*]]:2 = "tf.WhileRegion"
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK:        %[[C_OUT:.*]] = "tf.C"(%[[WHILE_OUT]]#1)
+    // CHECK:        tf_device.return %[[C_OUT]]
+    //
+    // CHECK:      "tf_device.cluster"
+    // CHECK-NEXT:   "tf.D"(%[[LAUNCH_OUT]])
+    "tf_device.cluster"() ( {
+      %a = "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> tensor<i32>
+      %b = "tf.B"(%a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<f32>
+      %w1, %w2 = "tf.WhileRegion"(%a, %b) ({
+      ^bb0(%arg1: tensor<i32>, %arg2: tensor<f32>):
+        %7 = "tf.H"(%arg1) :  (tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%7) : (tensor<i1>) -> ()
+      }, {
+      ^bb0(%arg1: tensor<i32>, %arg2: tensor<f32>):
+        %8 = "tf.C"(%arg1) : (tensor<i32>) -> tensor<i32>
+        %9 = "tf.D"(%arg1, %arg2) : (tensor<i32>, tensor<f32>) -> tensor<f32>
+        "tf.Yield"(%8, %9) : (tensor<i32>, tensor<f32>) -> ()
+      }) { is_stateless = false, _xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+      %c = "tf.C"(%w2) {_xla_outside_compilation = "cluster1"} : (tensor<f32>) -> (tensor<f32>)
+      "tf.D"(%c) : (tensor<f32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    return
+  }
+
   // CHECK-LABEL: func @tail_single_outside_compiled_op
   func @tail_single_outside_compiled_op() {
     // CHECK:      %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
