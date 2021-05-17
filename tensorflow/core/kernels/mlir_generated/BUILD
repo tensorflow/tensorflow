@@ -695,8 +695,8 @@ gpu_kernel_library(
     tile_size = "256",
     types = [
         # TODO(b/162572921): Enable when it works for complex types.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
         "f16",
         "f32",
         "f64",
