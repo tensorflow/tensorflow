@@ -383,7 +383,7 @@ class DatasetTestBase(test.TestCase):
     # delay_ms needed to observe non-deterministic ordering varies across
     # test machines. Usually 10 or 100 milliseconds is enough, but on slow
     # machines it could take longer.
-    for delay_ms in [10, 100, 1000, 20000]:
+    for delay_ms in [10, 100, 1000, 20000, 100000]:
       dataset = dataset_fn(delay_ms)
       actual = self.getDatasetOutput(dataset)
       self.assertCountEqual(expected_elements, actual)
