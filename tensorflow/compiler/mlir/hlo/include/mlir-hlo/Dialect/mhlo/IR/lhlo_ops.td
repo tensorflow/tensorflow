@@ -1386,4 +1386,116 @@ def TerminatorOp :
     [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
+
+def LHLO_D2HOp: LHLO_Op<"d2h", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_H2DOp: LHLO_Op<"h2d", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DebugPrintOp:  LHLO_Op<"debug_print", [NoSideEffect]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$input
+  );
+}
+
+def LHLO_RealDynamicSliceOp: LHLO_Op<
+      "dynamic_slice",
+      [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_Buffer, "", [MemRead]>:$limit_indices,
+    Arg<LHLO_Buffer, "", [MemRead]>:$strides,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
+      []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$out_dim_size,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+}
+
+def LHLO_DotGeneralOp: LHLO_Op<"dot_general", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_Buffer, "", [MemRead]>:$slice_sizes,
+    GatherDimensionNumbers:$dimension_numbers,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicPadOp: LHLO_Op<"dynamic_pad", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$padding_value,
+    Arg<LHLO_Buffer, "", [MemRead]>:$edge_padding_low,
+    Arg<LHLO_Buffer, "", [MemRead]>:$edge_padding_high,
+    Arg<LHLO_Buffer, "", [MemRead]>:$interior_padding,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicBitcastOp: LHLO_Op<"dynamic_bitcast", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicIotaOp : LHLO_Op<"dynamic_iota", []> {
+  let arguments = (ins Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+                   I64Attr:$iota_dimension,
+                   Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
+def LHLO_DynamicConvOp : LHLO_Op<"dynamic_conv", []> {
+  let arguments = !con(
+    (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$d_padding,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output),
+    ConvolutionAttributes.attributes);
+}
+
+def LHLO_DynamicReshapeOp: LHLO_Op<"dynamic_reshape", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
 #endif // LHLO_OPS

@@ -2162,4 +2162,99 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
+def HLO_H2DOp: HLO_Op<"h2d", [NoSideEffect, SameOperandsAndResultType]> {
+  let arguments = (ins HLO_Tensor);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_D2HOp: HLO_Op<"d2h", [NoSideEffect, SameOperandsAndResultType]> {
+  let arguments = (ins HLO_Tensor);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RealDynamicSliceOp: HLO_Op<
+      "dynamic_slice",
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$start_indices,
+    HLO_Tensor:$limit_indices,
+    HLO_Tensor:$strides
+  );
+  let results = (outs HLO_Tensor:$result);
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes. Result type is
+    // unranked if any of the attributes is illegal.
+    static Type InferOutputTypes(Builder *builder, Value operand,
+                                 Value *start_indices,
+                                 Value *limit_indices,
+                                 Value *strides);
+  }];
+  let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
+      [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
+      AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$padding_value,
+    HLO_Tensor:$edge_padding_low,
+    HLO_Tensor:$edge_padding_high,
+    HLO_Tensor:$interior_padding
+  );
+  let results = (outs HLO_Tensor:$result);
+  let description = [{
+    Dynamically Pads the `operand` according to TBD, with amount of padding added at
+    low-end/high-end/interior is passed through input tensors.
+  }];
+  let hasCanonicalizer = 1;
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_IntTensor:$start_indices,
+    HLO_IntTensor:$slice_sizes,
+    GatherDimensionNumbers:$dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
+  );
+  let results = (outs HLO_Tensor);
+  
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+  let arguments = !con(
+    (ins
+       HLO_Tensor:$lhs,
+       HLO_Tensor:$rhs,
+       HLO_Tensor:$d_padding),
+    ConvolutionAttributes.attributes);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+// For test
+def HLO_DebugPrintOp : HLO_Op<"debug_print", [NoSideEffect]> {
+  let summary = "call_external_func operation";
+  let description = [{
+    call external function
+  }];
+
+  // The operation takes an input tensor to print.
+  let arguments = (ins
+      AnyTypeOf<[HLO_Tensor]>:$operand
+  );
+
+  let hasCustomHLOConverter = 1;
+
+}
+
 #endif // HLO_OPS

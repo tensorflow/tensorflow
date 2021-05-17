@@ -2254,6 +2254,14 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicPadOp
+//===----------------------------------------------------------------------===//
+void DynamicPadOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DPadToPad>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
