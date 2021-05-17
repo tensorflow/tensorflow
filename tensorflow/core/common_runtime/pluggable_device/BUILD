@@ -86,10 +86,12 @@ cc_library(
         "//tensorflow/core/common_runtime:process_state",
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
         ":pluggable_device_runtime_impl",
+    ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
-    ],
+    ]),
 )
 
 cc_library(
@@ -97,6 +99,7 @@ cc_library(
     hdrs = [":pluggable_device_runtime_headers"],
     linkstatic = 1,
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -104,13 +107,17 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/common_runtime:shared_counter",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
+    ] + if_static([
+        # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime:local_device",
         "//tensorflow/core/common_runtime:process_state",
-    ],
+    ]),
 )
 
 cc_library(
