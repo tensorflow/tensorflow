@@ -786,9 +786,17 @@ def join(path, *paths):
   This is the same as os.path.join except that it handles
   TensorFlow specific filesystems like `ram://` and `gcs://`.
 
+  Examples:
+
+  >>> tf.io.join("gcs://folder", "file.py")
+  "gcs://folder/file.py"
+
+  >>> tf.io.join("ram://folder", "file.py")
+  "ram://folder/file.py"
+
   Args:
     path: string, path to a directory
-    paths: additional paths to concatenate
+    paths: string, additional paths to concatenate
 
   Returns:
     path: the joined path.
