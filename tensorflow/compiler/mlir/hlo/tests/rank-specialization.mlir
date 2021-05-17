@@ -46,13 +46,14 @@ func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:       %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
 // CHECK-SCF:       %[[TMP0:.*]] = "mhlo.sqrt"(%[[FLAT_ARG]]) : (tensor<?xf32>)
 // CHECK-SCF:       %[[TMP1:.*]] = "mhlo.sqrt"(%[[TMP0]]) : (tensor<?xf32>)
-// CHECK-SCF:       %[[TMP2:.*]] = "mhlo.sqrt"(%[[TMP1]]) : (tensor<?xf32>)
-// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[TMP2]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       %[[UNSHAPED_RES:.*]] = "mhlo.sqrt"(%[[TMP1]]) : (tensor<?xf32>)
+// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-SCF:       return %[[RES]]
 
 // -----
 
-// Don't cluster single ranked operation.
+// Don't cluster ranked operations.
 // CHECK-LABEL: @sqrt_ranked
 // CHECK-SAME: (%[[ARG:.*]]: tensor<3x?xf32>)
 func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
@@ -84,7 +85,7 @@ func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
 
 // Unary CHLO operation.
 // CHECK-LABEL: @tan
-// CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
 func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]]) ( {
   // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>)
@@ -98,6 +99,19 @@ func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
   %2 = chlo.tan %1 : tensor<*xf32> -> tensor<*xf32>
   return %2 : tensor<*xf32>
 }
+
+// CHECK-SCF-LABEL: @tan
+// CHECK-SCF-SAME: (%[[ARG:.*]]: tensor<*xf32>)
+// CHECK-SCF:      %[[SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:      %[[N:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-SCF:      %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF:      %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK-SCF:      %[[TMP0:.*]] = chlo.tan %[[FLAT_ARG]] : tensor<?xf32>
+// CHECK-SCF:      %[[TMP1:.*]] = chlo.tan %[[TMP0]] : tensor<?xf32>
+// CHECK-SCF:      %[[UNSHAPED_RES:.*]] = chlo.tan %[[TMP1]] : tensor<?xf32>
+// CHECK-SCF:      %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:      %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:      return %[[RES]]
 
 // -----
 
@@ -145,6 +159,18 @@ func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
   return %1 : tensor<*xf32>
 }
 
+// CHECK-SCF-LABEL: @relu
+// CHECK-SCF-SAME:  (%[[ARG:.*]]: tensor<*xf32>)
+// CHECK-SCF:       %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
+// CHECK-SCF:       %[[SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[N:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-SCF:       %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF:       %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK-SCF:       %[[UNSHAPED_RES:.*]] = chlo.broadcast_maximum %[[FLAT_ARG]], %[[C0]] : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       return %[[RES]]
+
 // -----
 
 // Cluster with binary non-broadcasting operation.
@@ -163,6 +189,19 @@ func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
   %2 = mhlo.atan2 %0, %1 : tensor<*xf32>
   return %2 : tensor<*xf32>
 }
+
+// CHECK-SCF-LABEL: @angle
+// CHECK-SCF-SAME:  (%[[ARG:.*]]: tensor<*xcomplex<f32>>)
+// CHECK-SCF:       %[[SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[N:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-SCF:       %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF:       %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xcomplex<f32>>, tensor<1xindex>) -> tensor<?xcomplex<f32>>
+// CHECK-SCF:       %[[IMAG:.*]] = "mhlo.imag"(%[[FLAT_ARG]]) : (tensor<?xcomplex<f32>>)
+// CHECK-SCF:       %[[REAL:.*]] = "mhlo.real"(%[[FLAT_ARG]]) : (tensor<?xcomplex<f32>>)
+// CHECK-SCF:       %[[UNSHAPED_RES:.*]] = mhlo.atan2 %[[IMAG]], %[[REAL]] : tensor<?xf32>
+// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       return %[[RES]]
 
 // -----
 
