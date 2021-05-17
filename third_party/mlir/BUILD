@@ -458,12 +458,7 @@ cc_library(
 #----------------------------------------------------------------------------##
 
 exports_files(
-    [
-        "lib/Bindings/Python/LinalgPasses.cpp",
-        "lib/Bindings/Python/MainModule.cpp",
-        "lib/Bindings/Python/Conversions/Conversions.cpp",
-        "lib/Bindings/Python/Transforms/Transforms.cpp",
-    ],
+    glob(["lib/Bindings/Python/**/*.cpp"]),
 )
 
 cc_library(
