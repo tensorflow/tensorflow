@@ -122,7 +122,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto context =
       tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context());
   auto stream = tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream());
-  tfrt::gpu::BorrowedGpuStream gpu_stream(host, context, stream);
+  tfrt::gpu::BorrowedGpuStream gpu_stream(context, stream);
 
   // Prepare arguments for BEF execution.
   auto get_async_value_ref = [&](const BufferAllocation::Slice& slice) {
