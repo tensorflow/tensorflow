@@ -102,6 +102,11 @@ AudioClassifierOptions options;
 options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<AudioClassifier> audio_classifier = AudioClassifier::CreateFromOptions(options).value();
 
+// Create input audio buffer from data.
+int input_buffer_size = audio_classifier->GetRequiredInputBufferSize();
+const std::unique_ptr<AudioBuffer> audio_buffer =
+    AudioBuffer::Create(audio_data.get(), input_buffer_size, kAudioFormat).value();
+
 // Run inference
 const ClassificationResult result = audio_classifier->Classify(*audio_buffer).value();
 ```
