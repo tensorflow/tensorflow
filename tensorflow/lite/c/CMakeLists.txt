@@ -36,14 +36,8 @@ add_subdirectory(
 
 set(CMAKE_CXX_STANDARD 11)
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 4)
-  set(64_BIT FALSE)
-elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(64_BIT TRUE)
-endif()
-
-if (MSVC AND (NOT 64_BIT))
-  message("Disabling MSVC /O2 optimization")
+if (MSVC AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
+  message("Disabling MSVC /O2 optimization for Win32")
   set(CompFlags
     CMAKE_CXX_FLAGS_RELEASE
     CMAKE_CXX_FLAGS_MINSIZEREL
