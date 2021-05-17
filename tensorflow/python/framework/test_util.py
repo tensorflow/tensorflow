@@ -43,6 +43,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -118,6 +119,26 @@ except ImportError:
     from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
   except ImportError:
     pass
+
+
+def is_asan_enabled():
+  """Check if ASAN is enabled."""
+  return pywrap_sanitizers.is_asan_enabled()
+
+
+def is_msan_enabled():
+  """Check if MSAN is enabled."""
+  return pywrap_sanitizers.is_msan_enabled()
+
+
+def is_tsan_enabled():
+  """Check if TSAN is enabled."""
+  return pywrap_sanitizers.is_tsan_enabled()
+
+
+def is_ubsan_enabled():
+  """Check if UBSAN is enabled."""
+  return pywrap_sanitizers.is_ubsan_enabled()
 
 
 def _get_object_count_by_type(exclude=()):
@@ -1852,6 +1873,34 @@ def disable_xla(description):  # pylint: disable=unused-argument
 def disable_mlir_bridge(description):  # pylint: disable=unused-argument
   """Execute the test method only if MLIR bridge is not enabled."""
   execute_func = not is_mlir_bridge_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_asan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if ASAN is not enabled."""
+  execute_func = not is_asan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_msan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MSAN is not enabled."""
+  execute_func = not is_msan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if TSAN is not enabled."""
+  execute_func = not is_tsan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_ubsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if UBSAN is not enabled."""
+  execute_func = not is_ubsan_enabled()
   return _disable_test(execute_func)
 
 

@@ -14,25 +14,35 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
 
-PYBIND11_MODULE(_pywrap_tensorflow_lite_sanitizers, m) {
-  m.def("TSan_Enabled", []() -> bool {
-#ifdef THREAD_SANITIZER
+// Check if specific santizers are enabled.
+PYBIND11_MODULE(_pywrap_sanitizers, m) {
+  m.def("is_asan_enabled", []() -> bool {
+#if defined(ADDRESS_SANITIZER)
     return true;
 #else
     return false;
 #endif
   });
-  m.def("MSan_Enabled", []() -> bool {
-#ifdef MEMORY_SANITIZER
+
+  m.def("is_msan_enabled", []() -> bool {
+#if defined(MEMORY_SANITIZER)
     return true;
 #else
     return false;
 #endif
   });
-  m.def("ASan_Enabled", []() -> bool {
-#ifdef ADDRESS_SANITIZER
+
+  m.def("is_tsan_enabled", []() -> bool {
+#if defined(THREAD_SANITIZER)
+    return true;
+#else
+    return false;
+#endif
+  });
+
+  m.def("is_ubsan_enabled", []() -> bool {
+#if defined(UNDEFINED_BEHAVIOR_SANITIZER)
     return true;
 #else
     return false;

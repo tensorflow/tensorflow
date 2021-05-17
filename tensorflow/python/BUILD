@@ -4742,6 +4742,26 @@ tf_python_pybind_extension(
     ],
 )
 
+py_library(
+    name = "pywrap_sanitizers",
+    srcs = ["pywrap_sanitizers.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_sanitizers",
+        ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_sanitizers",
+    srcs = ["sanitizers_wrapper.cc"],
+    module_name = "_pywrap_sanitizers",
+    deps = [
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [

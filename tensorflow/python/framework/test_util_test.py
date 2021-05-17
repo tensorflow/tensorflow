@@ -32,6 +32,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -146,6 +147,22 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       print("MKL is enabled")
     else:
       print("MKL is disabled")
+
+  @test_util.disable_asan("Skip test if ASAN is enabled.")
+  def testDisableAsan(self):
+    self.assertFalse(pywrap_sanitizers.is_asan_enabled())
+
+  @test_util.disable_msan("Skip test if MSAN is enabled.")
+  def testDisableMsan(self):
+    self.assertFalse(pywrap_sanitizers.is_msan_enabled())
+
+  @test_util.disable_tsan("Skip test if TSAN is enabled.")
+  def testDisableTsan(self):
+    self.assertFalse(pywrap_sanitizers.is_tsan_enabled())
+
+  @test_util.disable_ubsan("Skip test if UBSAN is enabled.")
+  def testDisableUbsan(self):
+    self.assertFalse(pywrap_sanitizers.is_ubsan_enabled())
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertProtoEqualsStr(self):
