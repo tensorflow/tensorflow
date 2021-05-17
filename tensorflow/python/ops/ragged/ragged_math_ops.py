@@ -419,8 +419,6 @@ _RAGGED_REDUCE_MEAN_EXAMPLE = """
 _RAGGED_REDUCE_VARIANCE_EXAMPLE = """
     >>> rt = tf.ragged.constant([[1, 1, 4], [2, 1], [3], [4, 1]],
     ...                         dtype=tf.float64)
-    >>> tf.math.reduce_variance(rt, axis=0).numpy()
-    array([1.25, 0., 0.])
     >>> tf.math.reduce_variance(rt, axis=1).numpy()
     array([2., 0.25, 0., 2.25])
 """
