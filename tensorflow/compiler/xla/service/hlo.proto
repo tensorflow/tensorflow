@@ -41,7 +41,7 @@ enum CustomCallSchedule {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 76
+// Next ID: 77
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
