@@ -126,3 +126,66 @@ func @mixed(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>)
   %5 = chlo.tan %4 : tensor<*xf32> -> tensor<*xf32>
   return %5 : tensor<*xf32>
 }
+
+// -----
+
+// Constant cluster operand.
+// CHECK-LABEL: @relu
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<*xf32>)
+func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]], %[[C0]])
+  // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>, %[[C0_:.*]]: tensor<f32>):
+  // CHECK:   %[[TMP:.*]] = chlo.broadcast_maximum %[[ARG_]], %[[C0_]]
+  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP]])
+  // CHECK: return %[[RES]]
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = chlo.broadcast_maximum %0, %arg
+      : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+}
+
+// -----
+
+// Cluster with binary non-broadcasting operation.
+// CHECK-LABEL: @angle
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<*xcomplex<f32>>)
+func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]])
+  // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xcomplex<f32>>):
+  // CHECK:   %[[IMAG:.*]] = "mhlo.imag"(%[[ARG_]])
+  // CHECK:   %[[REAL:.*]] = "mhlo.real"(%[[ARG_]])
+  // CHECK:   %[[TMP:.*]] = mhlo.atan2 %[[IMAG]], %[[REAL]]
+  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP]])
+  // CHECK: return %[[RES]]
+  %0 = "mhlo.imag"(%arg) : (tensor<*xcomplex<f32>>) -> tensor<*xf32>
+  %1 = "mhlo.real"(%arg) : (tensor<*xcomplex<f32>>) -> tensor<*xf32>
+  %2 = mhlo.atan2 %0, %1 : tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @xlogy
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
+func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[C0]], %[[ARG0]], %[[ARG1]])
+  // CHECK: ^bb0(%[[C0_:.*]]: tensor<f32>, %[[ARG0_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>):
+  // CHECK:   %[[TMP0:.*]] = chlo.broadcast_compare %[[ARG0_]], %[[C0_]] {comparison_direction = "EQ"}
+  // CHECK:   %[[TMP1:.*]] = "mhlo.log"(%[[ARG1_]])
+  // CHECK:   %[[TMP2:.*]] = chlo.broadcast_multiply %[[ARG0_]], %[[TMP1]]
+  // CHECK:   %[[TMP3:.*]] = chlo.broadcast_select %[[TMP0]], %[[C0_]], %[[TMP2]]
+  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP3]])
+  // CHECK: return %[[RES]]
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = tensor.cast %0 : tensor<f32> to tensor<f32>
+  %2 = chlo.broadcast_compare %arg0, %1 {comparison_direction = "EQ"}
+      : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
+  %3 = "mhlo.log"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+  %4 = chlo.broadcast_multiply %arg0, %3
+      : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  %5 = chlo.broadcast_select %2, %1, %4
+      : (tensor<*xi1>, tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  return %5 : tensor<*xf32>
+}
