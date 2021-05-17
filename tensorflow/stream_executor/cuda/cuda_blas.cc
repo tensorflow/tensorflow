@@ -2045,16 +2045,6 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
     return port::InternalError("Types of inputs mismatch");
   }
 
-  float alpha_storage, beta_storage;
-  if (type_c == blas::DataType::kHalf &&  // out-type matches alpha/beta type.
-      computation_type == blas::ComputationType::kF32) {
-    alpha_storage =
-        static_cast<float>(*static_cast<const Eigen::half *>(alpha));
-    alpha = &alpha_storage;
-    beta_storage = static_cast<float>(*static_cast<const Eigen::half *>(beta));
-    beta = &beta_storage;
-  }
-
   // GPUs < sm_50 don't support cublasGemmEx.
   int cc_major, cc_minor;
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(

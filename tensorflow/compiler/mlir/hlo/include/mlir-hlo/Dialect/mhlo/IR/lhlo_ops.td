@@ -868,7 +868,10 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
 
  let assemblyFormat = [{
     `(`operands`)`
-       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers)
+       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers) `,`
+       `window` `=` `{` custom<WindowAttributes>($window_strides, $padding,
+                                                 $lhs_dilation, $rhs_dilation,
+                                                 $window_reversal) `}`
        attr-dict `:` functional-type(operands, results)
   }];
 }

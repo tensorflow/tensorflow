@@ -45,14 +45,14 @@ class ConvOp : public XlaOpKernel {
   explicit ConvOp(OpKernelConstruction* ctx, int num_spatial_dims,
                   bool depthwise)
       : XlaOpKernel(ctx) {
-    xla::StatusOr<ConvOpAttrs> attrs =
+    StatusOr<ConvOpAttrs> attrs =
         ConvOpAttrs::Create(num_spatial_dims, depthwise, ctx);
     OP_REQUIRES_OK(ctx, attrs.status());
     attrs_ = attrs.ValueOrDie();
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::StatusOr<xla::XlaOp> conv = MakeXlaForwardConvOp(
+    StatusOr<xla::XlaOp> conv = MakeXlaForwardConvOp(
         ctx->op_kernel().type_string(), ctx->Input(0), ctx->Input(1), attrs_);
     OP_REQUIRES_OK(ctx, conv.status());
     ctx->SetOutput(0, conv.ValueOrDie());
@@ -96,7 +96,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
   explicit ConvBackpropInputOp(OpKernelConstruction* ctx, int num_spatial_dims,
                                bool depthwise)
       : XlaOpKernel(ctx) {
-    xla::StatusOr<ConvOpAttrs> attrs =
+    StatusOr<ConvOpAttrs> attrs =
         ConvOpAttrs::Create(num_spatial_dims, depthwise, ctx);
     OP_REQUIRES_OK(ctx, attrs.status());
     attrs_ = attrs.ValueOrDie();
@@ -113,7 +113,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
                     "num_spatial_dims + 2. Expected ",
                     attrs_.num_spatial_dims + 2, " got ", input_shape.rank()));
     xla::XlaOp input_sizes = ctx->Input(0);
-    xla::StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
+    StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
         ctx->op_kernel().type_string(), input_shape, ctx->Input(1),
         ctx->Input(2), attrs_, nullptr, &input_sizes);
     OP_REQUIRES_OK(ctx, in_backprop.status());
@@ -162,7 +162,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
   explicit ConvBackpropFilterOp(OpKernelConstruction* ctx, int num_spatial_dims,
                                 bool depthwise)
       : XlaOpKernel(ctx) {
-    xla::StatusOr<ConvOpAttrs> attrs =
+    StatusOr<ConvOpAttrs> attrs =
         ConvOpAttrs::Create(num_spatial_dims, depthwise, ctx);
     OP_REQUIRES_OK(ctx, attrs.status());
     attrs_ = attrs.ValueOrDie();
@@ -174,7 +174,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     xla::Shape filter_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(0), filter_tensor_shape);
 
-    xla::StatusOr<xla::XlaOp> filter_backprop = MakeXlaBackpropFilterConvOp(
+    StatusOr<xla::XlaOp> filter_backprop = MakeXlaBackpropFilterConvOp(
         ctx->op_kernel().type_string(), ctx->Input(0), filter_shape,
         ctx->Input(2), attrs_);
     OP_REQUIRES_OK(ctx, filter_backprop.status());

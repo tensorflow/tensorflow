@@ -799,7 +799,18 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
-  auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  tflite::ops::builtin::BuiltinOpResolver* resolver = nullptr;
+  // When --use_xnnpack is explicitly set to false, skip applying the default
+  // XNNPACK delegate in TfLite runtime so that the original execution path
+  // based on the unmodified model graph is still excercised.
+  if (params_.HasParam("use_xnnpack") &&
+      params_.HasValueSet<bool>("use_xnnpack") &&
+      !params_.Get<bool>("use_xnnpack")) {
+    resolver =
+        new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+  } else {
+    resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  }
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }

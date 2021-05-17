@@ -293,7 +293,7 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
-xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
+StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -343,7 +343,7 @@ xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
   return call.operation.node();
 }
 
-xla::StatusOr<jit::DeviceId> InferDeviceForCluster(
+StatusOr<jit::DeviceId> InferDeviceForCluster(
     jit::DeviceInfoCache* device_info_cache, Node* n,
     const string& function_name, const FunctionLibraryDefinition& flib_def) {
   const FunctionDef* func_def = flib_def.Find(function_name);
@@ -401,8 +401,7 @@ std::vector<Output> GetXlaRunArgs(const Scope& s,
   return xla_run_args;
 }
 
-xla::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
-                                                     Node* n) {
+StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root, Node* n) {
   MemoryTypeVector input_mtypes, output_mtypes;
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(

@@ -593,6 +593,7 @@ pybind_extension(
     module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",

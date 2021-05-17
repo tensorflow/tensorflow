@@ -430,6 +430,7 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_session",
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -4737,6 +4738,26 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
+        "@pybind11",
+    ],
+)
+
+py_library(
+    name = "pywrap_sanitizers",
+    srcs = ["pywrap_sanitizers.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_sanitizers",
+        ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_sanitizers",
+    srcs = ["sanitizers_wrapper.cc"],
+    module_name = "_pywrap_sanitizers",
+    deps = [
         "@pybind11",
     ],
 )

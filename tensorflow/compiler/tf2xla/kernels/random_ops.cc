@@ -196,7 +196,7 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
         << name();
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
-    auto result = b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+    auto result = b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
       TF_ASSIGN_OR_RETURN(xla::XlaOp means,
                           BroadcastTo(ctx->Input(1), shape.dim_sizes()));
       TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,

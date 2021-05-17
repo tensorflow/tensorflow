@@ -1505,10 +1505,17 @@ class Stream {
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
+
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+
     port::Status st = blas->DoBlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, &alpha, a,
+        this, transa, transb, m, n, k, alpha_ptr, a,
         blas::ToDataType<InputType>::value, lda, b,
-        blas::ToDataType<InputType>::value, ldb, &beta, c,
+        blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
         output_profile_result);
     if (output_profile_result) {

@@ -421,6 +421,7 @@ cc_library(
     deps = [
         ":CAPIIR",
         ":ExecutionEngine",
+        ":ExecutionEngineUtils",
         ":LLVMToLLVMIRTranslation",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
@@ -457,12 +458,7 @@ cc_library(
 #----------------------------------------------------------------------------##
 
 exports_files(
-    [
-        "lib/Bindings/Python/LinalgPasses.cpp",
-        "lib/Bindings/Python/MainModule.cpp",
-        "lib/Bindings/Python/Conversions/Conversions.cpp",
-        "lib/Bindings/Python/Transforms/Transforms.cpp",
-    ],
+    glob(["lib/Bindings/Python/**/*.cpp"]),
 )
 
 cc_library(
@@ -2005,7 +2001,11 @@ cc_library(
             "lib/Dialect/StandardOps/EDSC/*.cpp",
             "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
-    ),
+    ) +
+    # TODO: Stop depending on MemRefOps.
+    [
+        "include/mlir/Dialect/MemRef/IR/MemRef.h",
+    ],
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
@@ -2017,8 +2017,11 @@ cc_library(
         ":CastOpInterfaces",
         ":CommonFolders",
         ":ControlFlowInterfaces",
+        ":CopyOpInterface",  # TODO: Stop depending on MemRefOps.
         ":EDSC",
         ":IR",
+        ":MemRefBaseIncGen",  # TODO: Stop depending on MemRefOps.
+        ":MemRefOpsIncGen",  # TODO: Stop depending on MemRefOps.
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
@@ -4654,16 +4657,24 @@ cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestAnalysis",
+        "@llvm-project//mlir/test:TestDLTI",
         "@llvm-project//mlir/test:TestDialect",
+        "@llvm-project//mlir/test:TestGPU",
         "@llvm-project//mlir/test:TestIR",
+        "@llvm-project//mlir/test:TestLinalg",
+        "@llvm-project//mlir/test:TestMath",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestRewrite",
+        "@llvm-project//mlir/test:TestSCF",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestShapeDialect",
+        "@llvm-project//mlir/test:TestStandardOps",
+        "@llvm-project//mlir/test:TestStandardToLLVM",
         "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
+        "@llvm-project//mlir/test:TestVector",
     ],
 )
 

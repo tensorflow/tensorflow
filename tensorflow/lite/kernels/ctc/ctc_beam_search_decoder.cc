@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/kernels/ctc_beam_search.h"
+#include "tensorflow/lite/kernels/ctc/ctc_beam_search.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace experimental {
+namespace custom {
 namespace ctc_beam_search_decoder {
 
 constexpr int kInputsTensor = 0;
@@ -208,9 +208,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         num_classes);
   }
 
-  ::tflite::experimental::ctc::CTCBeamSearchDecoder<>::DefaultBeamScorer
-      beam_scorer;
-  ::tflite::experimental::ctc::CTCBeamSearchDecoder<> beam_search(
+  ::tflite::custom::ctc::CTCBeamSearchDecoder<>::DefaultBeamScorer beam_scorer;
+  ::tflite::custom::ctc::CTCBeamSearchDecoder<> beam_search(
       num_classes, beam_width, &beam_scorer, 1 /* batch_size */,
       merge_repeated);
 
@@ -262,6 +261,6 @@ TfLiteRegistration* Register_CTC_BEAM_SEARCH_DECODER() {
   return &r;
 }
 
-}  // namespace experimental
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite

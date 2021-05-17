@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/simple_memory_allocator.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 
 namespace tflite {
 namespace micro {
@@ -37,7 +39,8 @@ KernelRunner::KernelRunner(const TfLiteRegistration& registration,
                                                kKernelRunnerBuffer_,
                                                kKernelRunnerBufferSize_)),
       registration_(registration),
-      tensors_(tensors) {
+      tensors_(tensors),
+      mock_micro_graph_(allocator_) {
   // Prepare TfLiteContext:
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
@@ -47,6 +50,8 @@ KernelRunner::KernelRunner(const TfLiteRegistration& registration,
   context_.AllocatePersistentBuffer = AllocatePersistentBuffer;
   context_.RequestScratchBufferInArena = RequestScratchBufferInArena;
   context_.GetScratchBuffer = GetScratchBuffer;
+  context_.GetExecutionPlan = GetGraph;
+  context_.recommended_num_threads = 0;
 
   // Prepare TfLiteNode:
   node_.inputs = inputs;
@@ -155,6 +160,16 @@ void KernelRunner::ReportOpError(struct TfLiteContext* context,
   va_start(args, format);
   GetMicroErrorReporter()->Report(format, args);
   va_end(args);
+}
+
+TfLiteStatus KernelRunner::GetGraph(struct TfLiteContext* context,
+                                    TfLiteIntArray** args) {
+  TFLITE_DCHECK(context != nullptr);
+  KernelRunner* runner = reinterpret_cast<KernelRunner*>(context->impl_);
+  TFLITE_DCHECK(runner != nullptr);
+  // TODO(b/188226309): Design a cleaner way to get a graph from kernel context.
+  *args = reinterpret_cast<TfLiteIntArray*>(runner->GetMockGraph());
+  return kTfLiteOk;
 }
 
 }  // namespace micro

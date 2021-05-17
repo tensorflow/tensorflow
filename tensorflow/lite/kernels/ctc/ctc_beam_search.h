@@ -15,8 +15,8 @@ limitations under the License.
 
 // Copied from tensorflow/core/util/ctc/ctc_beam_search.h
 // TODO(b/111524997): Remove this file.
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_
+#ifndef TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SEARCH_H_
+#define TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SEARCH_H_
 
 #include <algorithm>
 #include <cmath>
@@ -25,15 +25,15 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/experimental/kernels/ctc_beam_entry.h"
-#include "tensorflow/lite/experimental/kernels/ctc_beam_scorer.h"
-#include "tensorflow/lite/experimental/kernels/ctc_decoder.h"
-#include "tensorflow/lite/experimental/kernels/ctc_loss_util.h"
-#include "tensorflow/lite/experimental/kernels/top_n.h"
+#include "tensorflow/lite/kernels/ctc/ctc_beam_entry.h"
+#include "tensorflow/lite/kernels/ctc/ctc_beam_scorer.h"
+#include "tensorflow/lite/kernels/ctc/ctc_decoder.h"
+#include "tensorflow/lite/kernels/ctc/ctc_loss_util.h"
+#include "tensorflow/lite/kernels/ctc/top_n.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
-namespace experimental {
+namespace custom {
 namespace ctc {
 
 template <typename CTCBeamState = ctc_beam_search::EmptyBeamState,
@@ -426,7 +426,7 @@ bool CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
 }
 
 }  // namespace ctc
-}  // namespace experimental
+}  // namespace custom
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_
+#endif  // TENSORFLOW_LITE_KERNELS_CTC_CTC_BEAM_SEARCH_H_

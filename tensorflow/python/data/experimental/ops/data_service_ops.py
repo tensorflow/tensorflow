@@ -225,6 +225,7 @@ def _parse_service(service):
   else:
     raise ValueError("malformed service string has multiple '://': %s" %
                      service)
+  # TODO(aaudibert): Considering validating reachability of address here.
   return (protocol, address)
 
 
@@ -247,10 +248,11 @@ def _distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -492,10 +494,11 @@ def distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -541,10 +544,11 @@ def _register_dataset(service, dataset, compression):
   parameters which we do not yet want to add to the public Python API.
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
@@ -558,7 +562,10 @@ def _register_dataset(service, dataset, compression):
     raise ValueError(
         "Invalid compression argument: {}. Must be one of {}".format(
             compression, valid_compressions))
-  protocol, address = _parse_service(service)
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
   external_state_policy = dataset.options().experimental_external_state_policy
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
@@ -611,10 +618,11 @@ def register_dataset(service, dataset):
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
 
   Returns:
@@ -644,10 +652,11 @@ def _from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -696,7 +705,11 @@ def _from_dataset_id(processing_mode,
       raise ValueError("job_name must not be empty")
   if element_spec is None:
     raise ValueError("element_spec must not be None")
-  protocol, address = _parse_service(service)
+
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
 
   # If we compress, the data service side dataset will produce scalar variants.
   data_service_element_spec = (
@@ -783,10 +796,11 @@ def from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
